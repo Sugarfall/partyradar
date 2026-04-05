@@ -1,0 +1,5 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+:root { color-scheme: dark; }
+body { background: #0d0d0f; color: #fafafa; font-family: system-ui, sans-serif; }

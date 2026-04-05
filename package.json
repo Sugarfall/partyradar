@@ -1,0 +1,26 @@
+{
+  "name": "partyradar",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "db:push": "cd packages/db && npx prisma db push",
+    "db:studio": "cd packages/db && npx prisma studio",
+    "db:generate": "cd packages/db && npx prisma generate"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}

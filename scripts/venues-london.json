@@ -1,0 +1,321 @@
+[
+  {
+    "name": "Fabric",
+    "address": "77a Charterhouse St, London EC1M 6HJ",
+    "lat": 51.5206,
+    "lng": -0.1006,
+    "type": "NIGHTCLUB",
+    "rating": 4.7,
+    "vibeTags": [
+      "techno",
+      "drum and bass",
+      "underground",
+      "iconic"
+    ],
+    "website": "https://fabriclondon.com",
+    "googlePlaceId": "fabric_london",
+    "city": "London"
+  },
+  {
+    "name": "Printworks London",
+    "address": "Surrey Quays Rd, London SE16 7PJ",
+    "lat": 51.4983,
+    "lng": -0.049,
+    "type": "CONCERT_HALL",
+    "rating": 4.8,
+    "vibeTags": [
+      "techno",
+      "warehouse",
+      "rave",
+      "immersive"
+    ],
+    "website": "https://printworkslondon.co.uk",
+    "googlePlaceId": "printworks_london",
+    "city": "London"
+  },
+  {
+    "name": "Fold",
+    "address": "Unit 2b Blondin St, London E3 2DD",
+    "lat": 51.5265,
+    "lng": -0.0155,
+    "type": "NIGHTCLUB",
+    "rating": 4.6,
+    "vibeTags": [
+      "techno",
+      "inclusive",
+      "underground",
+      "rave"
+    ],
+    "googlePlaceId": "fold_london",
+    "city": "London"
+  },
+  {
+    "name": "Village Underground",
+    "address": "54 Holywell Ln, London EC2A 3PQ",
+    "lat": 51.5237,
+    "lng": -0.0793,
+    "type": "CONCERT_HALL",
+    "rating": 4.6,
+    "vibeTags": [
+      "live music",
+      "alternative",
+      "warehouse"
+    ],
+    "googlePlaceId": "vu_london",
+    "city": "London"
+  },
+  {
+    "name": "XOYO",
+    "address": "32-37 Cowper St, London EC2A 4AP",
+    "lat": 51.5268,
+    "lng": -0.0862,
+    "type": "NIGHTCLUB",
+    "rating": 4.5,
+    "vibeTags": [
+      "house",
+      "techno",
+      "club night",
+      "DJ"
+    ],
+    "googlePlaceId": "xoyo_london",
+    "city": "London"
+  },
+  {
+    "name": "EGG London",
+    "address": "200 York Way, London N7 9AX",
+    "lat": 51.5459,
+    "lng": -0.1194,
+    "type": "NIGHTCLUB",
+    "rating": 4.3,
+    "vibeTags": [
+      "house",
+      "techno",
+      "outdoor",
+      "rave"
+    ],
+    "googlePlaceId": "egg_london",
+    "city": "London"
+  },
+  {
+    "name": "Omeara",
+    "address": "5 Tooley St, London SE1 2PF",
+    "lat": 51.5046,
+    "lng": -0.0847,
+    "type": "CONCERT_HALL",
+    "rating": 4.6,
+    "vibeTags": [
+      "live music",
+      "indie",
+      "intimate"
+    ],
+    "googlePlaceId": "omeara_london",
+    "city": "London"
+  },
+  {
+    "name": "Corsica Studios",
+    "address": "5 Elephant Rd, London SE17 1LB",
+    "lat": 51.4935,
+    "lng": -0.102,
+    "type": "NIGHTCLUB",
+    "rating": 4.5,
+    "vibeTags": [
+      "techno",
+      "underground",
+      "warehouse",
+      "rave"
+    ],
+    "googlePlaceId": "corsica_london",
+    "city": "London"
+  },
+  {
+    "name": "Jazz Cafe",
+    "address": "5 Parkway, London NW1 7PG",
+    "lat": 51.5388,
+    "lng": -0.1436,
+    "type": "LOUNGE",
+    "rating": 4.5,
+    "vibeTags": [
+      "jazz",
+      "soul",
+      "live music",
+      "intimate"
+    ],
+    "googlePlaceId": "jazzcafe_london",
+    "city": "London"
+  },
+  {
+    "name": "Ministry of Sound",
+    "address": "103 Gaunt St, London SE1 6DP",
+    "lat": 51.4964,
+    "lng": -0.1007,
+    "type": "NIGHTCLUB",
+    "rating": 4.4,
+    "vibeTags": [
+      "house",
+      "iconic",
+      "club night",
+      "DJ"
+    ],
+    "website": "https://ministryofsound.com",
+    "googlePlaceId": "mos_london",
+    "city": "London"
+  },
+  {
+    "name": "Phonox",
+    "address": "418 Brixton Rd, London SW9 7AY",
+    "lat": 51.4634,
+    "lng": -0.1144,
+    "type": "NIGHTCLUB",
+    "rating": 4.5,
+    "vibeTags": [
+      "house",
+      "soul",
+      "underground",
+      "DJ"
+    ],
+    "googlePlaceId": "phonox_london",
+    "city": "London"
+  },
+  {
+    "name": "Oval Space",
+    "address": "29-32 The Oval, London E2 9DT",
+    "lat": 51.528,
+    "lng": -0.0573,
+    "type": "CONCERT_HALL",
+    "rating": 4.6,
+    "vibeTags": [
+      "techno",
+      "warehouse",
+      "live music",
+      "rave"
+    ],
+    "googlePlaceId": "ovalspace_london",
+    "city": "London"
+  },
+  {
+    "name": "Lightbox",
+    "address": "6 South Lambeth Pl, London SW8 1SP",
+    "lat": 51.4807,
+    "lng": -0.1232,
+    "type": "NIGHTCLUB",
+    "rating": 4.1,
+    "vibeTags": [
+      "house",
+      "club night",
+      "DJ"
+    ],
+    "googlePlaceId": "lightbox_london",
+    "city": "London"
+  },
+  {
+    "name": "Bussey Building",
+    "address": "133 Rye Ln, London SE15 4ST",
+    "lat": 51.4695,
+    "lng": -0.0631,
+    "type": "CONCERT_HALL",
+    "rating": 4.7,
+    "vibeTags": [
+      "rooftop",
+      "outdoor",
+      "events",
+      "alternative"
+    ],
+    "googlePlaceId": "bussey_london",
+    "city": "London"
+  },
+  {
+    "name": "Hackney Church Brew Co",
+    "address": "Arch 364, Warburton Rd, London E8 3FH",
+    "lat": 51.5434,
+    "lng": -0.056,
+    "type": "BAR",
+    "rating": 4.6,
+    "vibeTags": [
+      "craft beer",
+      "chill",
+      "outdoor"
+    ],
+    "googlePlaceId": "hackneychurch_london",
+    "city": "London"
+  },
+  {
+    "name": "Notting Hill Arts Club",
+    "address": "21 Notting Hill Gate, London W11 3JQ",
+    "lat": 51.5089,
+    "lng": -0.1974,
+    "type": "NIGHTCLUB",
+    "rating": 4.3,
+    "vibeTags": [
+      "alternative",
+      "indie",
+      "DJ",
+      "intimate"
+    ],
+    "googlePlaceId": "nhac_london",
+    "city": "London"
+  },
+  {
+    "name": "Ronnie Scott's",
+    "address": "47 Frith St, London W1D 4HT",
+    "lat": 51.5133,
+    "lng": -0.1317,
+    "type": "LOUNGE",
+    "rating": 4.8,
+    "vibeTags": [
+      "jazz",
+      "live music",
+      "iconic",
+      "intimate"
+    ],
+    "website": "https://ronniescotts.co.uk",
+    "googlePlaceId": "ronniescotts_london",
+    "city": "London"
+  },
+  {
+    "name": "100 Club",
+    "address": "100 Oxford St, London W1D 1LL",
+    "lat": 51.5155,
+    "lng": -0.1379,
+    "type": "CONCERT_HALL",
+    "rating": 4.6,
+    "vibeTags": [
+      "jazz",
+      "blues",
+      "live music",
+      "iconic"
+    ],
+    "googlePlaceId": "100club_london",
+    "city": "London"
+  },
+  {
+    "name": "Electric Brixton",
+    "address": "Town Hall Parade, London SW2 1RJ",
+    "lat": 51.4627,
+    "lng": -0.1154,
+    "type": "CONCERT_HALL",
+    "rating": 4.4,
+    "vibeTags": [
+      "live music",
+      "club night",
+      "DJ"
+    ],
+    "googlePlaceId": "electricbrixton_london",
+    "city": "London"
+  },
+  {
+    "name": "Tobacco Dock",
+    "address": "Tobacco Quay, Wapping Ln, London E1W 2SF",
+    "lat": 51.5071,
+    "lng": -0.0596,
+    "type": "CONCERT_HALL",
+    "rating": 4.5,
+    "vibeTags": [
+      "warehouse",
+      "rave",
+      "immersive",
+      "massive"
+    ],
+    "googlePlaceId": "tobaccodock_london",
+    "city": "London"
+  }
+]

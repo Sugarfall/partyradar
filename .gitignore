@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.turbo/
+
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.*.local
+.env.production
+packages/api/.env
+apps/web/.env.local
+apps/mobile/.env.local
+
+# Prisma generated
+packages/db/src/generated/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum EventType {
+  HOME_PARTY
+  CLUB_NIGHT
+  CONCERT
+}
+
+enum AlcoholPolicy {
+  NONE
+  PROVIDED
+  BYOB
+}
+
+enum AgeRestriction {
+  ALL_AGES
+  AGE_18
+  AGE_21
+}
+
+enum RSVPStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REMOVED
+}
+
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PRO
+  PREMIUM
+}
+
+enum NotificationType {
+  RSVP_CONFIRMED
+  INVITE_RECEIVED
+  EVENT_REMINDER
+  CELEBRITY_NEARBY
+  EVENT_UPDATED
+  MESSAGE
+  INTEREST_MATCH
+}
+
+enum VenueType {
+  BAR
+  NIGHTCLUB
+  CONCERT_HALL
+  ROOFTOP_BAR
+  PUB
+  LOUNGE
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id                String           @id @default(cuid())
+  firebaseUid       String           @unique
+  email             String           @unique
+  username          String           @unique
+  displayName       String
+  bio               String?
+  photoUrl          String?
+  ageVerified       Boolean          @default(false)
+  alcoholFriendly   Boolean          @default(false)
+  interests         String[]
+  showAlcoholEvents Boolean          @default(false)
+  subscriptionTier  SubscriptionTier @default(FREE)
+  stripeCustomerId  String?
+  fcmToken          String?
+  lastKnownLat      Float?
+  lastKnownLng      Float?
+  isBanned          Boolean          @default(false)
+  isAdmin           Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  hostedEvents  Event[]             @relation("HostedEvents")
+  guestEntries  EventGuest[]
+  tickets       Ticket[]
+  sightings     CelebritySighting[]
+  sightingVotes SightingVote[]
+  notifications Notification[]
+  subscription  Subscription?
+  claimedVenues Venue[]             @relation("ClaimedVenues")
+  sentMessages  Message[]           @relation("SentMessages")
+}
+
+model Event {
+  id                    String         @id @default(cuid())
+  hostId                String
+  host                  User           @relation("HostedEvents", fields: [hostId], references: [id])
+  name                  String
+  type                  EventType
+  description           String
+  startsAt              DateTime
+  endsAt                DateTime?
+  lat                   Float
+  lng                   Float
+  address               String
+  neighbourhood         String
+  showNeighbourhoodOnly Boolean        @default(false)
+  capacity              Int
+  price                 Float          @default(0)
+  ticketQuantity        Int            @default(0)
+  ticketsRemaining      Int            @default(0)
+  alcoholPolicy         AlcoholPolicy  @default(NONE)
+  ageRestriction        AgeRestriction @default(ALL_AGES)
+  dressCode             String?
+  whatToBring           String[]
+  houseRules            String?
+  vibeTags              String[]
+  isInviteOnly          Boolean        @default(false)
+  inviteToken           String?        @unique
+  isPublished           Boolean        @default(false)
+  isCancelled           Boolean        @default(false)
+  isFeatured            Boolean        @default(false)
+  coverImageUrl         String?
+  stripeProductId       String?
+  stripePriceId         String?
+  hostRating            Float?
+  venueId               String?
+  venue                 Venue?         @relation(fields: [venueId], references: [id])
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  guests   EventGuest[]
+  tickets  Ticket[]
+  messages Message[]
+}
+
+model EventGuest {
+  id        String     @id @default(cuid())
+  eventId   String
+  userId    String
+  event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    RSVPStatus @default(PENDING)
+  invitedAt DateTime   @default(now())
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+}
+
+model Ticket {
+  id              String    @id @default(cuid())
+  eventId         String
+  userId          String
+  event           Event     @relation(fields: [eventId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
+  qrCode          String    @unique @default(cuid())
+  stripePaymentId String?
+  stripeSessionId String?
+  pricePaid       Float
+  platformFee     Float
+  scannedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([eventId])
+  @@index([userId])
+}
+
+model CelebritySighting {
+  id          String   @id @default(cuid())
+  reporterId  String
+  reporter    User     @relation(fields: [reporterId], references: [id])
+  celebrity   String
+  lat         Float
+  lng         Float
+  description String?
+  photoUrl    String?
+  upvotes     Int      @default(0)
+  downvotes   Int      @default(0)
+  isVerified  Boolean  @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  votes SightingVote[]
+
+  @@index([expiresAt])
+  @@index([lat, lng])
+}
+
+model SightingVote {
+  id         String            @id @default(cuid())
+  sightingId String
+  userId     String
+  sighting   CelebritySighting @relation(fields: [sightingId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isUpvote   Boolean
+  createdAt  DateTime          @default(now())
+
+  @@unique([sightingId, userId])
+}
+
+model Subscription {
+  id                   String           @id @default(cuid())
+  userId               String           @unique
+  user                 User             @relation(fields: [userId], references: [id])
+  tier                 SubscriptionTier
+  stripeSubscriptionId String?          @unique
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+}
+
+// ─── Venues ───────────────────────────────────────────────────────────────────
+
+model Venue {
+  id            String    @id @default(cuid())
+  googlePlaceId String?   @unique
+  name          String
+  address       String
+  city          String
+  lat           Float
+  lng           Float
+  type          VenueType
+  phone         String?
+  website       String?
+  photoUrl      String?
+  rating        Float?
+  openingHours  Json?
+  vibeTags      String[]
+  isClaimed     Boolean   @default(false)
+  claimedById   String?
+  claimedBy     User?     @relation("ClaimedVenues", fields: [claimedById], references: [id])
+  events        Event[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([lat, lng])
+  @@index([city])
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
+model Message {
+  id        String   @id @default(cuid())
+  eventId   String
+  senderId  String
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+
+  event  Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sender User  @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@index([eventId, createdAt])
+}
