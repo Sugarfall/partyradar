@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -42,6 +42,69 @@ function MetaCell({ icon: Icon, label, value, color }: { icon: any; label: strin
         <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(0,229,255,0.45)' }}>{label}</span>
       </div>
       <p className="text-sm font-bold leading-tight" style={{ color: '#e0f2fe' }}>{value}</p>
+    </div>
+  )
+}
+
+const WMO: Record<number, { label: string; emoji: string }> = {
+  0: { label: 'Clear sky', emoji: '☀️' },
+  1: { label: 'Mainly clear', emoji: '🌤️' },
+  2: { label: 'Partly cloudy', emoji: '⛅' },
+  3: { label: 'Overcast', emoji: '☁️' },
+  45: { label: 'Foggy', emoji: '🌫️' },
+  48: { label: 'Foggy', emoji: '🌫️' },
+  51: { label: 'Light drizzle', emoji: '🌦️' },
+  61: { label: 'Light rain', emoji: '🌧️' },
+  63: { label: 'Rain', emoji: '🌧️' },
+  65: { label: 'Heavy rain', emoji: '🌧️' },
+  71: { label: 'Light snow', emoji: '🌨️' },
+  80: { label: 'Showers', emoji: '🌦️' },
+  95: { label: 'Thunderstorm', emoji: '⛈️' },
+  99: { label: 'Thunderstorm', emoji: '⛈️' },
+}
+
+function getWmo(code: number) {
+  return WMO[code] ?? WMO[Math.floor(code / 10) * 10] ?? { label: 'Unknown', emoji: '🌡️' }
+}
+
+function WeatherWidget({ lat, lng, eventDate }: { lat: number; lng: number; eventDate: string }) {
+  const [weather, setWeather] = useState<{ emoji: string; label: string; high: number; low: number } | null>(null)
+
+  useEffect(() => {
+    const targetDay = new Date(eventDate).toISOString().split('T')[0]!
+    fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weathercode,temperature_2m_max,temperature_2m_min&forecast_days=7&timezone=auto`
+    )
+      .then(r => r.json())
+      .then((data) => {
+        const idx = (data.daily.time as string[]).indexOf(targetDay)
+        if (idx === -1) return
+        const code = data.daily.weathercode[idx] as number
+        const wmo = getWmo(code)
+        setWeather({
+          emoji: wmo.emoji,
+          label: wmo.label,
+          high: Math.round(data.daily.temperature_2m_max[idx] as number),
+          low: Math.round(data.daily.temperature_2m_min[idx] as number),
+        })
+      })
+      .catch(() => {})
+  }, [lat, lng, eventDate])
+
+  if (!weather) return null
+
+  return (
+    <div className="flex items-center gap-3 mb-5 px-4 py-3 rounded-xl"
+      style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+      <span className="text-2xl">{weather.emoji}</span>
+      <div className="flex-1">
+        <p className="text-[9px] font-bold tracking-[0.15em] mb-0.5" style={{ color: 'rgba(0,229,255,0.45)' }}>WEATHER FORECAST</p>
+        <p className="text-sm font-medium" style={{ color: '#e0f2fe' }}>{weather.label}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{weather.high}°</p>
+        <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)' }}>{weather.low}°</p>
+      </div>
     </div>
   )
 }
@@ -191,6 +254,37 @@ export default function EventDetailPage() {
     }
   }
 
+  function addToCalendar() {
+    const e = event!
+    const start = new Date(e.startsAt).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+    const end = e.endsAt
+      ? new Date(e.endsAt).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+      : new Date(new Date(e.startsAt).getTime() + 3 * 60 * 60 * 1000).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+    const location = e.showNeighbourhoodOnly ? e.neighbourhood : (e.address ?? e.neighbourhood)
+    const url = window.location.href
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//PartyRadar//EN',
+      'BEGIN:VEVENT',
+      `DTSTART:${start}`,
+      `DTEND:${end}`,
+      `SUMMARY:${e.name}`,
+      `DESCRIPTION:${e.description?.replace(/\n/g, '\\n').slice(0, 500) ?? ''}`,
+      `LOCATION:${location}`,
+      `URL:${url}`,
+      `UID:${e.id}@partyradar`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n')
+    const blob = new Blob([ics], { type: 'text/calendar' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${e.name.replace(/[^a-z0-9]/gi, '-')}.ics`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   async function handleShare() {
     const url = window.location.href
     try {
@@ -313,6 +407,26 @@ export default function EventDetailPage() {
           <MetaCell icon={ShieldCheck} label="AGE POLICY" value={AGE_RESTRICTION_LABELS[event.ageRestriction] ?? event.ageRestriction} color={tc.color} />
         </div>
 
+        {/* Quick actions row */}
+        <div className="flex gap-2 mb-5 flex-wrap">
+          <a
+            href={`https://maps.google.com/?q=${event.lat},${event.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+            style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.8)' }}
+          >
+            <MapPin size={13} /> Directions
+          </a>
+          <button
+            onClick={addToCalendar}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+            style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.8)' }}
+          >
+            <Calendar size={13} /> Add to Calendar
+          </button>
+        </div>
+
         {/* Capacity bar */}
         <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.1)' }}>
           <div className="flex items-center justify-between mb-2">
@@ -389,6 +503,8 @@ export default function EventDetailPage() {
           <p className="text-[9px] font-bold tracking-[0.2em] mb-2" style={{ color: 'rgba(0,229,255,0.45)' }}>ABOUT THIS EVENT</p>
           <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(224,242,254,0.7)' }}>{event.description}</p>
         </div>
+
+        <WeatherWidget lat={event.lat} lng={event.lng} eventDate={event.startsAt} />
 
         {/* Dress code */}
         {event.dressCode && (
