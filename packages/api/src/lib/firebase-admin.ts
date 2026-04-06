@@ -1,6 +1,8 @@
 import * as admin from 'firebase-admin'
 
-if (!admin.apps.length) {
+const DEV_MODE = !process.env['FIREBASE_PROJECT_ID']
+
+if (!admin.apps.length && !DEV_MODE) {
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: process.env['FIREBASE_PROJECT_ID'],
@@ -10,6 +12,7 @@ if (!admin.apps.length) {
   })
 }
 
-export const auth = admin.auth()
-export const messaging = admin.messaging()
+// In dev mode, export stubs so the app still starts
+export const auth = DEV_MODE ? null as any : admin.auth()
+export const messaging = DEV_MODE ? null as any : admin.messaging()
 export default admin
