@@ -36,10 +36,16 @@ const PARTY_SIGNALS: { emoji: string; code: string }[] = [
   { emoji: '🍩', code: 'SNACKS'  },
 ]
 
-const ALCOHOL_OPTIONS = [
-  { value: 'NONE',     label: 'No Alcohol',        emoji: '🚫' },
-  { value: 'PROVIDED', label: 'Alcohol Provided',  emoji: '🍾' },
-  { value: 'BYOB',     label: 'BYOB',              emoji: '🥃' },
+// Labels differ by event type: venues sell alcohol, parties provide it free
+const ALCOHOL_OPTIONS_PARTY = [
+  { value: 'NONE',     label: 'No Alcohol',       sublabel: 'Dry event',             emoji: '🚫' },
+  { value: 'PROVIDED', label: 'Free Drinks',       sublabel: 'Host provides alcohol', emoji: '🍾' },
+  { value: 'BYOB',     label: 'BYOB',              sublabel: 'Bring your own',        emoji: '🥃' },
+]
+const ALCOHOL_OPTIONS_VENUE = [
+  { value: 'NONE',     label: 'No Bar',            sublabel: 'Dry event',             emoji: '🚫' },
+  { value: 'PROVIDED', label: 'Bar Available',     sublabel: 'Drinks sold at bar',    emoji: '🍺' },
+  { value: 'BYOB',     label: 'BYOB',              sublabel: 'Bring your own',        emoji: '🥃' },
 ]
 
 const AGE_OPTIONS = [
@@ -591,53 +597,73 @@ export default function CreateEventPage() {
             )}
 
             {/* Alcohol policy */}
-            <div>
-              <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(0,229,255,0.55)' }}>
-                {form.type === 'CLUB_NIGHT' ? 'BAR POLICY' : 'ALCOHOL POLICY'}
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {ALCOHOL_OPTIONS.map((opt) => {
-                  const selected = form.alcoholPolicy === opt.value
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => update({ alcoholPolicy: opt.value as AlcoholPolicy })}
-                      className="flex flex-col items-center gap-1.5 py-4 rounded-xl transition-all duration-200"
-                      style={{
-                        background: selected ? 'rgba(0,229,255,0.08)' : 'rgba(0,229,255,0.02)',
-                        border: selected ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-                        boxShadow: selected ? '0 0 16px rgba(0,229,255,0.12)' : 'none',
-                      }}
-                    >
-                      <span className="text-2xl">{opt.emoji}</span>
-                      <span className="text-[9px] font-bold tracking-widest" style={{ color: selected ? '#00e5ff' : 'rgba(74,96,128,0.7)' }}>{opt.label.toUpperCase()}</span>
-                    </button>
-                  )
-                })}
-              </div>
+            {(() => {
+              const isVenue = form.type === 'CLUB_NIGHT' || form.type === 'CONCERT'
+              const opts = isVenue ? ALCOHOL_OPTIONS_VENUE : ALCOHOL_OPTIONS_PARTY
+              return (
+                <div>
+                  <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(0,229,255,0.55)' }}>
+                    {isVenue ? 'BAR POLICY' : 'ALCOHOL POLICY'}
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {opts.map((opt) => {
+                      const selected = form.alcoholPolicy === opt.value
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => update({ alcoholPolicy: opt.value as AlcoholPolicy })}
+                          className="flex flex-col items-center gap-2 py-4 rounded-xl transition-all duration-200"
+                          style={{
+                            background: selected ? 'rgba(0,229,255,0.08)' : 'rgba(0,229,255,0.02)',
+                            border: selected ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
+                            boxShadow: selected ? '0 0 16px rgba(0,229,255,0.12)' : 'none',
+                          }}
+                        >
+                          <span className="text-2xl">{opt.emoji}</span>
+                          <span className="text-[9px] font-bold tracking-widest leading-tight text-center" style={{ color: selected ? '#00e5ff' : 'rgba(74,96,128,0.7)' }}>
+                            {opt.label.toUpperCase()}
+                          </span>
+                          <span className="text-[8px] leading-tight text-center" style={{ color: selected ? 'rgba(0,229,255,0.5)' : 'rgba(74,96,128,0.4)' }}>
+                            {opt.sublabel}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
 
-              {/* Alcohol contextual notices */}
-              {form.alcoholPolicy === 'PROVIDED' && (
-                <div className="mt-3 space-y-2">
-                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)', color: 'rgba(255,166,0,0.8)' }}>
-                    🍾 <strong>Venue licensing</strong> — if hosting at a licensed venue, confirm they permit your own bar service. Corkage or bar-hire fees typically range £150–£500.
-                  </div>
-                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
-                    👁 Visibility — this event is hidden from guests who haven't enabled alcohol events in their settings.
-                  </div>
+                  {/* Contextual notices */}
+                  {form.alcoholPolicy === 'PROVIDED' && (
+                    <div className="mt-3 space-y-2">
+                      {isVenue ? (
+                        <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)', color: 'rgba(255,166,0,0.8)' }}>
+                          🍺 <strong>Premises licence required</strong> — your venue must hold a valid premises licence to sell alcohol. Selling without one is a criminal offence.
+                        </div>
+                      ) : (
+                        <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)', color: 'rgba(255,166,0,0.8)' }}>
+                          🍾 <strong>Hosting at a venue?</strong> — confirm the venue permits your own bar service. Corkage or bar-hire fees typically range £150–£500.
+                        </div>
+                      )}
+                      <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
+                        👁 This event is hidden from guests who haven't enabled alcohol events in their settings.
+                      </div>
+                    </div>
+                  )}
+                  {form.alcoholPolicy === 'BYOB' && (
+                    <div className="mt-3 space-y-2">
+                      <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)', color: 'rgba(255,166,0,0.8)' }}>
+                        🥃 {isVenue
+                          ? <><strong>BYOB at venues</strong> — most licensed venues prohibit outside alcohol or charge corkage (£5–£20 per bottle). Verify with the venue first.</>
+                          : <><strong>BYOB</strong> — remind guests to bring enough for the night. Consider adding a list in "What to Bring".</>
+                        }
+                      </div>
+                      <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
+                        👁 This event is hidden from guests who haven't enabled alcohol events in their settings.
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-              {form.alcoholPolicy === 'BYOB' && (
-                <div className="mt-3 space-y-2">
-                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)', color: 'rgba(255,166,0,0.8)' }}>
-                    🥃 <strong>BYOB at venues</strong> — many licensed venues charge a corkage fee (£5–£20 per bottle) or prohibit outside alcohol entirely. Check with the venue before listing.
-                  </div>
-                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
-                    👁 Visibility — this event is hidden from guests who haven't enabled alcohol events in their settings.
-                  </div>
-                </div>
-              )}
-            </div>
+              )
+            })()}
 
             {/* Age restriction */}
             <div>
