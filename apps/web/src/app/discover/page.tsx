@@ -529,7 +529,7 @@ export default function DiscoverPage() {
   const [slideDir, setSlideDir] = useState<SlideDir>(null)
   const [showMap, setShowMap] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-  const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean }>({})
+  const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
   const [mapBounds, setMapBounds] = useState<{ lat?: number; lng?: number; radius?: number }>({})
 
   const { events, isLoading } = useEvents({ ...filters, ...mapBounds })

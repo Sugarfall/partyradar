@@ -9,6 +9,7 @@ interface Filters {
   type?: EventType
   search?: string
   showFree?: boolean
+  tonight?: boolean
 }
 
 interface EventFiltersProps {
@@ -57,6 +58,17 @@ export function EventFilters({ filters, onChange }: EventFiltersProps) {
 
       {/* Type tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <button
+          onClick={() => onChange({ ...filters, tonight: !filters.tonight })}
+          className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-150"
+          style={{
+            background: filters.tonight ? 'rgba(255,214,0,0.15)' : 'rgba(255,255,255,0.04)',
+            border: filters.tonight ? '1px solid rgba(255,214,0,0.4)' : '1px solid rgba(255,255,255,0.08)',
+            color: filters.tonight ? '#ffd600' : 'rgba(255,255,255,0.45)',
+          }}
+        >
+          🌙 Tonight
+        </button>
         <button
           onClick={() => onChange({ ...filters, type: undefined })}
           className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${

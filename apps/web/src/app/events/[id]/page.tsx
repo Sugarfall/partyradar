@@ -118,6 +118,7 @@ export default function EventDetailPage() {
 
   const [rsvpLoading, setRsvpLoading] = useState(false)
   const [ticketLoading, setTicketLoading] = useState(false)
+  const [ticketQty, setTicketQty] = useState(1)
   const [rsvpDone, setRsvpDone] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -131,8 +132,20 @@ export default function EventDetailPage() {
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
   const [publishLoading, setPublishLoading] = useState(false)
+  const [friendsGoing, setFriendsGoing] = useState<{ count: number; friends: Array<{ id: string; displayName: string; photoUrl: string | null }> }>({ count: 0, friends: [] })
+  const [msgOpen, setMsgOpen] = useState(false)
+  const [msgText, setMsgText] = useState('')
+  const [msgSending, setMsgSending] = useState(false)
+  const [msgSent, setMsgSent] = useState(false)
 
   const isHostView = !!dbUser && event?.hostId === dbUser.id
+
+  useEffect(() => {
+    if (!dbUser || !event) return
+    api.get<{ data: { count: number; friends: Array<{ id: string; displayName: string; photoUrl: string | null }> } }>(
+      `/events/${event.id}/friends-going`
+    ).then(r => setFriendsGoing(r.data)).catch(() => {})
+  }, [dbUser, event?.id])
 
   const { data: guestData } = useSWR<{ data: EventGuest[] }>(
     isHostView && guestListOpen ? `/events/${params['id']}/guests` : null,
@@ -185,7 +198,7 @@ export default function EventDetailPage() {
     if (!dbUser) { router.push('/login'); return }
     setTicketLoading(true)
     try {
-      const res = await api.post<{ data: { url: string } }>('/tickets/checkout', { eventId: event!.id, quantity: 1 })
+      const res = await api.post<{ data: { url: string } }>('/tickets/checkout', { eventId: event!.id, quantity: ticketQty })
       window.location.href = res.data.url
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Checkout failed')
@@ -252,6 +265,24 @@ export default function EventDetailPage() {
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Blast failed')
       setBlastLoading(false)
+    }
+  }
+
+  async function handleMessageGuests() {
+    if (!msgText.trim()) return
+    setMsgSending(true)
+    try {
+      await api.post<{ data: { sent: number } }>('/messages/guests', {
+        eventId: event!.id,
+        message: msgText.trim(),
+      })
+      setMsgSent(true)
+      setMsgText('')
+      setTimeout(() => { setMsgOpen(false); setMsgSent(false) }, 2000)
+    } catch {
+      // ignore
+    } finally {
+      setMsgSending(false)
     }
   }
 
@@ -459,6 +490,29 @@ export default function EventDetailPage() {
           </div>
         </div>
 
+        {/* Friends going */}
+        {friendsGoing.count > 0 && (
+          <div className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl"
+            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            <div className="flex -space-x-2">
+              {friendsGoing.friends.slice(0, 3).map(f => (
+                f.photoUrl
+                  ? <img key={f.id} src={f.photoUrl} alt={f.displayName} className="w-7 h-7 rounded-full object-cover ring-2 ring-[#04040d]" />
+                  : <div key={f.id} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-[#04040d]"
+                      style={{ background: 'rgba(0,229,255,0.15)', color: '#00e5ff' }}>
+                      {f.displayName[0]}
+                    </div>
+              ))}
+            </div>
+            <p className="text-xs" style={{ color: 'rgba(224,242,254,0.6)' }}>
+              <span className="font-semibold" style={{ color: '#e0f2fe' }}>
+                {friendsGoing.count === 1 ? friendsGoing.friends[0]?.displayName : `${friendsGoing.count} friends`}
+              </span>
+              {friendsGoing.count === 1 ? ' is' : ' are'} going
+            </p>
+          </div>
+        )}
+
         {/* Gender ratio */}
         {event.genderRatio && event.genderRatio.total > 0 && (() => {
           const { male, female, nonBinary, total } = event.genderRatio!
@@ -513,6 +567,19 @@ export default function EventDetailPage() {
         </div>
 
         <WeatherWidget lat={event.lat} lng={event.lng} eventDate={event.startsAt} />
+
+        {/* Get home safe */}
+        {event.lat && event.lng && (
+          <a
+            href={`https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${event.lat}&pickup[longitude]=${event.lng}&pickup[nickname]=${encodeURIComponent(event.showNeighbourhoodOnly ? event.neighbourhood : event.address ?? '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 mb-5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
+          >
+            🚗 Get home safe
+          </a>
+        )}
 
         {/* Dress code */}
         {event.dressCode && (
@@ -606,6 +673,13 @@ export default function EventDetailPage() {
                   : <><Link2 size={12} /> INVITE LINK</>
                 }
               </button>
+              {/* Message guests */}
+              <button
+                onClick={() => setMsgOpen(o => !o)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200"
+                style={{ border: '1px solid rgba(168,85,247,0.3)', color: 'rgba(168,85,247,0.8)', letterSpacing: '0.1em' }}>
+                <Megaphone size={13} /> MESSAGE GUESTS
+              </button>
               {/* Live chat — host */}
               <EventChat eventId={event.id} eventName={event.name} />
               {/* Publish / Unpublish */}
@@ -648,6 +722,35 @@ export default function EventDetailPage() {
                 </button>
               )}
             </div>
+
+            {/* Message guests panel */}
+            {msgOpen && (
+              <div className="p-4 rounded-xl space-y-3"
+                style={{ background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.2)' }}>
+                <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(168,85,247,0.6)' }}>
+                  MESSAGE ALL CONFIRMED GUESTS
+                </p>
+                <textarea
+                  value={msgText}
+                  onChange={e => setMsgText(e.target.value)}
+                  maxLength={200}
+                  rows={3}
+                  placeholder="e.g. Doors now open at 9pm — see you there! 🎉"
+                  className="w-full px-3 py-2 rounded-lg text-sm resize-none focus:outline-none"
+                  style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }}
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{msgText.length}/200</span>
+                  <button
+                    onClick={handleMessageGuests}
+                    disabled={msgSending || !msgText.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-40 transition-all"
+                    style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.35)', color: '#a855f7' }}>
+                    {msgSent ? '✓ Sent!' : msgSending ? 'Sending...' : 'Send to all guests'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Push blast panel */}
             <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,0,110,0.2)' }}>
@@ -910,6 +1013,23 @@ export default function EventDetailPage() {
                 }
               </button>
             ) : (
+              <>
+              {/* Quantity selector */}
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <button onClick={() => setTicketQty(q => Math.max(1, q - 1))}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition-all"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e0f2fe' }}>
+                  −
+                </button>
+                <span className="text-sm font-bold w-16 text-center" style={{ color: '#e0f2fe' }}>
+                  {ticketQty} ticket{ticketQty > 1 ? 's' : ''}
+                </span>
+                <button onClick={() => setTicketQty(q => Math.min(10, q + 1))}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition-all"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e0f2fe' }}>
+                  +
+                </button>
+              </div>
               <button
                 onClick={handleTicketCheckout}
                 disabled={ticketLoading}
@@ -924,9 +1044,10 @@ export default function EventDetailPage() {
               >
                 {ticketLoading
                   ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> REDIRECTING...</>
-                  : <><QrCode size={15} /> BUY TICKET — £{event.price.toFixed(2)}</>
+                  : <><QrCode size={15} /> BUY TICKET — £{(event.price * ticketQty).toFixed(2)}{ticketQty > 1 ? ` (×${ticketQty})` : ''}</>
                 }
               </button>
+              </>
             )}
 
             {/* Live chat — guest action bar */}

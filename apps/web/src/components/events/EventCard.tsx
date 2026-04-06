@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Calendar, MapPin, Users, Wine, Star, Lock } from 'lucide-react'
 import type { Event } from '@partyradar/shared'
@@ -21,6 +22,25 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+function useCountdown(startsAt: string) {
+  const [label, setLabel] = useState('')
+  useEffect(() => {
+    function calc() {
+      const diff = new Date(startsAt).getTime() - Date.now()
+      if (diff <= 0) { setLabel('Now'); return }
+      const h = Math.floor(diff / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      if (h > 48) setLabel('')
+      else if (h > 0) setLabel(`${h}h ${m}m`)
+      else setLabel(`${m}m`)
+    }
+    calc()
+    const id = setInterval(calc, 60000)
+    return () => clearInterval(id)
+  }, [startsAt])
+  return label
+}
+
 interface EventCardProps {
   event: Event
   compact?: boolean
@@ -29,6 +49,8 @@ interface EventCardProps {
 export function EventCard({ event, compact = false }: EventCardProps) {
   const isFree = event.price === 0
   const color = TYPE_COLORS[event.type] ?? '#00e5ff'
+  const countdown = useCountdown(event.startsAt)
+  const showCountdown = countdown && (event as any).host?.subscriptionTier !== 'FREE'
 
   return (
     <Link href={`/events/${event.id}`}>
@@ -139,9 +161,15 @@ export function EventCard({ event, compact = false }: EventCardProps) {
 
           {/* Meta */}
           <div className="space-y-1 text-[11px]" style={{ color: 'rgba(74,96,128,0.8)' }}>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <Calendar size={10} style={{ color: 'rgba(0,229,255,0.4)' }} />
               <span>{formatDate(event.startsAt)}</span>
+              {showCountdown && (
+                <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff', border: '1px solid rgba(0,229,255,0.2)' }}>
+                  {countdown === 'Now' ? '🔴 LIVE' : `⏱ ${countdown}`}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5">
               <MapPin size={10} style={{ color: 'rgba(0,229,255,0.4)' }} />

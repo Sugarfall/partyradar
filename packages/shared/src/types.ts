@@ -137,6 +137,7 @@ export interface EventDiscoverQuery {
   page?: number
   limit?: number
   search?: string
+  tonight?: boolean
 }
 
 // ─── Guest ────────────────────────────────────────────────────────────────────
