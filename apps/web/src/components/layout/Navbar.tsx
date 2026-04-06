@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, LayoutDashboard } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -113,6 +113,7 @@ export default function Navbar() {
 function NavbarInner() {
   const pathname = usePathname()
   const { dbUser } = useAuth()
+  const isHost = (dbUser as any)?.accountMode === 'HOST'
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
@@ -176,18 +177,20 @@ function NavbarInner() {
           <div className="flex items-center gap-2">
             {dbUser ? (
               <>
-                {/* Host button */}
-                <Link href="/host"
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
-                  style={{
-                    background: 'rgba(0,229,255,0.12)',
-                    border: '1px solid rgba(0,229,255,0.25)',
-                    color: '#00e5ff',
-                  }}
-                >
-                  <Plus size={14} />
-                  Host
-                </Link>
+                {/* Host button — only in HOST mode */}
+                {isHost && (
+                  <Link href="/events/create"
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.1) 100%)',
+                      border: '1px solid rgba(168,85,247,0.35)',
+                      color: '#a855f7',
+                    }}
+                  >
+                    <Plus size={14} />
+                    Create
+                  </Link>
+                )}
 
                 {/* Bell */}
                 <div ref={notifRef} className="relative">
@@ -259,18 +262,30 @@ function NavbarInner() {
             )
           })}
 
-          {/* Host — centre pill */}
+          {/* Centre pill — adapts to mode */}
           <div className="flex-1 flex items-center justify-center">
-            <Link href={dbUser ? '/host' : '/login'}
-              className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, rgba(0,229,255,0.25) 0%, rgba(168,85,247,0.25) 100%)',
-                border: '1px solid rgba(0,229,255,0.35)',
-                boxShadow: '0 0 20px rgba(0,229,255,0.15)',
-              }}
-            >
-              <Plus size={20} style={{ color: '#00e5ff' }} />
-            </Link>
+            {isHost ? (
+              /* HOST: create event */
+              <Link href={dbUser ? '/events/create' : '/login'}
+                className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(0,229,255,0.2) 100%)',
+                  border: '1px solid rgba(168,85,247,0.5)',
+                  boxShadow: '0 0 20px rgba(168,85,247,0.2)',
+                }}
+              >
+                <Plus size={20} style={{ color: '#a855f7' }} />
+              </Link>
+            ) : (
+              /* ATTENDEE: my tickets */
+              <Link href={dbUser ? '/tickets' : '/login'}
+                className="flex flex-col items-center justify-center gap-1 transition-all"
+                style={{ color: pathname.startsWith('/tickets') ? '#fff' : 'rgba(255,255,255,0.35)' }}
+              >
+                <Ticket size={18} strokeWidth={pathname.startsWith('/tickets') ? 2 : 1.5} />
+                <span className="text-[9px] font-medium tracking-wide">Tickets</span>
+              </Link>
+            )}
           </div>
 
           {/* Profile */}

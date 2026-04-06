@@ -30,6 +30,7 @@ function makeMockDbUser(email: string): DBUser {
     alcoholFriendly: false,
     showAlcoholEvents: false,
     subscriptionTier: 'FREE',
+    accountMode: 'ATTENDEE',
     stripeCustomerId: null,
     createdAt: new Date().toISOString(),
   } as DBUser

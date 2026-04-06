@@ -127,7 +127,7 @@ function ClickableToggle({ icon, label, value, onChange, border }: {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { dbUser, loading: authLoading, logout: signOut } = useAuth()
+  const { dbUser, loading: authLoading, logout: signOut, refreshUser } = useAuth()
 
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -264,7 +264,7 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ accountMode: next }),
       })
-      if (res.ok) setAccountMode(next)
+      if (res.ok) { setAccountMode(next); refreshUser() }
     } catch { /* keep current mode */ }
     finally { setModeSwitching(false) }
   }
@@ -279,7 +279,7 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ accountMode: 'HOST' }),
       })
-      if (res.ok) setAccountMode('HOST')
+      if (res.ok) { setAccountMode('HOST'); refreshUser() }
     } catch { /* keep */ }
     finally { setModeSwitching(false) }
   }
