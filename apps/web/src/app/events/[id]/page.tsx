@@ -714,6 +714,24 @@ export default function EventDetailPage() {
           }}
         >
           <div className="max-w-2xl mx-auto">
+            {/* Who's going count */}
+            {!rsvpDone && (event.guestCount ?? 0) > 0 && (
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                <Users size={12} style={{ color: 'rgba(0,229,255,0.5)' }} />
+                <span className="text-[11px] font-bold" style={{ color: 'rgba(0,229,255,0.55)' }}>
+                  {event.guestCount ?? 0} {(event.guestCount ?? 0) === 1 ? 'person' : 'people'} going
+                </span>
+              </div>
+            )}
+            {!rsvpDone && !(event.guestCount ?? 0) && (
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                <Users size={12} style={{ color: 'rgba(0,229,255,0.35)' }} />
+                <span className="text-[11px] font-bold" style={{ color: 'rgba(74,96,128,0.5)' }}>
+                  Be the first to RSVP
+                </span>
+              </div>
+            )}
+
             {actionError && (
               <p className="text-xs font-medium mb-2 px-3 py-2 rounded-lg"
                 style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>

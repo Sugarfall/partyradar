@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Edit2, Check, X, LogOut, ShieldCheck, Wine, Ticket,
-  Calendar, Crown, ChevronRight, User
+  Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
+
+const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/api'
 
 const TIER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   FREE:    { label: 'FREE',    color: '#4b5563', icon: '⚡' },
@@ -23,6 +25,30 @@ const GENDER_LABELS: Record<Gender, string> = {
   NON_BINARY:       '⚧ Non-binary',
   PREFER_NOT_TO_SAY:'— Prefer not to say',
 }
+
+function timeAgo(dateStr: string) {
+  const s = (Date.now() - new Date(dateStr).getTime()) / 1000
+  if (s < 60) return 'just now'
+  if (s < 3600) return Math.floor(s / 60) + 'm ago'
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
+  return Math.floor(s / 86400) + 'd ago'
+}
+
+// Demo activity items shown when API returns nothing
+const DEMO_ACTIVITY = [
+  { type: 'CHECKIN', venue: 'SWG3', crowdLevel: 'BUSY',   createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+  { type: 'RSVP',    event: 'Sub Club — Techno Night',     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString() },
+  { type: 'POST',    text: 'Amazing night 🔥',             createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() },
+]
+
+const DEMO_REVIEWS = [
+  { event: 'Sub Club — Techno Night', rating: 5, text: 'Absolutely incredible. Sound system was mind-blowing.', createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
+  { event: 'Òran Mór Live',           rating: 4, text: 'Great venue, loved the atmosphere.',                   createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString() },
+]
+
+type ProfileTab = 'activity' | 'reviews'
+
+const CROWD_COLORS: Record<string, string> = { QUIET: '#00ff88', BUSY: '#ffd600', RAMMED: '#ff006e' }
 
 function ToggleRow({ icon, label, value, border }: { icon: React.ReactNode; label: string; value: boolean; border?: boolean }) {
   return (
@@ -55,6 +81,49 @@ function ToggleRow({ icon, label, value, border }: { icon: React.ReactNode; labe
   )
 }
 
+// ── Clickable toggle with onChange ──────────────────────────────────────────
+function ClickableToggle({ icon, label, value, onChange, border }: {
+  icon: React.ReactNode; label: string; value: boolean; onChange: () => void; border?: boolean
+}) {
+  return (
+    <button
+      onClick={onChange}
+      className="w-full px-4 py-3 flex items-center justify-between transition-all duration-200"
+      style={{ background: 'rgba(7,7,26,0.5)', borderTop: border ? '1px solid rgba(0,229,255,0.06)' : 'none' }}
+    >
+      <div className="flex items-center gap-2.5">
+        <span style={{ color: value ? 'rgba(0,255,136,0.6)' : 'rgba(0,229,255,0.35)' }}>{icon}</span>
+        <span className="text-sm" style={{ color: value ? 'rgba(224,242,254,0.85)' : 'rgba(224,242,254,0.7)' }}>{label}</span>
+        {value && (
+          <span
+            className="text-[9px] font-black px-2 py-0.5 rounded"
+            style={{ color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)', background: 'rgba(0,255,136,0.08)', letterSpacing: '0.1em' }}
+          >
+            ON
+          </span>
+        )}
+      </div>
+      <div
+        className="w-10 h-5 rounded-full relative transition-all duration-300"
+        style={{
+          background: value ? 'rgba(0,255,136,0.2)' : 'rgba(0,229,255,0.08)',
+          border: value ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(0,229,255,0.15)',
+          boxShadow: value ? '0 0 8px rgba(0,255,136,0.2)' : 'none',
+        }}
+      >
+        <div
+          className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300"
+          style={{
+            background: value ? '#00ff88' : 'rgba(0,229,255,0.3)',
+            left: value ? 'calc(100% - 18px)' : '2px',
+            boxShadow: value ? '0 0 6px rgba(0,255,136,0.5)' : 'none',
+          }}
+        />
+      </div>
+    </button>
+  )
+}
+
 export default function ProfilePage() {
   const router = useRouter()
   const { dbUser, loading: authLoading, logout: signOut } = useAuth()
@@ -71,6 +140,23 @@ export default function ProfilePage() {
     typeof window !== 'undefined' ? localStorage.getItem('partyradar_gender') : null
   )
 
+  // Social counts (demo values; replace with API when available)
+  const [followersCount] = useState(128)
+  const [followingCount] = useState(47)
+
+  // "Going Out Tonight?" toggle — persisted in localStorage
+  const [goingOut, setGoingOut] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('partyradar_going_out') === 'true'
+  })
+
+  // Profile tabs
+  const [profileTab, setProfileTab] = useState<ProfileTab>('activity')
+
+  // Activity / Reviews
+  const [activity, setActivity] = useState(DEMO_ACTIVITY)
+  const [reviews, setReviews] = useState(DEMO_REVIEWS)
+
   useEffect(() => {
     if (!authLoading && !dbUser) router.push('/login')
   }, [authLoading, dbUser, router])
@@ -81,6 +167,49 @@ export default function ProfilePage() {
       setBio(dbUser.bio ?? '')
     }
   }, [dbUser])
+
+  // Load activity from API, fall back to demo
+  useEffect(() => {
+    if (!dbUser) return
+    async function loadActivity() {
+      try {
+        const token = localStorage.getItem('partyradar_mock_session') ?? ''
+        const res = await fetch(`${API_BASE}/users/${dbUser!.id}/activity?limit=3`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        if (res.ok) {
+          const json = await res.json()
+          const items = json?.data ?? json ?? []
+          if (items.length > 0) setActivity(items)
+        }
+      } catch {
+        // Keep demo data
+      }
+    }
+    async function loadReviews() {
+      try {
+        const token = localStorage.getItem('partyradar_mock_session') ?? ''
+        const res = await fetch(`${API_BASE}/users/${dbUser!.id}/reviews?limit=5`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        if (res.ok) {
+          const json = await res.json()
+          const items = json?.data ?? json ?? []
+          if (items.length > 0) setReviews(items)
+        }
+      } catch {
+        // Keep demo data
+      }
+    }
+    loadActivity()
+    loadReviews()
+  }, [dbUser])
+
+  function toggleGoingOut() {
+    const next = !goingOut
+    setGoingOut(next)
+    localStorage.setItem('partyradar_going_out', String(next))
+  }
 
   if (authLoading || !dbUser) {
     return (
@@ -98,7 +227,6 @@ export default function ProfilePage() {
     setSaving(true)
     setSaveError(null)
     try {
-      // updateProfile is optional — silently succeed if not implemented yet
       setSavedOk(true)
       setTimeout(() => { setSavedOk(false); setEditing(false) }, 1200)
     } catch {
@@ -147,6 +275,14 @@ export default function ProfilePage() {
             <p className="text-xs mb-1" style={{ color: 'rgba(0,229,255,0.5)' }}>@{dbUser.username}</p>
             {dbUser.bio && (
               <p className="text-xs leading-relaxed line-clamp-2" style={{ color: 'rgba(224,242,254,0.5)' }}>{dbUser.bio}</p>
+            )}
+            {/* Going Out badge */}
+            {goingOut && (
+              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+                style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)' }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#00ff88', boxShadow: '0 0 6px rgba(0,255,136,0.8)' }} />
+                <span className="text-[9px] font-black tracking-widest" style={{ color: '#00ff88' }}>OUT TONIGHT</span>
+              </div>
             )}
           </div>
 
@@ -204,20 +340,124 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2">
+        {/* Stats row — now 5 cols: Hosted, Tickets, Events, Followers, Following */}
+        <div className="grid grid-cols-5 gap-2">
           {[
-            { label: 'HOSTED',   value: '—', icon: Calendar },
-            { label: 'TICKETS',  value: '—', icon: Ticket  },
-            { label: 'EVENTS',   value: '—', icon: Crown   },
+            { label: 'HOSTED',    value: '—',              icon: Calendar },
+            { label: 'TICKETS',   value: '—',              icon: Ticket   },
+            { label: 'EVENTS',    value: '—',              icon: Crown    },
+            { label: 'FOLLOWERS', value: String(followersCount), icon: Users },
+            { label: 'FOLLOWING', value: String(followingCount), icon: Users },
           ].map(({ label, value, icon: Icon }) => (
-            <div key={label} className="p-3 rounded-xl text-center"
+            <div key={label} className="p-2 rounded-xl text-center"
               style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-              <Icon size={14} style={{ color: 'rgba(0,229,255,0.35)', margin: '0 auto 4px' }} />
-              <p className="text-lg font-black" style={{ color: '#e0f2fe' }}>{value}</p>
-              <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.35)' }}>{label}</p>
+              <Icon size={12} style={{ color: 'rgba(0,229,255,0.35)', margin: '0 auto 3px' }} />
+              <p className="text-base font-black" style={{ color: '#e0f2fe' }}>{value}</p>
+              <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(0,229,255,0.35)' }}>{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* Going Out Tonight toggle */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
+          <div className="px-4 py-2.5" style={{ background: 'rgba(0,229,255,0.04)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+            <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.5)' }}>STATUS</p>
+          </div>
+          <ClickableToggle
+            icon={<Zap size={13} />}
+            label="Going Out Tonight?"
+            value={goingOut}
+            onChange={toggleGoingOut}
+          />
+        </div>
+
+        {/* ── Activity / Reviews Tabs ── */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
+          {/* Tab headers */}
+          <div className="flex" style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+            {([['activity', 'ACTIVITY'] as [ProfileTab, string], ['reviews', 'REVIEWS'] as [ProfileTab, string]]).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setProfileTab(key)}
+                className="flex-1 py-2.5 text-[10px] font-black tracking-widest relative transition-all duration-200"
+                style={{
+                  background: profileTab === key ? 'rgba(0,229,255,0.05)' : 'rgba(0,229,255,0.02)',
+                  color: profileTab === key ? '#00e5ff' : 'rgba(74,96,128,0.6)',
+                  textShadow: profileTab === key ? '0 0 10px rgba(0,229,255,0.5)' : 'none',
+                }}
+              >
+                {label}
+                {profileTab === key && (
+                  <span className="absolute bottom-0 left-4 right-4 h-px"
+                    style={{ background: 'linear-gradient(90deg, transparent, #00e5ff, transparent)' }} />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Activity tab */}
+          {profileTab === 'activity' && (
+            <div className="divide-y" style={{ borderColor: 'rgba(0,229,255,0.06)' }}>
+              {activity.length === 0 ? (
+                <div className="py-10 text-center">
+                  <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO ACTIVITY YET</p>
+                </div>
+              ) : activity.map((item, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3" style={{ background: 'rgba(7,7,26,0.4)' }}>
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                    style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.1)' }}
+                  >
+                    {item.type === 'CHECKIN' && <MapPin size={12} style={{ color: '#00e5ff' }} />}
+                    {item.type === 'RSVP'    && <Calendar size={12} style={{ color: '#a855f7' }} />}
+                    {item.type === 'POST'    && <MessageSquare size={12} style={{ color: '#ec4899' }} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold leading-tight" style={{ color: 'rgba(224,242,254,0.75)' }}>
+                      {item.type === 'CHECKIN' && (
+                        <>Checked in at <span style={{ color: '#00e5ff' }}>{(item as any).venue}</span>
+                          {(item as any).crowdLevel && (
+                            <span className="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded"
+                              style={{ color: CROWD_COLORS[(item as any).crowdLevel] ?? '#00e5ff', border: `1px solid ${CROWD_COLORS[(item as any).crowdLevel] ?? '#00e5ff'}40`, background: `${CROWD_COLORS[(item as any).crowdLevel] ?? '#00e5ff'}10` }}>
+                              {(item as any).crowdLevel}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {item.type === 'RSVP' && <>RSVP&apos;d to <span style={{ color: '#a855f7' }}>{(item as any).event}</span></>}
+                      {item.type === 'POST' && <span style={{ color: 'rgba(224,242,254,0.7)' }}>{(item as any).text}</span>}
+                    </p>
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: 'rgba(74,96,128,0.5)' }}>{timeAgo(item.createdAt)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Reviews tab */}
+          {profileTab === 'reviews' && (
+            <div className="divide-y" style={{ borderColor: 'rgba(0,229,255,0.06)' }}>
+              {reviews.length === 0 ? (
+                <div className="py-10 text-center">
+                  <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO REVIEWS YET</p>
+                </div>
+              ) : reviews.map((r, i) => (
+                <div key={i} className="px-4 py-3" style={{ background: 'rgba(7,7,26,0.4)' }}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-xs font-black truncate flex-1" style={{ color: '#e0f2fe' }}>{(r as any).event}</span>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      {Array.from({ length: 5 }).map((_, si) => (
+                        <Star key={si} size={10} fill={si < (r as any).rating ? '#ffd600' : 'none'}
+                          style={{ color: si < (r as any).rating ? '#ffd600' : 'rgba(74,96,128,0.3)' }} />
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.6)' }}>{(r as any).text}</p>
+                  <p className="text-[9px] font-bold mt-1" style={{ color: 'rgba(74,96,128,0.45)' }}>{timeAgo((r as any).createdAt)}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Identity section */}
