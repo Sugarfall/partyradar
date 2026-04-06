@@ -93,6 +93,15 @@ model User {
   subscription  Subscription?
   claimedVenues Venue[]             @relation("ClaimedVenues")
   sentMessages  Message[]           @relation("SentMessages")
+
+  following        Follow[]      @relation("UserFollowing")
+  followers        Follow[]      @relation("UserFollowers")
+  checkIns         CheckIn[]
+  posts            Post[]
+  postLikes        PostLike[]
+  reviews          EventReview[]
+  createdSquads    Squad[]       @relation("CreatedSquads")
+  squadMemberships SquadMember[]
 }
 
 model Event {
@@ -139,6 +148,10 @@ model Event {
   guests   EventGuest[]
   tickets  Ticket[]
   messages Message[]
+
+  checkIns CheckIn[]
+  posts    Post[]
+  reviews  EventReview[]
 }
 
 model EventGuest {
@@ -256,6 +269,9 @@ model Venue {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  checkIns CheckIn[]
+  posts    Post[]
+
   @@index([lat, lng])
   @@index([city])
 }
@@ -273,4 +289,107 @@ model Message {
   sender User  @relation("SentMessages", fields: [senderId], references: [id])
 
   @@index([eventId, createdAt])
+}
+
+// ─── Social ───────────────────────────────────────────────────────────────────
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  follower    User     @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model CheckIn {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId    String?
+  event      Event?    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  venueId    String?
+  venue      Venue?    @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  crowdLevel String?   // QUIET | BUSY | RAMMED
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([venueId])
+}
+
+model Post {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId    String?
+  event      Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  venueId    String?
+  venue      Venue?     @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  imageUrl   String?
+  text       String?    @db.Text
+  isStory    Boolean    @default(false)
+  expiresAt  DateTime?
+  likesCount Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  likes PostLike[]
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([createdAt])
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+}
+
+model EventReview {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  rating      Int
+  vibeRating  Int?
+  musicRating Int?
+  crowdRating Int?
+  text        String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, eventId])
+  @@index([eventId])
+}
+
+model Squad {
+  id        String        @id @default(cuid())
+  name      String
+  emoji     String        @default("🎉")
+  createdBy String
+  creator   User          @relation("CreatedSquads", fields: [createdBy], references: [id])
+  members   SquadMember[]
+  createdAt DateTime      @default(now())
+}
+
+model SquadMember {
+  id        String   @id @default(cuid())
+  squadId   String
+  userId    String
+  role      String   @default("MEMBER") // ADMIN | MEMBER
+  squad     Squad    @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([squadId, userId])
 }

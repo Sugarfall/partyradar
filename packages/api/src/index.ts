@@ -22,6 +22,11 @@ import messagesRouter from './routes/messages'
 import eventbriteRouter from './routes/eventbrite'
 import socialRouter from './routes/social'
 import venuesRouter from './routes/venues'
+import followRouter from './routes/follow'
+import feedRouter from './routes/feed'
+import checkinsRouter from './routes/checkins'
+import postsRouter from './routes/posts'
+import reviewsRouter from './routes/reviews'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -224,12 +229,31 @@ app.use('/api/messages', messagesRouter)
 app.use('/api/eventbrite', eventbriteRouter)
 app.use('/api/social', socialRouter)
 app.use('/api/venues', venuesRouter)
+app.use('/api/follow', followRouter)
+app.use('/api/feed', feedRouter)
+app.use('/api/checkins', checkinsRouter)
+app.use('/api/posts', postsRouter)
+app.use('/api/reviews', reviewsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
 app.use(errorHandler)
 
 // ─── Cron Jobs ────────────────────────────────────────────────────────────────
+
+// Every 30 minutes: expire stories
+cron.schedule('*/30 * * * *', async () => {
+  try {
+    const deleted = await prisma.post.deleteMany({
+      where: { isStory: true, expiresAt: { lte: new Date() } },
+    })
+    if (deleted.count > 0) {
+      console.log(`[Cron] Expired ${deleted.count} story/stories`)
+    }
+  } catch (err) {
+    console.error('[Cron] Error expiring stories:', err)
+  }
+})
 
 // Every 5 minutes: expire old celebrity sightings
 cron.schedule('*/5 * * * *', async () => {
