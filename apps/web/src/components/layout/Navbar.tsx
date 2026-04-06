@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, LayoutDashboard } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2 } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -124,6 +124,13 @@ function NavbarInner() {
     window.addEventListener('partyradar:mode-change', onModeChange)
     return () => window.removeEventListener('partyradar:mode-change', onModeChange)
   }, [])
+
+  function toggleMode() {
+    const next = isHost ? 'ATTENDEE' : 'HOST'
+    setIsHost(next === 'HOST')
+    localStorage.setItem('partyradar_account_mode', next)
+    window.dispatchEvent(new CustomEvent('partyradar:mode-change', { detail: next }))
+  }
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
@@ -162,6 +169,35 @@ function NavbarInner() {
               PARTYRADAR
             </span>
           </Link>
+
+          {/* Mode toggle pill — always visible, no login needed */}
+          <button
+            onClick={toggleMode}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 transition-all duration-200 shrink-0"
+            style={{
+              background: isHost
+                ? 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.08) 100%)'
+                : 'rgba(0,229,255,0.06)',
+              border: isHost ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(0,229,255,0.15)',
+            }}
+          >
+            <span
+              className="text-[9px] font-black tracking-widest transition-all"
+              style={{ color: isHost ? 'rgba(168,85,247,0.5)' : 'rgba(0,229,255,0.4)' }}
+            >
+              {isHost ? 'HOST' : 'ATTENDEE'}
+            </span>
+            {/* Sliding dot */}
+            <div className="relative w-7 h-4 rounded-full flex items-center transition-all"
+              style={{ background: isHost ? 'rgba(168,85,247,0.2)' : 'rgba(0,229,255,0.08)', border: isHost ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(0,229,255,0.12)' }}>
+              <div className="absolute w-3 h-3 rounded-full transition-all duration-200"
+                style={{
+                  background: isHost ? '#a855f7' : '#00e5ff',
+                  left: isHost ? '13px' : '1px',
+                  boxShadow: `0 0 6px ${isHost ? 'rgba(168,85,247,0.6)' : 'rgba(0,229,255,0.5)'}`,
+                }} />
+            </div>
+          </button>
 
           {/* Centre nav — desktop */}
           <div className="hidden md:flex items-center gap-1">

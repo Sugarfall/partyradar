@@ -169,9 +169,7 @@ export default function ProfilePage() {
   const [activity, setActivity] = useState(DEMO_ACTIVITY)
   const [reviews, setReviews] = useState(DEMO_REVIEWS)
 
-  useEffect(() => {
-    if (!authLoading && !dbUser) router.push('/login')
-  }, [authLoading, dbUser, router])
+  // Don't hard-redirect — show guest profile with mode toggle accessible
 
   useEffect(() => {
     if (dbUser) {
