@@ -10,7 +10,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
 
-const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/api'
+import { API_URL as API_BASE } from '@/lib/api'
 
 const TIER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   FREE:    { label: 'FREE',    color: '#4b5563', icon: '⚡' },

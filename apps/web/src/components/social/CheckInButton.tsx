@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { MapPin, Check } from 'lucide-react'
 
-const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/api'
+import { API_URL as API_BASE } from '@/lib/api'
 
 type CrowdLevel = 'QUIET' | 'BUSY' | 'RAMMED'
 

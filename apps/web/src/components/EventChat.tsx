@@ -5,6 +5,7 @@ import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '@/hooks/useAuth'
 import { DEV_MODE } from '@/lib/firebase'
+import { API_ORIGIN } from '@/lib/api'
 import { Send, X, MessageCircle, Zap } from 'lucide-react'
 
 interface ChatMessage {
@@ -122,7 +123,7 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
     async function connect() {
       const token = firebaseUser ? await firebaseUser.getIdToken() : undefined
 
-      const socket = io(process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000', {
+      const socket = io(API_ORIGIN, {
         auth: token ? { token } : {},
         transports: ['websocket', 'polling'],
       })
