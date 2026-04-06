@@ -124,4 +124,21 @@ router.get('/me', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+/** PUT /api/auth/mode — switch between ATTENDEE and HOST mode */
+router.put('/mode', requireAuth, async (req: AuthRequest, res, next) => {
+  const schema = z.object({
+    accountMode: z.enum(['ATTENDEE', 'HOST']),
+  })
+  try {
+    const { accountMode } = schema.parse(req.body)
+    const user = await prisma.user.update({
+      where: { id: req.user!.dbUser.id },
+      data: { accountMode },
+    })
+    res.json({ data: user })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router

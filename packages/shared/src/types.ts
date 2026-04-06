@@ -6,6 +6,7 @@ export type AgeRestriction = 'ALL_AGES' | 'AGE_18' | 'AGE_21'
 export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED'
 export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY' | 'PREFER_NOT_TO_SAY'
 export type SubscriptionTier = 'FREE' | 'BASIC' | 'PRO' | 'PREMIUM'
+export type AccountMode = 'ATTENDEE' | 'HOST'
 export type NotificationType =
   | 'RSVP_CONFIRMED'
   | 'INVITE_RECEIVED'
@@ -29,6 +30,7 @@ export interface User {
   alcoholFriendly: boolean
   showAlcoholEvents: boolean
   subscriptionTier: SubscriptionTier
+  accountMode: AccountMode
   stripeCustomerId?: string | null
   createdAt: string
 }

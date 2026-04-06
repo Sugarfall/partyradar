@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm ci && npx prisma generate --schema=packages/db/prisma/schema.prisma"
+buildCommand = "npm ci && npx prisma generate --schema=packages/db/prisma/schema.prisma && npx prisma db push --schema=packages/db/prisma/schema.prisma --accept-data-loss"
 
 [deploy]
 startCommand = "npx tsx packages/api/src/index.ts"

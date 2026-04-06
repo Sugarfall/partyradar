@@ -42,6 +42,11 @@ enum SubscriptionTier {
   PREMIUM
 }
 
+enum AccountMode {
+  ATTENDEE
+  HOST
+}
+
 enum NotificationType {
   RSVP_CONFIRMED
   INVITE_RECEIVED
@@ -76,6 +81,7 @@ model User {
   interests         String[]
   showAlcoholEvents Boolean          @default(false)
   subscriptionTier  SubscriptionTier @default(FREE)
+  accountMode      AccountMode      @default(ATTENDEE)
   stripeCustomerId  String?
   fcmToken          String?
   lastKnownLat      Float?
