@@ -10,52 +10,54 @@ const router = Router()
 router.get('/:id/analytics', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const event = await prisma.event.findUnique({
-      where: { id: req.params['id']! },
-      include: {
-        guests: { select: { status: true, invitedAt: true } },
-        tickets: { select: { pricePaid: true, platformFee: true, scannedAt: true, createdAt: true } },
-        checkIns: { select: { createdAt: true, crowdLevel: true } },
-        reviews: { select: { rating: true, vibeRating: true, musicRating: true, crowdRating: true } },
-      },
-    })
+    const id = req.params['id'] as string
+
+    const event = await prisma.event.findUnique({ where: { id } })
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== userId) throw new AppError('Forbidden', 403)
 
+    // Fetch related data separately for clean typing
+    const [guests, tickets, checkIns, reviews] = await Promise.all([
+      prisma.eventGuest.findMany({ where: { eventId: id }, select: { status: true, invitedAt: true } }),
+      prisma.ticket.findMany({ where: { eventId: id }, select: { pricePaid: true, platformFee: true, scannedAt: true } }),
+      prisma.checkIn.findMany({ where: { eventId: id }, select: { createdAt: true, crowdLevel: true } }),
+      prisma.eventReview.findMany({ where: { eventId: id }, select: { rating: true, vibeRating: true, musicRating: true } }),
+    ])
+
     // RSVP breakdown
-    const rsvpCounts = event.guests.reduce((acc, g) => {
+    const rsvpCounts = guests.reduce<Record<string, number>>((acc, g) => {
       acc[g.status] = (acc[g.status] ?? 0) + 1
       return acc
-    }, {} as Record<string, number>)
+    }, {})
 
-    // RSVP over time (daily buckets from event creation to now)
-    const rsvpByDay: Record<string, number> = {}
-    for (const g of event.guests) {
+    // RSVP over time (daily buckets)
+    const rsvpByDay = guests.reduce<Record<string, number>>((acc, g) => {
       const day = g.invitedAt.toISOString().split('T')[0]!
-      rsvpByDay[day] = (rsvpByDay[day] ?? 0) + 1
-    }
+      acc[day] = (acc[day] ?? 0) + 1
+      return acc
+    }, {})
 
     // Ticket revenue
-    const ticketRevenue = event.tickets.reduce((sum, t) => sum + t.pricePaid, 0)
-    const platformFees = event.tickets.reduce((sum, t) => sum + t.platformFee, 0)
-    const scanned = event.tickets.filter(t => t.scannedAt).length
+    const ticketRevenue = tickets.reduce((sum, t) => sum + t.pricePaid, 0)
+    const platformFees  = tickets.reduce((sum, t) => sum + t.platformFee, 0)
+    const scanned       = tickets.filter(t => t.scannedAt).length
 
     // Reviews avg
-    const reviewCount = event.reviews.length
-    const avgRating = reviewCount > 0 ? event.reviews.reduce((s, r) => s + r.rating, 0) / reviewCount : null
-    const avgVibe = reviewCount > 0 ? event.reviews.filter(r => r.vibeRating).reduce((s, r) => s + (r.vibeRating ?? 0), 0) / reviewCount : null
-    const avgMusic = reviewCount > 0 ? event.reviews.filter(r => r.musicRating).reduce((s, r) => s + (r.musicRating ?? 0), 0) / reviewCount : null
+    const reviewCount = reviews.length
+    const avgRating = reviewCount > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviewCount : null
+    const avgVibe   = reviewCount > 0 ? reviews.filter(r => r.vibeRating != null).reduce((s, r) => s + (r.vibeRating ?? 0), 0) / reviewCount : null
+    const avgMusic  = reviewCount > 0 ? reviews.filter(r => r.musicRating != null).reduce((s, r) => s + (r.musicRating ?? 0), 0) / reviewCount : null
 
     res.json({
       data: {
         rsvpCounts,
         rsvpByDay,
-        totalGuests: event.guests.length,
-        confirmedGuests: rsvpCounts['CONFIRMED'] ?? 0,
-        waitlisted: rsvpCounts['WAITLISTED'] ?? 0,
+        totalGuests:     guests.length,
+        confirmedGuests: rsvpCounts['CONFIRMED']  ?? 0,
+        waitlisted:      rsvpCounts['WAITLISTED'] ?? 0,
         capacityPct: Math.round(((rsvpCounts['CONFIRMED'] ?? 0) / event.capacity) * 100),
-        tickets: { count: event.tickets.length, revenue: ticketRevenue, fees: platformFees, scanned },
-        checkIns: event.checkIns.length,
+        tickets: { count: tickets.length, revenue: ticketRevenue, fees: platformFees, scanned },
+        checkIns: checkIns.length,
         reviews: { count: reviewCount, avgRating, avgVibe, avgMusic },
       },
     })

@@ -7,8 +7,9 @@ import {
   Calendar, MapPin, Users, Wine, ShieldCheck, Shirt,
   QrCode, ArrowLeft, Star, Share2, Lock, Loader2, Check,
   ChevronRight, Zap, Link2, ChevronDown, ChevronUp, UserCircle2,
-  Megaphone, Radio, Eye, EyeOff, XCircle, AlertTriangle, MessageCircle
+  Megaphone, Radio, Eye, EyeOff, XCircle, AlertTriangle, MessageCircle, TrendingUp
 } from 'lucide-react'
+import SaveButton from '@/components/events/SaveButton'
 import { useEvent, updateEvent, cancelEvent } from '@/hooks/useEvents'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -334,6 +335,13 @@ export default function EventDetailPage() {
           }
         </button>
 
+        {/* Save button (guests only) */}
+        {!isHost && event && (
+          <div className="absolute top-4 right-14">
+            <SaveButton eventId={event.id} />
+          </div>
+        )}
+
         {/* Type badge + featured overlay */}
         <div className="absolute bottom-4 left-4 flex gap-2 flex-wrap">
           <span className="text-[9px] font-bold px-2.5 py-1 rounded"
@@ -580,6 +588,11 @@ export default function EventDetailPage() {
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200"
                 style={{ border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.6)', letterSpacing: '0.1em' }}>
                 EDIT EVENT
+              </Link>
+              <Link href={`/events/${event.id}/analytics`}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200"
+                style={{ border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.6)', letterSpacing: '0.1em' }}>
+                <TrendingUp size={13} /> ANALYTICS
               </Link>
               <button
                 onClick={handleInviteLink}

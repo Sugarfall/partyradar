@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Edit2, Check, X, LogOut, ShieldCheck, Wine, Ticket,
-  Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare
+  Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare, Bookmark
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'

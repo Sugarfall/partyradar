@@ -28,9 +28,10 @@ router.get('/saved', requireAuth, async (req: AuthRequest, res, next) => {
 // GET /api/events/:id/save — check if saved
 router.get('/:id/save', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.dbUser.id
-    const saved = await prisma.savedEvent.findUnique({
-      where: { userId_eventId: { userId, eventId: req.params['id']! } },
+    const userId  = req.user!.dbUser.id
+    const eventId = req.params['id'] as string
+    const saved   = await prisma.savedEvent.findUnique({
+      where: { userId_eventId: { userId, eventId } },
     })
     res.json({ data: { saved: !!saved } })
   } catch (err) { next(err) }
@@ -39,10 +40,10 @@ router.get('/:id/save', requireAuth, async (req: AuthRequest, res, next) => {
 // POST /api/events/:id/save — save event
 router.post('/:id/save', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.dbUser.id
-    const eventId = req.params['id']!
+    const userId  = req.user!.dbUser.id
+    const eventId = req.params['id'] as string
     await prisma.savedEvent.upsert({
-      where: { userId_eventId: { userId, eventId } },
+      where:  { userId_eventId: { userId, eventId } },
       update: {},
       create: { userId, eventId },
     })
@@ -53,10 +54,9 @@ router.post('/:id/save', requireAuth, async (req: AuthRequest, res, next) => {
 // DELETE /api/events/:id/save — unsave event
 router.delete('/:id/save', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.dbUser.id
-    await prisma.savedEvent.deleteMany({
-      where: { userId, eventId: req.params['id']! },
-    })
+    const userId  = req.user!.dbUser.id
+    const eventId = req.params['id'] as string
+    await prisma.savedEvent.deleteMany({ where: { userId, eventId } })
     res.json({ data: { saved: false } })
   } catch (err) { next(err) }
 })
