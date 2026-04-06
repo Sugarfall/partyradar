@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, MapPin, User, Plus, Bell, Calendar, Ticket, Star, X } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -13,7 +13,6 @@ import type { Notification } from '@partyradar/shared'
 const NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/radar',    label: 'Radar',    icon: Radio   },
-  { href: '/venues',   label: 'Venues',   icon: MapPin  },
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
@@ -248,20 +247,7 @@ function NavbarInner() {
       >
         <div className="flex items-stretch h-16">
           {/* Discover */}
-          {NAV.slice(0, 1).map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href)
-            return (
-              <Link key={href} href={href}
-                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
-                style={{ color: active ? '#fff' : 'rgba(255,255,255,0.35)' }}>
-                <Icon size={18} strokeWidth={active ? 2 : 1.5} />
-                <span className="text-[9px] font-medium tracking-wide">{label}</span>
-              </Link>
-            )
-          })}
-
-          {/* Radar */}
-          {NAV.slice(1, 2).map(({ href, label, icon: Icon }) => {
+          {NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (
               <Link key={href} href={href}
@@ -286,19 +272,6 @@ function NavbarInner() {
               <Plus size={20} style={{ color: '#00e5ff' }} />
             </Link>
           </div>
-
-          {/* Venues */}
-          {NAV.slice(2, 3).map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href)
-            return (
-              <Link key={href} href={href}
-                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
-                style={{ color: active ? '#fff' : 'rgba(255,255,255,0.35)' }}>
-                <Icon size={18} strokeWidth={active ? 2 : 1.5} />
-                <span className="text-[9px] font-medium tracking-wide">{label}</span>
-              </Link>
-            )
-          })}
 
           {/* Profile */}
           <Link href={dbUser ? '/profile' : '/login'}
