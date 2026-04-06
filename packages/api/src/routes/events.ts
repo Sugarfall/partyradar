@@ -15,8 +15,8 @@ const eventSchema = z.object({
   name: z.string().min(3).max(100),
   type: z.enum(['HOME_PARTY', 'CLUB_NIGHT', 'CONCERT']),
   description: z.string().min(10).max(2000),
-  startsAt: z.string().datetime(),
-  endsAt: z.string().datetime().optional(),
+  startsAt: z.string().min(1),
+  endsAt: z.string().min(1).optional(),
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   address: z.string().min(3).max(200),
@@ -32,7 +32,10 @@ const eventSchema = z.object({
   houseRules: z.string().max(1000).optional(),
   vibeTags: z.array(z.string()).max(8).default([]),
   isInviteOnly: z.boolean().default(false),
-  coverImageUrl: z.string().url().optional(),
+  coverImageUrl: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.string().url().optional()
+  ),
 })
 
 const userSelect = {
