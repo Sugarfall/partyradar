@@ -615,6 +615,28 @@ export default function CreateEventPage() {
                   )
                 })}
               </div>
+
+              {/* Alcohol contextual notices */}
+              {form.alcoholPolicy === 'PROVIDED' && (
+                <div className="mt-3 space-y-2">
+                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)', color: 'rgba(255,166,0,0.8)' }}>
+                    🍾 <strong>Venue licensing</strong> — if hosting at a licensed venue, confirm they permit your own bar service. Corkage or bar-hire fees typically range £150–£500.
+                  </div>
+                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
+                    👁 Visibility — this event is hidden from guests who haven't enabled alcohol events in their settings.
+                  </div>
+                </div>
+              )}
+              {form.alcoholPolicy === 'BYOB' && (
+                <div className="mt-3 space-y-2">
+                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)', color: 'rgba(255,166,0,0.8)' }}>
+                    🥃 <strong>BYOB at venues</strong> — many licensed venues charge a corkage fee (£5–£20 per bottle) or prohibit outside alcohol entirely. Check with the venue before listing.
+                  </div>
+                  <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
+                    👁 Visibility — this event is hidden from guests who haven't enabled alcohol events in their settings.
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Age restriction */}
@@ -640,6 +662,11 @@ export default function CreateEventPage() {
                   )
                 })}
               </div>
+              {form.ageRestriction !== 'ALL_AGES' && (
+                <div className="mt-3 px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(255,0,110,0.05)', border: '1px solid rgba(255,0,110,0.18)', color: 'rgba(255,0,110,0.7)' }}>
+                  🔞 You are responsible for ID checks at the door. PartyRadar does not verify guest ages — only admit guests who meet the restriction.
+                </div>
+              )}
             </div>
 
             {/* Dress code */}
