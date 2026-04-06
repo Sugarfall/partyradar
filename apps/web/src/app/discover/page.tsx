@@ -19,6 +19,15 @@ const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) =
   ),
 })
 
+const VenuesMiniMap = dynamic(() => import('@/components/venues/VenuesMiniMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full flex items-center justify-center" style={{ height: 200, background: 'rgba(7,7,26,0.95)' }}>
+      <span style={{ color: 'rgba(255,214,0,0.4)', letterSpacing: '0.15em', fontSize: 11 }}>LOADING MAP...</span>
+    </div>
+  ),
+})
+
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -419,6 +428,8 @@ function VenueCard({ venue }: { venue: DemoVenue }) {
 // ── Venues list ───────────────────────────────────────────────────────────────
 function VenuesList() {
   const [search, setSearch] = useState('')
+  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
+
   const filtered = search
     ? GLASGOW_VENUES.filter((v) =>
         v.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -429,6 +440,16 @@ function VenuesList() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+
+      {/* ── Mini venues map ── */}
+      <div className="flex-shrink-0" style={{ height: 200, borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
+        <VenuesMiniMap
+          venues={GLASGOW_VENUES}
+          selectedId={selectedVenueId}
+          onSelect={(id) => setSelectedVenueId(id === selectedVenueId ? null : id)}
+        />
+      </div>
+
       {/* Search */}
       <div className="flex-shrink-0 px-4 py-2.5" style={{ background: 'rgba(4,4,13,0.8)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
         <div className="relative">
