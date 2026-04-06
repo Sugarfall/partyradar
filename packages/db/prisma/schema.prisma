@@ -128,6 +128,9 @@ model Event {
   stripeProductId       String?
   stripePriceId         String?
   hostRating            Float?
+  eventbriteId          String?        @unique
+  eventbriteUrl         String?
+  socialSourceUrl       String?
   venueId               String?
   venue                 Venue?         @relation(fields: [venueId], references: [id])
   createdAt             DateTime       @default(now())
