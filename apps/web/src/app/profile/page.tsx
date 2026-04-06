@@ -57,7 +57,7 @@ function ToggleRow({ icon, label, value, border }: { icon: React.ReactNode; labe
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { dbUser, loading: authLoading, signOut } = useAuth()
+  const { dbUser, loading: authLoading, logout: signOut } = useAuth()
 
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState('')

@@ -441,7 +441,7 @@ export default function EventDetailPage() {
         {/* Vibe tags */}
         {event.vibeTags.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-6">
-            {event.vibeTags.map((tag) => (
+            {event.vibeTags.map((tag: string) => (
               <span key={tag} className="text-[10px] font-bold px-2.5 py-1 rounded-full"
                 style={{ color: `${tc.color}80`, border: `1px solid ${tc.color}20`, background: `${tc.color}06`, letterSpacing: '0.08em' }}>
                 #{tag}
