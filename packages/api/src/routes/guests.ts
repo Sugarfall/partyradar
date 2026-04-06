@@ -61,39 +61,54 @@ router.post('/rsvp', requireAuth, async (req: AuthRequest, res, next) => {
     const confirmed = await prisma.eventGuest.count({
       where: { eventId: event.id, status: 'CONFIRMED' },
     })
-    if (confirmed >= event.capacity) throw new AppError('Event is at full capacity', 400)
+    const isFull = confirmed >= event.capacity
 
-    // Tier guest limit check on host
-    const host = await prisma.user.findUnique({ where: { id: event.hostId }, select: { subscriptionTier: true } })
-    const hostTier = TIERS[host!.subscriptionTier as SubscriptionTier]
-    if (hostTier.maxGuests !== -1 && confirmed >= hostTier.maxGuests) {
-      throw new AppError('Event host guest limit reached', 400)
+    // Tier guest limit check on host (only applies when not waitlisting)
+    if (!isFull) {
+      const host = await prisma.user.findUnique({ where: { id: event.hostId }, select: { subscriptionTier: true } })
+      const hostTier = TIERS[host!.subscriptionTier as SubscriptionTier]
+      if (hostTier.maxGuests !== -1 && confirmed >= hostTier.maxGuests) {
+        throw new AppError('Event host guest limit reached', 400)
+      }
     }
+
+    const rsvpStatus = isFull ? 'WAITLISTED' : 'CONFIRMED'
 
     const guest = await prisma.eventGuest.upsert({
       where: { eventId_userId: { eventId: event.id, userId } },
-      create: { eventId: event.id, userId, status: 'CONFIRMED' },
-      update: { status: 'CONFIRMED' },
+      create: { eventId: event.id, userId, status: rsvpStatus },
+      update: { status: rsvpStatus },
       include: { user: { select: userSelect } },
     })
 
-    // Notify host
-    await sendNotification({
-      userId: event.hostId,
-      type: 'RSVP_CONFIRMED',
-      title: `New RSVP for ${event.name}`,
-      body: `${req.user!.dbUser.displayName} just RSVPd`,
-      data: { eventId: event.id },
-    })
+    if (isFull) {
+      // Notify guest they are waitlisted
+      await sendNotification({
+        userId,
+        type: 'RSVP_CONFIRMED',
+        title: 'Added to Waitlist',
+        body: `You've been added to the waitlist for ${event.name}`,
+        data: { eventId: event.id },
+      })
+    } else {
+      // Notify host
+      await sendNotification({
+        userId: event.hostId,
+        type: 'RSVP_CONFIRMED',
+        title: `New RSVP for ${event.name}`,
+        body: `${req.user!.dbUser.displayName} just RSVPd`,
+        data: { eventId: event.id },
+      })
 
-    // Notify guest
-    await sendNotification({
-      userId,
-      type: 'RSVP_CONFIRMED',
-      title: 'RSVP Confirmed!',
-      body: `You're going to ${event.name}`,
-      data: { eventId: event.id },
-    })
+      // Notify guest
+      await sendNotification({
+        userId,
+        type: 'RSVP_CONFIRMED',
+        title: 'RSVP Confirmed!',
+        body: `You're going to ${event.name}`,
+        data: { eventId: event.id },
+      })
+    }
 
     res.json({ data: guest })
   } catch (err) {

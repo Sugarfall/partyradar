@@ -32,6 +32,7 @@ enum RSVPStatus {
   CONFIRMED
   CANCELLED
   REMOVED
+  WAITLISTED
 }
 
 enum SubscriptionTier {
@@ -102,6 +103,7 @@ model User {
   reviews          EventReview[]
   createdSquads    Squad[]       @relation("CreatedSquads")
   squadMemberships SquadMember[]
+  savedEvents      SavedEvent[]
 }
 
 model Event {
@@ -152,6 +154,7 @@ model Event {
   checkIns CheckIn[]
   posts    Post[]
   reviews  EventReview[]
+  savedBy  SavedEvent[]
 }
 
 model EventGuest {
@@ -392,4 +395,16 @@ model SquadMember {
   createdAt DateTime @default(now())
 
   @@unique([squadId, userId])
+}
+
+model SavedEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  eventId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+  @@index([userId])
 }

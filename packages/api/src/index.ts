@@ -9,6 +9,9 @@ import { Server } from 'socket.io'
 import { prisma } from '@partyradar/db'
 
 import authRouter from './routes/auth'
+import savesRouter from './routes/saves'
+import analyticsRouter from './routes/analytics'
+import blastRouter from './routes/blast'
 import eventsRouter from './routes/events'
 import guestsRouter from './routes/guests'
 import ticketsRouter from './routes/tickets'
@@ -216,6 +219,8 @@ app.use(express.json({ limit: '2mb' }))
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRouter)
+app.use('/api/events', savesRouter)
+app.use('/api/events', analyticsRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api/events/:id/guests', guestsRouter)
 app.use('/api/tickets', ticketsRouter)
@@ -234,6 +239,7 @@ app.use('/api/feed', feedRouter)
 app.use('/api/checkins', checkinsRouter)
 app.use('/api/posts', postsRouter)
 app.use('/api/reviews', reviewsRouter)
+app.use('/api/blast', blastRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
