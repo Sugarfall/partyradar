@@ -161,4 +161,44 @@ router.get('/revenue', requireAdmin, async (_req, res, next) => {
   }
 })
 
+/** POST /api/admin/seed-venues — seed Glasgow venues (idempotent) */
+router.post('/seed-venues', async (_req, res, next) => {
+  try {
+    const venues = [
+      { name: 'Sub Club', address: '22 Jamaica St, Glasgow G1 4QD', city: 'Glasgow', lat: 55.8585, lng: -4.2534, type: 'NIGHTCLUB' as const, website: 'https://subclub.co.uk', vibeTags: ['Techno', 'House', 'Underground', 'Intimate'] },
+      { name: 'SWG3', address: 'Eastvale Place, Glasgow G3 8QG', city: 'Glasgow', lat: 55.8648, lng: -4.2887, type: 'CONCERT_HALL' as const, website: 'https://swg3.tv', vibeTags: ['Live Music', 'Art', 'Warehouse', 'Eclectic'] },
+      { name: 'Barrowland Ballroom', address: '244 Gallowgate, Glasgow G4 0TT', city: 'Glasgow', lat: 55.8564, lng: -4.2368, type: 'CONCERT_HALL' as const, website: 'https://barrowland-ballroom.co.uk', vibeTags: ['Live Music', 'Iconic', 'Rock', 'Indie'] },
+      { name: 'Òran Mór', address: 'Top of Byres Rd, Glasgow G12 8QX', city: 'Glasgow', lat: 55.8748, lng: -4.2932, type: 'BAR' as const, website: 'https://oranmor.co.uk', vibeTags: ['Comedy', 'Live Music', 'Theatre', 'Whisky'] },
+      { name: 'Merchant City Inn', address: '52 Virginia St, Glasgow G1 1TY', city: 'Glasgow', lat: 55.8603, lng: -4.2437, type: 'PUB' as const, vibeTags: ['Cosy', 'Real Ale', 'Sports', 'Locals'] },
+      { name: 'The Garage', address: '490 Sauchiehall St, Glasgow G2 3LW', city: 'Glasgow', lat: 55.8658, lng: -4.2706, type: 'NIGHTCLUB' as const, website: 'https://garageglasgow.co.uk', vibeTags: ['Student', 'Pop', 'R&B', 'Live Music'] },
+      { name: 'Buff Club', address: '142 Bath Ln, Glasgow G2 4SQ', city: 'Glasgow', lat: 55.8647, lng: -4.2680, type: 'NIGHTCLUB' as const, vibeTags: ['House', 'Dance', 'Student', 'Late Night'] },
+      { name: 'Nice N Sleazy', address: '421 Sauchiehall St, Glasgow G2 3LG', city: 'Glasgow', lat: 55.8655, lng: -4.2693, type: 'BAR' as const, vibeTags: ['Indie', 'Rock', 'Live Music', 'Grungy'] },
+      { name: 'Stereo', address: '20-28 Renfield Ln, Glasgow G2 6PH', city: 'Glasgow', lat: 55.8622, lng: -4.2593, type: 'BAR' as const, website: 'https://stereo-glasgow.com', vibeTags: ['Vegan', 'Indie', 'Alternative', 'Live Music'] },
+      { name: 'The Hug and Pint', address: '171 Great Western Rd, Glasgow G4 9AW', city: 'Glasgow', lat: 55.8702, lng: -4.2764, type: 'PUB' as const, vibeTags: ['Live Music', 'Vegan', 'Intimate', 'Acoustic'] },
+      { name: 'King Tut\'s Wah Wah Hut', address: '272A St Vincent St, Glasgow G2 5RL', city: 'Glasgow', lat: 55.8631, lng: -4.2678, type: 'CONCERT_HALL' as const, website: 'https://kingtuts.co.uk', vibeTags: ['Live Music', 'Indie', 'Historic', 'Intimate'] },
+      { name: 'Room 2', address: '50 Renfrew St, Glasgow G2 3BW', city: 'Glasgow', lat: 55.8665, lng: -4.2662, type: 'NIGHTCLUB' as const, vibeTags: ['House', 'Techno', 'LGBT+', 'Late Night'] },
+      { name: 'The ABC', address: '300 Sauchiehall St, Glasgow G2 3HD', city: 'Glasgow', lat: 55.8660, lng: -4.2683, type: 'CONCERT_HALL' as const, vibeTags: ['Live Music', 'Alternative', 'Rock', 'Big Nights'] },
+      { name: 'Avant Garde', address: '33 Parnie St, Glasgow G1 5RJ', city: 'Glasgow', lat: 55.8577, lng: -4.2430, type: 'BAR' as const, vibeTags: ['Craft Beer', 'Industrial', 'Hipster', 'Art'] },
+      { name: 'Drygate Brewery', address: '85 Drygate, Glasgow G4 0UT', city: 'Glasgow', lat: 55.8607, lng: -4.2301, type: 'BAR' as const, website: 'https://drygate.com', vibeTags: ['Craft Beer', 'Brewery', 'Casual', 'Food'] },
+      { name: 'The Pot Still', address: '154 Hope St, Glasgow G2 2TH', city: 'Glasgow', lat: 55.8634, lng: -4.2618, type: 'PUB' as const, vibeTags: ['Whisky', 'Traditional', 'Classic', 'Cosy'] },
+      { name: 'Civic House', address: '26 Civic St, Glasgow G4 9RH', city: 'Glasgow', lat: 55.8721, lng: -4.2697, type: 'LOUNGE' as const, vibeTags: ['Community', 'Events', 'Alternative', 'Creative'] },
+      { name: 'The Admiral Bar', address: '72A Waterloo St, Glasgow G2 7DA', city: 'Glasgow', lat: 55.8620, lng: -4.2598, type: 'BAR' as const, vibeTags: ['Live Music', 'Rock', 'Intimate', 'Grassroots'] },
+    ]
+
+    let created = 0
+    let skipped = 0
+
+    for (const venue of venues) {
+      const existing = await prisma.venue.findFirst({ where: { name: venue.name, city: venue.city } })
+      if (existing) { skipped++; continue }
+      await prisma.venue.create({ data: venue })
+      created++
+    }
+
+    res.json({ message: `Seeded ${created} venues, skipped ${skipped} existing` })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router

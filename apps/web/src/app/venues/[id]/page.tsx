@@ -7,7 +7,8 @@ import Map, { Marker } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import {
   ArrowLeft, MapPin, Phone, Globe, Tag, Calendar, Ticket,
-  CheckCircle, Building2, Loader2, AlertTriangle, X
+  CheckCircle, Building2, Loader2, AlertTriangle, X,
+  ImageIcon, Send, Heart
 } from 'lucide-react'
 
 import { API_URL as API_BASE } from '@/lib/api'
@@ -47,6 +48,15 @@ interface Venue {
   claimedBy?: { id: string; username: string; displayName: string; photoUrl?: string }
   events: UpcomingEvent[]
   createdAt: string
+}
+
+interface VenuePost {
+  id: string
+  text?: string
+  imageUrl?: string
+  createdAt: string
+  likesCount: number
+  user: { id: string; displayName: string; username: string; photoUrl?: string }
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -130,6 +140,11 @@ export default function VenueDetailPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'events' | 'feed'>('events')
+  const [posts, setPosts] = useState<VenuePost[]>([])
+  const [postsLoading, setPostsLoading] = useState(false)
+  const [postText, setPostText] = useState('')
+  const [posting, setPosting] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -148,6 +163,16 @@ export default function VenueDetailPage() {
       }
     }
     load()
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    setPostsLoading(true)
+    fetch(`${API_BASE}/posts/venue/${id}?limit=20`)
+      .then((r) => r.ok ? r.json() : { data: [] })
+      .then((json) => setPosts(json.data ?? json ?? []))
+      .catch(() => {})
+      .finally(() => setPostsLoading(false))
   }, [id])
 
   // ── Loading ──
@@ -171,6 +196,25 @@ export default function VenueDetailPage() {
   }
 
   const color = TYPE_COLORS[venue.type]
+
+  async function submitPost() {
+    if (!postText.trim()) return
+    setPosting(true)
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_mock_session') ?? '' : ''
+      const res = await fetch(`${API_BASE}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ text: postText.trim(), venueId: id }),
+      })
+      if (res.ok) {
+        const json = await res.json()
+        setPosts((prev) => [json.data, ...prev])
+        setPostText('')
+      }
+    } catch {}
+    finally { setPosting(false) }
+  }
 
   return (
     <div className="min-h-screen" style={{ background: '#0d0d0f', paddingTop: 56 }}>
@@ -276,7 +320,23 @@ export default function VenueDetailPage() {
           </div>
         )}
 
+        {/* ─── Tab switcher ─── */}
+        <div className="flex gap-1 p-1 rounded-2xl" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.08)' }}>
+          {(['events', 'feed'] as const).map((tab) => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
+              style={{
+                background: activeTab === tab ? 'rgba(0,229,255,0.1)' : 'transparent',
+                border: activeTab === tab ? '1px solid rgba(0,229,255,0.25)' : '1px solid transparent',
+                color: activeTab === tab ? '#00e5ff' : 'rgba(255,255,255,0.3)',
+              }}>
+              {tab === 'events' ? '📅 EVENTS' : '📸 FEED'}
+            </button>
+          ))}
+        </div>
+
         {/* ─── Upcoming Events ─── */}
+        {activeTab === 'events' && (
         <div>
           <p className="text-[10px] font-bold tracking-widest mb-3" style={{ color: 'rgba(0,229,255,0.4)' }}>
             UPCOMING EVENTS {venue.events.length > 0 ? `— ${venue.events.length}` : ''}
@@ -320,6 +380,73 @@ export default function VenueDetailPage() {
             </div>
           )}
         </div>
+        )}
+
+        {/* ─── Feed tab ─── */}
+        {activeTab === 'feed' && (
+          <div className="space-y-3">
+            {/* Post composer */}
+            <div className="p-3 rounded-2xl space-y-3" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.1)' }}>
+              <textarea
+                value={postText}
+                onChange={(e) => setPostText(e.target.value)}
+                placeholder={`What's happening at ${venue?.name ?? 'this venue'}?`}
+                rows={2}
+                maxLength={300}
+                className="w-full bg-transparent resize-none text-sm focus:outline-none"
+                style={{ color: '#e0f2fe' }}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.25)' }}>{postText.length}/300</span>
+                <button onClick={submitPost} disabled={posting || !postText.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all disabled:opacity-40"
+                  style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+                  <Send size={11} /> {posting ? 'POSTING...' : 'POST'}
+                </button>
+              </div>
+            </div>
+
+            {/* Posts list */}
+            {postsLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-20 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
+              ))
+            ) : posts.length === 0 ? (
+              <div className="py-12 flex flex-col items-center gap-2">
+                <ImageIcon size={24} style={{ color: 'rgba(0,229,255,0.2)' }} />
+                <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO POSTS YET</p>
+                <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.25)' }}>Be the first to share what's going on</p>
+              </div>
+            ) : posts.map((post) => (
+              <div key={post.id} className="p-3 rounded-2xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(0,229,255,0.07)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  {post.user.photoUrl
+                    ? <img src={post.user.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+                    : <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black"
+                        style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff' }}>
+                        {post.user.displayName[0]?.toUpperCase()}
+                      </div>}
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>{post.user.displayName}</p>
+                    <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                      {new Date(post.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+                {post.imageUrl && (
+                  <img src={post.imageUrl} alt="" className="w-full rounded-xl mb-2 object-cover max-h-64" />
+                )}
+                {post.text && (
+                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.75)' }}>{post.text}</p>
+                )}
+                <div className="flex items-center gap-1 mt-2">
+                  <Heart size={12} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{post.likesCount}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ─── Map ─── */}
         <div>

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2 } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -238,6 +238,17 @@ function NavbarInner() {
                   </Link>
                 )}
 
+                {/* Messages */}
+                <Link href="/messages"
+                  className="p-2 rounded-lg transition-all duration-150 relative"
+                  style={{
+                    color: pathname.startsWith('/messages') ? '#00e5ff' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/messages') ? 'rgba(0,229,255,0.08)' : 'transparent',
+                  }}
+                >
+                  <MessageCircle size={16} />
+                </Link>
+
                 {/* Bell */}
                 <div ref={notifRef} className="relative">
                   <button onClick={() => setNotifOpen((o) => !o)}
@@ -333,6 +344,14 @@ function NavbarInner() {
               </Link>
             )}
           </div>
+
+          {/* Messages */}
+          <Link href="/messages"
+            className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+            style={{ color: pathname.startsWith('/messages') ? '#00e5ff' : 'rgba(255,255,255,0.35)' }}>
+            <MessageCircle size={18} strokeWidth={pathname.startsWith('/messages') ? 2 : 1.5} />
+            <span className="text-[9px] font-medium tracking-wide">Chats</span>
+          </Link>
 
           {/* Profile */}
           <Link href={dbUser ? '/profile' : '/login'}
