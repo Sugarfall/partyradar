@@ -21,6 +21,7 @@ import webhooksRouter from './routes/webhooks'
 import messagesRouter from './routes/messages'
 import eventbriteRouter from './routes/eventbrite'
 import socialRouter from './routes/social'
+import venuesRouter from './routes/venues'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -222,6 +223,7 @@ app.use('/api/webhooks', webhooksRouter)
 app.use('/api/messages', messagesRouter)
 app.use('/api/eventbrite', eventbriteRouter)
 app.use('/api/social', socialRouter)
+app.use('/api/venues', venuesRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

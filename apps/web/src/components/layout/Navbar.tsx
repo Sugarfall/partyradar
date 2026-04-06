@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, Zap as ZapIcon, X, Trophy } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, Zap as ZapIcon, X, Trophy, MapPin } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -12,6 +12,7 @@ import type { Notification } from '@partyradar/shared'
 const navLinks = [
   { href: '/discover',    label: 'Discover', icon: Compass, short: 'DISC' },
   { href: '/radar',       label: 'Radar',    icon: Radio,   short: 'RADR' },
+  { href: '/venues',      label: 'Venues',   icon: MapPin,  short: 'VENU' },
   { href: '/leaderboard', label: 'Ranks',    icon: Trophy,  short: 'RANK' },
   { href: '/host',        label: 'Host',     icon: Plus,    short: 'HOST', authOnly: true },
 ]
