@@ -4,26 +4,24 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, Zap as ZapIcon, X, Trophy, MapPin, Rss } from 'lucide-react'
+import { Zap, Compass, Radio, MapPin, User, Plus, Bell, Calendar, Ticket, Star, X } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
 
-const navLinks = [
-  { href: '/discover',    label: 'Discover', icon: Compass, short: 'DISC' },
-  { href: '/feed',        label: 'Feed',     icon: Rss,     short: 'FEED' },
-  { href: '/radar',       label: 'Radar',    icon: Radio,   short: 'RADR' },
-  { href: '/venues',      label: 'Venues',   icon: MapPin,  short: 'VENU' },
-  { href: '/leaderboard', label: 'Ranks',    icon: Trophy,  short: 'RANK' },
-  { href: '/host',        label: 'Host',     icon: Plus,    short: 'HOST', authOnly: true },
+// ── Core nav links (desktop centre + mobile tabs) ────────────────────────────
+const NAV = [
+  { href: '/discover', label: 'Discover', icon: Compass },
+  { href: '/radar',    label: 'Radar',    icon: Radio   },
+  { href: '/venues',   label: 'Venues',   icon: MapPin  },
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
-  RSVP_CONFIRMED:    <Ticket size={13} style={{ color: '#00ff88' }} />,
-  INVITE_RECEIVED:   <ZapIcon size={13} style={{ color: '#00e5ff' }} />,
-  EVENT_REMINDER:    <Calendar size={13} style={{ color: '#ffd600' }} />,
-  CELEBRITY_NEARBY:  <Star size={13} style={{ color: '#ffd600' }} />,
-  EVENT_UPDATED:     <ZapIcon size={13} style={{ color: '#3d5afe' }} />,
+  RSVP_CONFIRMED:   <Ticket size={13} style={{ color: '#00ff88' }} />,
+  INVITE_RECEIVED:  <Zap    size={13} style={{ color: '#00e5ff' }} />,
+  EVENT_REMINDER:   <Calendar size={13} style={{ color: '#ffd600' }} />,
+  CELEBRITY_NEARBY: <Star  size={13} style={{ color: '#ffd600' }} />,
+  EVENT_UPDATED:    <Zap   size={13} style={{ color: '#3d5afe' }} />,
 }
 
 function timeAgo(date: string) {
@@ -34,122 +32,79 @@ function timeAgo(date: string) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
+// ── Notifications panel ──────────────────────────────────────────────────────
 function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const { data, mutate } = useSWR<{ data: Notification[]; unreadCount: number }>(
-    '/notifications?limit=15',
-    fetcher
+    '/notifications?limit=15', fetcher
   )
   const notifications = data?.data ?? []
 
-  async function markRead(id: string) {
-    try {
-      await api.put(`/notifications/${id}/read`, {})
-      mutate()
-    } catch {}
-  }
-
-  async function markAllRead() {
-    const unread = notifications.filter((n) => !n.read)
-    await Promise.allSettled(unread.map((n) => api.put(`/notifications/${n.id}/read`, {})))
+  async function markAll() {
+    await Promise.allSettled(
+      notifications.filter((n) => !n.read).map((n) => api.put(`/notifications/${n.id}/read`, {}))
+    )
     mutate()
   }
 
   return (
     <div
-      className="absolute top-full right-0 mt-2 w-80 rounded-2xl overflow-hidden z-50"
+      className="absolute top-full right-0 mt-2 w-72 rounded-2xl overflow-hidden z-50"
       style={{
         background: 'rgba(7,7,26,0.98)',
-        border: '1px solid rgba(0,229,255,0.15)',
-        boxShadow: '0 0 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(0,229,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.8)',
         backdropFilter: 'blur(20px)',
       }}
     >
-      {/* Panel header */}
       <div className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
-        <div className="flex items-center gap-2">
-          <Bell size={13} style={{ color: '#00e5ff' }} />
-          <span className="text-xs font-black tracking-widest" style={{ color: '#00e5ff' }}>NOTIFICATIONS</span>
-        </div>
-        <div className="flex items-center gap-2">
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <span className="text-xs font-semibold" style={{ color: '#e0f2fe' }}>Notifications</span>
+        <div className="flex items-center gap-3">
           {notifications.some((n) => !n.read) && (
-            <button onClick={markAllRead}
-              className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded"
-              style={{ color: 'rgba(0,229,255,0.5)', border: '1px solid rgba(0,229,255,0.15)' }}>
-              MARK ALL READ
+            <button onClick={markAll} className="text-[10px]" style={{ color: 'rgba(0,229,255,0.6)' }}>
+              Mark all read
             </button>
           )}
-          <button onClick={onClose} style={{ color: 'rgba(74,96,128,0.6)' }}>
+          <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.3)' }}>
             <X size={14} />
           </button>
         </div>
       </div>
 
-      {/* Notification list */}
-      <div className="max-h-80 overflow-y-auto">
+      <div className="max-h-72 overflow-y-auto">
         {notifications.length === 0 ? (
           <div className="py-10 text-center">
-            <Bell size={24} className="mx-auto mb-2" style={{ color: 'rgba(74,96,128,0.3)' }} />
-            <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>
-              NO NOTIFICATIONS
-            </p>
+            <Bell size={22} className="mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.15)' }} />
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>All caught up</p>
           </div>
-        ) : (
-          notifications.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => markRead(n.id)}
-              className="w-full text-left px-4 py-3 flex items-start gap-3 transition-all"
-              style={{
-                background: n.read ? 'transparent' : 'rgba(0,229,255,0.03)',
-                borderBottom: '1px solid rgba(0,229,255,0.05)',
-              }}
-            >
-              {/* Icon */}
-              <div className="mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.1)' }}>
-                {NOTIF_ICONS[n.type] ?? <Bell size={13} style={{ color: '#00e5ff' }} />}
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold leading-tight"
-                  style={{ color: n.read ? 'rgba(224,242,254,0.5)' : '#e0f2fe' }}>
-                  {n.title}
-                </p>
-                <p className="text-[10px] mt-0.5 leading-relaxed"
-                  style={{ color: 'rgba(224,242,254,0.35)' }}>
-                  {n.body}
-                </p>
-                <p className="text-[9px] mt-1 font-bold tracking-wide"
-                  style={{ color: 'rgba(74,96,128,0.5)' }}>
-                  {timeAgo(n.createdAt)}
-                </p>
-              </div>
-
-              {/* Unread dot */}
-              {!n.read && (
-                <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                  style={{ background: '#00e5ff', boxShadow: '0 0 6px rgba(0,229,255,0.8)' }} />
-              )}
-            </button>
-          ))
-        )}
-      </div>
-
-      {/* Footer */}
-      <div style={{ borderTop: '1px solid rgba(0,229,255,0.08)' }}>
-        <Link href="/profile"
-          onClick={onClose}
-          className="block text-center py-2.5 text-[10px] font-black tracking-widest transition-all"
-          style={{ color: 'rgba(0,229,255,0.4)' }}>
-          VIEW ALL IN PROFILE →
-        </Link>
+        ) : notifications.map((n) => (
+          <button key={n.id}
+            onClick={() => api.put(`/notifications/${n.id}/read`, {}).then(() => mutate())}
+            className="w-full text-left px-4 py-3 flex items-start gap-3 transition-all hover:bg-white/5"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+          >
+            <div className="mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: 'rgba(255,255,255,0.06)' }}>
+              {NOTIF_ICONS[n.type] ?? <Bell size={13} style={{ color: '#00e5ff' }} />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium leading-tight"
+                style={{ color: n.read ? 'rgba(224,242,254,0.4)' : '#e0f2fe' }}>{n.title}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.3)' }}>{n.body}</p>
+              <p className="text-[9px] mt-1" style={{ color: 'rgba(255,255,255,0.2)' }}>{timeAgo(n.createdAt)}</p>
+            </div>
+            {!n.read && (
+              <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                style={{ background: '#00e5ff' }} />
+            )}
+          </button>
+        ))}
       </div>
     </div>
   )
 }
 
+// ── Main export ──────────────────────────────────────────────────────────────
 export default function Navbar() {
   const pathname = usePathname()
   if (pathname === '/') return null
@@ -169,12 +124,9 @@ function NavbarInner() {
   )
   const unreadCount = notifData?.unreadCount ?? 0
 
-  // Close on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotifOpen(false)
-      }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
     }
     if (notifOpen) document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -182,162 +134,189 @@ function NavbarInner() {
 
   return (
     <>
-      {/* Top bar */}
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <nav
         className="fixed top-0 inset-x-0 z-50 h-14"
         style={{
-          background: 'rgba(4,4,13,0.88)',
-          backdropFilter: 'blur(18px)',
-          borderBottom: '1px solid rgba(0,229,255,0.1)',
-          boxShadow: '0 1px 0 rgba(0,229,255,0.05), 0 4px 30px rgba(0,0,0,0.7)',
+          background: 'rgba(4,4,13,0.85)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}
       >
-        <div
-          className="absolute top-0 inset-x-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(0,229,255,0.55) 50%, transparent 100%)' }}
-        />
-
-        <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between gap-4">
-          <Link href="/discover" className="flex items-center gap-2 shrink-0 group">
-            <Zap size={18} fill="rgba(0,229,255,0.2)" style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 6px rgba(0,229,255,0.7))' }} />
-            <span className="font-bold text-sm" style={{ color: '#00e5ff', textShadow: '0 0 16px rgba(0,229,255,0.65)', letterSpacing: '0.18em' }}>
+        <div className="max-w-5xl mx-auto px-4 h-full flex items-center justify-between">
+          {/* Logo */}
+          <Link href="/discover" className="flex items-center gap-2 shrink-0">
+            <Zap size={16} fill="rgba(0,229,255,0.15)"
+              style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 5px rgba(0,229,255,0.6))' }} />
+            <span className="text-sm font-bold tracking-widest" style={{ color: '#00e5ff' }}>
               PARTYRADAR
             </span>
           </Link>
 
+          {/* Centre nav — desktop */}
           <div className="hidden md:flex items-center gap-1">
-            {navLinks.filter(({ authOnly }) => !authOnly || dbUser).map(({ href, short, icon: Icon }) => {
+            {NAV.map(({ href, label, icon: Icon }) => {
               const active = pathname.startsWith(href)
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  className="relative flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold transition-all duration-200"
+                <Link key={href} href={href}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm transition-all duration-150"
                   style={{
-                    letterSpacing: '0.13em',
-                    color: active ? '#00e5ff' : 'rgba(74,96,128,0.85)',
-                    background: active ? 'rgba(0,229,255,0.07)' : 'transparent',
-                    border: active ? '1px solid rgba(0,229,255,0.22)' : '1px solid transparent',
-                    textShadow: active ? '0 0 10px rgba(0,229,255,0.65)' : 'none',
+                    color: active ? '#fff' : 'rgba(255,255,255,0.4)',
+                    background: active ? 'rgba(255,255,255,0.07)' : 'transparent',
+                    fontWeight: active ? 600 : 400,
                   }}
                 >
-                  <Icon size={12} />
-                  {short}
-                  {active && (
-                    <span className="absolute bottom-0 left-4 right-4 h-px"
-                      style={{ background: 'linear-gradient(90deg, transparent, #00e5ff, transparent)' }} />
-                  )}
+                  <Icon size={14} />
+                  {label}
                 </Link>
               )
             })}
           </div>
 
+          {/* Right actions */}
           <div className="flex items-center gap-2">
             {dbUser ? (
               <>
-                <Link href="/host" className="hidden sm:flex btn-primary text-xs px-3 py-1.5" style={{ letterSpacing: '0.1em' }}>
-                  <Plus size={12} />HOST
+                {/* Host button */}
+                <Link href="/host"
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
+                  style={{
+                    background: 'rgba(0,229,255,0.12)',
+                    border: '1px solid rgba(0,229,255,0.25)',
+                    color: '#00e5ff',
+                  }}
+                >
+                  <Plus size={14} />
+                  Host
                 </Link>
 
-                {/* Notifications bell */}
+                {/* Bell */}
                 <div ref={notifRef} className="relative">
-                  <button
-                    onClick={() => setNotifOpen((o) => !o)}
-                    className="relative p-1.5 rounded transition-all duration-200"
-                    style={{ border: `1px solid ${notifOpen ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.15)'}`, background: notifOpen ? 'rgba(0,229,255,0.08)' : 'transparent' }}>
-                    <Bell size={15} style={{ color: '#00e5ff' }} />
+                  <button onClick={() => setNotifOpen((o) => !o)}
+                    className="relative p-2 rounded-lg transition-all duration-150"
+                    style={{
+                      color: notifOpen ? '#00e5ff' : 'rgba(255,255,255,0.4)',
+                      background: notifOpen ? 'rgba(0,229,255,0.08)' : 'transparent',
+                    }}
+                  >
+                    <Bell size={16} />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] rounded-full flex items-center justify-center font-bold"
-                        style={{ background: '#00ff88', color: '#04040d', boxShadow: '0 0 8px rgba(0,255,136,0.6)' }}>
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
+                        style={{ background: '#00ff88' }} />
                     )}
                   </button>
                   {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
                 </div>
 
-                <Link href="/profile" className="relative p-1.5 rounded transition-all duration-200" style={{ border: '1px solid rgba(0,229,255,0.15)' }}>
+                {/* Avatar */}
+                <Link href="/profile"
+                  className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center transition-all"
+                  style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+                >
                   {dbUser.photoUrl
-                    ? <img src={dbUser.photoUrl} alt="Profile" className="w-7 h-7 rounded object-cover" style={{ boxShadow: '0 0 8px rgba(0,229,255,0.3)' }} />
-                    : <User size={16} style={{ color: '#00e5ff' }} />}
+                    ? <img src={dbUser.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+                    : <User size={15} style={{ color: 'rgba(255,255,255,0.5)' }} />}
                 </Link>
               </>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href="/login" className="btn-secondary text-xs px-3 py-1.5" style={{ letterSpacing: '0.1em' }}>LOG IN</Link>
-                <Link href="/register" className="btn-primary text-xs px-3 py-1.5" style={{ letterSpacing: '0.1em' }}>JOIN</Link>
+                <Link href="/login"
+                  className="text-sm px-3 py-1.5 rounded-lg transition-all"
+                  style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  Log in
+                </Link>
+                <Link href="/register"
+                  className="text-sm px-3 py-1.5 rounded-lg font-semibold transition-all"
+                  style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+                  Sign up
+                </Link>
               </div>
             )}
           </div>
         </div>
       </nav>
 
-      {/* Mobile bottom nav */}
+      {/* ── Mobile bottom tab bar ────────────────────────────────────────── */}
       <div
-        className="md:hidden fixed bottom-0 inset-x-0 z-50 h-16"
-        style={{ background: 'rgba(4,4,13,0.96)', borderTop: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(18px)' }}
+        className="md:hidden fixed bottom-0 inset-x-0 z-50"
+        style={{
+          background: 'rgba(4,4,13,0.95)',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          backdropFilter: 'blur(20px)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
       >
-        <div className="absolute top-0 inset-x-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(0,229,255,0.45) 50%, transparent 100%)' }} />
-
-        <div className="flex h-full">
-          {/* Discover + Radar — always visible */}
-          {navLinks.filter(({ authOnly }) => !authOnly).map(({ href, label, icon: Icon }) => {
+        <div className="flex items-stretch h-16">
+          {/* Discover */}
+          {NAV.slice(0, 1).map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (
               <Link key={href} href={href}
-                className="relative flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-200"
-                style={{ color: active ? '#00e5ff' : 'rgba(74,96,128,0.7)', textShadow: active ? '0 0 10px rgba(0,229,255,0.7)' : 'none' }}>
-                {active && <div className="absolute top-0 w-8 h-0.5 rounded-b" style={{ background: '#00e5ff', boxShadow: '0 0 8px rgba(0,229,255,0.8)' }} />}
-                <Icon size={17} strokeWidth={active ? 2.5 : 1.5} />
-                <span className="text-[9px] font-bold tracking-widest">{label.toUpperCase()}</span>
+                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+                style={{ color: active ? '#fff' : 'rgba(255,255,255,0.35)' }}>
+                <Icon size={18} strokeWidth={active ? 2 : 1.5} />
+                <span className="text-[9px] font-medium tracking-wide">{label}</span>
               </Link>
             )
           })}
 
-          {/* Auth-gated links */}
-          {dbUser ? (
-            <>
-              {/* HOST */}
-              {(() => {
-                const active = pathname.startsWith('/host') || pathname.startsWith('/events/create')
-                return (
-                  <Link href="/host"
-                    className="relative flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-200"
-                    style={{ color: active ? '#00e5ff' : 'rgba(74,96,128,0.7)', textShadow: active ? '0 0 10px rgba(0,229,255,0.7)' : 'none' }}>
-                    {active && <div className="absolute top-0 w-8 h-0.5 rounded-b" style={{ background: '#00e5ff', boxShadow: '0 0 8px rgba(0,229,255,0.8)' }} />}
-                    <Plus size={17} strokeWidth={active ? 2.5 : 1.5} />
-                    <span className="text-[9px] font-bold tracking-widest">HOST</span>
-                  </Link>
-                )
-              })()}
+          {/* Radar */}
+          {NAV.slice(1, 2).map(({ href, label, icon: Icon }) => {
+            const active = pathname.startsWith(href)
+            return (
+              <Link key={href} href={href}
+                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+                style={{ color: active ? '#fff' : 'rgba(255,255,255,0.35)' }}>
+                <Icon size={18} strokeWidth={active ? 2 : 1.5} />
+                <span className="text-[9px] font-medium tracking-wide">{label}</span>
+              </Link>
+            )
+          })}
 
-              {/* PROFILE */}
-              {(() => {
-                const active = pathname.startsWith('/profile')
-                return (
-                  <Link href="/profile"
-                    className="relative flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-200"
-                    style={{ color: active ? '#00e5ff' : 'rgba(74,96,128,0.7)', textShadow: active ? '0 0 10px rgba(0,229,255,0.7)' : 'none' }}>
-                    {active && <div className="absolute top-0 w-8 h-0.5 rounded-b" style={{ background: '#00e5ff', boxShadow: '0 0 8px rgba(0,229,255,0.8)' }} />}
-                    {unreadCount > 0 && (
-                      <span className="absolute top-2 right-1/4 w-3.5 h-3.5 text-[8px] rounded-full flex items-center justify-center font-bold"
-                        style={{ background: '#00ff88', color: '#04040d' }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
-                    )}
-                    <User size={17} strokeWidth={active ? 2.5 : 1.5} />
-                    <span className="text-[9px] font-bold tracking-widest">PROFILE</span>
-                  </Link>
-                )
-              })()}
-            </>
-          ) : (
-            <Link href="/login"
-              className="relative flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-200"
-              style={{ color: 'rgba(74,96,128,0.7)' }}>
-              <User size={17} strokeWidth={1.5} />
-              <span className="text-[9px] font-bold tracking-widest">SIGN IN</span>
+          {/* Host — centre pill */}
+          <div className="flex-1 flex items-center justify-center">
+            <Link href={dbUser ? '/host' : '/login'}
+              className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, rgba(0,229,255,0.25) 0%, rgba(168,85,247,0.25) 100%)',
+                border: '1px solid rgba(0,229,255,0.35)',
+                boxShadow: '0 0 20px rgba(0,229,255,0.15)',
+              }}
+            >
+              <Plus size={20} style={{ color: '#00e5ff' }} />
             </Link>
-          )}
+          </div>
+
+          {/* Venues */}
+          {NAV.slice(2, 3).map(({ href, label, icon: Icon }) => {
+            const active = pathname.startsWith(href)
+            return (
+              <Link key={href} href={href}
+                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+                style={{ color: active ? '#fff' : 'rgba(255,255,255,0.35)' }}>
+                <Icon size={18} strokeWidth={active ? 2 : 1.5} />
+                <span className="text-[9px] font-medium tracking-wide">{label}</span>
+              </Link>
+            )
+          })}
+
+          {/* Profile */}
+          <Link href={dbUser ? '/profile' : '/login'}
+            className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+            style={{ color: pathname.startsWith('/profile') ? '#fff' : 'rgba(255,255,255,0.35)' }}>
+            <div className="relative">
+              {dbUser?.photoUrl
+                ? <img src={dbUser.photoUrl} alt="" className="w-5 h-5 rounded-full object-cover" />
+                : <User size={18} strokeWidth={pathname.startsWith('/profile') ? 2 : 1.5} />}
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
+                  style={{ background: '#00ff88' }} />
+              )}
+            </div>
+            <span className="text-[9px] font-medium tracking-wide">
+              {dbUser ? 'Profile' : 'Sign in'}
+            </span>
+          </Link>
         </div>
       </div>
     </>
