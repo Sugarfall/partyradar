@@ -69,4 +69,37 @@ router.get('/:eventId', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+// POST /api/messages/guests — host broadcasts a message to all confirmed guests
+router.post('/guests', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { eventId, message } = req.body as { eventId: string; message: string }
+    if (!eventId || !message?.trim()) throw new AppError('eventId and message required', 400)
+
+    const event = await prisma.event.findUnique({ where: { id: eventId } })
+    if (!event) throw new AppError('Event not found', 404)
+    if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
+
+    const guests = await prisma.eventGuest.findMany({
+      where: { eventId, status: 'CONFIRMED' },
+      select: { userId: true },
+    })
+
+    await Promise.allSettled(
+      guests.map(g =>
+        prisma.notification.create({
+          data: {
+            userId: g.userId,
+            type: 'EVENT_UPDATED',
+            title: `📣 ${event.name}`,
+            body: message.trim().slice(0, 200),
+            data: { eventId },
+          },
+        })
+      )
+    )
+
+    res.json({ data: { sent: guests.length } })
+  } catch (err) { next(err) }
+})
+
 export default router

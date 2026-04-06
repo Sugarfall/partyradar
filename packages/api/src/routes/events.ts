@@ -47,7 +47,7 @@ const userSelect = {
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20' } = req.query
+    const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
 
     const skip = (Number(page) - 1) * Number(limit)
     const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
@@ -56,6 +56,13 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       isPublished: true,
       isCancelled: false,
       startsAt: { gte: new Date() },
+    }
+
+    if (tonight === 'true') {
+      const now = new Date()
+      const midnight = new Date(now)
+      midnight.setHours(23, 59, 59, 999)
+      where['startsAt'] = { gte: now, lte: midnight }
     }
 
     if (type) where['type'] = type

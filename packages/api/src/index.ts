@@ -21,6 +21,7 @@ import notificationsRouter from './routes/notifications'
 import uploadsRouter from './routes/uploads'
 import adminRouter from './routes/admin'
 import webhooksRouter from './routes/webhooks'
+import friendsGoingRouter from './routes/friendsGoing'
 import messagesRouter from './routes/messages'
 import eventbriteRouter from './routes/eventbrite'
 import socialRouter from './routes/social'
@@ -219,6 +220,7 @@ app.use(express.json({ limit: '2mb' }))
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRouter)
+app.use('/api/events', friendsGoingRouter)
 app.use('/api/events', savesRouter)
 app.use('/api/events', analyticsRouter)
 app.use('/api/events', eventsRouter)
@@ -312,6 +314,44 @@ cron.schedule('0 * * * *', async () => {
     }
   } catch (err) {
     console.error('[Cron] Error sending reminders:', err)
+  }
+})
+
+// Every 30 minutes: send dress code reminder 2h before events that have a dress code
+cron.schedule('*/30 * * * *', async () => {
+  try {
+    const in2h  = new Date(Date.now() + 2 * 60 * 60 * 1000)
+    const in90m = new Date(Date.now() + 90 * 60 * 1000)
+
+    const events = await prisma.event.findMany({
+      where: {
+        isPublished: true,
+        isCancelled: false,
+        dressCode: { not: null },
+        startsAt: { gte: in90m, lte: in2h },
+      },
+      include: {
+        guests: { where: { status: 'CONFIRMED' }, select: { userId: true } },
+      },
+    })
+
+    for (const event of events) {
+      for (const { userId } of event.guests) {
+        await sendNotification({
+          userId,
+          type: 'EVENT_REMINDER',
+          title: `👔 ${event.name} — dress code reminder`,
+          body: `Dress code: ${event.dressCode}. Event starts in ~2 hours.`,
+          data: { eventId: event.id },
+        })
+      }
+    }
+
+    if (events.length > 0) {
+      console.log(`[Cron] Sent dress code reminders for ${events.length} event(s)`)
+    }
+  } catch (err) {
+    console.error('[Cron] Error sending dress code reminders:', err)
   }
 })
 
