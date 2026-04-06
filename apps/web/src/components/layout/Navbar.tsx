@@ -113,7 +113,17 @@ export default function Navbar() {
 function NavbarInner() {
   const pathname = usePathname()
   const { dbUser } = useAuth()
-  const isHost = (dbUser as any)?.accountMode === 'HOST'
+
+  // Mode is localStorage-first so it works without login and reacts instantly
+  const [isHost, setIsHost] = useState(false)
+  useEffect(() => {
+    setIsHost(localStorage.getItem('partyradar_account_mode') === 'HOST')
+    function onModeChange(e: Event) {
+      setIsHost((e as CustomEvent).detail === 'HOST')
+    }
+    window.addEventListener('partyradar:mode-change', onModeChange)
+    return () => window.removeEventListener('partyradar:mode-change', onModeChange)
+  }, [])
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 

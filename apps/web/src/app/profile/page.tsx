@@ -127,7 +127,7 @@ function ClickableToggle({ icon, label, value, onChange, border }: {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { dbUser, loading: authLoading, logout: signOut, refreshUser } = useAuth()
+  const { dbUser, loading: authLoading, logout: signOut } = useAuth()
 
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -154,13 +154,16 @@ export default function ProfilePage() {
   // Profile tabs
   const [profileTab, setProfileTab] = useState<ProfileTab>('activity')
 
-  // Account mode — read from dbUser, synced to API
-  const [accountMode, setAccountMode] = useState<'ATTENDEE' | 'HOST'>(() => {
-    // dbUser may not have accountMode if returned from old API — default to ATTENDEE
-    return (dbUser as any)?.accountMode ?? 'ATTENDEE'
-  })
+  // Account mode — stored in localStorage, no login required
+  const [accountMode, setAccountMode] = useState<'ATTENDEE' | 'HOST'>('ATTENDEE')
   const [showBecomeHost, setShowBecomeHost] = useState(false)
   const [modeSwitching, setModeSwitching] = useState(false)
+
+  // Read persisted mode on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('partyradar_account_mode')
+    if (stored === 'HOST' || stored === 'ATTENDEE') setAccountMode(stored)
+  }, [])
 
   // Activity / Reviews
   const [activity, setActivity] = useState(DEMO_ACTIVITY)
@@ -250,38 +253,32 @@ export default function ProfilePage() {
     router.push('/')
   }
 
-  async function switchMode(next: 'ATTENDEE' | 'HOST') {
-    if (next === accountMode) return
-    if (next === 'HOST' && accountMode === 'ATTENDEE') {
-      setShowBecomeHost(true)
-      return
-    }
-    setModeSwitching(true)
-    try {
-      const token = await (await import('@/lib/firebase')).auth.currentUser?.getIdToken()
-      const res = await fetch(`${API_BASE}/auth/mode`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ accountMode: next }),
-      })
-      if (res.ok) { setAccountMode(next); refreshUser() }
-    } catch { /* keep current mode */ }
-    finally { setModeSwitching(false) }
+  function applyMode(next: 'ATTENDEE' | 'HOST') {
+    setAccountMode(next)
+    localStorage.setItem('partyradar_account_mode', next)
+    // Notify Navbar and any other listeners in the same tab
+    window.dispatchEvent(new CustomEvent('partyradar:mode-change', { detail: next }))
+    // Best-effort API sync — doesn't block the UI
+    import('@/lib/firebase').then(({ auth }) =>
+      auth.currentUser?.getIdToken().then((token) =>
+        fetch(`${API_BASE}/auth/mode`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ accountMode: next }),
+        }).catch(() => {})
+      )
+    )
   }
 
-  async function confirmBecomeHost() {
+  function switchMode(next: 'ATTENDEE' | 'HOST') {
+    if (next === accountMode) return
+    if (next === 'HOST') { setShowBecomeHost(true); return }
+    applyMode(next)
+  }
+
+  function confirmBecomeHost() {
     setShowBecomeHost(false)
-    setModeSwitching(true)
-    try {
-      const token = await (await import('@/lib/firebase')).auth.currentUser?.getIdToken()
-      const res = await fetch(`${API_BASE}/auth/mode`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ accountMode: 'HOST' }),
-      })
-      if (res.ok) { setAccountMode('HOST'); refreshUser() }
-    } catch { /* keep */ }
-    finally { setModeSwitching(false) }
+    applyMode('HOST')
   }
 
   return (
