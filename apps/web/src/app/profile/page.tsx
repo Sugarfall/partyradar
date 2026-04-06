@@ -520,6 +520,10 @@ export default function ProfilePage() {
 
         {/* Quick links */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
+          <Link href="/saved" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm mx-3 mt-3"
+            style={{ background: 'rgba(255,214,0,0.06)', border: '1px solid rgba(255,214,0,0.15)', color: 'rgba(255,214,0,0.8)' }}>
+            <Bookmark size={14} fill="currentColor" /> Saved Events
+          </Link>
           {[
             { label: 'My Tickets', href: '/tickets', icon: Ticket },
             { label: 'Subscriptions', href: '/subscriptions', icon: Crown },
