@@ -68,8 +68,8 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     if (type) where['type'] = type
     if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
 
-    // Hide alcohol events if user hasn't enabled the toggle
-    if (!showAlcohol) {
+    // Hide alcohol events only for logged-in users who haven't enabled the toggle
+    if (req.user && !showAlcohol) {
       where['alcoholPolicy'] = 'NONE'
     }
 
