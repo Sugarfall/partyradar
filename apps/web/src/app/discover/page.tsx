@@ -600,6 +600,7 @@ function EmptyState({ loading }: { loading: boolean }) {
 export default function DiscoverPage() {
   const [tab, setTab] = useState<'events' | 'venues'>('events')
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
+  const [now, setNow] = useState(() => Date.now())
   const [index, setIndex] = useState(0)
   const [slideDir, setSlideDir] = useState<SlideDir>(null)
   const [showMap, setShowMap] = useState(false)
@@ -614,6 +615,12 @@ export default function DiscoverPage() {
 
   // Reset index when events change
   useEffect(() => { setIndex(0) }, [events.length])
+
+  // Tick every 60s so LIVE/UPCOMING sections re-classify without page reload
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60000)
+    return () => clearInterval(t)
+  }, [])
 
   // Keyboard navigation
   useEffect(() => {
@@ -843,7 +850,6 @@ export default function DiscoverPage() {
           ) : events.length === 0 ? (
             <EmptyState loading={false} />
           ) : (() => {
-            const now = Date.now()
             const liveEvents = events.filter(e => {
               const start = new Date(e.startsAt).getTime()
               const end = e.endsAt ? new Date(e.endsAt).getTime() : start + 6 * 3600000

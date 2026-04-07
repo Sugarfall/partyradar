@@ -235,7 +235,7 @@ export function useEvents(query: EventDiscoverQuery = {}) {
   const { data, error, isLoading } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
     `/events?${params.toString()}`,
     fetcher,
-    { shouldRetryOnError: false }
+    { shouldRetryOnError: false, refreshInterval: 60000, revalidateOnFocus: true }
   )
 
   // In dev mode merge demo events + Glasgow venue events + any user-created events from localStorage

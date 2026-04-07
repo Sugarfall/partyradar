@@ -414,6 +414,53 @@ cron.schedule('*/30 * * * *', async () => {
   }
 })
 
+// ─── Auto-reseed events when they all expire ──────────────────────────────────
+// Every hour: if no future published events remain, delete stale ones and re-seed
+cron.schedule('0 * * * *', async () => {
+  try {
+    const futureCount = await prisma.event.count({
+      where: {
+        isPublished: true,
+        isCancelled: false,
+        startsAt: { gt: new Date() },
+      },
+    })
+
+    if (futureCount > 0) return  // still have upcoming events, nothing to do
+
+    console.log('[Cron] No future events found — reseeding Glasgow nightlife events...')
+
+    // Delete old demo events (those hosted by demo accounts)
+    const demoHosts = await prisma.user.findMany({
+      where: { firebaseUid: { startsWith: 'demo_' } },
+      select: { id: true },
+    })
+    const demoHostIds = demoHosts.map((u) => u.id)
+
+    if (demoHostIds.length > 0) {
+      const staleEvents = await prisma.event.findMany({
+        where: { hostId: { in: demoHostIds } },
+        select: { id: true },
+      })
+      const staleIds = staleEvents.map((e) => e.id)
+      if (staleIds.length > 0) {
+        await prisma.eventGuest.deleteMany({ where: { eventId: { in: staleIds } } })
+        await prisma.ticket.deleteMany({ where: { eventId: { in: staleIds } } })
+        await prisma.message.deleteMany({ where: { eventId: { in: staleIds } } })
+        await prisma.event.deleteMany({ where: { id: { in: staleIds } } })
+        console.log(`[Cron] Deleted ${staleIds.length} stale demo events`)
+      }
+    }
+
+    // Call seed-activity internally
+    const port = process.env['PORT'] ?? 4000
+    await fetch(`http://localhost:${port}/api/admin/seed-activity`, { method: 'POST' })
+    console.log('[Cron] Reseed complete')
+  } catch (err) {
+    console.error('[Cron] Error auto-reseeding events:', err)
+  }
+})
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 httpServer.listen(PORT, () => {
