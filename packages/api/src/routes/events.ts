@@ -148,7 +148,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
     }
 
     const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
-    if (!showAlcohol && event.alcoholPolicy !== 'NONE' && req.user?.dbUser.id !== event.hostId) {
+    if (req.user && !showAlcohol && event.alcoholPolicy !== 'NONE' && req.user?.dbUser.id !== event.hostId) {
       throw new AppError('Enable alcohol events in settings to view this event', 403)
     }
 

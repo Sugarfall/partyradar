@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { MessageCircle, Calendar, ChevronRight, Zap } from 'lucide-react'
+import { MessageCircle, Calendar, ChevronRight, Zap, LogIn } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL as API_BASE } from '@/lib/api'
 
@@ -39,6 +39,10 @@ export default function MessagesPage() {
 
   useEffect(() => {
     async function load() {
+      if (!dbUser) {
+        setLoading(false)
+        return
+      }
       try {
         // Fetch events user has RSVPd to (confirmed) — these are their active chat rooms
         const token = typeof window !== 'undefined'
@@ -72,7 +76,30 @@ export default function MessagesPage() {
       </div>
 
       <div className="px-4 max-w-xl mx-auto space-y-2">
-        {loading ? (
+        {!dbUser && !loading ? (
+          <div className="py-20 flex flex-col items-center gap-3">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
+              <LogIn size={24} style={{ color: 'rgba(0,229,255,0.3)' }} />
+            </div>
+            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOG IN TO SEE YOUR CHATS</p>
+            <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>
+              RSVP to events to join their group chat
+            </p>
+            <div className="flex gap-2 mt-2">
+              <Link href="/login"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
+                style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+                <LogIn size={11} /> LOG IN
+              </Link>
+              <Link href="/discover"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
+                style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(0,229,255,0.6)' }}>
+                <Zap size={11} /> DISCOVER EVENTS
+              </Link>
+            </div>
+          </div>
+        ) : loading ? (
           Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
           ))
