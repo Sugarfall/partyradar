@@ -1,36 +1,69 @@
-const CACHE_NAME = 'partyradar-v1'
-const STATIC_ASSETS = ['/', '/discover', '/radar', '/offline.html']
+const CACHE_VERSION = 'partyradar-v4'
+const STATIC_CACHE  = `${CACHE_VERSION}-static`
+const PAGE_CACHE    = `${CACHE_VERSION}-pages`
+const ALL_CACHES    = [STATIC_CACHE, PAGE_CACHE]
 
+// On install: pre-cache only offline fallback
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS).catch(() => {}))
+    caches.open(PAGE_CACHE).then((cache) => cache.addAll(['/offline.html']).catch(() => {}))
   )
   self.skipWaiting()
 })
 
+// On activate: delete ALL old caches so stale pages don't linger on mobile
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+      Promise.all(
+        keys
+          .filter((k) => !ALL_CACHES.includes(k))
+          .map((k) => {
+            console.log('[SW] Deleting old cache:', k)
+            return caches.delete(k)
+          })
+      )
+    ).then(() => self.clients.claim())
   )
-  self.clients.claim()
 })
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return
-  if (event.request.url.includes('/api/')) return // never cache API calls
+  const { request } = event
+  if (request.method !== 'GET') return
 
-  event.respondWith(
-    fetch(event.request)
-      .then((res) => {
-        const clone = res.clone()
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+  const url = new URL(request.url)
+
+  // Never intercept API calls — always hit the network
+  if (url.pathname.startsWith('/api/') || url.hostname.includes('railway.app')) return
+
+  // _next/static assets are content-hashed — cache-first (safe forever)
+  if (url.pathname.startsWith('/_next/static/')) {
+    event.respondWith(
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cached = await cache.match(request)
+        if (cached) return cached
+        const res = await fetch(request)
+        if (res.ok) cache.put(request, res.clone())
         return res
       })
-      .catch(() =>
-        caches.match(event.request).then((cached) => cached || caches.match('/offline.html'))
-      )
+    )
+    return
+  }
+
+  // HTML pages — network-first, short timeout, fallback to cache
+  // This ensures mobile always gets fresh event data when online
+  event.respondWith(
+    Promise.race([
+      fetch(request).then((res) => {
+        if (res.ok) {
+          caches.open(PAGE_CACHE).then((cache) => cache.put(request, res.clone()))
+        }
+        return res
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+    ]).catch(() =>
+      caches.match(request).then((cached) => cached || caches.match('/offline.html'))
+    )
   )
 })
 
