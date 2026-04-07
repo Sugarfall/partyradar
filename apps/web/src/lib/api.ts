@@ -3,7 +3,7 @@ import { auth } from './firebase'
 // In production always use the Railway backend; locally fall back to dev server
 export const API_URL =
   process.env.NODE_ENV === 'production'
-    ? (process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api-production-f912.up.railway.app/api')
+    ? 'https://api-production-f912.up.railway.app/api'
     : (process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/api')
 
 /** Root URL without /api suffix — used for socket.io connections */
