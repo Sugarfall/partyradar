@@ -66,7 +66,8 @@ export default function MessagesPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-  const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
 
   // Load conversations
   useEffect(() => {
