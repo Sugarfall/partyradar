@@ -355,6 +355,55 @@ cron.schedule('*/30 * * * *', async () => {
   }
 })
 
+// Every 30 minutes: inject fresh venue activity posts to keep feed live
+cron.schedule('*/30 * * * *', async () => {
+  try {
+    const hour = new Date().getHours()
+    // Only post activity between 6pm and 4am (active nightlife hours)
+    if (hour < 18 && hour > 4) return
+
+    const eveningMessages = [
+      'Doors open, early crowd filtering in 🚪',
+      'Sound check done — tonight is going to go off 🎵',
+      'Bar just opened, get here early for the queue 🍺',
+      'Tickets still available on the door 🎟️',
+    ]
+    const nightMessages = [
+      'Floor is absolutely rammed 🔥',
+      'Best crowd we\'ve had all month 🙌',
+      'DJ just dropped a monster set 💥',
+      'Vibes in here are genuinely immaculate tonight ✨',
+      'Queue moving fast — worth the wait 🖤',
+      'This is what Glasgow nightlife is about 🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+      'Sound system absolutely thumping tonight 🎧',
+    ]
+    const msgs = (hour >= 22 || hour < 4) ? nightMessages : eveningMessages
+
+    const demoUsers = await prisma.user.findMany({
+      where: { firebaseUid: { startsWith: 'demo_user' } },
+      select: { id: true },
+    })
+    const venues = await prisma.venue.findMany({
+      where: { city: 'Glasgow' },
+      select: { id: true, name: true },
+      take: 18,
+    })
+    if (demoUsers.length === 0 || venues.length === 0) return
+
+    // Post to 1-2 random venues
+    const count = Math.random() > 0.5 ? 2 : 1
+    const picked = venues.sort(() => Math.random() - 0.5).slice(0, count)
+    for (const venue of picked) {
+      const user = demoUsers[Math.floor(Math.random() * demoUsers.length)]!
+      const text = msgs[Math.floor(Math.random() * msgs.length)]!
+      await prisma.post.create({ data: { userId: user.id, venueId: venue.id, text } })
+      console.log(`[Cron] Live post at ${venue.name}: "${text}"`)
+    }
+  } catch (err) {
+    console.error('[Cron] Error refreshing activity:', err)
+  }
+})
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 httpServer.listen(PORT, () => {
