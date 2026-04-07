@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Wine, Star, Heart, Lock, Search, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Wine, Star, Heart, Lock, Search, X, LayoutList, Layers } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEvents, DEMO_EVENTS, GLASGOW_VENUES } from '@/hooks/useEvents'
@@ -45,6 +45,80 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 type SlideDir = 'next' | 'prev' | null
+
+// ── Compact list card for list view ──────────────────────────────────────────
+function EventListCard({ event, live }: { event: Event; live?: boolean }) {
+  const color = TYPE_COLORS[event.type] ?? '#00e5ff'
+  const isFree = event.price === 0
+
+  function timeUntil(dateStr: string) {
+    const diff = new Date(dateStr).getTime() - Date.now()
+    if (diff <= 0) return 'Now'
+    const h = Math.floor(diff / 3600000)
+    const d = Math.floor(h / 24)
+    if (d > 0) return `in ${d}d`
+    if (h > 0) return `in ${h}h`
+    const m = Math.floor(diff / 60000)
+    return `in ${m}m`
+  }
+
+  return (
+    <Link href={`/events/${event.id}`}
+      className="flex gap-3 p-3 rounded-2xl transition-all"
+      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid ${live ? 'rgba(255,0,110,0.2)' : 'rgba(0,229,255,0.08)'}` }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.4)' : 'rgba(0,229,255,0.2)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.2)' : 'rgba(0,229,255,0.08)')}>
+
+      {/* Cover / color swatch */}
+      <div className="shrink-0 relative" style={{ width: 64, height: 64 }}>
+        {event.coverImageUrl ? (
+          <img src={event.coverImageUrl} alt="" className="w-full h-full rounded-xl object-cover" />
+        ) : (
+          <div className="w-full h-full rounded-xl flex items-center justify-center"
+            style={{ background: `${color}12`, border: `1px solid ${color}30` }}>
+            <Calendar size={22} style={{ color }} />
+          </div>
+        )}
+        {live && (
+          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full animate-pulse"
+            style={{ background: '#ff006e', boxShadow: '0 0 6px #ff006e', border: '2px solid #04040d' }} />
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-sm font-bold truncate leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
+          <span className="shrink-0 text-sm font-bold" style={{ color: isFree ? '#00ff88' : '#e0f2fe' }}>
+            {isFree ? 'FREE' : `£${event.price.toFixed(2)}`}
+          </span>
+        </div>
+        <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
+          <MapPin size={9} className="inline mr-0.5" />{event.neighbourhood ?? event.address}
+        </p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+            style={{ color, background: `${color}12`, border: `1px solid ${color}30`, letterSpacing: '0.1em' }}>
+            {event.type.replace('_', ' ')}
+          </span>
+          {live ? (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+              style={{ color: '#ff006e', background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.3)' }}>
+              ● LIVE
+            </span>
+          ) : (
+            <span className="text-[9px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              {timeUntil(event.startsAt)}
+            </span>
+          )}
+          {event.vibeTags.slice(0, 2).map(t => (
+            <span key={t} className="text-[9px]" style={{ color: 'rgba(0,229,255,0.35)' }}>#{t}</span>
+          ))}
+        </div>
+      </div>
+    </Link>
+  )
+}
 
 // ── Full-screen sequential event card ────────────────────────────────────────
 function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
@@ -525,6 +599,7 @@ function EmptyState({ loading }: { loading: boolean }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function DiscoverPage() {
   const [tab, setTab] = useState<'events' | 'venues'>('events')
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
   const [index, setIndex] = useState(0)
   const [slideDir, setSlideDir] = useState<SlideDir>(null)
   const [showMap, setShowMap] = useState(false)
@@ -691,6 +766,18 @@ export default function DiscoverPage() {
           {tab === 'events' && (
             <>
               <button
+                onClick={() => setViewMode(v => v === 'list' ? 'card' : 'list')}
+                className="p-1.5 rounded transition-all duration-200"
+                title={viewMode === 'list' ? 'Card view' : 'List view'}
+                style={{
+                  border: '1px solid rgba(0,229,255,0.12)',
+                  color: 'rgba(0,229,255,0.7)',
+                  background: 'transparent',
+                }}
+              >
+                {viewMode === 'list' ? <Layers size={14} /> : <LayoutList size={14} />}
+              </button>
+              <button
                 onClick={() => setShowFilters((v) => !v)}
                 className="p-1.5 rounded transition-all duration-200"
                 style={{
@@ -727,138 +814,148 @@ export default function DiscoverPage() {
       {showFilters && (
         <div
           className="flex-shrink-0 px-4 py-3 animate-fade-up"
-          style={{
-            background: 'rgba(7,7,26,0.95)',
-            borderBottom: '1px solid rgba(0,229,255,0.1)',
-          }}
+          style={{ background: 'rgba(7,7,26,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)' }}
         >
           <EventFilters filters={filters} onChange={setFilters} />
         </div>
       )}
 
-      {/* ── Progress bar ── */}
-      {events.length > 1 && (
-        <div className="flex-shrink-0 flex gap-0.5 px-4 py-1.5" style={{ background: 'rgba(4,4,13,0.6)' }}>
-          {events.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                setSlideDir(i > index ? 'next' : 'prev')
-                setIndex(i)
-                setTimeout(() => setSlideDir(null), 400)
-              }}
-              className="flex-1 rounded-full transition-all duration-300"
-              style={{
-                height: 2,
-                background: i === index
-                  ? '#00e5ff'
-                  : i < index
-                  ? 'rgba(0,229,255,0.25)'
-                  : 'rgba(0,229,255,0.08)',
-                boxShadow: i === index ? '0 0 6px rgba(0,229,255,0.7)' : 'none',
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* ── Main content area ── */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Card column */}
-        <div className="flex-1 flex flex-col relative overflow-hidden">
-          {/* Map overlay (slide-over) */}
+      {/* ── LIST VIEW ── */}
+      {viewMode === 'list' && (
+        <div className="flex-1 overflow-y-auto pb-20">
+          {/* Map overlay */}
           {showMap && (
-            <div
-              className="absolute inset-0 z-10"
-              style={{ background: '#07071a', border: '1px solid rgba(0,229,255,0.1)' }}
-            >
+            <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
               <EventMap events={events} onBoundsChange={setMapBounds} />
-              <div
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
-                style={{
-                  background: 'rgba(4,4,13,0.85)',
-                  border: '1px solid rgba(0,229,255,0.2)',
-                  color: 'rgba(0,229,255,0.7)',
-                  backdropFilter: 'blur(8px)',
-                  letterSpacing: '0.1em',
-                }}
-              >
-                {isLoading ? 'SCANNING...' : `${events.length} EVENTS NEARBY`}
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
+                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
+                {isLoading ? 'SCANNING...' : `${events.length} EVENTS`}
               </div>
             </div>
           )}
 
-          {/* Event card */}
-          <div className="flex-1 overflow-hidden">
-            {isLoading || events.length === 0 ? (
-              <EmptyState loading={isLoading} />
-            ) : (
-              <EventStage event={event!} dir={slideDir} />
-            )}
-          </div>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <div className="w-10 h-10 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>SCANNING AREA...</p>
+            </div>
+          ) : events.length === 0 ? (
+            <EmptyState loading={false} />
+          ) : (() => {
+            const now = Date.now()
+            const liveEvents = events.filter(e => {
+              const start = new Date(e.startsAt).getTime()
+              const end = e.endsAt ? new Date(e.endsAt).getTime() : start + 6 * 3600000
+              return start <= now && now <= end
+            })
+            const upcomingEvents = events.filter(e => new Date(e.startsAt).getTime() > now)
 
-          {/* ── Navigation arrows ── */}
-          {events.length > 1 && (
-            <div
-              className="flex-shrink-0 flex items-center justify-between px-4 py-3"
+            return (
+              <div className="px-4 py-4 space-y-6">
+                {/* LIVE NOW */}
+                {liveEvents.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#ff006e', boxShadow: '0 0 8px #ff006e' }} />
+                      <span className="text-[11px] font-black tracking-widest" style={{ color: '#ff006e' }}>LIVE NOW</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                        style={{ background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.3)', color: '#ff006e' }}>
+                        {liveEvents.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live />)}
+                    </div>
+                  </div>
+                )}
+
+                {/* UPCOMING */}
+                {upcomingEvents.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calendar size={12} style={{ color: '#00e5ff' }} />
+                      <span className="text-[11px] font-black tracking-widest" style={{ color: '#00e5ff' }}>UPCOMING</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                        style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+                        {upcomingEvents.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} />)}
+                    </div>
+                  </div>
+                )}
+
+                {liveEvents.length === 0 && upcomingEvents.length === 0 && (
+                  <EmptyState loading={false} />
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── CARD VIEW ── */}
+      {viewMode === 'card' && <>
+
+      {/* Progress bar */}
+      {events.length > 1 && (
+        <div className="flex-shrink-0 flex gap-0.5 px-4 py-1.5" style={{ background: 'rgba(4,4,13,0.6)' }}>
+          {events.map((_, i) => (
+            <button key={i}
+              onClick={() => { setSlideDir(i > index ? 'next' : 'prev'); setIndex(i); setTimeout(() => setSlideDir(null), 400) }}
+              className="flex-1 rounded-full transition-all duration-300"
               style={{
-                background: 'rgba(4,4,13,0.85)',
-                borderTop: '1px solid rgba(0,229,255,0.08)',
-              }}
-            >
-              <button
-                onClick={goPrev}
-                disabled={index === 0}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-xs transition-all duration-200 disabled:opacity-25"
-                style={{
-                  background: index === 0 ? 'transparent' : 'rgba(0,229,255,0.06)',
-                  border: '1px solid rgba(0,229,255,0.2)',
-                  color: '#00e5ff',
-                  letterSpacing: '0.1em',
-                }}
-              >
-                <ChevronLeft size={14} />
-                PREV
-              </button>
+                height: 2,
+                background: i === index ? '#00e5ff' : i < index ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.08)',
+                boxShadow: i === index ? '0 0 6px rgba(0,229,255,0.7)' : 'none',
+              }} />
+          ))}
+        </div>
+      )}
 
-              {/* Dot indicators */}
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col relative overflow-hidden">
+          {showMap && (
+            <div className="absolute inset-0 z-10" style={{ background: '#07071a', border: '1px solid rgba(0,229,255,0.1)' }}>
+              <EventMap events={events} onBoundsChange={setMapBounds} />
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
+                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
+                {isLoading ? 'SCANNING...' : `${events.length} EVENTS NEARBY`}
+              </div>
+            </div>
+          )}
+          <div className="flex-1 overflow-hidden">
+            {isLoading || events.length === 0 ? <EmptyState loading={isLoading} /> : <EventStage event={event!} dir={slideDir} />}
+          </div>
+          {events.length > 1 && (
+            <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
+              style={{ background: 'rgba(4,4,13,0.85)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+              <button onClick={goPrev} disabled={index === 0}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-xs transition-all duration-200 disabled:opacity-25"
+                style={{ background: index === 0 ? 'transparent' : 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                <ChevronLeft size={14} /> PREV
+              </button>
               <div className="flex items-center gap-1.5">
                 {events.slice(Math.max(0, index - 2), index + 3).map((_, relI) => {
                   const absI = Math.max(0, index - 2) + relI
-                  const isActive = absI === index
                   return (
-                    <div
-                      key={absI}
-                      className="rounded-full transition-all duration-300"
-                      style={{
-                        width: isActive ? 18 : 5,
-                        height: 5,
-                        background: isActive ? '#00e5ff' : 'rgba(0,229,255,0.2)',
-                        boxShadow: isActive ? '0 0 8px rgba(0,229,255,0.7)' : 'none',
-                      }}
-                    />
+                    <div key={absI} className="rounded-full transition-all duration-300"
+                      style={{ width: absI === index ? 18 : 5, height: 5, background: absI === index ? '#00e5ff' : 'rgba(0,229,255,0.2)', boxShadow: absI === index ? '0 0 8px rgba(0,229,255,0.7)' : 'none' }} />
                   )
                 })}
               </div>
-
-              <button
-                onClick={goNext}
-                disabled={index === events.length - 1}
+              <button onClick={goNext} disabled={index === events.length - 1}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-xs transition-all duration-200 disabled:opacity-25"
-                style={{
-                  background: index === events.length - 1 ? 'transparent' : 'rgba(0,229,255,0.06)',
-                  border: '1px solid rgba(0,229,255,0.2)',
-                  color: '#00e5ff',
-                  letterSpacing: '0.1em',
-                }}
-              >
-                NEXT
-                <ChevronRight size={14} />
+                style={{ background: index === events.length - 1 ? 'transparent' : 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                NEXT <ChevronRight size={14} />
               </button>
             </div>
           )}
         </div>
       </div>
+      </>}
       </>}
     </div>
   )

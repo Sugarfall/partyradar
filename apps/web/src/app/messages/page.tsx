@@ -1,170 +1,374 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { MessageCircle, Calendar, ChevronRight, Zap, LogIn } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL as API_BASE } from '@/lib/api'
+import { API_URL } from '@/lib/api'
 
-interface EventChat {
+interface OtherUser {
   id: string
-  name: string
-  startsAt: string
-  coverImageUrl?: string
-  type: string
-  _count?: { messages: number }
-  host: { displayName: string; photoUrl?: string }
+  displayName: string
+  photoUrl?: string | null
+  username?: string
 }
 
-function timeUntil(dateStr: string) {
-  const diff = new Date(dateStr).getTime() - Date.now()
-  if (diff < 0) return 'Past'
-  const h = Math.floor(diff / 3600000)
-  const d = Math.floor(h / 24)
-  if (d > 0) return `in ${d}d`
-  if (h > 0) return `in ${h}h`
-  return 'Tonight'
+interface Conversation {
+  id: string
+  updatedAt: string
+  other: OtherUser | null
+  lastMessage: { text: string; senderId: string; createdAt: string } | null
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  HOME_PARTY: '#ff006e',
-  CLUB_NIGHT: '#00e5ff',
-  CONCERT: '#3d5afe',
+interface DmMessage {
+  id: string
+  senderId: string
+  senderName: string
+  senderPhoto?: string | null
+  text: string
+  createdAt: string
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+function Avatar({ user, size = 40 }: { user: OtherUser; size?: number }) {
+  return user.photoUrl ? (
+    <img src={user.photoUrl} alt="" className="rounded-full object-cover shrink-0"
+      style={{ width: size, height: size }} />
+  ) : (
+    <div className="rounded-full flex items-center justify-center shrink-0 font-bold text-sm"
+      style={{ width: size, height: size, background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.3)', color: '#00e5ff' }}>
+      {user.displayName[0]?.toUpperCase()}
+    </div>
+  )
 }
 
 export default function MessagesPage() {
   const { dbUser } = useAuth()
-  const [chats, setChats] = useState<EventChat[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeConvo, setActiveConvo] = useState<string | null>(null)
+  const [messages, setMessages] = useState<DmMessage[]>([])
+  const [msgsLoading, setMsgsLoading] = useState(false)
+  const [activeOther, setActiveOther] = useState<OtherUser | null>(null)
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [search, setSearch] = useState('')
+  const [searchResults, setSearchResults] = useState<OtherUser[]>([])
+  const [searching, setSearching] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
 
+  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
+  const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
+
+  // Load conversations
   useEffect(() => {
-    async function load() {
-      if (!dbUser) {
-        setLoading(false)
-        return
-      }
-      try {
-        // Fetch events user has RSVPd to (confirmed) — these are their active chat rooms
-        const token = typeof window !== 'undefined'
-          ? localStorage.getItem('partyradar_mock_session') ?? ''
-          : ''
-        const res = await fetch(`${API_BASE}/events?rsvp=confirmed&limit=30`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        })
-        if (res.ok) {
-          const json = await res.json()
-          setChats(json.data ?? json ?? [])
-        }
-      } catch {
-        // show empty state
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
+    if (!dbUser) { setLoading(false); return }
+    fetch(`${API_URL}/dm`, { headers })
+      .then(r => r.json())
+      .then(j => setConversations(j.data ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [dbUser])
 
+  // Load messages when conversation selected
+  useEffect(() => {
+    if (!activeConvo) return
+    setMsgsLoading(true)
+    fetch(`${API_URL}/dm/${activeConvo}`, { headers })
+      .then(r => r.json())
+      .then(j => {
+        setMessages(j.data?.messages ?? [])
+        setActiveOther(j.data?.other ?? null)
+      })
+      .catch(() => {})
+      .finally(() => setMsgsLoading(false))
+  }, [activeConvo])
+
+  // Scroll to bottom when messages update
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  // Search users
+  useEffect(() => {
+    if (!search.trim()) { setSearchResults([]); return }
+    const t = setTimeout(() => {
+      setSearching(true)
+      fetch(`${API_URL}/dm/users?q=${encodeURIComponent(search)}`, { headers })
+        .then(r => r.json())
+        .then(j => setSearchResults(j.data ?? []))
+        .catch(() => {})
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  async function openOrCreateConvo(recipientId: string) {
+    const res = await fetch(`${API_URL}/dm`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ recipientId }),
+    })
+    const j = await res.json()
+    if (j.data?.id) {
+      setSearch('')
+      setSearchResults([])
+      setActiveConvo(j.data.id)
+      // Refresh list
+      fetch(`${API_URL}/dm`, { headers })
+        .then(r => r.json())
+        .then(d => setConversations(d.data ?? []))
+        .catch(() => {})
+    }
+  }
+
+  async function sendMessage() {
+    if (!text.trim() || !activeConvo || sending) return
+    setSending(true)
+    const draft = text.trim()
+    setText('')
+    try {
+      const res = await fetch(`${API_URL}/dm/${activeConvo}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text: draft }),
+      })
+      const j = await res.json()
+      if (j.data) setMessages(prev => [...prev, j.data])
+    } catch {
+      setText(draft) // restore on fail
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // ── Not logged in ──────────────────────────────────────────────────────────
+  if (!dbUser && !loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4"
+        style={{ background: '#04040d', paddingTop: 56 }}>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+          style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
+          <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.3)' }} />
+        </div>
+        <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.6)' }}>LOG IN TO SEND MESSAGES</p>
+        <div className="flex gap-2">
+          <a href="/login"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
+            style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+            <LogIn size={11} /> LOG IN
+          </a>
+          <a href="/discover"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
+            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(0,229,255,0.5)' }}>
+            <Zap size={11} /> DISCOVER
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Conversation view ──────────────────────────────────────────────────────
+  if (activeConvo) {
+    return (
+      <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem)', background: '#04040d' }}>
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+          style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
+          <button onClick={() => { setActiveConvo(null); setMessages([]) }}
+            className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
+            <ArrowLeft size={18} />
+          </button>
+          {activeOther && <Avatar user={activeOther} size={32} />}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>
+              {activeOther?.displayName ?? '...'}
+            </p>
+            {activeOther?.username && (
+              <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{activeOther.username}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {msgsLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-6 h-6 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-2">
+              <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Start the conversation</p>
+            </div>
+          ) : (
+            messages.map(m => {
+              const isMe = m.senderId === dbUser?.id
+              return (
+                <div key={m.id} className={`flex gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  {!isMe && activeOther && <Avatar user={activeOther} size={28} />}
+                  <div className="max-w-[72%]">
+                    <div className="px-3 py-2 rounded-2xl text-sm"
+                      style={isMe
+                        ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
+                        : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }
+                      }>
+                      {m.text}
+                    </div>
+                    <p className={`text-[9px] mt-0.5 ${isMe ? 'text-right' : 'text-left'}`}
+                      style={{ color: 'rgba(224,242,254,0.2)' }}>
+                      {timeAgo(m.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              )
+            })
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div className="flex-shrink-0 px-4 py-3 flex gap-2"
+          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          <input
+            type="text"
+            placeholder="Message..."
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!text.trim() || sending}
+            className="p-2.5 rounded-xl transition-all"
+            style={{
+              background: text.trim() ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.04)',
+              border: `1px solid ${text.trim() ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.1)'}`,
+              color: text.trim() ? '#00e5ff' : 'rgba(0,229,255,0.2)',
+            }}>
+            <Send size={16} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Conversations list ─────────────────────────────────────────────────────
   return (
     <div className="min-h-screen pb-28" style={{ background: '#04040d', paddingTop: 56 }}>
       {/* Header */}
-      <div className="px-4 pt-6 pb-4 max-w-xl mx-auto">
+      <div className="px-4 pt-6 pb-3 max-w-xl mx-auto">
         <div className="flex items-center gap-2 mb-1">
           <MessageCircle size={16} style={{ color: '#00e5ff' }} />
           <h1 className="text-lg font-black tracking-widest" style={{ color: '#e0f2fe' }}>MESSAGES</h1>
         </div>
-        <p className="text-xs" style={{ color: 'rgba(224,242,254,0.35)' }}>Group chats for events you're attending</p>
+        <p className="text-xs mb-3" style={{ color: 'rgba(224,242,254,0.35)' }}>Direct messages with other users</p>
+
+        {/* Search / new DM */}
+        <div className="relative">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+          <input
+            type="text"
+            placeholder="Search users to message..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-8 pr-3 py-2.5 rounded-xl text-xs bg-transparent outline-none"
+            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }}
+          />
+        </div>
+
+        {/* Search results */}
+        {search.trim() && (
+          <div className="mt-2 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.12)', background: 'rgba(7,7,26,0.95)' }}>
+            {searching ? (
+              <div className="py-4 flex justify-center">
+                <div className="w-4 h-4 rounded-full border-2 animate-spin"
+                  style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+              </div>
+            ) : searchResults.length === 0 ? (
+              <div className="py-4 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No users found</div>
+            ) : (
+              searchResults.map(u => (
+                <button key={u.id} onClick={() => openOrCreateConvo(u.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
+                  style={{ borderBottom: '1px solid rgba(0,229,255,0.06)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.05)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <Avatar user={u} size={36} />
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                    {u.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Conversations list */}
       <div className="px-4 max-w-xl mx-auto space-y-2">
-        {!dbUser && !loading ? (
-          <div className="py-20 flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
-              <LogIn size={24} style={{ color: 'rgba(0,229,255,0.3)' }} />
-            </div>
-            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOG IN TO SEE YOUR CHATS</p>
-            <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>
-              RSVP to events to join their group chat
-            </p>
-            <div className="flex gap-2 mt-2">
-              <Link href="/login"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
-                style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
-                <LogIn size={11} /> LOG IN
-              </Link>
-              <Link href="/discover"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
-                style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(0,229,255,0.6)' }}>
-                <Zap size={11} /> DISCOVER EVENTS
-              </Link>
-            </div>
-          </div>
-        ) : loading ? (
+        {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
           ))
-        ) : chats.length === 0 ? (
-          <div className="py-20 flex flex-col items-center gap-3">
+        ) : conversations.length === 0 ? (
+          <div className="py-16 flex flex-col items-center gap-3">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
               style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
-              <MessageCircle size={24} style={{ color: 'rgba(0,229,255,0.3)' }} />
+              <User size={24} style={{ color: 'rgba(0,229,255,0.3)' }} />
             </div>
-            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>NO CHATS YET</p>
+            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>NO MESSAGES YET</p>
             <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>
-              RSVP to events to join their group chat
+              Search for a user above to start a conversation
             </p>
-            <Link href="/discover"
-              className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
-              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
-              <Zap size={11} /> DISCOVER EVENTS
-            </Link>
           </div>
         ) : (
-          chats.map((event) => {
-            const color = TYPE_COLORS[event.type] ?? '#00e5ff'
-            return (
-              <Link key={event.id} href={`/events/${event.id}`}
-                className="flex items-center gap-3 p-3 rounded-2xl transition-all"
-                style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,229,255,0.2)' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,229,255,0.08)' }}
-              >
-                {/* Avatar */}
-                <div className="relative shrink-0">
-                  {event.coverImageUrl ? (
-                    <img src={event.coverImageUrl} alt="" className="w-12 h-12 rounded-xl object-cover" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-                      style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
-                      <Calendar size={18} style={{ color }} />
-                    </div>
-                  )}
-                  {/* Live dot for upcoming */}
-                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 flex items-center justify-center"
-                    style={{ background: color, borderColor: '#04040d', boxShadow: `0 0 6px ${color}` }} />
+          conversations.map(c => (
+            <button key={c.id} onClick={() => setActiveConvo(c.id)}
+              className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all"
+              style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.2)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.08)')}>
+              {c.other ? <Avatar user={c.other} size={44} /> : (
+                <div className="w-11 h-11 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
+                  <User size={18} style={{ color: 'rgba(0,229,255,0.3)' }} />
                 </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{event.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
-                      style={{ color, background: `${color}12`, border: `1px solid ${color}25` }}>
-                      {event.type.replace('_', ' ')}
-                    </span>
-                    <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>
-                      {timeUntil(event.startsAt)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0" style={{ color: 'rgba(0,229,255,0.3)' }}>
-                  <MessageCircle size={13} />
-                  <ChevronRight size={13} />
-                </div>
-              </Link>
-            )
-          })
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>
+                  {c.other?.displayName ?? 'Unknown User'}
+                </p>
+                {c.lastMessage ? (
+                  <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                    {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}{c.lastMessage.text}
+                  </p>
+                ) : (
+                  <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.3)' }}>No messages yet</p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                {c.lastMessage && (
+                  <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                    {timeAgo(c.lastMessage.createdAt)}
+                  </span>
+                )}
+                <MessageCircle size={12} style={{ color: 'rgba(0,229,255,0.2)' }} />
+              </div>
+            </button>
+          ))
         )}
       </div>
     </div>

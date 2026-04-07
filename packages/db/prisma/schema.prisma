@@ -100,6 +100,8 @@ model User {
   subscription  Subscription?
   claimedVenues Venue[]             @relation("ClaimedVenues")
   sentMessages  Message[]           @relation("SentMessages")
+  sentDMs       DirectMessage[]     @relation("SentDMs")
+  conversations ConversationParticipant[]
 
   following        Follow[]      @relation("UserFollowing")
   followers        Follow[]      @relation("UserFollowers")
@@ -283,6 +285,41 @@ model Venue {
 
   @@index([lat, lng])
   @@index([city])
+}
+
+// ─── Direct Messages ──────────────────────────────────────────────────────────
+
+model Conversation {
+  id           String                    @id @default(cuid())
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  lastMessage  String?
+  lastAt       DateTime?
+  participants ConversationParticipant[]
+  messages     DirectMessage[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  senderId       String
+  text           String       @db.Text
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentDMs", fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────

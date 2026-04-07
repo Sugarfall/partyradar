@@ -23,6 +23,7 @@ import adminRouter from './routes/admin'
 import webhooksRouter from './routes/webhooks'
 import friendsGoingRouter from './routes/friendsGoing'
 import messagesRouter from './routes/messages'
+import dmRouter from './routes/dm'
 import eventbriteRouter from './routes/eventbrite'
 import socialRouter from './routes/social'
 import venuesRouter from './routes/venues'
@@ -241,6 +242,7 @@ app.use('/api/uploads', uploadsRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/webhooks', webhooksRouter)
 app.use('/api/messages', messagesRouter)
+app.use('/api/dm', dmRouter)
 app.use('/api/eventbrite', eventbriteRouter)
 app.use('/api/social', socialRouter)
 app.use('/api/venues', venuesRouter)

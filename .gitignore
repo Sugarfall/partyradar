@@ -34,3 +34,5 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+scripts/railway-deploy.mjs
+scripts/reseed-events.mjs
