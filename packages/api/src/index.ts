@@ -204,11 +204,19 @@ io.on('connection', (socket) => {
 
 app.use(helmet())
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    process.env['FRONTEND_URL'] ?? '',
-  ].filter(Boolean),
+  origin: (origin, callback) => {
+    const allowed = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      process.env['FRONTEND_URL'] ?? '',
+    ].filter(Boolean)
+    // Allow all Vercel deployments and requests with no origin (curl, mobile)
+    if (!origin || allowed.includes(origin) || origin.endsWith('.vercel.app')) {
+      callback(null, true)
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`))
+    }
+  },
   credentials: true,
 }))
 app.use(morgan('dev'))
