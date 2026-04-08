@@ -84,20 +84,58 @@ function Avatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: s
 // ─── Community: Group Browser ─────────────────────────────────────────────────
 
 function GroupBrowser({
-  groups, onOpen,
+  groups, onOpen, onCreateGroup, dbUserId,
 }: {
   groups: GroupChat[]
   onOpen: (g: GroupChat) => void
+  onCreateGroup: (group: GroupChat) => void
+  dbUserId: string | null
 }) {
   const [sub, setSub] = useState<'genres' | 'venues'>('genres')
+  const [showCreate, setShowCreate] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [newEmoji, setNewEmoji] = useState('💬')
+  const [newColor, setNewColor] = useState('#6366f1')
+  const [creating, setCreating] = useState(false)
+
+  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
 
   const genres = groups.filter((g) => g.type === 'GENRE')
   const venues = groups.filter((g) => g.type === 'VENUE')
 
-  const GENRE_ORDER = ['genre-rave', 'genre-house', 'genre-rnb', 'genre-trippy']
-  const sortedGenres = [...genres].sort(
-    (a, b) => GENRE_ORDER.indexOf(a.slug) - GENRE_ORDER.indexOf(b.slug),
-  )
+  const GENRE_ORDER = ['genre-rave', 'genre-house', 'genre-rnb', 'genre-trippy', 'genre-dnb', 'genre-afrobeats', 'genre-rock', 'genre-electronic']
+  const sortedGenres = [...genres].sort((a, b) => {
+    const aIdx = GENRE_ORDER.indexOf(a.slug)
+    const bIdx = GENRE_ORDER.indexOf(b.slug)
+    // Known genres first, then user-created sorted by name
+    if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx
+    if (aIdx >= 0) return -1
+    if (bIdx >= 0) return 1
+    return a.name.localeCompare(b.name)
+  })
+
+  async function handleCreate() {
+    if (!newName.trim() || creating) return
+    setCreating(true)
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const r = await fetch(`${API_URL}/groups`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() || undefined, emoji: newEmoji, coverColor: newColor }),
+      })
+      const j = await r.json()
+      if (j.data) {
+        onCreateGroup(j.data)
+        setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
+      }
+    } catch {}
+    finally { setCreating(false) }
+  }
+
+  const COLORS = ['#a855f7', '#3b82f6', '#ec4899', '#10b981', '#f97316', '#ef4444', '#06b6d4', '#6366f1', '#eab308', '#f43f5e']
+  const EMOJIS = ['💬', '🎵', '🎉', '🌙', '🔥', '💜', '🎶', '⚡', '🌈', '🫶', '🎪', '🤙']
 
   return (
     <div className="pb-28">
@@ -189,6 +227,83 @@ function GroupBrowser({
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Create group button */}
+      {dbUserId && (
+        <div className="px-4 mt-4">
+          <button onClick={() => setShowCreate(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest transition-all"
+            style={{ background: 'rgba(0,229,255,0.04)', border: '1px dashed rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.5)' }}>
+            + CREATE GROUP
+          </button>
+        </div>
+      )}
+
+      {/* Create group modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowCreate(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)' }}>
+            <p className="text-xs font-black tracking-widest" style={{ color: '#00e5ff' }}>CREATE GROUP</p>
+
+            <input type="text" placeholder="Group name" value={newName}
+              onChange={(e) => setNewName(e.target.value.slice(0, 40))}
+              className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+              style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+
+            <input type="text" placeholder="Description (optional)" value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value.slice(0, 200))}
+              className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+              style={{ border: '1px solid rgba(0,229,255,0.1)', color: '#e0f2fe' }} />
+
+            {/* Emoji picker */}
+            <div>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>EMOJI</p>
+              <div className="flex flex-wrap gap-2">
+                {EMOJIS.map((e) => (
+                  <button key={e} onClick={() => setNewEmoji(e)}
+                    className="w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all"
+                    style={{
+                      background: newEmoji === e ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.03)',
+                      border: `1px solid ${newEmoji === e ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                    }}>{e}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Color picker */}
+            <div>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>COLOR</p>
+              <div className="flex flex-wrap gap-2">
+                {COLORS.map((c) => (
+                  <button key={c} onClick={() => setNewColor(c)}
+                    className="w-7 h-7 rounded-full transition-all"
+                    style={{
+                      background: c,
+                      border: newColor === c ? '2px solid #e0f2fe' : '2px solid transparent',
+                      boxShadow: newColor === c ? `0 0 8px ${c}` : 'none',
+                    }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="p-3 rounded-xl" style={{ background: `${newColor}18`, border: `1px solid ${newColor}40` }}>
+              <span className="text-2xl">{newEmoji}</span>
+              <p className="text-sm font-black mt-1" style={{ color: '#e0f2fe' }}>{newName || 'Group Name'}</p>
+              {newDesc && <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{newDesc}</p>}
+            </div>
+
+            <button onClick={handleCreate} disabled={!newName.trim() || creating}
+              className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
+              style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}>
+              {creating ? 'CREATING...' : 'CREATE GROUP'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -767,7 +882,9 @@ export default function MessagesPage() {
               <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOADING GROUPS…</p>
             </div>
           ) : (
-            <GroupBrowser groups={groups} onOpen={(g) => setActiveGroupId(g.id)} />
+            <GroupBrowser groups={groups} dbUserId={dbUser?.id ?? null}
+              onOpen={(g) => setActiveGroupId(g.id)}
+              onCreateGroup={(g) => { setGroups((prev) => [...prev, g]); setActiveGroupId(g.id) }} />
           )}
         </>
       )}

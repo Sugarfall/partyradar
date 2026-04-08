@@ -7,10 +7,14 @@ import { AppError } from '../middleware/errorHandler'
 const router = Router()
 
 export const GENRE_GROUPS = [
-  { slug: 'genre-rave',   name: 'Rave',   description: 'Underground raves, techno nights, warehouse parties',  emoji: '🎧', coverColor: '#a855f7' },
-  { slug: 'genre-house',  name: 'House',  description: 'Deep house, tech house, garage and club classics',       emoji: '🏠', coverColor: '#3b82f6' },
-  { slug: 'genre-rnb',    name: 'R&B',    description: 'R&B, soul, hip-hop and neo-soul nights',                emoji: '🎤', coverColor: '#ec4899' },
-  { slug: 'genre-trippy', name: 'Trippy', description: 'Psychedelic, experimental and mind-bending sounds',     emoji: '🌀', coverColor: '#10b981' },
+  { slug: 'genre-rave',      name: 'Rave',       description: 'Underground raves, techno nights, warehouse parties',   emoji: '🎧', coverColor: '#a855f7' },
+  { slug: 'genre-house',     name: 'House',      description: 'Deep house, tech house, garage and club classics',      emoji: '🏠', coverColor: '#3b82f6' },
+  { slug: 'genre-rnb',       name: 'R&B',        description: 'R&B, soul, hip-hop and neo-soul nights',                emoji: '🎤', coverColor: '#ec4899' },
+  { slug: 'genre-trippy',    name: 'Trippy',     description: 'Psychedelic, experimental and mind-bending sounds',     emoji: '🌀', coverColor: '#10b981' },
+  { slug: 'genre-dnb',       name: 'Drum & Bass', description: 'DnB, jungle, breakbeat and liquid vibes',             emoji: '🥁', coverColor: '#f97316' },
+  { slug: 'genre-afrobeats', name: 'Afrobeats',  description: 'Afrobeats, amapiano, dancehall and Caribbean sounds',   emoji: '🌍', coverColor: '#eab308' },
+  { slug: 'genre-rock',      name: 'Rock & Indie', description: 'Rock, indie, punk, shoegaze and guitar music',       emoji: '🎸', coverColor: '#ef4444' },
+  { slug: 'genre-electronic', name: 'Electronic', description: 'Ambient, IDM, synth and experimental electronics',    emoji: '⚡', coverColor: '#06b6d4' },
 ]
 
 /** Seed genre + venue group chats — idempotent, called from admin seed */
@@ -97,6 +101,53 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     })
 
     res.json({ data })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/groups — create a new community group */
+router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { name, description, emoji, coverColor } = req.body as {
+      name: string; description?: string; emoji?: string; coverColor?: string
+    }
+    if (!name?.trim() || name.trim().length < 2) throw new AppError('Group name must be at least 2 characters', 400)
+    if (name.trim().length > 40) throw new AppError('Group name too long (max 40)', 400)
+
+    const slug = `user-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString(36)}`
+
+    const group = await prisma.groupChat.create({
+      data: {
+        slug,
+        name: name.trim(),
+        description: description?.trim()?.slice(0, 200) ?? null,
+        type: 'GENRE',
+        emoji: emoji?.trim() || '💬',
+        coverColor: coverColor || '#6366f1',
+      },
+    })
+
+    // Auto-join creator
+    await prisma.groupMembership.create({ data: { groupId: group.id, userId } })
+    await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: 1 } })
+
+    res.status(201).json({
+      data: {
+        id: group.id,
+        slug: group.slug,
+        name: group.name,
+        description: group.description,
+        type: group.type,
+        emoji: group.emoji,
+        coverColor: group.coverColor,
+        memberCount: 1,
+        isJoined: true,
+        notificationsEnabled: true,
+        lastMessage: null,
+      },
+    })
   } catch (err) {
     next(err)
   }

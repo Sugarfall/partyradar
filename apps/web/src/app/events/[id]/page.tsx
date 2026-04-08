@@ -137,6 +137,7 @@ export default function EventDetailPage() {
   const [msgText, setMsgText] = useState('')
   const [msgSending, setMsgSending] = useState(false)
   const [msgSent, setMsgSent] = useState(false)
+  const [interested, setInterested] = useState(false)
 
   const isHostView = !!dbUser && event?.hostId === dbUser.id
 
@@ -934,7 +935,7 @@ export default function EventDetailPage() {
       {/* ── Fixed action bar (guests only) ── */}
       {!isHost && !event.isCancelled && (
         <div
-          className="z-30 px-4 py-4"
+          className="z-30 px-4 py-3"
           style={{
             position: 'fixed',
             bottom: 64,
@@ -946,24 +947,6 @@ export default function EventDetailPage() {
           }}
         >
           <div className="max-w-2xl mx-auto">
-            {/* Who's going count */}
-            {!rsvpDone && (event.guestCount ?? 0) > 0 && (
-              <div className="flex items-center justify-center gap-1.5 mb-2">
-                <Users size={12} style={{ color: 'rgba(0,229,255,0.5)' }} />
-                <span className="text-[11px] font-bold" style={{ color: 'rgba(0,229,255,0.55)' }}>
-                  {event.guestCount ?? 0} {(event.guestCount ?? 0) === 1 ? 'person' : 'people'} going
-                </span>
-              </div>
-            )}
-            {!rsvpDone && !(event.guestCount ?? 0) && (
-              <div className="flex items-center justify-center gap-1.5 mb-2">
-                <Users size={12} style={{ color: 'rgba(0,229,255,0.35)' }} />
-                <span className="text-[11px] font-bold" style={{ color: 'rgba(74,96,128,0.5)' }}>
-                  Be the first to RSVP
-                </span>
-              </div>
-            )}
-
             {actionError && (
               <p className="text-xs font-medium mb-2 px-3 py-2 rounded-lg"
                 style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
@@ -972,16 +955,15 @@ export default function EventDetailPage() {
             )}
 
             {rsvpDone ? (
-              /* Success state */
-              <div className="flex items-center justify-center gap-3 py-3 rounded-xl animate-fade-up"
+              <div className="flex items-center justify-center gap-3 py-3 rounded-xl"
                 style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)' }}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center"
                   style={{ background: '#00ff88', boxShadow: '0 0 16px rgba(0,255,136,0.5)' }}>
                   <Check size={14} color="#04040d" strokeWidth={3} />
                 </div>
                 <div>
-                  <p className="text-sm font-black" style={{ color: '#00ff88' }}>YOU'RE IN!</p>
-                  <p className="text-[10px]" style={{ color: 'rgba(0,255,136,0.6)' }}>RSVP confirmed · Check your tickets</p>
+                  <p className="text-sm font-black" style={{ color: '#00ff88' }}>YOU'RE GOING!</p>
+                  <p className="text-[10px]" style={{ color: 'rgba(0,255,136,0.6)' }}>RSVP confirmed · See you there</p>
                 </div>
                 <Link href="/profile"
                   className="ml-auto text-[10px] font-bold flex items-center gap-1 px-3 py-1.5 rounded-lg"
@@ -990,68 +972,123 @@ export default function EventDetailPage() {
                 </Link>
               </div>
             ) : isFull ? (
-              <div className="flex items-center justify-center py-3 rounded-xl"
-                style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.2)' }}>
-                <p className="text-sm font-black tracking-widest" style={{ color: '#ff006e' }}>EVENT IS FULL</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-center py-3 rounded-xl"
+                  style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                  <p className="text-sm font-black tracking-widest" style={{ color: '#ff006e' }}>EVENT IS FULL</p>
+                </div>
+                {!interested && (
+                  <button onClick={() => setInterested(true)}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black transition-all"
+                    style={{ background: 'rgba(255,214,0,0.06)', border: '1px solid rgba(255,214,0,0.25)', color: '#ffd600', letterSpacing: '0.1em' }}>
+                    <Star size={13} /> INTERESTED — NOTIFY WHEN SPOTS OPEN
+                  </button>
+                )}
+                {interested && (
+                  <div className="flex items-center justify-center gap-2 py-3 rounded-xl"
+                    style={{ background: 'rgba(255,214,0,0.06)', border: '1px solid rgba(255,214,0,0.25)' }}>
+                    <Check size={13} style={{ color: '#ffd600' }} />
+                    <span className="text-xs font-black" style={{ color: '#ffd600' }}>INTERESTED — WE'LL NOTIFY YOU</span>
+                  </div>
+                )}
               </div>
-            ) : isFree ? (
-              <button
-                onClick={handleRSVP}
-                disabled={rsvpLoading}
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,229,255,0.1))',
-                  border: '1px solid rgba(0,255,136,0.45)',
-                  color: '#00ff88',
-                  boxShadow: '0 0 24px rgba(0,255,136,0.2)',
-                  letterSpacing: '0.1em',
-                }}
-              >
-                {rsvpLoading
-                  ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CONFIRMING...</>
-                  : <><Zap size={15} /> RSVP — FREE ENTRY</>
-                }
-              </button>
             ) : (
               <>
-              {/* Quantity selector */}
-              <div className="flex items-center justify-center gap-3 mb-3">
-                <button onClick={() => setTicketQty(q => Math.max(1, q - 1))}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition-all"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e0f2fe' }}>
-                  −
-                </button>
-                <span className="text-sm font-bold w-16 text-center" style={{ color: '#e0f2fe' }}>
-                  {ticketQty} ticket{ticketQty > 1 ? 's' : ''}
-                </span>
-                <button onClick={() => setTicketQty(q => Math.min(10, q + 1))}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition-all"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e0f2fe' }}>
-                  +
-                </button>
-              </div>
-              <button
-                onClick={handleTicketCheckout}
-                disabled={ticketLoading}
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50"
-                style={{
-                  background: `linear-gradient(135deg, ${tc.color}18, rgba(61,90,254,0.12))`,
-                  border: `1px solid ${tc.color}50`,
-                  color: tc.color,
-                  boxShadow: `0 0 24px ${tc.glow}`,
-                  letterSpacing: '0.1em',
-                }}
-              >
-                {ticketLoading
-                  ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> REDIRECTING...</>
-                  : <><QrCode size={15} /> BUY TICKET — £{(event.price * ticketQty).toFixed(2)}{ticketQty > 1 ? ` (×${ticketQty})` : ''}</>
-                }
-              </button>
+                {/* Going / Interested / Ticket row */}
+                <div className="flex gap-2 mb-2">
+                  {isFree ? (
+                    <>
+                      <button
+                        onClick={handleRSVP}
+                        disabled={rsvpLoading}
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,229,255,0.1))',
+                          border: '1px solid rgba(0,255,136,0.45)',
+                          color: '#00ff88',
+                          boxShadow: '0 0 20px rgba(0,255,136,0.15)',
+                          letterSpacing: '0.08em',
+                        }}>
+                        {rsvpLoading
+                          ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /></>
+                          : <><Check size={14} /> GOING</>
+                        }
+                      </button>
+                      <button
+                        onClick={() => setInterested(!interested)}
+                        className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-black text-xs transition-all"
+                        style={{
+                          background: interested ? 'rgba(255,214,0,0.12)' : 'rgba(255,214,0,0.04)',
+                          border: `1px solid ${interested ? 'rgba(255,214,0,0.5)' : 'rgba(255,214,0,0.2)'}`,
+                          color: interested ? '#ffd600' : 'rgba(255,214,0,0.6)',
+                          letterSpacing: '0.08em',
+                        }}>
+                        <Star size={13} fill={interested ? 'currentColor' : 'none'} />
+                        {interested ? 'SAVED' : 'INTERESTED'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleTicketCheckout}
+                        disabled={ticketLoading}
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50"
+                        style={{
+                          background: `linear-gradient(135deg, ${tc.color}18, rgba(61,90,254,0.12))`,
+                          border: `1px solid ${tc.color}50`,
+                          color: tc.color,
+                          boxShadow: `0 0 20px ${tc.glow}`,
+                          letterSpacing: '0.08em',
+                        }}>
+                        {ticketLoading
+                          ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /></>
+                          : <><QrCode size={14} /> BUY TICKET — £{(event.price * ticketQty).toFixed(2)}</>
+                        }
+                      </button>
+                      <button
+                        onClick={() => setInterested(!interested)}
+                        className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-black text-xs transition-all"
+                        style={{
+                          background: interested ? 'rgba(255,214,0,0.12)' : 'rgba(255,214,0,0.04)',
+                          border: `1px solid ${interested ? 'rgba(255,214,0,0.5)' : 'rgba(255,214,0,0.2)'}`,
+                          color: interested ? '#ffd600' : 'rgba(255,214,0,0.6)',
+                          letterSpacing: '0.08em',
+                        }}>
+                        <Star size={13} fill={interested ? 'currentColor' : 'none'} />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Ticket qty selector for paid events */}
+                {!isFree && (
+                  <div className="flex items-center justify-center gap-3 mb-1">
+                    <button onClick={() => setTicketQty(q => Math.max(1, q - 1))}
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e0f2fe' }}>−</button>
+                    <span className="text-xs font-bold w-14 text-center" style={{ color: '#e0f2fe' }}>
+                      {ticketQty} ticket{ticketQty > 1 ? 's' : ''}
+                    </span>
+                    <button onClick={() => setTicketQty(q => Math.min(10, q + 1))}
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e0f2fe' }}>+</button>
+                  </div>
+                )}
+
+                {/* People going */}
+                <div className="flex items-center justify-center gap-1.5">
+                  <Users size={10} style={{ color: 'rgba(0,229,255,0.4)' }} />
+                  <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.45)' }}>
+                    {(event.guestCount ?? 0) > 0
+                      ? `${event.guestCount} going`
+                      : 'Be the first to go'}
+                  </span>
+                </div>
               </>
             )}
 
-            {/* Live chat — guest action bar */}
-            <div className="mt-2 flex justify-center">
+            {/* Live chat */}
+            <div className="mt-1.5 flex justify-center">
               <EventChat eventId={event.id} eventName={event.name} />
             </div>
           </div>

@@ -232,16 +232,18 @@ export function useEvents(query: EventDiscoverQuery = {}) {
     if (v !== undefined) params.set(k, String(v))
   })
 
-  const { data, error, isLoading } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
+  const { data, error, isLoading, isValidating, mutate } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
     `/events?${params.toString()}`,
     fetcher,
     {
       shouldRetryOnError: true,
-      errorRetryCount: 3,
-      errorRetryInterval: 5000,
+      errorRetryCount: 5,
+      errorRetryInterval: 3000,
       refreshInterval: 60000,
       revalidateOnFocus: true,
-      keepPreviousData: true,   // never flash empty while revalidating
+      revalidateOnMount: true,
+      dedupingInterval: 0,        // always fetch fresh on mount
+      keepPreviousData: true,     // never flash empty while revalidating
     }
   )
 
@@ -253,9 +255,10 @@ export function useEvents(query: EventDiscoverQuery = {}) {
     events,
     total: DEV_MODE && (!data || error) ? devEvents.length : (data?.total ?? 0),
     hasMore: false,
-    isLoading: !DEV_MODE && isLoading && !data, // only show loading on first load, not on revalidation
-    error,
-    mutate: () => {},
+    // Keep showing spinner until data arrives — don't flash empty on initial load or retries
+    isLoading: !DEV_MODE && !data && (isLoading || isValidating || !error),
+    error: data ? null : error,
+    mutate,
   }
 }
 
