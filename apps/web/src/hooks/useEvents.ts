@@ -235,7 +235,14 @@ export function useEvents(query: EventDiscoverQuery = {}) {
   const { data, error, isLoading } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
     `/events?${params.toString()}`,
     fetcher,
-    { shouldRetryOnError: false, refreshInterval: 60000, revalidateOnFocus: true }
+    {
+      shouldRetryOnError: true,
+      errorRetryCount: 3,
+      errorRetryInterval: 5000,
+      refreshInterval: 60000,
+      revalidateOnFocus: true,
+      keepPreviousData: true,   // never flash empty while revalidating
+    }
   )
 
   // In dev mode merge demo events + Glasgow venue events + any user-created events from localStorage
@@ -246,7 +253,7 @@ export function useEvents(query: EventDiscoverQuery = {}) {
     events,
     total: DEV_MODE && (!data || error) ? devEvents.length : (data?.total ?? 0),
     hasMore: false,
-    isLoading: !DEV_MODE && isLoading,
+    isLoading: !DEV_MODE && isLoading && !data, // only show loading on first load, not on revalidation
     error,
     mutate: () => {},
   }

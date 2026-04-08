@@ -333,7 +333,27 @@ router.post('/seed-activity', async (_req, res, next) => {
       const hostId = hosts[def.hostKey]
       if (!venue || !hostId) continue
       const existing = await prisma.event.findFirst({ where: { name: def.name, hostId } })
-      if (existing) { createdEventIds.push(existing.id); continue }
+      // If event exists but has expired, update its dates to new future times
+      if (existing) {
+        const hasExpired = existing.startsAt < new Date()
+        if (hasExpired) {
+          await prisma.event.update({
+            where: { id: existing.id },
+            data: {
+              startsAt: def.startsAt,
+              endsAt: def.endsAt,
+              isCancelled: false,
+              isPublished: true,
+              ticketsRemaining: Math.floor(def.capacity * 0.4),
+            },
+          })
+          createdEventIds.push(existing.id)
+          eventsCreated++
+        } else {
+          createdEventIds.push(existing.id)
+        }
+        continue
+      }
       const event = await prisma.event.create({
         data: {
           name: def.name, hostId, venueId: venue.id,
