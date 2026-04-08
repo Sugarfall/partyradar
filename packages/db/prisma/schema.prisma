@@ -66,6 +66,11 @@ enum VenueType {
   LOUNGE
 }
 
+enum GroupType {
+  GENRE
+  VENUE
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -112,6 +117,8 @@ model User {
   createdSquads    Squad[]       @relation("CreatedSquads")
   squadMemberships SquadMember[]
   savedEvents      SavedEvent[]
+  groupMemberships  GroupMembership[]
+  sentGroupMessages GroupMessage[] @relation("SentGroupMessages")
 }
 
 model Event {
@@ -450,4 +457,49 @@ model SavedEvent {
 
   @@unique([userId, eventId])
   @@index([userId])
+}
+
+// ─── Group Chats ──────────────────────────────────────────────────────────────
+
+model GroupChat {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  type        GroupType
+  emoji       String    @default("🎉")
+  coverColor  String    @default("#a855f7")
+  memberCount Int       @default(0)
+  lastMessage String?
+  lastAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  memberships GroupMembership[]
+  messages    GroupMessage[]
+}
+
+model GroupMembership {
+  id                   String    @id @default(cuid())
+  groupId              String
+  userId               String
+  notificationsEnabled Boolean   @default(true)
+  joinedAt             DateTime  @default(now())
+  group                GroupChat @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId])
+}
+
+model GroupMessage {
+  id        String    @id @default(cuid())
+  groupId   String
+  senderId  String
+  text      String    @db.Text
+  createdAt DateTime  @default(now())
+  group     GroupChat @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender    User      @relation("SentGroupMessages", fields: [senderId], references: [id])
+
+  @@index([groupId, createdAt])
 }

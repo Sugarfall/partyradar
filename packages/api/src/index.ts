@@ -29,6 +29,7 @@ import socialRouter from './routes/social'
 import venuesRouter from './routes/venues'
 import followRouter from './routes/follow'
 import feedRouter from './routes/feed'
+import groupsRouter from './routes/groups'
 import checkinsRouter from './routes/checkins'
 import postsRouter from './routes/posts'
 import reviewsRouter from './routes/reviews'
@@ -252,6 +253,7 @@ app.use('/api/checkins', checkinsRouter)
 app.use('/api/posts', postsRouter)
 app.use('/api/reviews', reviewsRouter)
 app.use('/api/blast', blastRouter)
+app.use('/api/groups', groupsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

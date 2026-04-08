@@ -4,6 +4,7 @@ import { requireAdmin } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { stripe } from '../lib/stripe'
+import { seedGroupChats } from './groups'
 
 const router = Router()
 
@@ -195,7 +196,13 @@ router.post('/seed-venues', async (_req, res, next) => {
       created++
     }
 
-    res.json({ message: `Seeded ${created} venues, skipped ${skipped} existing` })
+    const allVenuesForGroups = await prisma.venue.findMany({
+      where: { city: 'Glasgow' },
+      select: { id: true, name: true, type: true },
+    })
+    await seedGroupChats(allVenuesForGroups)
+
+    res.json({ message: `Seeded ${created} venues, skipped ${skipped} existing, groups seeded` })
   } catch (err) {
     next(err)
   }
@@ -447,12 +454,77 @@ router.post('/seed-activity', async (_req, res, next) => {
       checkInsCreated++
     }
 
+    // ── 7. Seed group chats ───────────────────────────────────────────────────
+    const allVenues = await prisma.venue.findMany({
+      where: { city: 'Glasgow' },
+      select: { id: true, name: true, type: true },
+    })
+    await seedGroupChats(allVenues)
+
+    // Seed starter messages in genre groups (only if empty)
+    const genreSeedMessages: Record<string, { authorKey: string; text: string; minsAgo: number }[]> = {
+      'genre-rave': [
+        { authorKey: 'jamie_radar', text: 'Anyone going to Sub Club tonight? 🎧', minsAgo: 120 },
+        { authorKey: 'lewis_dj',    text: 'SWG3 warehouse tent is the one this weekend, grab tickets now', minsAgo: 90 },
+        { authorKey: 'ross_gla',    text: 'Harri & Domenic residency never misses. Been going for years 🖤', minsAgo: 45 },
+        { authorKey: 'kezia_out',   text: 'Techno massive 🔥 see you on the floor', minsAgo: 20 },
+      ],
+      'genre-house': [
+        { authorKey: 'lewis_dj',    text: 'Buff Club basement is the best house room in Glasgow fight me', minsAgo: 100 },
+        { authorKey: 'sarah_vibes', text: 'Who has recommendations for deep house nights this month?', minsAgo: 75 },
+        { authorKey: 'jamie_radar', text: "Golden Teacher at SWG3 — don't sleep on this one 🏠", minsAgo: 40 },
+        { authorKey: 'kezia_out',   text: 'The crowd at Buff Club last week was unreal ✨', minsAgo: 15 },
+      ],
+      'genre-rnb': [
+        { authorKey: 'sarah_vibes', text: 'Best R&B nights in Glasgow? Drop your recs 🎤', minsAgo: 110 },
+        { authorKey: 'kezia_out',   text: 'The Garage does a solid R&B floor on Fridays', minsAgo: 80 },
+        { authorKey: 'ross_gla',    text: 'Looking for something more underground, not mainstream pop R&B', minsAgo: 50 },
+        { authorKey: 'jamie_radar', text: 'Check the Polo Lounge on Saturdays 💜', minsAgo: 25 },
+      ],
+      'genre-trippy': [
+        { authorKey: 'kezia_out',   text: 'Anyone else into the more experimental stuff? 🌀', minsAgo: 130 },
+        { authorKey: 'lewis_dj',    text: 'Civic House had an incredible psych night last month', minsAgo: 95 },
+        { authorKey: 'sarah_vibes', text: 'Flying Duck basement gets pretty wild on the right night', minsAgo: 60 },
+        { authorKey: 'ross_gla',    text: 'Trip-hop + live visuals + underground venue = 🌀🌀🌀', minsAgo: 30 },
+      ],
+    }
+
+    for (const [slug, messages] of Object.entries(genreSeedMessages)) {
+      const group = await prisma.groupChat.findUnique({ where: { slug } })
+      if (!group) continue
+      const existingCount = await prisma.groupMessage.count({ where: { groupId: group.id } })
+      if (existingCount > 0) continue
+      for (const msg of messages) {
+        const userId = hosts[msg.authorKey]
+        if (!userId) continue
+        const createdAt = new Date(now.getTime() - msg.minsAgo * 60 * 1000)
+        await prisma.groupMessage.create({
+          data: { groupId: group.id, senderId: userId, text: msg.text, createdAt },
+        })
+        await prisma.groupMembership.upsert({
+          where: { groupId_userId: { groupId: group.id, userId } },
+          create: { groupId: group.id, userId },
+          update: {},
+        })
+      }
+      const uniqueAuthors = new Set(messages.map((m) => m.authorKey)).size
+      await prisma.groupChat.update({
+        where: { id: group.id },
+        data: {
+          lastMessage: messages[messages.length - 1]!.text.slice(0, 100),
+          lastAt: new Date(now.getTime() - messages[messages.length - 1]!.minsAgo * 60 * 1000),
+          memberCount: uniqueAuthors,
+        },
+      })
+    }
+
     res.json({
       message: 'Activity seeded',
       users: Object.keys(hosts).length,
       eventsCreated,
       postsCreated,
       checkInsCreated,
+      groupsSeeded: true,
     })
   } catch (err) {
     next(err)
