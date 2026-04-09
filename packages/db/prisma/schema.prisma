@@ -55,6 +55,14 @@ enum NotificationType {
   EVENT_UPDATED
   MESSAGE
   INTEREST_MATCH
+  PARTY_BLAST
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
 }
 
 enum VenueType {
@@ -79,6 +87,7 @@ model User {
   email             String           @unique
   username          String           @unique
   displayName       String
+  gender            Gender?
   bio               String?
   photoUrl          String?
   ageVerified       Boolean          @default(false)

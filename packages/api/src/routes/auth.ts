@@ -58,6 +58,7 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
     photoUrl: z.string().url().optional().nullable(),
     alcoholFriendly: z.boolean().optional(),
     username: z.string().min(3).max(30).regex(/^[a-z0-9_]+$/).optional(),
+    gender: z.enum(['MALE', 'FEMALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY']).optional().nullable(),
   })
 
   try {
