@@ -569,16 +569,26 @@ function VenuesList() {
 
 // ── Empty / loading placeholders ─────────────────────────────────────────────
 function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => void }) {
+  const [retrying, setRetrying] = useState(false)
+
+  const handleRetry = async () => {
+    if (!onRetry || retrying) return
+    setRetrying(true)
+    try { await onRetry() } catch {} finally { setRetrying(false) }
+  }
+
+  const showSpinner = loading || retrying
+
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4">
-      {loading ? (
+      {showSpinner ? (
         <>
           <div
             className="w-12 h-12 rounded-full border-2 animate-spin"
             style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }}
           />
           <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>
-            SCANNING AREA...
+            {retrying ? 'RETRYING...' : 'SCANNING AREA...'}
           </p>
         </>
       ) : (
@@ -591,7 +601,7 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
             Try adjusting filters or check back later
           </p>
           {onRetry && (
-            <button onClick={onRetry}
+            <button onClick={handleRetry}
               className="mt-2 px-5 py-2 rounded-xl text-xs font-black tracking-widest transition-all"
               style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
               RETRY
@@ -615,7 +625,7 @@ export default function DiscoverPage() {
   const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
   const [mapBounds, setMapBounds] = useState<{ lat?: number; lng?: number; radius?: number }>({})
 
-  const { events, isLoading, mutate } = useEvents({ ...filters, ...mapBounds })
+  const { events, isLoading, mutate, forceRetry } = useEvents({ ...filters, ...mapBounds })
 
   const [partyAlert, setPartyAlert] = useState<null | typeof DEMO_EVENTS[0]>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
@@ -855,7 +865,7 @@ export default function DiscoverPage() {
               <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>SCANNING AREA...</p>
             </div>
           ) : events.length === 0 ? (
-            <EmptyState loading={false} onRetry={() => mutate()} />
+            <EmptyState loading={false} onRetry={forceRetry} />
           ) : (() => {
             const liveEvents = events.filter(e => {
               const start = new Date(e.startsAt).getTime()
@@ -901,7 +911,7 @@ export default function DiscoverPage() {
                 )}
 
                 {liveEvents.length === 0 && upcomingEvents.length === 0 && (
-                  <EmptyState loading={false} onRetry={() => mutate()} />
+                  <EmptyState loading={false} onRetry={forceRetry} />
                 )}
               </div>
             )
@@ -940,7 +950,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {isLoading || events.length === 0 ? <EmptyState loading={isLoading} onRetry={() => mutate()} /> : <EventStage event={event!} dir={slideDir} />}
+            {isLoading || events.length === 0 ? <EmptyState loading={isLoading} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} />}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"

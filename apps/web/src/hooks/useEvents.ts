@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import useSWR from 'swr'
 import { fetcher, api, API_URL } from '@/lib/api'
 import type { Event, EventDiscoverQuery, CreateEventInput } from '@partyradar/shared'
@@ -234,9 +234,20 @@ export function useEvents(query: EventDiscoverQuery = {}) {
   })
 
   const swrKey = `/events?${params.toString()}`
+
+  // Simple fetcher that skips auth for events (public endpoint)
+  const publicFetcher = async (path: string) => {
+    const res = await fetch(`${API_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error ?? 'Fetch failed')
+    return json
+  }
+
   const { data, error, isLoading, isValidating, mutate } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
     swrKey,
-    fetcher,
+    DEV_MODE ? fetcher : publicFetcher,
     {
       shouldRetryOnError: true,
       errorRetryCount: 5,
@@ -250,7 +261,7 @@ export function useEvents(query: EventDiscoverQuery = {}) {
     }
   )
 
-  // Safety net: if SWR hasn't delivered data after 4s, force a raw fetch
+  // Safety net: if SWR hasn't delivered data after 3s, force a raw fetch (no auth)
   const retried = useRef(false)
   useEffect(() => {
     if (DEV_MODE || data || retried.current) return
@@ -258,17 +269,42 @@ export function useEvents(query: EventDiscoverQuery = {}) {
       if (retried.current) return
       retried.current = true
       console.log('[useEvents] SWR stalled — forcing raw fetch')
-      fetch(`${API_URL}${swrKey}`, { headers: { 'Content-Type': 'application/json' } })
-        .then((r) => r.json())
+      fetch(`${API_URL}${swrKey}`, {
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`)
+          return r.json()
+        })
         .then((j) => { if (j?.data) mutate(j, false) })
-        .catch(() => {})
-    }, 4000)
+        .catch((err) => console.error('[useEvents] Raw fetch failed:', err))
+    }, 3000)
     return () => clearTimeout(timer)
   }, [data, swrKey, mutate])
 
   // In dev mode merge demo events + Glasgow venue events + any user-created events from localStorage
   const devEvents = [...DEMO_EVENTS, ...GLASGOW_VENUE_EVENTS, ...getDevEvents()]
   const events = (DEV_MODE && (!data || error)) ? devEvents : (data?.data ?? [])
+
+  // Manual retry that bypasses SWR completely — used by RETRY button
+  const forceRetry = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}${swrKey}`, {
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      if (json?.data) {
+        mutate(json, false)
+      }
+    } catch (err) {
+      console.error('[useEvents] Force retry failed:', err)
+      // Also try SWR mutate as fallback
+      mutate()
+    }
+  }, [swrKey, mutate])
 
   return {
     events,
@@ -278,14 +314,26 @@ export function useEvents(query: EventDiscoverQuery = {}) {
     isLoading: !DEV_MODE && !data && (isLoading || isValidating || !error),
     error: data ? null : error,
     mutate,
+    forceRetry,
   }
 }
 
 export function useEvent(id: string | null) {
   const swrKey = id ? `/events/${id}` : null
+
+  // Public fetcher — no auth needed for event detail
+  const publicFetcher = async (path: string) => {
+    const res = await fetch(`${API_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error ?? 'Fetch failed')
+    return json
+  }
+
   const { data, error, isLoading, mutate } = useSWR<{ data: Event }>(
     swrKey,
-    fetcher,
+    DEV_MODE ? fetcher : publicFetcher,
     {
       shouldRetryOnError: true,
       errorRetryCount: 3,
@@ -302,10 +350,16 @@ export function useEvent(id: string | null) {
     const timer = setTimeout(() => {
       if (retried.current) return
       retried.current = true
-      fetch(`${API_URL}${swrKey}`, { headers: { 'Content-Type': 'application/json' } })
-        .then((r) => r.json())
+      fetch(`${API_URL}${swrKey}`, {
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`)
+          return r.json()
+        })
         .then((j) => { if (j?.data) mutate(j, false) })
-        .catch(() => {})
+        .catch((err) => console.error('[useEvent] Raw fetch failed:', err))
     }, 3000)
     return () => clearTimeout(timer)
   }, [data, swrKey, mutate])
