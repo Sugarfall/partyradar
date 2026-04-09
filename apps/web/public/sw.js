@@ -1,17 +1,13 @@
-const CACHE_VERSION = 'partyradar-v4'
+const CACHE_VERSION = 'partyradar-v5'
 const STATIC_CACHE  = `${CACHE_VERSION}-static`
-const PAGE_CACHE    = `${CACHE_VERSION}-pages`
-const ALL_CACHES    = [STATIC_CACHE, PAGE_CACHE]
+const ALL_CACHES    = [STATIC_CACHE]
 
-// On install: pre-cache only offline fallback
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(PAGE_CACHE).then((cache) => cache.addAll(['/offline.html']).catch(() => {}))
-  )
+// On install: skip waiting immediately to activate new SW
+self.addEventListener('install', () => {
   self.skipWaiting()
 })
 
-// On activate: delete ALL old caches so stale pages don't linger on mobile
+// On activate: delete ALL old caches aggressively
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -33,8 +29,9 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url)
 
-  // Never intercept API calls — always hit the network
-  if (url.pathname.startsWith('/api/') || url.hostname.includes('railway.app')) return
+  // NEVER cache or intercept API calls or cross-origin requests
+  if (url.origin !== self.location.origin) return
+  if (url.pathname.startsWith('/api/')) return
 
   // _next/static assets are content-hashed — cache-first (safe forever)
   if (url.pathname.startsWith('/_next/static/')) {
@@ -50,21 +47,9 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // HTML pages — network-first, short timeout, fallback to cache
-  // This ensures mobile always gets fresh event data when online
-  event.respondWith(
-    Promise.race([
-      fetch(request).then((res) => {
-        if (res.ok) {
-          caches.open(PAGE_CACHE).then((cache) => cache.put(request, res.clone()))
-        }
-        return res
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-    ]).catch(() =>
-      caches.match(request).then((cached) => cached || caches.match('/offline.html'))
-    )
-  )
+  // HTML pages and everything else — ALWAYS network, no caching
+  // This prevents stale pages on mobile that don't trigger SWR
+  // If network fails, just let the browser handle it naturally
 })
 
 // Push notifications
@@ -72,12 +57,12 @@ self.addEventListener('push', (event) => {
   const data = event.data?.json() ?? {}
   event.waitUntil(
     self.registration.showNotification(data.title || 'PartyRadar', {
-      body: data.body || 'Something is happening near you ⚡',
+      body: data.body || 'Something is happening near you',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-72.png',
       data: { url: data.url || '/discover' },
       actions: [
-        { action: 'view',    title: '⚡ View Event' },
+        { action: 'view',    title: 'View Event' },
         { action: 'dismiss', title: 'Dismiss' },
       ],
       vibrate: [200, 100, 200],

@@ -1,7 +1,8 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import useSWR from 'swr'
-import { fetcher, api } from '@/lib/api'
+import { fetcher, api, API_URL } from '@/lib/api'
 import type { Event, EventDiscoverQuery, CreateEventInput } from '@partyradar/shared'
 import { DEV_MODE } from '@/lib/firebase'
 
@@ -232,8 +233,9 @@ export function useEvents(query: EventDiscoverQuery = {}) {
     if (v !== undefined) params.set(k, String(v))
   })
 
+  const swrKey = `/events?${params.toString()}`
   const { data, error, isLoading, isValidating, mutate } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
-    `/events?${params.toString()}`,
+    swrKey,
     fetcher,
     {
       shouldRetryOnError: true,
@@ -242,10 +244,27 @@ export function useEvents(query: EventDiscoverQuery = {}) {
       refreshInterval: 60000,
       revalidateOnFocus: true,
       revalidateOnMount: true,
-      dedupingInterval: 0,        // always fetch fresh on mount
-      keepPreviousData: true,     // never flash empty while revalidating
+      dedupingInterval: 0,
+      keepPreviousData: true,
+      fallbackData: undefined,
     }
   )
+
+  // Safety net: if SWR hasn't delivered data after 4s, force a raw fetch
+  const retried = useRef(false)
+  useEffect(() => {
+    if (DEV_MODE || data || retried.current) return
+    const timer = setTimeout(() => {
+      if (retried.current) return
+      retried.current = true
+      console.log('[useEvents] SWR stalled — forcing raw fetch')
+      fetch(`${API_URL}${swrKey}`, { headers: { 'Content-Type': 'application/json' } })
+        .then((r) => r.json())
+        .then((j) => { if (j?.data) mutate(j, false) })
+        .catch(() => {})
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [data, swrKey, mutate])
 
   // In dev mode merge demo events + Glasgow venue events + any user-created events from localStorage
   const devEvents = [...DEMO_EVENTS, ...GLASGOW_VENUE_EVENTS, ...getDevEvents()]
@@ -263,11 +282,36 @@ export function useEvents(query: EventDiscoverQuery = {}) {
 }
 
 export function useEvent(id: string | null) {
+  const swrKey = id ? `/events/${id}` : null
   const { data, error, isLoading, mutate } = useSWR<{ data: Event }>(
-    id ? `/events/${id}` : null,
+    swrKey,
     fetcher,
-    { shouldRetryOnError: false }
+    {
+      shouldRetryOnError: true,
+      errorRetryCount: 3,
+      errorRetryInterval: 2000,
+      revalidateOnMount: true,
+      dedupingInterval: 0,
+    }
   )
+
+  // Safety net: force raw fetch if SWR stalls
+  const retried = useRef(false)
+  useEffect(() => {
+    if (DEV_MODE || data || !swrKey || retried.current) return
+    const timer = setTimeout(() => {
+      if (retried.current) return
+      retried.current = true
+      fetch(`${API_URL}${swrKey}`, { headers: { 'Content-Type': 'application/json' } })
+        .then((r) => r.json())
+        .then((j) => { if (j?.data) mutate(j, false) })
+        .catch(() => {})
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [data, swrKey, mutate])
+
+  // Reset retry flag when ID changes
+  useEffect(() => { retried.current = false }, [id])
 
   // In dev mode fall back to demo events + Glasgow venue events + localStorage events
   const devEvent = DEV_MODE && id
@@ -276,7 +320,7 @@ export function useEvent(id: string | null) {
 
   const event = data?.data ?? devEvent
 
-  return { event, isLoading: !DEV_MODE && isLoading, error: event ? null : error, mutate }
+  return { event, isLoading: !DEV_MODE && isLoading && !event, error: event ? null : error, mutate }
 }
 
 export async function createEvent(input: CreateEventInput & { hostId?: string }): Promise<Event> {

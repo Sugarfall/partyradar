@@ -568,7 +568,7 @@ function VenuesList() {
 }
 
 // ── Empty / loading placeholders ─────────────────────────────────────────────
-function EmptyState({ loading }: { loading: boolean }) {
+function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4">
       {loading ? (
@@ -590,6 +590,13 @@ function EmptyState({ loading }: { loading: boolean }) {
           <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 240 }}>
             Try adjusting filters or check back later
           </p>
+          {onRetry && (
+            <button onClick={onRetry}
+              className="mt-2 px-5 py-2 rounded-xl text-xs font-black tracking-widest transition-all"
+              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+              RETRY
+            </button>
+          )}
         </>
       )}
     </div>
@@ -608,7 +615,7 @@ export default function DiscoverPage() {
   const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
   const [mapBounds, setMapBounds] = useState<{ lat?: number; lng?: number; radius?: number }>({})
 
-  const { events, isLoading } = useEvents({ ...filters, ...mapBounds })
+  const { events, isLoading, mutate } = useEvents({ ...filters, ...mapBounds })
 
   const [partyAlert, setPartyAlert] = useState<null | typeof DEMO_EVENTS[0]>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
@@ -848,7 +855,7 @@ export default function DiscoverPage() {
               <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>SCANNING AREA...</p>
             </div>
           ) : events.length === 0 ? (
-            <EmptyState loading={false} />
+            <EmptyState loading={false} onRetry={() => mutate()} />
           ) : (() => {
             const liveEvents = events.filter(e => {
               const start = new Date(e.startsAt).getTime()
@@ -894,7 +901,7 @@ export default function DiscoverPage() {
                 )}
 
                 {liveEvents.length === 0 && upcomingEvents.length === 0 && (
-                  <EmptyState loading={false} />
+                  <EmptyState loading={false} onRetry={() => mutate()} />
                 )}
               </div>
             )
@@ -933,7 +940,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {isLoading || events.length === 0 ? <EmptyState loading={isLoading} /> : <EventStage event={event!} dir={slideDir} />}
+            {isLoading || events.length === 0 ? <EmptyState loading={isLoading} onRetry={() => mutate()} /> : <EventStage event={event!} dir={slideDir} />}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
