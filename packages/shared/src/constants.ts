@@ -138,6 +138,39 @@ export const PUSH_BLAST_TIERS: PushBlastTier[] = [
   { id: 'CITY',     label: 'City-wide',       radius: 0,    price: 19.99, reach: '~2,000 people' },
 ]
 
+// ─── Paid Group Tiers ────────────────────────────────────────────────────────
+
+export interface GroupPriceTier {
+  id: string
+  label: string
+  price: number      // GBP / month
+  description: string
+}
+
+export const GROUP_PRICE_TIERS: GroupPriceTier[] = [
+  { id: 'MICRO',    label: 'Micro',     price: 0.99,  description: 'Exclusive tips & early access' },
+  { id: 'STANDARD', label: 'Standard',  price: 2.99,  description: 'Premium content & priority entry' },
+  { id: 'VIP',      label: 'VIP',       price: 4.99,  description: 'Inner circle — direct access to host' },
+  { id: 'ELITE',    label: 'Elite',     price: 9.99,  description: 'Full backstage — guestlist & perks' },
+]
+
+// ─── Referral Program ────────────────────────────────────────────────────────
+
+export const REFERRAL_CONFIG = {
+  /** % of the referred user's first ticket purchase the referrer earns */
+  TICKET_COMMISSION_PERCENT: 10,
+  /** % of the referred user's subscription the referrer earns (recurring) */
+  SUBSCRIPTION_COMMISSION_PERCENT: 15,
+  /** % of group subscription revenue the referrer earns */
+  GROUP_COMMISSION_PERCENT: 10,
+  /** Platform cut from group subscription revenue (rest goes to group creator) */
+  GROUP_PLATFORM_CUT_PERCENT: 20,
+  /** Flat bonus (£) when a referred user makes their first purchase */
+  FIRST_PURCHASE_BONUS: 1.00,
+  /** Minimum balance to request payout (£) */
+  MIN_PAYOUT: 5.00,
+}
+
 // ─── Design tokens (shared) ───────────────────────────────────────────────────
 
 export const CELEBRITY_MARKER_COLOR = '#f59e0b'  // gold

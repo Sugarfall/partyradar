@@ -92,6 +92,7 @@ export interface Event {
   isCancelled: boolean
   isFeatured: boolean
   coverImageUrl?: string | null
+  accentColor?: string | null
   hostRating?: number | null
   guestCount: number
   genderRatio?: GenderRatio | null

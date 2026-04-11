@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
-  Users, UserPlus, UserCheck, Hash,
+  Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
@@ -41,6 +41,11 @@ interface GroupChat {
   type: 'GENRE' | 'VENUE'
   emoji: string
   coverColor: string
+  isPrivate?: boolean
+  isPaid?: boolean
+  priceMonthly?: number | null
+  isOwner?: boolean
+  isSubscribed?: boolean
   memberCount: number
   isJoined: boolean
   notificationsEnabled: boolean
@@ -97,6 +102,11 @@ function GroupBrowser({
   const [newDesc, setNewDesc] = useState('')
   const [newEmoji, setNewEmoji] = useState('💬')
   const [newColor, setNewColor] = useState('#6366f1')
+  const [newPrivate, setNewPrivate] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [newPaid, setNewPaid] = useState(false)
+  const [newPriceTier, setNewPriceTier] = useState('MICRO')
   const [creating, setCreating] = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
@@ -117,18 +127,28 @@ function GroupBrowser({
 
   async function handleCreate() {
     if (!newName.trim() || creating) return
+    if (newPrivate && !newPaid && newPassword.trim().length < 4) return
     setCreating(true)
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) headers['Authorization'] = `Bearer ${token}`
-      const r = await fetch(`${API_URL}/groups`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() || undefined, emoji: newEmoji, coverColor: newColor }),
-      })
+      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) hdrs['Authorization'] = `Bearer ${token}`
+      const body: Record<string, unknown> = {
+        name: newName.trim(), description: newDesc.trim() || undefined,
+        emoji: newEmoji, coverColor: newColor,
+      }
+      if (newPaid) {
+        body.isPaid = true
+        body.priceTierId = newPriceTier
+      } else if (newPrivate) {
+        body.isPrivate = true
+        body.password = newPassword.trim()
+      }
+      const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
       const j = await r.json()
       if (j.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
+        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO')
       }
     } catch {}
     finally { setCreating(false) }
@@ -160,6 +180,21 @@ function GroupBrowser({
             <button key={g.id} onClick={() => onOpen(g)}
               className="relative p-4 rounded-2xl text-left overflow-hidden transition-transform active:scale-95"
               style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}40` }}>
+              {/* Badges */}
+              <div className="absolute top-2 right-2 flex gap-1">
+                {g.isPaid && (
+                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                    style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600' }}>
+                    <Crown size={7} /> £{g.priceMonthly?.toFixed(2)}/mo
+                  </span>
+                )}
+                {g.isPrivate && !g.isPaid && (
+                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                    style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.3)', color: '#ff006e' }}>
+                    <Lock size={7} />
+                  </span>
+                )}
+              </div>
               <div className="text-3xl mb-2">{g.emoji}</div>
               <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{g.name}</p>
               <p className="text-[10px] mt-0.5 leading-snug line-clamp-2" style={{ color: 'rgba(224,242,254,0.45)' }}>
@@ -170,7 +205,9 @@ function GroupBrowser({
                 <span className="text-[9px] font-bold" style={{ color: g.coverColor }}>{g.memberCount} members</span>
                 {g.isJoined && (
                   <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded font-bold"
-                    style={{ background: `${g.coverColor}20`, color: g.coverColor }}>JOINED</span>
+                    style={{ background: `${g.coverColor}20`, color: g.coverColor }}>
+                    {g.isPaid ? 'SUBSCRIBED' : 'JOINED'}
+                  </span>
                 )}
               </div>
               {g.lastMessage && (
@@ -291,17 +328,101 @@ function GroupBrowser({
               </div>
             </div>
 
+            {/* Access type */}
+            <div>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>ACCESS</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'public', label: 'Public', icon: <Users size={14} />, active: !newPrivate && !newPaid },
+                  { id: 'private', label: 'Private', icon: <Lock size={14} />, active: newPrivate && !newPaid },
+                  { id: 'paid', label: 'Paid', icon: <Crown size={14} />, active: newPaid },
+                ].map((opt) => (
+                  <button key={opt.id} onClick={() => {
+                    if (opt.id === 'public') { setNewPrivate(false); setNewPaid(false) }
+                    else if (opt.id === 'private') { setNewPrivate(true); setNewPaid(false) }
+                    else { setNewPaid(true); setNewPrivate(false) }
+                  }}
+                    className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition-all"
+                    style={{
+                      background: opt.active ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.03)',
+                      border: `1px solid ${opt.active ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                      color: opt.active ? '#00e5ff' : 'rgba(224,242,254,0.35)',
+                    }}>
+                    {opt.icon}
+                    <span className="text-[9px] font-bold tracking-wide">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Password field for private groups */}
+            {newPrivate && !newPaid && (
+              <div className="relative">
+                <input type={showPw ? 'text' : 'password'} placeholder="Group password (min 4 chars)"
+                  value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent outline-none"
+                  style={{ border: '1px solid rgba(255,0,110,0.25)', color: '#e0f2fe' }} />
+                <button onClick={() => setShowPw(!showPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'rgba(224,242,254,0.3)' }}>
+                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            )}
+
+            {/* Price tier for paid groups */}
+            {newPaid && (
+              <div>
+                <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>SUBSCRIPTION PRICE</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'MICRO', price: '£0.99', label: 'Micro' },
+                    { id: 'STANDARD', price: '£2.99', label: 'Standard' },
+                    { id: 'VIP', price: '£4.99', label: 'VIP' },
+                    { id: 'ELITE', price: '£9.99', label: 'Elite' },
+                  ].map((t) => {
+                    const active = newPriceTier === t.id
+                    return (
+                      <button key={t.id} onClick={() => setNewPriceTier(t.id)}
+                        className="py-2 rounded-xl text-center transition-all"
+                        style={{
+                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.03)',
+                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                        }}>
+                        <p className="text-sm font-black" style={{ color: active ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>{t.price}<span className="text-[9px] font-normal">/mo</span></p>
+                        <p className="text-[9px]" style={{ color: active ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>{t.label}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
+                  You earn 80% of subscription revenue. Platform takes 20%.
+                </p>
+              </div>
+            )}
+
             {/* Preview */}
             <div className="p-3 rounded-xl" style={{ background: `${newColor}18`, border: `1px solid ${newColor}40` }}>
-              <span className="text-2xl">{newEmoji}</span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">{newEmoji}</span>
+                <div className="flex gap-1">
+                  {newPaid && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,214,0,0.15)', color: '#ffd600' }}>PAID</span>}
+                  {newPrivate && !newPaid && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,0,110,0.12)', color: '#ff006e' }}>PRIVATE</span>}
+                </div>
+              </div>
               <p className="text-sm font-black mt-1" style={{ color: '#e0f2fe' }}>{newName || 'Group Name'}</p>
               {newDesc && <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{newDesc}</p>}
             </div>
 
-            <button onClick={handleCreate} disabled={!newName.trim() || creating}
+            <button onClick={handleCreate}
+              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
-              style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}>
-              {creating ? 'CREATING...' : 'CREATE GROUP'}
+              style={{
+                background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.12)',
+                border: `1px solid ${newPaid ? 'rgba(255,214,0,0.35)' : 'rgba(0,229,255,0.35)'}`,
+                color: newPaid ? '#ffd600' : '#00e5ff',
+              }}>
+              {creating ? 'CREATING...' : newPaid ? 'CREATE PAID GROUP' : 'CREATE GROUP'}
             </button>
           </div>
         </div>
@@ -329,6 +450,12 @@ function GroupChatView({
   const [sending, setSending] = useState(false)
   const [userPopup, setUserPopup] = useState<GroupMessage | null>(null)
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
+  const [locked, setLocked] = useState(false)
+  const [showPwModal, setShowPwModal] = useState(false)
+  const [pwInput, setPwInput] = useState('')
+  const [pwError, setPwError] = useState('')
+  const [showSubModal, setShowSubModal] = useState(false)
+  const [subscribing, setSubscribing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -341,11 +468,17 @@ function GroupChatView({
       const j = await r.json()
       if (j.data) {
         setGroup(j.data.group)
-        setMessages(j.data.messages)
-        const followed = new Set<string>(
-          j.data.messages.filter((m: GroupMessage) => m.isFollowing).map((m: GroupMessage) => m.senderId),
-        )
-        setFollowingSet(followed)
+        if (j.data.locked) {
+          setLocked(true)
+          setMessages([])
+        } else {
+          setLocked(false)
+          setMessages(j.data.messages)
+          const followed = new Set<string>(
+            j.data.messages.filter((m: GroupMessage) => m.isFollowing).map((m: GroupMessage) => m.senderId),
+          )
+          setFollowingSet(followed)
+        }
       }
     } catch {}
     if (!silent) setLoading(false)
@@ -363,6 +496,19 @@ function GroupChatView({
   async function toggleJoin() {
     if (!group) return
     const joined = group.isJoined
+
+    // If trying to join a paid group — show subscribe modal
+    if (!joined && group.isPaid && !group.isSubscribed && !group.isOwner) {
+      setShowSubModal(true)
+      return
+    }
+
+    // If trying to join a private (non-paid) group — show password modal
+    if (!joined && group.isPrivate && !group.isPaid && !group.isOwner) {
+      setShowPwModal(true)
+      return
+    }
+
     const r = await fetch(`${API_URL}/groups/${groupId}/${joined ? 'leave' : 'join'}`, {
       method: joined ? 'DELETE' : 'POST', headers,
     })
@@ -374,7 +520,43 @@ function GroupChatView({
       }
       setGroup((g) => g ? { ...g, ...patch } : g)
       onGroupUpdate(groupId, patch)
+      if (!joined && locked) load()
     }
+  }
+
+  async function joinWithPassword() {
+    if (!pwInput.trim()) return
+    setPwError('')
+    const r = await fetch(`${API_URL}/groups/${groupId}/join`, {
+      method: 'POST', headers, body: JSON.stringify({ password: pwInput.trim() }),
+    })
+    if (r.ok) {
+      setShowPwModal(false); setPwInput('')
+      const patch = { isJoined: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
+      setGroup((g) => g ? { ...g, ...patch } : g)
+      onGroupUpdate(groupId, patch)
+      load()
+    } else {
+      const j = await r.json().catch(() => ({}))
+      setPwError(j.error ?? 'Incorrect password')
+    }
+  }
+
+  async function handleSubscribe() {
+    setSubscribing(true)
+    try {
+      const r = await fetch(`${API_URL}/groups/${groupId}/subscribe`, {
+        method: 'POST', headers,
+      })
+      if (r.ok) {
+        setShowSubModal(false)
+        const patch = { isJoined: true, isSubscribed: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
+        setGroup((g) => g ? { ...g, ...patch } : g)
+        onGroupUpdate(groupId, patch)
+        load()
+      }
+    } catch {}
+    finally { setSubscribing(false) }
   }
 
   async function toggleNotifications() {
@@ -468,11 +650,19 @@ function GroupChatView({
             <button onClick={toggleJoin}
               className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
               style={{
-                background: group.isJoined ? 'rgba(0,229,255,0.06)' : `${group.coverColor}22`,
-                border: `1px solid ${group.isJoined ? 'rgba(0,229,255,0.2)' : group.coverColor + '60'}`,
-                color: group.isJoined ? 'rgba(0,229,255,0.6)' : group.coverColor,
+                background: group.isJoined
+                  ? 'rgba(0,229,255,0.06)'
+                  : group.isPaid ? 'rgba(255,214,0,0.12)' : `${group.coverColor}22`,
+                border: `1px solid ${group.isJoined
+                  ? 'rgba(0,229,255,0.2)'
+                  : group.isPaid ? 'rgba(255,214,0,0.4)' : group.coverColor + '60'}`,
+                color: group.isJoined
+                  ? 'rgba(0,229,255,0.6)'
+                  : group.isPaid ? '#ffd600' : group.coverColor,
               }}>
-              {group.isJoined ? 'JOINED' : 'JOIN'}
+              {group.isJoined
+                ? (group.isPaid ? 'SUBSCRIBED' : 'JOINED')
+                : group.isPaid ? `£${group.priceMonthly?.toFixed(2)}` : group.isPrivate ? 'LOCKED' : 'JOIN'}
             </button>
           </div>
         )}
@@ -480,7 +670,43 @@ function GroupChatView({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {messages.length === 0 ? (
+        {locked ? (
+          <div className="flex flex-col items-center justify-center h-60 gap-3 text-center px-4">
+            {group?.isPaid ? (
+              <>
+                <div className="w-16 h-16 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.3)' }}>
+                  <Crown size={28} style={{ color: '#ffd600' }} />
+                </div>
+                <p className="text-sm font-black tracking-wide" style={{ color: '#ffd600' }}>PAID GROUP</p>
+                <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)', maxWidth: 260 }}>
+                  Subscribe for £{group.priceMonthly?.toFixed(2)}/mo to access messages and join the community
+                </p>
+                <button onClick={() => setShowSubModal(true)}
+                  className="mt-1 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest"
+                  style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600' }}>
+                  SUBSCRIBE
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.3)' }}>
+                  <Lock size={28} style={{ color: '#ff006e' }} />
+                </div>
+                <p className="text-sm font-black tracking-wide" style={{ color: '#ff006e' }}>PRIVATE GROUP</p>
+                <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)', maxWidth: 260 }}>
+                  Enter the password to join and view messages
+                </p>
+                <button onClick={() => setShowPwModal(true)}
+                  className="mt-1 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest"
+                  style={{ background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.35)', color: '#ff006e' }}>
+                  ENTER PASSWORD
+                </button>
+              </>
+            )}
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-2">
             <Hash size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
             <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
@@ -575,6 +801,69 @@ function GroupChatView({
                 }
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Password modal */}
+      {showPwModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+          onClick={() => { setShowPwModal(false); setPwError('') }}>
+          <div className="w-full max-w-xs rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(255,0,110,0.25)' }}>
+            <div className="flex items-center gap-2">
+              <Lock size={16} style={{ color: '#ff006e' }} />
+              <p className="text-sm font-black" style={{ color: '#ff006e' }}>ENTER PASSWORD</p>
+            </div>
+            <input type="password" placeholder="Group password" value={pwInput}
+              onChange={(e) => setPwInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') joinWithPassword() }}
+              className="w-full px-4 py-3 rounded-xl text-sm bg-transparent outline-none"
+              style={{ border: '1px solid rgba(255,0,110,0.25)', color: '#e0f2fe' }} autoFocus />
+            {pwError && <p className="text-[11px] font-bold" style={{ color: '#ff006e' }}>{pwError}</p>}
+            <button onClick={joinWithPassword} disabled={pwInput.trim().length < 4}
+              className="w-full py-3 rounded-xl text-xs font-black tracking-widest disabled:opacity-40"
+              style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.4)', color: '#ff006e' }}>
+              JOIN GROUP
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Subscribe modal */}
+      {showSubModal && group && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowSubModal(false)}>
+          <div className="w-full max-w-xs rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(255,214,0,0.25)' }}>
+            <div className="flex items-center gap-2">
+              <Crown size={16} style={{ color: '#ffd600' }} />
+              <p className="text-sm font-black" style={{ color: '#ffd600' }}>SUBSCRIBE</p>
+            </div>
+            <div className="p-3 rounded-xl" style={{ background: `${group.coverColor}15`, border: `1px solid ${group.coverColor}30` }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">{group.emoji}</span>
+                <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{group.name}</p>
+              </div>
+              <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                {group.memberCount} members
+              </p>
+            </div>
+            <div className="text-center py-2">
+              <p className="text-2xl font-black" style={{ color: '#ffd600' }}>
+                £{group.priceMonthly?.toFixed(2)}<span className="text-sm font-normal text-[rgba(255,214,0,0.5)]">/month</span>
+              </p>
+              <p className="text-[10px] mt-1" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                Cancel anytime. Full access to group chat and content.
+              </p>
+            </div>
+            <button onClick={handleSubscribe} disabled={subscribing}
+              className="w-full py-3 rounded-xl text-xs font-black tracking-widest disabled:opacity-50"
+              style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600' }}>
+              {subscribing ? 'SUBSCRIBING...' : 'SUBSCRIBE NOW'}
+            </button>
           </div>
         </div>
       )}

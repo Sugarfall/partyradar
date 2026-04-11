@@ -102,6 +102,9 @@ model User {
   lastKnownLng      Float?
   isBanned          Boolean          @default(false)
   isAdmin           Boolean          @default(false)
+  referralCode      String?          @unique
+  referralBalance   Float            @default(0)
+  referredBy        String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -160,6 +163,7 @@ model Event {
   isCancelled           Boolean        @default(false)
   isFeatured            Boolean        @default(false)
   coverImageUrl         String?
+  accentColor           String?
   stripeProductId       String?
   stripePriceId         String?
   hostRating            Float?
@@ -471,20 +475,56 @@ model SavedEvent {
 // ─── Group Chats ──────────────────────────────────────────────────────────────
 
 model GroupChat {
-  id          String    @id @default(cuid())
-  slug        String    @unique
-  name        String
-  description String?
-  type        GroupType
-  emoji       String    @default("🎉")
-  coverColor  String    @default("#a855f7")
-  memberCount Int       @default(0)
-  lastMessage String?
-  lastAt      DateTime?
-  createdAt   DateTime  @default(now())
+  id           String    @id @default(cuid())
+  slug         String    @unique
+  name         String
+  description  String?
+  type         GroupType
+  emoji        String    @default("🎉")
+  coverColor   String    @default("#a855f7")
+  isPrivate    Boolean   @default(false)
+  password     String?
+  isPaid       Boolean   @default(false)
+  priceMonthly Float?
+  stripePriceId String?
+  createdById  String?
+  memberCount  Int       @default(0)
+  lastMessage  String?
+  lastAt       DateTime?
+  createdAt    DateTime  @default(now())
 
   memberships GroupMembership[]
   messages    GroupMessage[]
+  subscriptions GroupSubscription[]
+}
+
+model GroupSubscription {
+  id                   String    @id @default(cuid())
+  groupId              String
+  userId               String
+  group                GroupChat  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+// ─── Referrals ───────────────────────────────────────────────────────────────
+
+model Referral {
+  id           String    @id @default(cuid())
+  referrerId   String
+  referredId   String    @unique
+  code         String
+  earnedAmount Float     @default(0)
+  isPaidOut    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+
+  @@index([referrerId])
+  @@index([code])
 }
 
 model GroupMembership {

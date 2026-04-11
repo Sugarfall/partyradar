@@ -3,6 +3,7 @@ import { prisma } from '@partyradar/db'
 import { optionalAuth, requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+import { GROUP_PRICE_TIERS, REFERRAL_CONFIG } from '@partyradar/shared'
 
 const router = Router()
 
@@ -80,9 +81,21 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       : []
     const membershipMap = new Map(memberships.map((m) => [m.groupId, m]))
 
+    // Batch-fetch group subscriptions for paid groups
+    const paidGroupIds = groups.filter((g) => g.isPaid).map((g) => g.id)
+    const groupSubs = userId && paidGroupIds.length > 0
+      ? await prisma.groupSubscription.findMany({
+          where: { userId, groupId: { in: paidGroupIds } },
+          select: { groupId: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
+        })
+      : []
+    const groupSubMap = new Map(groupSubs.map((s) => [s.groupId, s]))
+
     const data = groups.map((g) => {
       const m = membershipMap.get(g.id)
       const last = g.messages[0]
+      const sub = groupSubMap.get(g.id)
+      const isOwner = g.createdById === userId
       return {
         id: g.id,
         slug: g.slug,
@@ -91,8 +104,13 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         type: g.type,
         emoji: g.emoji,
         coverColor: g.coverColor,
+        isPrivate: g.isPrivate,
+        isPaid: g.isPaid,
+        priceMonthly: g.priceMonthly,
+        isOwner,
         memberCount: g.memberCount,
         isJoined: !!m,
+        isSubscribed: isOwner || !!sub,
         notificationsEnabled: m?.notificationsEnabled ?? false,
         lastMessage: last
           ? { text: last.text, senderName: last.sender.displayName, createdAt: last.createdAt.toISOString() }
@@ -110,11 +128,23 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const { name, description, emoji, coverColor } = req.body as {
+    const { name, description, emoji, coverColor, isPrivate, password, isPaid, priceTierId } = req.body as {
       name: string; description?: string; emoji?: string; coverColor?: string
+      isPrivate?: boolean; password?: string; isPaid?: boolean; priceTierId?: string
     }
     if (!name?.trim() || name.trim().length < 2) throw new AppError('Group name must be at least 2 characters', 400)
     if (name.trim().length > 40) throw new AppError('Group name too long (max 40)', 400)
+    if (isPrivate && !isPaid && (!password?.trim() || password.trim().length < 4)) {
+      throw new AppError('Private groups require a password (min 4 characters)', 400)
+    }
+
+    // Validate paid tier
+    let priceMonthly: number | null = null
+    if (isPaid) {
+      const tier = GROUP_PRICE_TIERS.find((t) => t.id === priceTierId)
+      if (!tier) throw new AppError('Invalid price tier', 400)
+      priceMonthly = tier.price
+    }
 
     const slug = `user-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString(36)}`
 
@@ -126,10 +156,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         type: 'GENRE',
         emoji: emoji?.trim() || '💬',
         coverColor: coverColor || '#6366f1',
+        isPrivate: !!(isPrivate || isPaid),
+        password: (isPrivate && !isPaid) ? password!.trim() : null,
+        isPaid: !!isPaid,
+        priceMonthly,
+        createdById: userId,
       },
     })
 
-    // Auto-join creator
+    // Auto-join creator (free — they own it)
     await prisma.groupMembership.create({ data: { groupId: group.id, userId } })
     await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: 1 } })
 
@@ -142,8 +177,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         type: group.type,
         emoji: group.emoji,
         coverColor: group.coverColor,
+        isPrivate: group.isPrivate,
+        isPaid: group.isPaid,
+        priceMonthly: group.priceMonthly,
+        isOwner: true,
         memberCount: 1,
         isJoined: true,
+        isSubscribed: true,
         notificationsEnabled: true,
         lastMessage: null,
       },
@@ -159,6 +199,29 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
     const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
     if (!group) throw new AppError('Group not found', 404)
 
+    const userId = req.user?.dbUser.id ?? null
+    const membership = userId
+      ? await prisma.groupMembership.findUnique({
+          where: { groupId_userId: { groupId: group.id, userId } },
+        })
+      : null
+
+    // Private groups: only members can read messages
+    if (group.isPrivate && !membership) {
+      res.json({
+        data: {
+          group: {
+            id: group.id, slug: group.slug, name: group.name, emoji: group.emoji,
+            coverColor: group.coverColor, memberCount: group.memberCount,
+            isPrivate: true, isJoined: false, notificationsEnabled: false,
+          },
+          messages: [],
+          locked: true,
+        },
+      })
+      return
+    }
+
     const messages = await prisma.groupMessage.findMany({
       where: { groupId: group.id },
       orderBy: { createdAt: 'asc' },
@@ -167,13 +230,6 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
         sender: { select: { id: true, displayName: true, photoUrl: true, username: true } },
       },
     })
-
-    const userId = req.user?.dbUser.id ?? null
-    const membership = userId
-      ? await prisma.groupMembership.findUnique({
-          where: { groupId_userId: { groupId: group.id, userId } },
-        })
-      : null
 
     // Which senders does the current user follow?
     const senderIds = [...new Set(messages.map((m) => m.senderId))]
@@ -194,6 +250,8 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
           emoji: group.emoji,
           coverColor: group.coverColor,
           memberCount: group.memberCount,
+          isPrivate: group.isPrivate,
+          isOwner: group.createdById === userId,
           isJoined: !!membership,
           notificationsEnabled: membership?.notificationsEnabled ?? false,
         },
@@ -218,8 +276,28 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
 router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
+    const { password } = (req.body ?? {}) as { password?: string }
     const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
     if (!group) throw new AppError('Group not found', 404)
+
+    const isOwner = group.createdById === userId
+
+    // Paid group: must have active subscription (owner exempt)
+    if (group.isPaid && !isOwner) {
+      const sub = await prisma.groupSubscription.findUnique({
+        where: { groupId_userId: { groupId: group.id, userId } },
+      })
+      if (!sub || (sub.currentPeriodEnd && sub.currentPeriodEnd < new Date())) {
+        throw new AppError('This is a paid group — subscribe to join', 402)
+      }
+    }
+
+    // Private (non-paid) group requires correct password (owner exempt)
+    if (group.isPrivate && !group.isPaid && !isOwner) {
+      if (!password || password !== group.password) {
+        throw new AppError('Incorrect password', 403)
+      }
+    }
 
     const existing = await prisma.groupMembership.findUnique({
       where: { groupId_userId: { groupId: group.id, userId } },
@@ -230,6 +308,56 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
     }
 
     res.json({ data: { joined: true } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/groups/:id/subscribe — subscribe to a paid group */
+router.post('/:id/subscribe', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
+    if (!group) throw new AppError('Group not found', 404)
+    if (!group.isPaid) throw new AppError('This group is free', 400)
+
+    // Check if already subscribed
+    const existing = await prisma.groupSubscription.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId } },
+    })
+    if (existing && existing.currentPeriodEnd && existing.currentPeriodEnd > new Date()) {
+      throw new AppError('Already subscribed', 400)
+    }
+
+    // In production: create Stripe checkout session
+    // For now: create subscription directly (demo mode)
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+
+    await prisma.groupSubscription.upsert({
+      where: { groupId_userId: { groupId: group.id, userId } },
+      create: { groupId: group.id, userId, currentPeriodEnd: periodEnd },
+      update: { currentPeriodEnd: periodEnd, cancelAtPeriodEnd: false },
+    })
+
+    // Auto-join
+    const membership = await prisma.groupMembership.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId } },
+    })
+    if (!membership) {
+      await prisma.groupMembership.create({ data: { groupId: group.id, userId } })
+      await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } })
+    }
+
+    // Credit group creator (platform takes cut, rest goes to creator)
+    if (group.priceMonthly && group.createdById) {
+      const creatorShare = group.priceMonthly * (1 - REFERRAL_CONFIG.GROUP_PLATFORM_CUT_PERCENT / 100)
+      await prisma.user.update({
+        where: { id: group.createdById },
+        data: { referralBalance: { increment: Number(creatorShare.toFixed(2)) } },
+      })
+    }
+
+    res.json({ data: { subscribed: true, expiresAt: periodEnd.toISOString() } })
   } catch (err) {
     next(err)
   }
@@ -289,10 +417,14 @@ router.post('/:id/messages', requireAuth, async (req: AuthRequest, res, next) =>
     const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
     if (!group) throw new AppError('Group not found', 404)
 
-    // Auto-join on first message
+    // Must be a member to message private groups
     const membership = await prisma.groupMembership.findUnique({
       where: { groupId_userId: { groupId: group.id, userId } },
     })
+    if (!membership && group.isPrivate) {
+      throw new AppError('Join this private group first', 403)
+    }
+    // Auto-join on first message (public groups only)
     if (!membership) {
       await prisma.groupMembership.create({ data: { groupId: group.id, userId } })
       await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } })

@@ -224,13 +224,23 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
-    const body = eventSchema.partial().parse(req.body)
+    // Extended schema for updates — includes fields not in base create schema
+    const updateSchema = eventSchema.partial().extend({
+      accentColor: z.string().max(20).optional().nullable(),
+      lineup: z.string().max(500).optional().nullable(),
+      partySigns: z.array(z.string()).optional(),
+    })
+
+    const body = updateSchema.parse(req.body)
+    const { accentColor, lineup, partySigns, ...rest } = body
+
     const updated = await prisma.event.update({
       where: { id: event.id },
       data: {
-        ...body,
-        startsAt: body.startsAt ? new Date(body.startsAt) : undefined,
-        endsAt: body.endsAt ? new Date(body.endsAt) : undefined,
+        ...rest,
+        startsAt: rest.startsAt ? new Date(rest.startsAt) : undefined,
+        endsAt: rest.endsAt ? new Date(rest.endsAt) : undefined,
+        accentColor: accentColor !== undefined ? accentColor : undefined,
       },
       include: { host: { select: userSelect } },
     })
