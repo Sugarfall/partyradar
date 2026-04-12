@@ -39,6 +39,7 @@ import venueDiscoverRouter from './routes/venue-discover'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
+import rateLimit from 'express-rate-limit'
 
 const app = express()
 const httpServer = createServer(app)
@@ -225,6 +226,47 @@ app.use(cors({
   credentials: true,
 }))
 app.use(morgan('dev'))
+
+// ─── Rate Limiting ───────────────────────────────────────────────────────────
+
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,     // 1 minute
+  max: 120,                 // 120 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again shortly' },
+})
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,                    // 30 auth attempts per 15 min
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts' },
+})
+
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000,     // 1 minute
+  max: 10,                   // 10 payment actions per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many payment requests' },
+})
+
+const discoverLimiter = rateLimit({
+  windowMs: 60 * 1000,     // 1 minute
+  max: 15,                   // 15 Google Places lookups per minute (protect API quota)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many venue discovery requests' },
+})
+
+app.use('/api', globalLimiter)
+app.use('/api/auth', authLimiter)
+app.use('/api/tickets', paymentLimiter)
+app.use('/api/subscriptions', paymentLimiter)
+app.use('/api/blast', paymentLimiter)
+app.use('/api/venues/discover', discoverLimiter)
 
 // Raw body for Stripe webhook signature verification
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }))
