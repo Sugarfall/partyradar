@@ -51,7 +51,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       lng,
       radius = '10',
       type,
-      city = 'Glasgow',
+      city,
       page = '1',
       limit = '20',
     } = req.query

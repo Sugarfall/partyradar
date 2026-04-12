@@ -35,6 +35,7 @@ import postsRouter from './routes/posts'
 import reviewsRouter from './routes/reviews'
 import referralsRouter from './routes/referrals'
 import dashboardRouter from './routes/dashboard'
+import venueDiscoverRouter from './routes/venue-discover'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -248,6 +249,7 @@ app.use('/api/messages', messagesRouter)
 app.use('/api/dm', dmRouter)
 app.use('/api/eventbrite', eventbriteRouter)
 app.use('/api/social', socialRouter)
+app.use('/api/venues/discover', venueDiscoverRouter)
 app.use('/api/venues', venuesRouter)
 app.use('/api/follow', followRouter)
 app.use('/api/feed', feedRouter)
