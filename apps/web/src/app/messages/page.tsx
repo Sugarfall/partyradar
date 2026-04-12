@@ -86,7 +86,319 @@ function Avatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: s
   )
 }
 
-// ─── Community: Group Browser ─────────────────────────────────────────────────
+// ─── Community: Host Group Dashboard ──────────────────────────────────────────
+
+function HostGroupDashboard({
+  groups, onOpen, onCreateGroup, dbUserId,
+}: {
+  groups: GroupChat[]
+  onOpen: (g: GroupChat) => void
+  onCreateGroup: (group: GroupChat) => void
+  dbUserId: string | null
+}) {
+  const [showCreate, setShowCreate] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [newEmoji, setNewEmoji] = useState('💬')
+  const [newColor, setNewColor] = useState('#a855f7')
+  const [newPrivate, setNewPrivate] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [newPaid, setNewPaid] = useState(false)
+  const [newPriceTier, setNewPriceTier] = useState('MICRO')
+  const [creating, setCreating] = useState(false)
+
+  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
+
+  const myGroups = groups.filter((g) => g.isOwner)
+  const totalSubs = myGroups.reduce((sum, g) => sum + (g.isPaid ? g.memberCount : 0), 0)
+  const paidGroups = myGroups.filter((g) => g.isPaid)
+
+  const COLORS = ['#a855f7', '#3b82f6', '#ec4899', '#10b981', '#f97316', '#ef4444', '#06b6d4', '#6366f1', '#eab308', '#f43f5e']
+  const EMOJIS = ['💬', '🎵', '🎉', '🌙', '🔥', '💜', '🎶', '⚡', '🌈', '🫶', '🎪', '🤙']
+
+  async function handleCreate() {
+    if (!newName.trim() || creating) return
+    if (newPrivate && !newPaid && newPassword.trim().length < 4) return
+    setCreating(true)
+    try {
+      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) hdrs['Authorization'] = `Bearer ${token}`
+      const body: Record<string, unknown> = {
+        name: newName.trim(), description: newDesc.trim() || undefined,
+        emoji: newEmoji, coverColor: newColor,
+      }
+      if (newPaid) {
+        body.isPaid = true
+        body.priceTierId = newPriceTier
+      } else if (newPrivate) {
+        body.isPrivate = true
+        body.password = newPassword.trim()
+      }
+      const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
+      const j = await r.json()
+      if (j.data) {
+        onCreateGroup(j.data)
+        setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#a855f7')
+        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO')
+      }
+    } catch {}
+    finally { setCreating(false) }
+  }
+
+  return (
+    <div className="pb-28 max-w-xl mx-auto">
+      {/* Stats bar */}
+      <div className="px-4 pb-4 grid grid-cols-3 gap-2">
+        {[
+          { label: 'MY GROUPS', value: myGroups.length, color: '#a855f7' },
+          { label: 'PAID GROUPS', value: paidGroups.length, color: '#ffd600' },
+          { label: 'SUBSCRIBERS', value: totalSubs, color: '#00ff88' },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl py-3 text-center"
+            style={{ background: `${s.color}08`, border: `1px solid ${s.color}25` }}>
+            <p className="text-lg font-black" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-[8px] font-bold tracking-widest" style={{ color: `${s.color}60` }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Create group CTA */}
+      {dbUserId && (
+        <div className="px-4 mb-4">
+          <button onClick={() => setShowCreate(true)}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-black tracking-widest transition-all"
+            style={{
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(0,229,255,0.08) 100%)',
+              border: '1px solid rgba(168,85,247,0.35)',
+              color: '#a855f7',
+            }}>
+            + CREATE NEW GROUP
+          </button>
+        </div>
+      )}
+
+      {/* My groups list */}
+      {myGroups.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 px-4">
+          <Crown size={32} style={{ color: 'rgba(168,85,247,0.2)' }} />
+          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(168,85,247,0.4)' }}>NO GROUPS YET</p>
+          <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)', maxWidth: 260 }}>
+            Create your first group to build a community. Set it as paid to earn revenue from subscribers.
+          </p>
+        </div>
+      ) : (
+        <div className="px-4 space-y-2">
+          {myGroups.map((g) => (
+            <button key={g.id} onClick={() => onOpen(g)}
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left transition-all"
+              style={{
+                background: g.isPaid
+                  ? 'linear-gradient(135deg, rgba(255,214,0,0.04) 0%, rgba(168,85,247,0.04) 100%)'
+                  : 'rgba(7,7,26,0.85)',
+                border: `1px solid ${g.isPaid ? 'rgba(255,214,0,0.2)' : 'rgba(168,85,247,0.15)'}`,
+              }}>
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-xl"
+                style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}30` }}>
+                {g.emoji}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-black truncate" style={{ color: '#e0f2fe' }}>{g.name}</p>
+                  {g.isPaid && (
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0"
+                      style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}>
+                      <Crown size={7} /> £{g.priceMonthly?.toFixed(2)}/mo
+                    </span>
+                  )}
+                  {g.isPrivate && !g.isPaid && (
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0"
+                      style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.3)', color: '#ff006e' }}>
+                      <Lock size={7} /> PRIVATE
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <span className="text-[10px] flex items-center gap-1" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                    <Users size={9} /> {g.memberCount} members
+                  </span>
+                  {g.isPaid && (
+                    <span className="text-[10px] flex items-center gap-1" style={{ color: 'rgba(0,255,136,0.5)' }}>
+                      💰 earning
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className="text-[8px] font-black px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(168,85,247,0.12)', color: 'rgba(168,85,247,0.6)' }}>
+                  OWNER
+                </span>
+                {g.lastMessage && (
+                  <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                    {timeAgo(g.lastMessage.createdAt)}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Create group modal — same as attendee but default to paid */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowCreate(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-5 space-y-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(168,85,247,0.2)' }}>
+            <p className="text-xs font-black tracking-widest" style={{ color: '#a855f7' }}>CREATE GROUP</p>
+
+            <input type="text" placeholder="Group name" value={newName}
+              onChange={(e) => setNewName(e.target.value.slice(0, 40))}
+              className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+              style={{ border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }} />
+
+            <input type="text" placeholder="Description (optional)" value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value.slice(0, 200))}
+              className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+              style={{ border: '1px solid rgba(168,85,247,0.12)', color: '#e0f2fe' }} />
+
+            {/* Emoji picker */}
+            <div>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(168,85,247,0.5)' }}>EMOJI</p>
+              <div className="flex flex-wrap gap-2">
+                {EMOJIS.map((e) => (
+                  <button key={e} onClick={() => setNewEmoji(e)}
+                    className="w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all"
+                    style={{
+                      background: newEmoji === e ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.03)',
+                      border: `1px solid ${newEmoji === e ? 'rgba(168,85,247,0.4)' : 'rgba(168,85,247,0.08)'}`,
+                    }}>{e}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Color picker */}
+            <div>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(168,85,247,0.5)' }}>COLOR</p>
+              <div className="flex flex-wrap gap-2">
+                {COLORS.map((c) => (
+                  <button key={c} onClick={() => setNewColor(c)}
+                    className="w-7 h-7 rounded-full transition-all"
+                    style={{
+                      background: c,
+                      border: newColor === c ? '2px solid #e0f2fe' : '2px solid transparent',
+                      boxShadow: newColor === c ? `0 0 8px ${c}` : 'none',
+                    }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Access type */}
+            <div>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(168,85,247,0.5)' }}>ACCESS</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'public', label: 'Public', icon: <Users size={14} />, active: !newPrivate && !newPaid },
+                  { id: 'private', label: 'Private', icon: <Lock size={14} />, active: newPrivate && !newPaid },
+                  { id: 'paid', label: 'Paid', icon: <Crown size={14} />, active: newPaid },
+                ].map((opt) => (
+                  <button key={opt.id} onClick={() => {
+                    if (opt.id === 'public') { setNewPrivate(false); setNewPaid(false) }
+                    else if (opt.id === 'private') { setNewPrivate(true); setNewPaid(false) }
+                    else { setNewPaid(true); setNewPrivate(false) }
+                  }}
+                    className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition-all"
+                    style={{
+                      background: opt.active ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.03)',
+                      border: `1px solid ${opt.active ? 'rgba(168,85,247,0.4)' : 'rgba(168,85,247,0.08)'}`,
+                      color: opt.active ? '#a855f7' : 'rgba(224,242,254,0.35)',
+                    }}>
+                    {opt.icon}
+                    <span className="text-[9px] font-bold tracking-wide">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Password field for private groups */}
+            {newPrivate && !newPaid && (
+              <div className="relative">
+                <input type={showPw ? 'text' : 'password'} placeholder="Group password (min 4 chars)"
+                  value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent outline-none"
+                  style={{ border: '1px solid rgba(255,0,110,0.25)', color: '#e0f2fe' }} />
+                <button onClick={() => setShowPw(!showPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'rgba(224,242,254,0.3)' }}>
+                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            )}
+
+            {/* Price tier for paid groups */}
+            {newPaid && (
+              <div>
+                <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>SUBSCRIPTION PRICE</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'MICRO', price: '£0.99', label: 'Micro' },
+                    { id: 'STANDARD', price: '£2.99', label: 'Standard' },
+                    { id: 'VIP', price: '£4.99', label: 'VIP' },
+                    { id: 'ELITE', price: '£9.99', label: 'Elite' },
+                  ].map((t) => {
+                    const active = newPriceTier === t.id
+                    return (
+                      <button key={t.id} onClick={() => setNewPriceTier(t.id)}
+                        className="py-2 rounded-xl text-center transition-all"
+                        style={{
+                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(168,85,247,0.03)',
+                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(168,85,247,0.08)'}`,
+                        }}>
+                        <p className="text-sm font-black" style={{ color: active ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>{t.price}<span className="text-[9px] font-normal">/mo</span></p>
+                        <p className="text-[9px]" style={{ color: active ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>{t.label}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
+                  You earn 80% of subscription revenue. Platform takes 20%.
+                </p>
+              </div>
+            )}
+
+            {/* Preview */}
+            <div className="p-3 rounded-xl" style={{ background: `${newColor}18`, border: `1px solid ${newColor}40` }}>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">{newEmoji}</span>
+                <div className="flex gap-1">
+                  {newPaid && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,214,0,0.15)', color: '#ffd600' }}>PAID</span>}
+                  {newPrivate && !newPaid && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,0,110,0.12)', color: '#ff006e' }}>PRIVATE</span>}
+                </div>
+              </div>
+              <p className="text-sm font-black mt-1" style={{ color: '#e0f2fe' }}>{newName || 'Group Name'}</p>
+              {newDesc && <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{newDesc}</p>}
+            </div>
+
+            <button onClick={handleCreate}
+              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
+              className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
+              style={{
+                background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(168,85,247,0.12)',
+                border: `1px solid ${newPaid ? 'rgba(255,214,0,0.35)' : 'rgba(168,85,247,0.35)'}`,
+                color: newPaid ? '#ffd600' : '#a855f7',
+              }}>
+              {creating ? 'CREATING...' : newPaid ? 'CREATE PAID GROUP' : 'CREATE GROUP'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Community: Group Browser (Attendee) ─────────────────────────────────────
 
 function GroupBrowser({
   groups, onOpen, onCreateGroup, dbUserId,
@@ -1104,6 +1416,15 @@ export default function MessagesPage() {
   const [groupsLoading, setGroupsLoading] = useState(true)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
 
+  // Host/attendee mode (same pattern as Navbar)
+  const [isHost, setIsHost] = useState(false)
+  useEffect(() => {
+    setIsHost(localStorage.getItem('partyradar_account_mode') === 'HOST')
+    function onModeChange(e: Event) { setIsHost((e as CustomEvent).detail === 'HOST') }
+    window.addEventListener('partyradar:mode-change', onModeChange)
+    return () => window.removeEventListener('partyradar:mode-change', onModeChange)
+  }, [])
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -1119,8 +1440,6 @@ export default function MessagesPage() {
   function handleGroupUpdate(id: string, patch: Partial<GroupChat>) {
     setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)))
   }
-
-  const activeGroup = groups.find((g) => g.id === activeGroupId)
 
   // If a group chat is open, render it full-screen (no tab bar)
   if (tab === 'community' && activeGroupId) {
@@ -1149,7 +1468,7 @@ export default function MessagesPage() {
               border: `1px solid ${tab === t ? 'rgba(0,229,255,0.35)' : 'rgba(0,229,255,0.08)'}`,
               color: tab === t ? '#00e5ff' : 'rgba(74,96,128,0.5)',
             }}>
-            {t === 'dms' ? '💬 MESSAGES' : '🌐 COMMUNITY'}
+            {t === 'dms' ? '💬 MESSAGES' : isHost ? '👑 MY GROUPS' : '🌐 COMMUNITY'}
           </button>
         ))}
       </div>
@@ -1165,11 +1484,10 @@ export default function MessagesPage() {
               <div className="w-8 h-8 rounded-full border-2 animate-spin"
                 style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
             </div>
-          ) : groups.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <Users size={32} style={{ color: 'rgba(0,229,255,0.15)' }} />
-              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOADING GROUPS…</p>
-            </div>
+          ) : isHost ? (
+            <HostGroupDashboard groups={groups} dbUserId={dbUser?.id ?? null}
+              onOpen={(g) => setActiveGroupId(g.id)}
+              onCreateGroup={(g) => { setGroups((prev) => [...prev, g]); setActiveGroupId(g.id) }} />
           ) : (
             <GroupBrowser groups={groups} dbUserId={dbUser?.id ?? null}
               onOpen={(g) => setActiveGroupId(g.id)}

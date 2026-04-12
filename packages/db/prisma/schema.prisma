@@ -552,3 +552,33 @@ model GroupMessage {
 
   @@index([groupId, createdAt])
 }
+
+// ─── Push Blast Queue ────────────────────────────────────────────────────────
+
+enum BlastStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+}
+
+model PushBlast {
+  id            String      @id @default(cuid())
+  eventId       String
+  hostId        String
+  tierId        String
+  radius        Float
+  price         Float
+  reach         String
+  title         String
+  body          String
+  status        BlastStatus @default(QUEUED)
+  scheduledFor  DateTime    @default(now())
+  sentAt        DateTime?
+  recipientCount Int?
+  stripeSessionId String?
+  createdAt     DateTime    @default(now())
+
+  @@index([status, scheduledFor])
+  @@index([hostId])
+}

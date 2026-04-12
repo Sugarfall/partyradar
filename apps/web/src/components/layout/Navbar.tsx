@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3 } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -223,19 +223,30 @@ function NavbarInner() {
           <div className="flex items-center gap-2">
             {dbUser ? (
               <>
-                {/* Host button — only in HOST mode */}
+                {/* Host buttons — only in HOST mode */}
                 {isHost && (
-                  <Link href="/events/create"
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.1) 100%)',
-                      border: '1px solid rgba(168,85,247,0.35)',
-                      color: '#a855f7',
-                    }}
-                  >
-                    <Plus size={14} />
-                    Create
-                  </Link>
+                  <>
+                    <Link href="/dashboard"
+                      className="p-2 rounded-lg transition-all duration-150"
+                      style={{
+                        color: pathname.startsWith('/dashboard') ? '#a855f7' : 'rgba(255,255,255,0.4)',
+                        background: pathname.startsWith('/dashboard') ? 'rgba(168,85,247,0.08)' : 'transparent',
+                      }}
+                    >
+                      <BarChart3 size={16} />
+                    </Link>
+                    <Link href="/events/create"
+                      className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.1) 100%)',
+                        border: '1px solid rgba(168,85,247,0.35)',
+                        color: '#a855f7',
+                      }}
+                    >
+                      <Plus size={14} />
+                      Create
+                    </Link>
+                  </>
                 )}
 
                 {/* Referrals */}

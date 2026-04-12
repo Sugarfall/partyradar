@@ -34,6 +34,7 @@ import checkinsRouter from './routes/checkins'
 import postsRouter from './routes/posts'
 import reviewsRouter from './routes/reviews'
 import referralsRouter from './routes/referrals'
+import dashboardRouter from './routes/dashboard'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -256,6 +257,7 @@ app.use('/api/reviews', reviewsRouter)
 app.use('/api/blast', blastRouter)
 app.use('/api/groups', groupsRouter)
 app.use('/api/referrals', referralsRouter)
+app.use('/api/dashboard', dashboardRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
