@@ -183,6 +183,12 @@ model Event {
   posts    Post[]
   reviews  EventReview[]
   savedBy  SavedEvent[]
+
+  @@index([hostId, createdAt])
+  @@index([isPublished, isCancelled, startsAt])
+  @@index([startsAt])
+  @@index([venueId])
+  @@index([lat, lng])
 }
 
 model EventGuest {
@@ -197,6 +203,8 @@ model EventGuest {
   @@unique([eventId, userId])
   @@index([eventId])
   @@index([userId])
+  @@index([eventId, status])
+  @@index([userId, status])
 }
 
 model Ticket {
@@ -215,6 +223,7 @@ model Ticket {
 
   @@index([eventId])
   @@index([userId])
+  @@index([eventId, scannedAt])
 }
 
 model CelebritySighting {
@@ -236,6 +245,7 @@ model CelebritySighting {
 
   @@index([expiresAt])
   @@index([lat, lng])
+  @@index([createdAt])
 }
 
 model SightingVote {
@@ -340,6 +350,7 @@ model DirectMessage {
   sender         User         @relation("SentDMs", fields: [senderId], references: [id])
 
   @@index([conversationId, createdAt])
+  @@index([senderId])
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -386,6 +397,7 @@ model CheckIn {
   @@index([userId])
   @@index([eventId])
   @@index([venueId])
+  @@index([createdAt])
 }
 
 model Post {
@@ -408,6 +420,7 @@ model Post {
   @@index([userId])
   @@index([eventId])
   @@index([createdAt])
+  @@index([isStory, expiresAt])
 }
 
 model PostLike {
@@ -436,6 +449,7 @@ model EventReview {
 
   @@unique([userId, eventId])
   @@index([eventId])
+  @@index([userId])
 }
 
 model Squad {
@@ -551,6 +565,7 @@ model GroupMessage {
   sender    User      @relation("SentGroupMessages", fields: [senderId], references: [id])
 
   @@index([groupId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 // ─── Push Blast Queue ────────────────────────────────────────────────────────
