@@ -861,4 +861,89 @@ router.post('/refresh-activity', async (_req, res, next) => {
   }
 })
 
+// ─── Platform Revenue Dashboard ──────────────────────────────────────────────
+
+/** GET /api/admin/revenue — platform revenue overview */
+router.get('/revenue', requireAdmin, async (_req, res, next) => {
+  try {
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+    const [allTimeRevenue, monthlyRevenue, revenueBySource, cardOrders, walletStats] = await Promise.all([
+      prisma.platformRevenue.aggregate({ _sum: { amount: true } }),
+      prisma.platformRevenue.aggregate({
+        where: { createdAt: { gte: thirtyDaysAgo } },
+        _sum: { amount: true },
+      }),
+      prisma.platformRevenue.groupBy({
+        by: ['source'],
+        _sum: { amount: true },
+        _count: true,
+        orderBy: { _sum: { amount: 'desc' } },
+      }),
+      prisma.cardOrder.findMany({
+        where: { status: { not: 'CANCELLED' } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      prisma.wallet.aggregate({
+        _sum: { balance: true, lifetimeSpent: true, lifetimeTopUp: true },
+        _count: true,
+      }),
+    ])
+
+    // Active subscriptions
+    const subscriptionRevenue = await prisma.subscription.groupBy({
+      by: ['tier'],
+      where: { tier: { not: 'FREE' } },
+      _count: true,
+    })
+
+    res.json({
+      data: {
+        allTimeRevenue: allTimeRevenue._sum.amount ?? 0,
+        monthlyRevenue: monthlyRevenue._sum.amount ?? 0,
+        revenueBySource: revenueBySource.map((r) => ({
+          source: r.source,
+          total: r._sum.amount ?? 0,
+          count: r._count,
+        })),
+        subscriptions: subscriptionRevenue.map((s) => ({
+          tier: s.tier,
+          count: s._count,
+        })),
+        walletStats: {
+          totalWallets: walletStats._count,
+          totalBalance: walletStats._sum.balance ?? 0,
+          totalSpent: walletStats._sum.lifetimeSpent ?? 0,
+          totalTopUps: walletStats._sum.lifetimeTopUp ?? 0,
+        },
+        recentCardOrders: cardOrders,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** PUT /api/admin/cards/:id/status — update card order status */
+router.put('/cards/:id/status', requireAdmin, async (req, res, next) => {
+  try {
+    const { status, trackingNumber } = req.body as { status: string; trackingNumber?: string }
+    const validStatuses = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED']
+    if (!validStatuses.includes(status)) throw new AppError('Invalid status', 400)
+
+    const order = await prisma.cardOrder.update({
+      where: { id: req.params['id'] },
+      data: {
+        status: status as any,
+        ...(trackingNumber ? { trackingNumber } : {}),
+      },
+    })
+    res.json({ data: order })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router

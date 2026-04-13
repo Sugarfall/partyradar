@@ -237,3 +237,49 @@ export interface ApiError {
   error: string
   code?: string
 }
+
+// ─── Wallet ──────────────────────────────────────────────────────────────────
+
+export type WalletTxType = 'TOP_UP' | 'TICKET_PURCHASE' | 'DRINK_REWARD' | 'CARD_ORDER' | 'VENUE_SPEND' | 'REFERRAL_CREDIT' | 'BONUS' | 'WITHDRAWAL'
+export type WalletTxStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED'
+export type CardDesign = 'CLASSIC_BLACK' | 'NEON_NIGHTS' | 'GOLD_VIP' | 'HOLOGRAPHIC' | 'CUSTOM'
+export type CardOrderStatus = 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'
+export type LoyaltyTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum'
+
+export interface WalletInfo {
+  id: string
+  balance: number
+  rewardPoints: number
+  freeDrinksAvailable: number
+  freeDrinksUsed: number
+  freeDrinksEarned: number
+  pointsToNextDrink: number
+  lifetimeSpent: number
+  lifetimeTopUp: number
+}
+
+export interface WalletTransaction {
+  id: string
+  walletId: string
+  type: WalletTxType
+  amount: number
+  balanceAfter: number
+  description: string
+  status: WalletTxStatus
+  eventId?: string | null
+  venueId?: string | null
+  createdAt: string
+}
+
+export interface CardOrder {
+  id: string
+  design: CardDesign
+  nameOnCard: string
+  shippingAddress: string
+  shippingCity: string
+  shippingPostcode: string
+  price: number
+  status: CardOrderStatus
+  trackingNumber?: string | null
+  createdAt: string
+}

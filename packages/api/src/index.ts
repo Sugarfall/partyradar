@@ -36,6 +36,7 @@ import reviewsRouter from './routes/reviews'
 import referralsRouter from './routes/referrals'
 import dashboardRouter from './routes/dashboard'
 import venueDiscoverRouter from './routes/venue-discover'
+import walletRouter from './routes/wallet'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -266,6 +267,9 @@ app.use('/api/auth', authLimiter)
 app.use('/api/tickets', paymentLimiter)
 app.use('/api/subscriptions', paymentLimiter)
 app.use('/api/blast', paymentLimiter)
+app.use('/api/wallet/top-up', paymentLimiter)
+app.use('/api/wallet/spend', paymentLimiter)
+app.use('/api/wallet/order-card', paymentLimiter)
 app.use('/api/venues/discover', discoverLimiter)
 
 // Raw body for Stripe webhook signature verification
@@ -301,6 +305,7 @@ app.use('/api/reviews', reviewsRouter)
 app.use('/api/blast', blastRouter)
 app.use('/api/groups', groupsRouter)
 app.use('/api/referrals', referralsRouter)
+app.use('/api/wallet', walletRouter)
 app.use('/api/dashboard', dashboardRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))

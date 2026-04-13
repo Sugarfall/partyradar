@@ -131,6 +131,7 @@ model User {
   savedEvents      SavedEvent[]
   groupMemberships  GroupMembership[]
   sentGroupMessages GroupMessage[] @relation("SentGroupMessages")
+  wallet            Wallet?
 }
 
 model Event {
@@ -310,8 +311,9 @@ model Venue {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  checkIns CheckIn[]
-  posts    Post[]
+  checkIns    CheckIn[]
+  posts       Post[]
+  partnership VenuePartnership?
 
   @@index([lat, lng])
   @@index([city])
@@ -577,6 +579,40 @@ enum BlastStatus {
   FAILED
 }
 
+enum WalletTxType {
+  TOP_UP
+  TICKET_PURCHASE
+  DRINK_REWARD
+  CARD_ORDER
+  VENUE_SPEND
+  REFERRAL_CREDIT
+  BONUS
+  WITHDRAWAL
+}
+
+enum WalletTxStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum CardDesign {
+  CLASSIC_BLACK
+  NEON_NIGHTS
+  GOLD_VIP
+  HOLOGRAPHIC
+  CUSTOM
+}
+
+enum CardOrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
 model PushBlast {
   id            String      @id @default(cuid())
   eventId       String
@@ -596,4 +632,116 @@ model PushBlast {
 
   @@index([status, scheduledFor])
   @@index([hostId])
+}
+
+// ─── Wallet ──────────────────────────────────────────────────────────────────
+
+model Wallet {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance           Float     @default(0)
+  lifetimeSpent     Float     @default(0)
+  lifetimeTopUp     Float     @default(0)
+  rewardPoints      Int       @default(0)
+  freeDrinksEarned  Int       @default(0)
+  freeDrinksUsed    Int       @default(0)
+  stripeCustomerId  String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  transactions WalletTransaction[]
+  cardOrders   CardOrder[]
+}
+
+model WalletTransaction {
+  id               String         @id @default(cuid())
+  walletId         String
+  wallet           Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type             WalletTxType
+  amount           Float
+  balanceAfter     Float
+  description      String
+  status           WalletTxStatus @default(COMPLETED)
+  stripePaymentId  String?
+  stripeSessionId  String?
+  eventId          String?
+  venueId          String?
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([walletId, type])
+}
+
+model CardOrder {
+  id              String          @id @default(cuid())
+  walletId        String
+  wallet          Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  userId          String
+  design          CardDesign
+  customImageUrl  String?
+  nameOnCard      String
+  shippingAddress String
+  shippingCity    String
+  shippingPostcode String
+  price           Float
+  status          CardOrderStatus @default(PENDING)
+  trackingNumber  String?
+  stripePaymentId String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─── Venue Partnerships ──────────────────────────────────────────────────────
+
+model VenuePartnership {
+  id              String    @id @default(cuid())
+  venueId         String
+  venue           Venue     @relation(fields: [venueId], references: [id])
+  commissionRate  Float     @default(3)   // % platform takes from venue wallet spends
+  isActive        Boolean   @default(true)
+  contactEmail    String?
+  contactPhone    String?
+  agreementUrl    String?
+  totalRevenue    Float     @default(0)
+  totalOrders     Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([venueId])
+  drinkMenuItems  DrinkMenuItem[]
+}
+
+model DrinkMenuItem {
+  id            String           @id @default(cuid())
+  partnershipId String
+  partnership   VenuePartnership @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  price         Float
+  category      String           @default("drink") // drink, food, combo
+  imageUrl      String?
+  isAvailable   Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+
+  @@index([partnershipId])
+}
+
+// ─── Platform Revenue Tracking ───────────────────────────────────────────────
+
+model PlatformRevenue {
+  id          String   @id @default(cuid())
+  source      String   // ticket_fee, subscription, group_cut, blast, wallet_topup, card_sale, venue_commission, ad_revenue
+  amount      Float
+  currency    String   @default("gbp")
+  referenceId String?  // event/group/user/order ID
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@index([source, createdAt])
+  @@index([createdAt])
 }

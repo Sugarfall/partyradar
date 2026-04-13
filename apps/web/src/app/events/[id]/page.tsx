@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Calendar, MapPin, Users, Wine, ShieldCheck, Shirt,
   QrCode, ArrowLeft, Star, Share2, Lock, Loader2, Check,
   ChevronRight, Zap, Link2, ChevronDown, ChevronUp, UserCircle2,
-  Megaphone, Radio, Eye, EyeOff, XCircle, AlertTriangle, MessageCircle, TrendingUp
+  Megaphone, Radio, Eye, EyeOff, XCircle, AlertTriangle, MessageCircle, TrendingUp,
+  Clock, Music, Package, Info, Navigation, Ticket, Sparkles, Heart, X
 } from 'lucide-react'
 import SaveButton from '@/components/events/SaveButton'
 import { useEvent, updateEvent, cancelEvent } from '@/hooks/useEvents'
@@ -105,6 +106,459 @@ function WeatherWidget({ lat, lng, eventDate }: { lat: number; lng: number; even
       <div className="text-right">
         <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{weather.high}°</p>
         <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)' }}>{weather.low}°</p>
+      </div>
+    </div>
+  )
+}
+
+function CountdownTimer({ startsAt, endsAt, color }: { startsAt: string; endsAt?: string | null; color: string }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const start = new Date(startsAt).getTime()
+  const end = endsAt ? new Date(endsAt).getTime() : start + 6 * 3600000
+  const isLive = now >= start && now <= end
+  const isPast = now > end
+  const diff = start - now
+
+  if (isPast) return null
+
+  if (isLive) {
+    const remaining = end - now
+    const h = Math.floor(remaining / 3600000)
+    const m = Math.floor((remaining % 3600000) / 60000)
+    return (
+      <div className="flex items-center gap-3 mb-5 px-4 py-3 rounded-xl"
+        style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.25)' }}>
+        <span className="w-3 h-3 rounded-full animate-pulse" style={{ background: '#ff006e', boxShadow: '0 0 12px #ff006e' }} />
+        <div className="flex-1">
+          <p className="text-[9px] font-bold tracking-[0.15em]" style={{ color: '#ff006e' }}>HAPPENING NOW</p>
+          <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{h}h {m}m remaining</p>
+        </div>
+      </div>
+    )
+  }
+
+  const days = Math.floor(diff / 86400000)
+  const hours = Math.floor((diff % 86400000) / 3600000)
+  const mins = Math.floor((diff % 3600000) / 60000)
+  const secs = Math.floor((diff % 60000) / 1000)
+
+  return (
+    <div className="mb-5 p-4 rounded-xl" style={{ background: `${color}06`, border: `1px solid ${color}20` }}>
+      <p className="text-[9px] font-bold tracking-[0.18em] mb-3 text-center" style={{ color: `${color}90` }}>STARTS IN</p>
+      <div className="flex justify-center gap-3">
+        {days > 0 && (
+          <div className="text-center">
+            <div className="text-2xl font-black tabular-nums" style={{ color: '#e0f2fe' }}>{days}</div>
+            <div className="text-[8px] font-bold tracking-[0.15em] mt-0.5" style={{ color: `${color}60` }}>DAYS</div>
+          </div>
+        )}
+        <div className="text-center">
+          <div className="text-2xl font-black tabular-nums" style={{ color: '#e0f2fe' }}>{hours}</div>
+          <div className="text-[8px] font-bold tracking-[0.15em] mt-0.5" style={{ color: `${color}60` }}>HRS</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-black tabular-nums" style={{ color: '#e0f2fe' }}>{mins}</div>
+          <div className="text-[8px] font-bold tracking-[0.15em] mt-0.5" style={{ color: `${color}60` }}>MIN</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-black tabular-nums" style={{ color }}>{ secs}</div>
+          <div className="text-[8px] font-bold tracking-[0.15em] mt-0.5" style={{ color: `${color}60` }}>SEC</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MiniLocationMap({ lat, lng, address, color }: { lat: number; lng: number; address: string; color: string }) {
+  const mapUrl = `https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-s+${color.replace('#', '')}(${lng},${lat})/${lng},${lat},14,0/400x200@2x?access_token=${process.env['NEXT_PUBLIC_MAPBOX_TOKEN']}`
+
+  return (
+    <div className="mb-5 rounded-xl overflow-hidden" style={{ border: `1px solid ${color}20` }}>
+      <a href={`https://maps.google.com/?q=${encodeURIComponent(address)}`} target="_blank" rel="noopener noreferrer">
+        <img src={mapUrl} alt="Event location" className="w-full h-[140px] object-cover" style={{ filter: 'brightness(0.85) saturate(1.3)' }} />
+      </a>
+      <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: 'rgba(4,4,13,0.9)' }}>
+        <Navigation size={11} style={{ color: `${color}80` }} />
+        <span className="text-xs font-medium truncate" style={{ color: 'rgba(224,242,254,0.7)' }}>{address}</span>
+        <a href={`https://maps.google.com/?q=${encodeURIComponent(address)}`}
+          target="_blank" rel="noopener noreferrer"
+          className="ml-auto text-[9px] font-bold shrink-0 px-2 py-1 rounded"
+          style={{ color, border: `1px solid ${color}40`, letterSpacing: '0.1em' }}>
+          OPEN MAP
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function EventHighlights({ event, color }: { event: any; color: string }) {
+  const highlights: { icon: any; text: string }[] = []
+
+  // Duration
+  if (event.endsAt) {
+    const durationHrs = Math.round((new Date(event.endsAt).getTime() - new Date(event.startsAt).getTime()) / 3600000)
+    if (durationHrs > 0) highlights.push({ icon: Clock, text: `${durationHrs} hour${durationHrs > 1 ? 's' : ''} of ${event.type === 'CONCERT' ? 'live music' : event.type === 'HOME_PARTY' ? 'partying' : 'nightlife'}` })
+  }
+
+  // Tickets
+  if (event.price > 0 && event.ticketsRemaining > 0) {
+    highlights.push({ icon: Ticket, text: `${event.ticketsRemaining} tickets remaining` })
+  } else if (event.price === 0) {
+    highlights.push({ icon: Sparkles, text: 'Free entry — no ticket needed' })
+  }
+
+  // Capacity vibe
+  const pct = Math.round(((event.guestCount ?? 0) / event.capacity) * 100)
+  if (pct >= 80) highlights.push({ icon: Zap, text: 'Almost sold out — grab your spot!' })
+  else if (pct >= 50) highlights.push({ icon: Users, text: `${event.guestCount} people going — filling up fast` })
+
+  // Lineup
+  if ((event as any).lineup) highlights.push({ icon: Music, text: (event as any).lineup })
+
+  // Dress code
+  if (event.dressCode) highlights.push({ icon: Shirt, text: `Dress code: ${event.dressCode}` })
+
+  // Age
+  if (event.ageRestriction !== 'ALL_AGES') {
+    highlights.push({ icon: ShieldCheck, text: event.ageRestriction === 'AGE_18' ? 'Over 18s only — ID required' : 'Over 21s only — ID required' })
+  }
+
+  // Alcohol
+  if (event.alcoholPolicy === 'PROVIDED') highlights.push({ icon: Wine, text: 'Drinks provided at the venue' })
+  else if (event.alcoholPolicy === 'BYOB') highlights.push({ icon: Wine, text: 'BYOB — bring your own drinks' })
+
+  if (highlights.length === 0) return null
+
+  return (
+    <div className="mb-5 p-4 rounded-xl" style={{ background: `${color}05`, border: `1px solid ${color}15` }}>
+      <p className="text-[9px] font-bold tracking-[0.18em] mb-3" style={{ color: `${color}80` }}>EVENT HIGHLIGHTS</p>
+      <div className="space-y-2.5">
+        {highlights.map((h, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <h.icon size={13} className="shrink-0 mt-0.5" style={{ color: `${color}70` }} />
+            <p className="text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.75)' }}>{h.text}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+interface HighlightPost {
+  id: string
+  userId: string
+  userName: string
+  userPhoto?: string
+  imageUrl: string
+  caption?: string
+  likes: number
+  createdAt: string
+}
+
+function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
+  const [highlights, setHighlights] = useState<HighlightPost[]>([])
+  const [viewingIdx, setViewingIdx] = useState<number | null>(null)
+  const [liked, setLiked] = useState<Set<string>>(new Set())
+  const { dbUser } = useAuth()
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // Fetch highlights from API
+    api.get<{ data: HighlightPost[] }>(`/posts?eventId=${event.id}&limit=20`)
+      .then(r => setHighlights(r.data))
+      .catch(() => {
+        // Demo highlights for dev mode
+        setHighlights([
+          {
+            id: 'h1', userId: 'u1', userName: 'Sophie L', userPhoto: undefined,
+            imageUrl: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&h=500&fit=crop&crop=center',
+            caption: 'The vibes tonight 🔥🔥', likes: 24,
+            createdAt: new Date(Date.now() - 1800000).toISOString(),
+          },
+          {
+            id: 'h2', userId: 'u2', userName: 'DJ Marco', userPhoto: undefined,
+            imageUrl: 'https://images.unsplash.com/photo-1571266028243-3716f02d2d74?w=400&h=500&fit=crop&crop=center',
+            caption: 'Behind the decks 🎧', likes: 41,
+            createdAt: new Date(Date.now() - 1200000).toISOString(),
+          },
+          {
+            id: 'h3', userId: 'u3', userName: 'Alex R', userPhoto: undefined,
+            imageUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=500&fit=crop&crop=center',
+            caption: 'Crowd going crazy', likes: 18,
+            createdAt: new Date(Date.now() - 600000).toISOString(),
+          },
+          {
+            id: 'h4', userId: 'u4', userName: 'Jamie K', userPhoto: undefined,
+            imageUrl: 'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=400&h=500&fit=crop&crop=center',
+            caption: 'Light show is insane 💡', likes: 33,
+            createdAt: new Date(Date.now() - 300000).toISOString(),
+          },
+          {
+            id: 'h5', userId: 'u5', userName: 'Mia Chen', userPhoto: undefined,
+            imageUrl: 'https://images.unsplash.com/photo-1504680177321-2e6a879aac86?w=400&h=500&fit=crop&crop=center',
+            caption: 'Best night out 🌙', likes: 12,
+            createdAt: new Date(Date.now() - 120000).toISOString(),
+          },
+        ])
+      })
+  }, [event.id])
+
+  function toggleLike(id: string) {
+    setLiked(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function timeAgo(iso: string) {
+    const diff = Date.now() - new Date(iso).getTime()
+    const m = Math.floor(diff / 60000)
+    if (m < 1) return 'just now'
+    if (m < 60) return `${m}m ago`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h ago`
+    return `${Math.floor(h / 24)}d ago`
+  }
+
+  if (highlights.length === 0) return null
+
+  const viewing = viewingIdx !== null ? highlights[viewingIdx] : null
+
+  return (
+    <>
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[9px] font-bold tracking-[0.18em]" style={{ color: `${color}80` }}>
+            📸 HIGHLIGHTS OF THE NIGHT
+          </p>
+          <span className="text-[9px] font-bold" style={{ color: 'rgba(224,242,254,0.3)' }}>
+            {highlights.length} photos
+          </span>
+        </div>
+
+        {/* Horizontal scrolling story-style thumbnails */}
+        <div ref={scrollRef} className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4">
+          {/* Upload button */}
+          {dbUser && (
+            <button
+              onClick={() => alert('Upload coming soon — snap a pic and tag this event!')}
+              className="shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl"
+              style={{
+                width: 80, height: 110,
+                background: `${color}08`, border: `2px dashed ${color}30`,
+              }}>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
+                style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
+                <span style={{ color }}>+</span>
+              </div>
+              <span className="text-[8px] font-bold" style={{ color: `${color}60`, letterSpacing: '0.08em' }}>ADD</span>
+            </button>
+          )}
+
+          {/* Photo thumbnails */}
+          {highlights.map((h, i) => (
+            <button key={h.id} onClick={() => setViewingIdx(i)}
+              className="shrink-0 rounded-xl overflow-hidden relative group"
+              style={{ width: 80, height: 110 }}>
+              <img src={h.imageUrl} alt="" className="w-full h-full object-cover" />
+              {/* Gradient overlay */}
+              <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.7) 100%)' }} />
+              {/* User ring */}
+              <div className="absolute top-1.5 left-1.5">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold"
+                  style={{ background: 'rgba(0,0,0,0.5)', border: `2px solid ${color}`, color: '#e0f2fe' }}>
+                  {h.userName[0]}
+                </div>
+              </div>
+              {/* Bottom info */}
+              <div className="absolute bottom-1.5 left-1.5 right-1.5">
+                <p className="text-[8px] font-bold truncate" style={{ color: '#fff' }}>{h.userName}</p>
+                <p className="text-[7px]" style={{ color: 'rgba(255,255,255,0.6)' }}>{timeAgo(h.createdAt)}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Fullscreen viewer overlay ── */}
+      {viewing && viewingIdx !== null && (
+        <div className="fixed inset-0 z-[200] flex flex-col" style={{ background: 'rgba(0,0,0,0.95)' }}>
+          {/* Progress bar */}
+          <div className="flex gap-1 px-3 pt-3 pb-1">
+            {highlights.map((_, i) => (
+              <div key={i} className="flex-1 h-0.5 rounded-full"
+                style={{ background: i <= viewingIdx ? color : 'rgba(255,255,255,0.15)' }} />
+            ))}
+          </div>
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{ background: `${color}20`, border: `2px solid ${color}`, color }}>
+                {viewing.userName[0]}
+              </div>
+              <div>
+                <p className="text-xs font-bold" style={{ color: '#fff' }}>{viewing.userName}</p>
+                <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{timeAgo(viewing.createdAt)}</p>
+              </div>
+            </div>
+            <button onClick={() => setViewingIdx(null)} style={{ color: 'rgba(255,255,255,0.7)', padding: 4 }}>
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Image */}
+          <div className="flex-1 flex items-center justify-center px-4 relative"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const x = e.clientX - rect.left
+              if (x < rect.width / 3) setViewingIdx(Math.max(0, viewingIdx - 1))
+              else if (x > rect.width * 2 / 3) {
+                if (viewingIdx >= highlights.length - 1) setViewingIdx(null)
+                else setViewingIdx(viewingIdx + 1)
+              }
+            }}>
+            <img src={viewing.imageUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" />
+          </div>
+
+          {/* Caption + actions */}
+          <div className="px-4 py-4">
+            {viewing.caption && (
+              <p className="text-sm mb-3" style={{ color: '#e0f2fe' }}>{viewing.caption}</p>
+            )}
+            <div className="flex items-center gap-4">
+              <button onClick={() => toggleLike(viewing.id)} className="flex items-center gap-1.5">
+                <Heart size={18} fill={liked.has(viewing.id) ? '#ff006e' : 'none'} style={{ color: liked.has(viewing.id) ? '#ff006e' : 'rgba(255,255,255,0.6)' }} />
+                <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  {viewing.likes + (liked.has(viewing.id) ? 1 : 0)}
+                </span>
+              </button>
+              <span className="text-[9px] font-bold px-2 py-1 rounded" style={{ background: `${color}15`, border: `1px solid ${color}30`, color, letterSpacing: '0.08em' }}>
+                📍 {event.name}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName: string }) {
+  const [messages, setMessages] = useState<Array<{ id: string; name: string; text: string; time: string; isStaff?: boolean }>>([])
+  const [input, setInput] = useState('')
+  const [expanded, setExpanded] = useState(false)
+  const { dbUser } = useAuth()
+
+  useEffect(() => {
+    // Demo messages for the venue community
+    setMessages([
+      { id: '1', name: 'VenueStaff', text: `Welcome to the ${venueName} community! Share tips, ask questions, and connect with other regulars.`, time: '2h ago', isStaff: true },
+      { id: '2', name: 'Sarah M', text: 'Best cocktails in Glasgow hands down 🍹', time: '45m ago' },
+      { id: '3', name: 'DJ_Marco', text: 'Playing here next Friday — who\'s coming?', time: '20m ago' },
+      { id: '4', name: 'Chris B', text: 'Any dress code tonight?', time: '5m ago' },
+    ])
+  }, [venueName])
+
+  const visibleMessages = expanded ? messages : messages.slice(-3)
+
+  return (
+    <div style={{ background: 'rgba(4,4,13,0.6)' }}>
+      {/* Messages */}
+      <div className="px-4 py-3 space-y-3 max-h-60 overflow-y-auto">
+        {!expanded && messages.length > 3 && (
+          <button onClick={() => setExpanded(true)}
+            className="w-full text-center text-[9px] font-bold tracking-widest py-1"
+            style={{ color: 'rgba(255,214,0,0.5)' }}>
+            ▲ SHOW {messages.length - 3} MORE
+          </button>
+        )}
+        {visibleMessages.map((msg) => (
+          <div key={msg.id} className="flex gap-2.5">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
+              style={{
+                background: msg.isStaff ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.08)',
+                border: `1px solid ${msg.isStaff ? 'rgba(255,214,0,0.25)' : 'rgba(0,229,255,0.15)'}`,
+                color: msg.isStaff ? '#ffd600' : '#00e5ff',
+              }}>
+              {msg.name[0]}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold" style={{ color: msg.isStaff ? '#ffd600' : '#e0f2fe' }}>
+                  {msg.name}
+                </span>
+                {msg.isStaff && (
+                  <span className="text-[7px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.25)', color: '#ffd600', letterSpacing: '0.08em' }}>
+                    STAFF
+                  </span>
+                )}
+                <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.5)' }}>{msg.time}</span>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.65)' }}>{msg.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div className="px-4 py-2.5 flex items-center gap-2" style={{ borderTop: '1px solid rgba(255,214,0,0.08)' }}>
+        {!dbUser ? (
+          <p className="flex-1 text-center text-[10px] font-bold" style={{ color: 'rgba(74,96,128,0.4)', letterSpacing: '0.08em' }}>
+            LOG IN TO CHAT
+          </p>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && input.trim()) {
+                  setMessages(prev => [...prev, {
+                    id: `me_${Date.now()}`,
+                    name: dbUser.displayName ?? 'You',
+                    text: input.trim(),
+                    time: 'now',
+                  }])
+                  setInput('')
+                }
+              }}
+              placeholder={`Say something in ${venueName}...`}
+              maxLength={200}
+              className="flex-1 px-3 py-2 rounded-lg text-xs outline-none"
+              style={{ background: 'rgba(4,4,13,0.8)', border: '1px solid rgba(255,214,0,0.12)', color: '#e0f2fe', caretColor: '#ffd600' }}
+            />
+            <button
+              onClick={() => {
+                if (!input.trim()) return
+                setMessages(prev => [...prev, {
+                  id: `me_${Date.now()}`,
+                  name: dbUser.displayName ?? 'You',
+                  text: input.trim(),
+                  time: 'now',
+                }])
+                setInput('')
+              }}
+              disabled={!input.trim()}
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{
+                background: input.trim() ? 'rgba(255,214,0,0.12)' : 'rgba(255,214,0,0.04)',
+                border: `1px solid ${input.trim() ? 'rgba(255,214,0,0.35)' : 'rgba(255,214,0,0.08)'}`,
+                color: input.trim() ? '#ffd600' : 'rgba(255,214,0,0.25)',
+              }}>
+              <Zap size={13} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -339,8 +793,14 @@ export default function EventDetailPage() {
           <img src={event.coverImageUrl} alt={event.name} className="w-full h-full object-cover"
             style={{ filter: 'brightness(0.5) saturate(1.2)' }} />
         ) : (
-          <div className="w-full h-full"
-            style={{ background: `radial-gradient(ellipse at 30% 50%, ${tc.color}20 0%, #04040d 70%)` }} />
+          <div className="w-full h-full relative overflow-hidden"
+            style={{ background: `radial-gradient(ellipse at 30% 50%, ${tc.color}20 0%, #04040d 70%)` }}>
+            {/* Decorative pattern */}
+            <div className="absolute inset-0" style={{ opacity: 0.04, backgroundImage: `repeating-linear-gradient(45deg, ${tc.color} 0px, ${tc.color} 1px, transparent 1px, transparent 20px)` }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-6xl opacity-20">
+              {event.type === 'HOME_PARTY' ? '🏠' : event.type === 'CONCERT' ? '🎵' : '🎧'}
+            </div>
+          </div>
         )}
         {/* Gradient fade to background */}
         <div className="absolute inset-0"
@@ -436,21 +896,28 @@ export default function EventDetailPage() {
           </div>
         </div>
 
+        {/* Countdown timer */}
+        <CountdownTimer startsAt={event.startsAt} endsAt={event.endsAt} color={tc.color} />
+
         {/* Divider */}
         <div className="mb-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${tc.color}30, transparent)` }} />
 
         {/* Meta grid */}
         <div className="grid grid-cols-2 gap-2 mb-5">
-          <MetaCell icon={Calendar} label="DATE & TIME" value={formatDate(event.startsAt)} color={tc.color} />
+          <MetaCell icon={Calendar} label="STARTS" value={formatDate(event.startsAt)} color={tc.color} />
+          {event.endsAt && (
+            <MetaCell icon={Clock} label="ENDS" value={formatDate(event.endsAt)} color={tc.color} />
+          )}
           <MetaCell icon={MapPin} label="LOCATION" value={event.showNeighbourhoodOnly ? event.neighbourhood : (event.address ?? event.neighbourhood)} color={tc.color} />
           <MetaCell icon={Wine} label="ALCOHOL" value={ALCOHOL_POLICY_LABELS[event.alcoholPolicy] ?? event.alcoholPolicy} color={tc.color} />
           <MetaCell icon={ShieldCheck} label="AGE POLICY" value={AGE_RESTRICTION_LABELS[event.ageRestriction] ?? event.ageRestriction} color={tc.color} />
+          <MetaCell icon={Users} label="CAPACITY" value={`${event.guestCount ?? 0} / ${event.capacity} spots`} color={tc.color} />
         </div>
 
         {/* Quick actions row */}
         <div className="flex gap-2 mb-5 flex-wrap">
           <a
-            href={`https://maps.google.com/?q=${event.lat},${event.lng}`}
+            href={`https://maps.google.com/?q=${encodeURIComponent(event.address)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
@@ -490,6 +957,29 @@ export default function EventDetailPage() {
             />
           </div>
         </div>
+
+        {/* Event highlights */}
+        <EventHighlights event={event} color={tc.color} />
+
+        {/* Mini location map */}
+        {event.lat && event.lng && !event.showNeighbourhoodOnly && (
+          <MiniLocationMap lat={event.lat} lng={event.lng} address={event.address ?? event.neighbourhood} color={tc.color} />
+        )}
+
+        {/* What to bring */}
+        {event.whatToBring && event.whatToBring.length > 0 && (
+          <div className="mb-5 p-4 rounded-xl" style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.15)' }}>
+            <p className="text-[9px] font-bold tracking-[0.18em] mb-3" style={{ color: 'rgba(168,85,247,0.6)' }}>WHAT TO BRING</p>
+            <div className="space-y-2">
+              {event.whatToBring.map((item: string, i: number) => (
+                <div key={i} className="flex items-center gap-2.5">
+                  <Package size={12} style={{ color: 'rgba(168,85,247,0.5)' }} />
+                  <span className="text-sm" style={{ color: 'rgba(224,242,254,0.75)' }}>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Friends going */}
         {friendsGoing.count > 0 && (
@@ -562,10 +1052,40 @@ export default function EventDetailPage() {
         })()}
 
         {/* About */}
-        <div className="mb-6">
-          <p className="text-[9px] font-bold tracking-[0.2em] mb-2" style={{ color: 'rgba(0,229,255,0.45)' }}>ABOUT THIS EVENT</p>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(224,242,254,0.7)' }}>{event.description}</p>
+        <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+          <p className="text-[9px] font-bold tracking-[0.2em] mb-3" style={{ color: 'rgba(0,229,255,0.45)' }}>ABOUT THIS EVENT</p>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(224,242,254,0.75)' }}>{event.description}</p>
         </div>
+
+        {/* Venue info card */}
+        {(event as any).venue && (
+          <div className="mb-5 rounded-xl overflow-hidden" style={{ border: `1px solid ${tc.color}15` }}>
+            <div className="h-1" style={{ background: `linear-gradient(90deg, ${tc.color}60, transparent)` }} />
+            <div className="p-4" style={{ background: 'rgba(4,4,13,0.8)' }}>
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="text-[9px] font-bold tracking-[0.15em] mb-1" style={{ color: `${tc.color}80` }}>VENUE</p>
+                  <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{(event as any).venue.name}</p>
+                </div>
+                {(event as any).venue.rating && (
+                  <span className="text-xs font-bold flex items-center gap-1" style={{ color: '#ffd600' }}>
+                    <Star size={10} fill="currentColor" /> {(event as any).venue.rating.toFixed(1)}
+                  </span>
+                )}
+              </div>
+              {(event as any).venue.vibeTags?.length > 0 && (
+                <div className="flex gap-1 flex-wrap mt-2">
+                  {(event as any).venue.vibeTags.slice(0, 4).map((tag: string) => (
+                    <span key={tag} className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ color: `${tc.color}80`, border: `1px solid ${tc.color}20`, background: `${tc.color}06` }}>
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <WeatherWidget lat={event.lat} lng={event.lng} eventDate={event.startsAt} />
 
@@ -642,6 +1162,27 @@ export default function EventDetailPage() {
           </div>
         )}
 
+        {/* ── Highlights of the Night ── */}
+        <HighlightsOfTheNight event={event} color={tc.color} />
+
+        {/* ── Venue Community Chat ── */}
+        {(event as any).venue && (
+          <div className="mb-6 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,214,0,0.15)' }}>
+            <div className="h-1" style={{ background: 'linear-gradient(90deg, rgba(255,214,0,0.5), transparent)' }} />
+            <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(255,214,0,0.03)' }}>
+              <div className="flex items-center gap-2">
+                <MessageCircle size={13} style={{ color: 'rgba(255,214,0,0.6)' }} />
+                <span className="text-[10px] font-black tracking-[0.15em]" style={{ color: '#ffd600' }}>VENUE COMMUNITY</span>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.2)', color: 'rgba(255,214,0,0.7)' }}>
+                  {(event as any).venue.name}
+                </span>
+              </div>
+            </div>
+            <VenueCommunityChat venueId={(event as any).venue.id} venueName={(event as any).venue.name} />
+          </div>
+        )}
+
         {/* Host controls */}
         {isHost && (
           <div className="mt-2 space-y-3">
@@ -682,7 +1223,7 @@ export default function EventDetailPage() {
                 <Megaphone size={13} /> MESSAGE GUESTS
               </button>
               {/* Live chat — host */}
-              <EventChat eventId={event.id} eventName={event.name} />
+              <EventChat eventId={event.id} eventName={event.name} hostId={event.hostId} hostName={event.host.displayName} />
               {/* Publish / Unpublish */}
               {!event.isCancelled && (
                 <button
@@ -1089,7 +1630,7 @@ export default function EventDetailPage() {
 
             {/* Live chat */}
             <div className="mt-1.5 flex justify-center">
-              <EventChat eventId={event.id} eventName={event.name} />
+              <EventChat eventId={event.id} eventName={event.name} hostId={event.hostId} hostName={event.host.displayName} />
             </div>
           </div>
         </div>

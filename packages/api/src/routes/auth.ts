@@ -24,6 +24,10 @@ router.post('/sync', async (req, res, next) => {
 
     let user = await prisma.user.findUnique({ where: { firebaseUid: uid } })
 
+    // Check if this Firebase UID is an admin
+    const adminUids = (process.env['ADMIN_FIREBASE_UIDS'] ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const shouldBeAdmin = adminUids.includes(uid)
+
     if (!user) {
       // Check username uniqueness
       let username = baseUsername
@@ -40,7 +44,14 @@ router.post('/sync', async (req, res, next) => {
           username,
           displayName: name ?? username,
           photoUrl: picture ?? null,
+          isAdmin: shouldBeAdmin,
         },
+      })
+    } else if (shouldBeAdmin && !user.isAdmin) {
+      // Promote to admin if UID is in admin list but not yet flagged
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { isAdmin: true },
       })
     }
 

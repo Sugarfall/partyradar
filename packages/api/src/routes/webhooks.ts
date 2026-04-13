@@ -67,6 +67,18 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     return
   }
 
+  // Wallet top-up
+  if (session.metadata?.['type'] === 'wallet_topup') {
+    await handleWalletTopUp(session)
+    return
+  }
+
+  // Card order
+  if (session.metadata?.['type'] === 'card_order') {
+    await handleCardOrder(session)
+    return
+  }
+
   // Subscription checkout
   if (session.mode === 'subscription') {
     const { userId: subUserId, tier } = session.metadata ?? {}
@@ -215,6 +227,94 @@ async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription) {
   await prisma.user.update({
     where: { id: sub.userId },
     data: { subscriptionTier: 'FREE' },
+  })
+}
+
+// ─── Wallet Top-Up ───────────────────────────────────────────────────────────
+
+async function handleWalletTopUp(session: Stripe.Checkout.Session) {
+  const { userId, walletId, topUpAmount, bonusPercent } = session.metadata ?? {}
+  if (!userId || !walletId || !topUpAmount) return
+
+  const amount = Number(topUpAmount)
+  const bonus = Number(bonusPercent ?? 0)
+  const bonusAmount = Number((amount * bonus / 100).toFixed(2))
+  const totalCredit = amount + bonusAmount
+
+  const wallet = await prisma.wallet.findUnique({ where: { id: walletId } })
+  if (!wallet) return
+
+  const newBalance = Number((wallet.balance + totalCredit).toFixed(2))
+
+  await prisma.wallet.update({
+    where: { id: walletId },
+    data: {
+      balance: newBalance,
+      lifetimeTopUp: { increment: amount },
+    },
+  })
+
+  // Main top-up transaction
+  await prisma.walletTransaction.create({
+    data: {
+      walletId,
+      type: 'TOP_UP',
+      amount: totalCredit,
+      balanceAfter: newBalance,
+      description: bonusAmount > 0
+        ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
+        : `Top-up £${amount}`,
+      stripePaymentId: session.payment_intent as string,
+      stripeSessionId: session.id,
+    },
+  })
+
+  // Record platform revenue (we hold the float)
+  await prisma.platformRevenue.create({
+    data: {
+      source: 'wallet_topup',
+      amount,
+      referenceId: userId,
+      description: `Wallet top-up £${amount}`,
+    },
+  })
+}
+
+// ─── Card Order ──────────────────────────────────────────────────────────────
+
+async function handleCardOrder(session: Stripe.Checkout.Session) {
+  const meta = session.metadata ?? {}
+  const { userId, walletId, design, nameOnCard, shippingAddress, shippingCity, shippingPostcode } = meta
+  if (!userId || !walletId || !design || !nameOnCard) return
+
+  const { CARD_DESIGNS } = await import('@partyradar/shared')
+  const cardDesign = CARD_DESIGNS.find((c) => c.id === design)
+  if (!cardDesign) return
+
+  await prisma.cardOrder.create({
+    data: {
+      walletId,
+      userId,
+      design: design as any,
+      customImageUrl: meta['customImageUrl'] || null,
+      nameOnCard,
+      shippingAddress: shippingAddress ?? '',
+      shippingCity: shippingCity ?? '',
+      shippingPostcode: shippingPostcode ?? '',
+      price: cardDesign.price,
+      stripePaymentId: session.payment_intent as string,
+    },
+  })
+
+  // Record platform revenue
+  const CARD_COST = 3.50
+  await prisma.platformRevenue.create({
+    data: {
+      source: 'card_sale',
+      amount: cardDesign.price - CARD_COST,
+      referenceId: userId,
+      description: `${cardDesign.name} card order`,
+    },
   })
 }
 

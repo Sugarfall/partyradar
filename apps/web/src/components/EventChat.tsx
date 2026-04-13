@@ -64,13 +64,14 @@ function Avatar({ name, photo, size = 28 }: { name: string; photo?: string; size
   )
 }
 
-export default function EventChat({ eventId, eventName }: { eventId: string; eventName: string }) {
+export default function EventChat({ eventId, eventName, hostId, hostName }: { eventId: string; eventName: string; hostId?: string; hostName?: string }) {
   const { dbUser, firebaseUser } = useAuth()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState<string | null>(null)
   const [onlineCount, setOnlineCount] = useState(1)
+  const [hostOnline, setHostOnline] = useState(false)
   const socketRef = useRef<Socket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -92,20 +93,28 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
         setMessages([
           {
             id: '1',
+            senderId: hostId ?? 'host',
+            senderName: hostName ?? 'Event Host',
+            text: 'Welcome everyone! Doors open at 10pm, see you there 🎉',
+            createdAt: new Date(Date.now() - 600000).toISOString(),
+            isHost: true,
+          } as any,
+          {
+            id: '2',
             senderId: 'other',
             senderName: 'Alex Rivera',
             text: 'Anyone else already here? Queue is mad 🔥',
             createdAt: new Date(Date.now() - 300000).toISOString(),
           },
           {
-            id: '2',
+            id: '3',
             senderId: 'other2',
             senderName: 'Jamie K',
             text: 'Just arrived, vibes are immaculate',
             createdAt: new Date(Date.now() - 120000).toISOString(),
           },
           {
-            id: '3',
+            id: '4',
             senderId: 'other',
             senderName: 'Alex Rivera',
             text: 'DJ set starts in 20 mins apparently',
@@ -113,6 +122,7 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
           },
         ])
         setOnlineCount(12)
+        setHostOnline(true)
       }, 1000)
       return
     }
@@ -150,6 +160,10 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
 
       socket.on('online-count', (count: number) => {
         setOnlineCount(count)
+      })
+
+      socket.on('host-presence', (online: boolean) => {
+        setHostOnline(online)
       })
     }
 
@@ -312,6 +326,21 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
                 >
                   ● {onlineCount} online
                 </span>
+                {/* Host status */}
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    letterSpacing: '0.08em',
+                    background: hostOnline ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${hostOnline ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                    color: hostOnline ? '#00ff88' : 'rgba(74,96,128,0.5)',
+                  }}
+                >
+                  HOST {hostOnline ? 'ONLINE' : 'OFFLINE'}
+                </span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -379,6 +408,7 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
 
               {messages.map((msg) => {
                 const isOwn = msg.senderId === myId
+                const isMsgHost = msg.senderId === hostId || (msg as any).isHost
                 return (
                   <div
                     key={msg.id}
@@ -389,7 +419,20 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
                       gap: 8,
                     }}
                   >
-                    {!isOwn && <Avatar name={msg.senderName} photo={msg.senderPhoto} size={26} />}
+                    {!isOwn && (
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <Avatar name={msg.senderName} photo={msg.senderPhoto} size={26} />
+                        {isMsgHost && (
+                          <div style={{
+                            position: 'absolute', bottom: -2, right: -2,
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: '#ffd600', border: '2px solid #04040d',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 6,
+                          }}>★</div>
+                        )}
+                      </div>
+                    )}
 
                     <div
                       style={{
@@ -401,9 +444,18 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
                       }}
                     >
                       {!isOwn && (
-                        <span style={{ fontSize: 9, fontWeight: 700, color: '#00e5ff', letterSpacing: '0.06em' }}>
-                          {msg.senderName}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: isMsgHost ? '#ffd600' : '#00e5ff', letterSpacing: '0.06em' }}>
+                            {msg.senderName}
+                          </span>
+                          {isMsgHost && (
+                            <span style={{
+                              fontSize: 7, fontWeight: 900, padding: '1px 4px', borderRadius: 3,
+                              background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.3)',
+                              color: '#ffd600', letterSpacing: '0.1em',
+                            }}>HOST</span>
+                          )}
+                        </div>
                       )}
 
                       <div
@@ -412,9 +464,13 @@ export default function EventChat({ eventId, eventName }: { eventId: string; eve
                           borderRadius: isOwn ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
                           background: isOwn
                             ? 'rgba(255,0,110,0.12)'
+                            : isMsgHost
+                            ? 'rgba(255,214,0,0.06)'
                             : 'rgba(0,229,255,0.06)',
                           border: isOwn
                             ? '1px solid rgba(255,0,110,0.25)'
+                            : isMsgHost
+                            ? '1px solid rgba(255,214,0,0.2)'
                             : '1px solid rgba(0,229,255,0.12)',
                           fontSize: 13,
                           color: isOwn ? '#fce7f3' : '#e0f2fe',
