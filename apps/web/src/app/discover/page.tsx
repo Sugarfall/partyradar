@@ -803,7 +803,7 @@ export default function DiscoverPage() {
               </button>
               <button
                 onClick={() => setShowFilters((v) => !v)}
-                className="p-1.5 rounded transition-all duration-200"
+                className="p-1.5 rounded transition-all duration-200 relative"
                 style={{
                   border: showFilters ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.12)',
                   color: showFilters ? '#00e5ff' : 'rgba(74,96,128,0.7)',
@@ -811,6 +811,9 @@ export default function DiscoverPage() {
                 }}
               >
                 <SlidersHorizontal size={14} />
+                {(filters.type || filters.showFree || filters.tonight || filters.search) && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: '#00e5ff', boxShadow: '0 0 6px #00e5ff' }} />
+                )}
               </button>
               <button
                 onClick={() => setShowMap((v) => !v)}
@@ -834,7 +837,59 @@ export default function DiscoverPage() {
       {/* ── Events tab content ── */}
       {tab === 'events' && <>
 
-      {/* ── Filter panel (collapsible) ── */}
+      {/* ── Event type filter pills (always visible) ── */}
+      <div
+        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar"
+        style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}
+      >
+        {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'CONCERT'] as (EventType | undefined)[]).map((type) => {
+          const isActive = filters.type === type
+          const label = type ? TYPE_LABELS[type] : 'ALL'
+          const color = type ? TYPE_COLORS[type] : '#00e5ff'
+          return (
+            <button
+              key={type ?? 'all'}
+              onClick={() => setFilters(f => ({ ...f, type }))}
+              className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
+              style={{
+                background: isActive ? `${color}18` : 'transparent',
+                border: `1px solid ${isActive ? `${color}60` : 'rgba(0,229,255,0.1)'}`,
+                color: isActive ? color : 'rgba(74,96,128,0.6)',
+                boxShadow: isActive ? `0 0 10px ${color}20` : 'none',
+                letterSpacing: '0.12em',
+              }}
+            >
+              {label}
+            </button>
+          )
+        })}
+        <button
+          onClick={() => setFilters(f => ({ ...f, tonight: !f.tonight }))}
+          className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
+          style={{
+            background: filters.tonight ? 'rgba(255,214,0,0.12)' : 'transparent',
+            border: `1px solid ${filters.tonight ? 'rgba(255,214,0,0.5)' : 'rgba(0,229,255,0.1)'}`,
+            color: filters.tonight ? '#ffd600' : 'rgba(74,96,128,0.6)',
+            letterSpacing: '0.12em',
+          }}
+        >
+          🌙 TONIGHT
+        </button>
+        <button
+          onClick={() => setFilters(f => ({ ...f, showFree: !f.showFree }))}
+          className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
+          style={{
+            background: filters.showFree ? 'rgba(0,255,136,0.1)' : 'transparent',
+            border: `1px solid ${filters.showFree ? 'rgba(0,255,136,0.4)' : 'rgba(0,229,255,0.1)'}`,
+            color: filters.showFree ? '#00ff88' : 'rgba(74,96,128,0.6)',
+            letterSpacing: '0.12em',
+          }}
+        >
+          FREE
+        </button>
+      </div>
+
+      {/* ── Filter panel (collapsible — search + advanced) ── */}
       {showFilters && (
         <div
           className="flex-shrink-0 px-4 py-3 animate-fade-up"
