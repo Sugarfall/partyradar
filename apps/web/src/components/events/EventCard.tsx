@@ -2,9 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Calendar, MapPin, Users, Wine, Star, Lock } from 'lucide-react'
+import { Calendar, MapPin, Users, Star, Lock, ExternalLink } from 'lucide-react'
 import type { Event } from '@partyradar/shared'
-import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS } from '@partyradar/shared'
+
+const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
+  skiddle:      { label: 'Skiddle',      color: '#e91e63' },
+  ticketmaster: { label: 'Ticketmaster', color: '#026cdf' },
+  eventbrite:   { label: 'Eventbrite',   color: '#f05537' },
+}
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
@@ -196,6 +201,29 @@ export function EventCard({ event, compact = false }: EventCardProps) {
               {event.guestCount ?? 0}/{event.capacity}
             </span>
           </div>
+
+          {/* External source attribution (required by Skiddle/Ticketmaster ToS) */}
+          {event.externalSource && SOURCE_LABELS[event.externalSource] && (
+            <div className="mt-2 pt-1.5" style={{ borderTop: '1px solid rgba(0,229,255,0.05)' }}>
+              {event.socialSourceUrl ? (
+                <a
+                  href={event.socialSourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[9px] font-medium"
+                  style={{ color: SOURCE_LABELS[event.externalSource]!.color, opacity: 0.75 }}
+                >
+                  <ExternalLink size={8} />
+                  via {SOURCE_LABELS[event.externalSource]!.label}
+                </a>
+              ) : (
+                <span className="text-[9px]" style={{ color: SOURCE_LABELS[event.externalSource]!.color, opacity: 0.65 }}>
+                  via {SOURCE_LABELS[event.externalSource]!.label}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Vibe tags */}
           {event.vibeTags.length > 0 && !compact && (

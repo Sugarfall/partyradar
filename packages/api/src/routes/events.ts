@@ -41,7 +41,7 @@ const eventSchema = z.object({
 const userSelect = {
   id: true, username: true, displayName: true,
   photoUrl: true, bio: true, ageVerified: true,
-  alcoholFriendly: true, subscriptionTier: true,
+  subscriptionTier: true,
 }
 
 /** GET /api/events — discover events */

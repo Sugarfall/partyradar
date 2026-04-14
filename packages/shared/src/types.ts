@@ -94,6 +94,13 @@ export interface Event {
   guestCount: number
   genderRatio?: GenderRatio | null
   createdAt: string
+  /** External sync fields */
+  externalSource?: string | null
+  socialSourceUrl?: string | null
+  ticketmasterId?: string | null
+  skiddleId?: string | null
+  eventbriteId?: string | null
+  eventbriteUrl?: string | null
 }
 
 export interface CreateEventInput {
