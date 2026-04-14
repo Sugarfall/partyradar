@@ -41,41 +41,37 @@ const eventSchema = z.object({
 const userSelect = {
   id: true, username: true, displayName: true,
   photoUrl: true, bio: true, ageVerified: true,
-  subscriptionTier: true,
+  alcoholFriendly: true, subscriptionTier: true,
 }
 
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, search, page = '1', limit = '20', tonight } = req.query
+    const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
 
     const skip = (Number(page) - 1) * Number(limit)
-
-    const now = new Date()
-    // Show events that haven't ended yet — includes currently-live events.
-    // Events without an endsAt get a 6-hour grace window after startsAt.
-    const cutoff = new Date(now.getTime() - 6 * 60 * 60 * 1000)
+    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
 
     const where: Record<string, unknown> = {
       isPublished: true,
       isCancelled: false,
-      OR: [
-        { endsAt: { gte: now } },
-        { endsAt: null, startsAt: { gte: cutoff } },
-      ],
+      startsAt: { gte: new Date() },
     }
 
     if (tonight === 'true') {
+      const now = new Date()
       const midnight = new Date(now)
       midnight.setHours(23, 59, 59, 999)
-      where['OR'] = [
-        { endsAt: { gte: now, lte: midnight } },
-        { endsAt: null, startsAt: { gte: now, lte: midnight } },
-      ]
+      where['startsAt'] = { gte: now, lte: midnight }
     }
 
     if (type) where['type'] = type
     if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
+
+    // Hide alcohol events only for logged-in users who haven't enabled the toggle
+    if (req.user && !showAlcohol) {
+      where['alcoholPolicy'] = 'NONE'
+    }
 
     // Geo filter
     if (lat && lng) {
@@ -84,6 +80,18 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       const lngDelta = radN / (69 * Math.cos((latN * Math.PI) / 180))
       where['lat'] = { gte: latN - latDelta, lte: latN + latDelta }
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
+    }
+
+    // Background sync external events if lat/lng provided and we have API keys
+    if (lat && lng) {
+      const { syncExternalEvents } = await import('../lib/eventSync')
+      // fire-and-forget — don't await, don't fail request if sync errors
+      syncExternalEvents(
+        'Glasgow',
+        Number(lat),
+        Number(lng),
+        'system'
+      ).catch(() => {})
     }
 
     const [events, total] = await Promise.all([
@@ -168,6 +176,11 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
       if (!isHost && !isGuest && token !== event.inviteToken) {
         throw new AppError('This event is invite-only', 403)
       }
+    }
+
+    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
+    if (req.user && !showAlcohol && event.alcoholPolicy !== 'NONE' && req.user?.dbUser.id !== event.hostId) {
+      throw new AppError('Enable alcohol events in settings to view this event', 403)
     }
 
     res.json({ data: { ...event, guestCount: event._count.guests } })

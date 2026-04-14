@@ -171,6 +171,9 @@ model Event {
   eventbriteId          String?        @unique
   eventbriteUrl         String?
   socialSourceUrl       String?
+  ticketmasterId        String?        @unique
+  skiddleId             String?        @unique
+  externalSource        String?        // "ticketmaster" | "eventbrite" | "skiddle"
   venueId               String?
   venue                 Venue?         @relation(fields: [venueId], references: [id])
   createdAt             DateTime       @default(now())

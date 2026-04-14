@@ -176,72 +176,20 @@ router.post('/import', requireAuth, async (req: AuthRequest, res, next) => {
 })
 
 // ── POST /api/eventbrite/sync ──────────────────────────────────────────────────
-// Admin/cron: bulk-import upcoming Glasgow events from Eventbrite
+// Admin/cron: bulk-import upcoming Glasgow events from Eventbrite + other sources
 
 router.post('/sync', requireAdmin, async (req: AuthRequest, res, next) => {
   try {
-    const pages = parseInt((req.query['pages'] as string) ?? '3', 10)
-    const city = (req.query['city'] as string) || (req.body as Record<string, unknown>)?.['city'] as string || 'Glasgow, UK'
-    const radius = (req.query['radius'] as string) || (req.body as Record<string, unknown>)?.['radius'] as string || '20km'
-    let imported = 0
-    let skipped = 0
+    const body = req.body as Record<string, unknown>
+    const city = (req.query['city'] as string) || (body['city'] as string) || 'Glasgow'
+    // Default lat/lng for Glasgow city centre
+    const lat = parseFloat((req.query['lat'] as string) || (body['lat'] as string) || '55.8642')
+    const lng = parseFloat((req.query['lng'] as string) || (body['lng'] as string) || '-4.2518')
 
-    for (let page = 1; page <= pages; page++) {
-      const data = await ebFetch('/events/search/', {
-        'location.address': city,
-        'location.within': radius,
-        expand: 'venue,category,subcategory,ticket_availability,logo',
-        sort_by: 'date',
-        page: String(page),
-      })
+    const { syncExternalEvents } = await import('../lib/eventSync')
+    const result = await syncExternalEvents(city, lat, lng, req.user!.dbUser.id)
 
-      const events = (data['events'] as EBEvent[] | undefined) ?? []
-      if (events.length === 0) break
-
-      for (const ev of events) {
-        try {
-          const existing = await prisma.event.findFirst({ where: { eventbriteId: ev.id } })
-          if (existing) { skipped++; continue }
-
-          const mapped = mapEBEvent(ev)
-          const neighbourhood = mapped.address.split(',')[0] ?? 'Glasgow'
-
-          await prisma.event.create({
-            data: {
-              hostId: req.user!.dbUser.id,
-              name: mapped.name,
-              type: mapped.type,
-              description: mapped.description.slice(0, 2000),
-              startsAt: mapped.startsAt,
-              endsAt: mapped.endsAt,
-              lat: mapped.lat,
-              lng: mapped.lng,
-              address: mapped.address,
-              neighbourhood,
-              showNeighbourhoodOnly: false,
-              capacity: mapped.capacity,
-              price: mapped.price,
-              ticketQuantity: mapped.price > 0 ? mapped.capacity : 0,
-              ticketsRemaining: mapped.price > 0 ? mapped.capacity : 0,
-              alcoholPolicy: 'NONE',
-              ageRestriction: 'ALL_AGES',
-              vibeTags: [],
-              whatToBring: [],
-              isPublished: true,
-              isCancelled: false,
-              coverImageUrl: mapped.coverImageUrl,
-              eventbriteId: ev.id,
-              eventbriteUrl: ev.url,
-            },
-          })
-          imported++
-        } catch {
-          skipped++
-        }
-      }
-    }
-
-    res.json({ imported, skipped })
+    res.json(result)
   } catch (err) {
     next(err)
   }
