@@ -11,7 +11,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api, API_URL as API_BASE } from '@/lib/api'
 
 const TIER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   FREE:    { label: 'FREE',    color: '#4b5563', icon: '⚡' },
@@ -141,9 +141,9 @@ export default function ProfilePage() {
     typeof window !== 'undefined' ? localStorage.getItem('partyradar_gender') : null
   )
 
-  // Social counts (demo values; replace with API when available)
-  const [followersCount] = useState(128)
-  const [followingCount] = useState(47)
+  // Social counts — fetched from API, demo fallback
+  const [followersCount, setFollowersCount] = useState(128)
+  const [followingCount, setFollowingCount] = useState(47)
 
   // "Going Out Tonight?" toggle — persisted in localStorage
   const [goingOut, setGoingOut] = useState(() => {
@@ -178,35 +178,38 @@ export default function ProfilePage() {
     }
   }, [dbUser])
 
-  // Load activity from API, fall back to demo
+  // Fetch real follower/following counts from API
+  useEffect(() => {
+    if (!dbUser) return
+    async function loadFollowCounts() {
+      try {
+        const res = await api.get<{ data: { isFollowing: boolean; followers: number; following: number } }>(`/follow/${dbUser!.id}`)
+        setFollowersCount(res.data.followers)
+        setFollowingCount(res.data.following)
+      } catch {
+        // Keep demo fallback values
+      }
+    }
+    loadFollowCounts()
+  }, [dbUser])
+
+  // Load activity from API (GET /api/feed), fall back to demo
   useEffect(() => {
     if (!dbUser) return
     async function loadActivity() {
       try {
-        const token = localStorage.getItem('partyradar_mock_session') ?? ''
-        const res = await fetch(`${API_BASE}/users/${dbUser!.id}/activity?limit=3`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        })
-        if (res.ok) {
-          const json = await res.json()
-          const items = json?.data ?? json ?? []
-          if (items.length > 0) setActivity(items)
-        }
+        const res = await api.get<{ data: typeof DEMO_ACTIVITY }>('/feed')
+        const items = res?.data ?? []
+        if (items.length > 0) setActivity(items)
       } catch {
         // Keep demo data
       }
     }
     async function loadReviews() {
       try {
-        const token = localStorage.getItem('partyradar_mock_session') ?? ''
-        const res = await fetch(`${API_BASE}/users/${dbUser!.id}/reviews?limit=5`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        })
-        if (res.ok) {
-          const json = await res.json()
-          const items = json?.data ?? json ?? []
-          if (items.length > 0) setReviews(items)
-        }
+        const res = await api.get<{ data: typeof DEMO_REVIEWS }>('/reviews')
+        const items = res?.data ?? []
+        if (items.length > 0) setReviews(items)
       } catch {
         // Keep demo data
       }

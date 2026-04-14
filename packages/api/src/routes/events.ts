@@ -183,6 +183,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       throw new AppError('Upgrade to Pro to sell tickets', 403, 'TIER_LIMIT')
     }
 
+    // Paid events must have ticket quantity > 0
+    if (body.price > 0 && body.ticketQuantity <= 0) {
+      throw new AppError('Paid events must have a ticket quantity greater than 0', 400)
+    }
+
+    // startsAt must be in the future
+    if (new Date(body.startsAt) <= new Date()) {
+      throw new AppError('Event start date must be in the future', 400)
+    }
+
+    // endsAt must be after startsAt if provided
+    if (body.endsAt && new Date(body.endsAt) <= new Date(body.startsAt)) {
+      throw new AppError('Event end time must be after the start time', 400)
+    }
+
     const event = await prisma.event.create({
       data: {
         ...body,

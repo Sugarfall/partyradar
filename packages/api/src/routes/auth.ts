@@ -47,6 +47,23 @@ router.post('/sync', async (req, res, next) => {
           isAdmin: shouldBeAdmin,
         },
       })
+
+      // Auto-follow all admin accounts so new users see official content
+      if (adminUids.length > 0) {
+        const adminUsers = await prisma.user.findMany({
+          where: { firebaseUid: { in: adminUids }, id: { not: user.id } },
+          select: { id: true },
+        })
+        for (const admin of adminUsers) {
+          try {
+            await prisma.follow.create({
+              data: { followerId: user.id, followingId: admin.id },
+            })
+          } catch {
+            // Ignore if already following (e.g. duplicate constraint)
+          }
+        }
+      }
     } else if (shouldBeAdmin && !user.isAdmin) {
       // Promote to admin if UID is in admin list but not yet flagged
       user = await prisma.user.update({

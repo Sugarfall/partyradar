@@ -84,10 +84,12 @@ router.get('/search', async (req, res, next) => {
   try {
     const q = (req.query['q'] as string) || ''
     const page = (req.query['page'] as string) || '1'
+    const city = (req.query['city'] as string) || 'Glasgow, UK'
+    const radius = (req.query['radius'] as string) || '20km'
 
     const params: Record<string, string> = {
-      'location.address': 'Glasgow, UK',
-      'location.within': '20km',
+      'location.address': city,
+      'location.within': radius,
       expand: 'venue,category,subcategory,ticket_availability,logo',
       sort_by: 'date',
       page,
@@ -179,13 +181,15 @@ router.post('/import', requireAuth, async (req: AuthRequest, res, next) => {
 router.post('/sync', requireAdmin, async (req: AuthRequest, res, next) => {
   try {
     const pages = parseInt((req.query['pages'] as string) ?? '3', 10)
+    const city = (req.query['city'] as string) || (req.body as Record<string, unknown>)?.['city'] as string || 'Glasgow, UK'
+    const radius = (req.query['radius'] as string) || (req.body as Record<string, unknown>)?.['radius'] as string || '20km'
     let imported = 0
     let skipped = 0
 
     for (let page = 1; page <= pages; page++) {
       const data = await ebFetch('/events/search/', {
-        'location.address': 'Glasgow, UK',
-        'location.within': '20km',
+        'location.address': city,
+        'location.within': radius,
         expand: 'venue,category,subcategory,ticket_availability,logo',
         sort_by: 'date',
         page: String(page),

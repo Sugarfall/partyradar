@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { api } from '@/lib/api'
 import { Zap, Check, ChevronRight, Eye, EyeOff } from 'lucide-react'
 import type { Gender } from '@partyradar/shared'
 
@@ -20,7 +21,7 @@ function saveGenderLocally(gender: Gender) {
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { signUp, signInWithGoogle } = useAuth()
+  const { signUp, signInWithGoogle, signInWithApple } = useAuth()
 
   const [phase, setPhase] = useState<'credentials' | 'gender'>('credentials')
   const [email, setEmail] = useState('')
@@ -29,6 +30,7 @@ export default function RegisterPage() {
   const [gender, setGender] = useState<Gender | null>(null)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [appleLoading, setAppleLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   /* ── Phase 1: credentials ── */
@@ -59,9 +61,28 @@ export default function RegisterPage() {
     }
   }
 
+  async function handleAppleSignUp() {
+    setAppleLoading(true)
+    setError(null)
+    try {
+      await signInWithApple()
+      setPhase('gender')
+    } catch {
+      setError('Apple sign-up failed')
+      setAppleLoading(false)
+    }
+  }
+
   /* ── Phase 2: gender → finish ── */
-  function handleFinish() {
-    if (gender) saveGenderLocally(gender)
+  async function handleFinish() {
+    if (gender) {
+      saveGenderLocally(gender)
+      try {
+        await api.put('/auth/profile', { gender })
+      } catch {
+        // Don't block navigation if API call fails
+      }
+    }
     router.push('/discover')
   }
 
@@ -244,6 +265,28 @@ export default function RegisterPage() {
             </svg>
           )}
           CONTINUE WITH GOOGLE
+        </button>
+
+        {/* Apple */}
+        <button
+          onClick={handleAppleSignUp}
+          disabled={appleLoading}
+          className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg font-bold text-xs mb-4 transition-all duration-200"
+          style={{
+            background: 'rgba(0,229,255,0.04)',
+            border: '1px solid rgba(0,229,255,0.15)',
+            color: 'rgba(224,242,254,0.7)',
+            letterSpacing: '0.08em',
+          }}
+        >
+          {appleLoading ? (
+            <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.467c-.034-.058-2.088-1.222-2.048-3.513.04-2.291 1.774-3.11 1.808-3.15.034-.04-1.004-1.443-2.648-1.443-1.152 0-1.698.693-2.538.693-.84 0-1.548-.664-2.538-.664C4.792 3.398 3 5.064 3 7.882c0 1.717.632 3.53 1.412 4.7.658.985 1.372 1.862 2.316 1.862.892 0 1.28-.585 2.392-.585 1.112 0 1.41.572 2.37.56.97-.012 1.63-.873 2.286-1.856.464-.695.794-1.36.96-1.72.028-.06.062-.13.062-.13s-.05-.028-.062-.038z"/>
+            </svg>
+          )}
+          CONTINUE WITH APPLE
         </button>
 
         <div className="flex items-center gap-3 mb-4">

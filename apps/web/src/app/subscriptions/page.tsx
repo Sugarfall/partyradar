@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Check, Zap, Crown } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { checkoutSubscription, openBillingPortal } from '@/hooks/useSubscription'
@@ -17,9 +18,18 @@ const TIER_STYLE: Record<string, { color: string; glow: string; icon: string; ba
 }
 
 export default function SubscriptionsPage() {
-  const { dbUser } = useAuth()
+  const { dbUser, refreshUser } = useAuth()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
+  const [successBanner, setSuccessBanner] = useState(false)
   const currentTier = (dbUser?.subscriptionTier ?? 'FREE') as SubscriptionTier
+
+  useEffect(() => {
+    if (searchParams.get('success') === 'true') {
+      setSuccessBanner(true)
+      refreshUser()
+    }
+  }, [searchParams])
 
   async function handleCheckout(tier: 'BASIC' | 'PRO' | 'PREMIUM') {
     if (!dbUser) return
@@ -36,6 +46,14 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="min-h-screen pb-28 px-4 py-8" style={{ background: '#04040d' }}>
+      {/* Success banner */}
+      {successBanner && (
+        <div className="max-w-lg mx-auto mb-6 px-4 py-3 rounded-xl text-center text-sm font-bold"
+          style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88' }}>
+          Subscription activated! Your plan has been upgraded.
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center mb-10 max-w-lg mx-auto">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4"

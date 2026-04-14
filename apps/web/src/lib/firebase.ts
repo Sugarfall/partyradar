@@ -2,6 +2,7 @@ import { initializeApp, getApps } from 'firebase/app'
 import {
   getAuth,
   GoogleAuthProvider,
+  OAuthProvider,
   onAuthStateChanged as _onAuthStateChanged,
   type User,
 } from 'firebase/auth'
@@ -32,6 +33,10 @@ export const auth = _realAuth ?? ({
   currentUser: null,
 } as unknown as ReturnType<typeof getAuth>)
 export const googleProvider = new GoogleAuthProvider()
+
+export const appleProvider = new OAuthProvider('apple.com')
+appleProvider.addScope('email')
+appleProvider.addScope('name')
 
 // ── Dev mock auth (used when no Firebase API key is configured) ──────────────
 const MOCK_USERS_KEY = 'partyradar_mock_users'
@@ -127,6 +132,14 @@ export async function signInWithPopup(
   if (DEV_MODE) throw new Error('Google sign-in not available in dev mode — use email/password')
   const { signInWithPopup: _fn } = await import('firebase/auth')
   return _fn(authInstance, provider)
+}
+
+export async function signInWithApple(
+  authInstance: ReturnType<typeof getAuth>
+): Promise<{ user: User }> {
+  if (DEV_MODE) throw new Error('Apple sign-in not available in dev mode')
+  const { signInWithPopup: _fn } = await import('firebase/auth')
+  return _fn(authInstance, appleProvider)
 }
 
 export async function signOut(authInstance: ReturnType<typeof getAuth>): Promise<void> {

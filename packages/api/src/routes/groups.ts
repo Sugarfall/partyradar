@@ -4,6 +4,7 @@ import { optionalAuth, requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { GROUP_PRICE_TIERS, REFERRAL_CONFIG } from '@partyradar/shared'
+import { stripe } from '../lib/stripe'
 
 const router = Router()
 
@@ -329,35 +330,54 @@ router.post('/:id/subscribe', requireAuth, async (req: AuthRequest, res, next) =
       throw new AppError('Already subscribed', 400)
     }
 
-    // In production: create Stripe checkout session
-    // For now: create subscription directly (demo mode)
-    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
-
-    await prisma.groupSubscription.upsert({
-      where: { groupId_userId: { groupId: group.id, userId } },
-      create: { groupId: group.id, userId, currentPeriodEnd: periodEnd },
-      update: { currentPeriodEnd: periodEnd, cancelAtPeriodEnd: false },
-    })
-
-    // Auto-join
-    const membership = await prisma.groupMembership.findUnique({
-      where: { groupId_userId: { groupId: group.id, userId } },
-    })
-    if (!membership) {
-      await prisma.groupMembership.create({ data: { groupId: group.id, userId } })
-      await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } })
-    }
-
-    // Credit group creator (platform takes cut, rest goes to creator)
-    if (group.priceMonthly && group.createdById) {
-      const creatorShare = group.priceMonthly * (1 - REFERRAL_CONFIG.GROUP_PLATFORM_CUT_PERCENT / 100)
-      await prisma.user.update({
-        where: { id: group.createdById },
-        data: { referralBalance: { increment: Number(creatorShare.toFixed(2)) } },
+    // Owner subscribes for free — bypass Stripe
+    if (group.createdById === userId) {
+      const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      await prisma.groupSubscription.upsert({
+        where: { groupId_userId: { groupId: group.id, userId } },
+        create: { groupId: group.id, userId, currentPeriodEnd: periodEnd },
+        update: { currentPeriodEnd: periodEnd, cancelAtPeriodEnd: false },
       })
+      const membership = await prisma.groupMembership.findUnique({
+        where: { groupId_userId: { groupId: group.id, userId } },
+      })
+      if (!membership) {
+        await prisma.groupMembership.create({ data: { groupId: group.id, userId } })
+        await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } })
+      }
+      res.json({ data: { subscribed: true, expiresAt: periodEnd.toISOString() } })
+      return
     }
 
-    res.json({ data: { subscribed: true, expiresAt: periodEnd.toISOString() } })
+    // Get or create Stripe customer
+    let stripeCustomerId = (await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } }))?.stripeCustomerId
+
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({ email: req.user!.dbUser.email })
+      stripeCustomerId = customer.id
+      await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } })
+    }
+
+    // Create Stripe checkout session for group subscription
+    const session = await stripe.checkout.sessions.create({
+      customer: stripeCustomerId,
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'gbp',
+          product_data: { name: `${group.name} — Monthly Subscription` },
+          unit_amount: Math.round((group.priceMonthly ?? 0) * 100),
+          recurring: { interval: 'month' },
+        },
+        quantity: 1,
+      }],
+      mode: 'subscription',
+      metadata: { type: 'group_subscription', groupId: group.id, userId },
+      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/subscriptions?success=true`,
+      cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/subscriptions`,
+    })
+
+    res.json({ data: { url: session.url } })
   } catch (err) {
     next(err)
   }

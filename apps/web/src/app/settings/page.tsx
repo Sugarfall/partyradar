@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
-import { Button } from '@/components/ui/Button'
-import { Wine, Bell, Shield } from 'lucide-react'
+import { Wine, Shield } from 'lucide-react'
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -20,17 +19,27 @@ export default function SettingsPage() {
     return null
   }
 
-  async function saveSettings() {
+  async function updateSetting(updates: { showAlcoholEvents?: boolean; alcoholFriendly?: boolean }) {
     setSaving(true)
     setError(null)
     try {
-      await api.put('/auth/settings', { showAlcoholEvents: showAlcohol, alcoholFriendly })
+      await api.put('/auth/settings', updates)
       await refreshUser()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save settings')
     } finally {
       setSaving(false)
     }
+  }
+
+  function handleShowAlcoholToggle(checked: boolean) {
+    setShowAlcohol(checked)
+    updateSetting({ showAlcoholEvents: checked, alcoholFriendly })
+  }
+
+  function handleAlcoholFriendlyToggle(checked: boolean) {
+    setAlcoholFriendly(checked)
+    updateSetting({ showAlcoholEvents: showAlcohol, alcoholFriendly: checked })
   }
 
   return (
@@ -53,7 +62,7 @@ export default function SettingsPage() {
                 type="checkbox"
                 disabled={!dbUser.ageVerified}
                 checked={showAlcohol}
-                onChange={(e) => setShowAlcohol(e.target.checked)}
+                onChange={(e) => handleShowAlcoholToggle(e.target.checked)}
                 className="w-4 h-4 accent-accent"
               />
               <span className="text-sm">Enable alcohol event filter</span>
@@ -72,7 +81,7 @@ export default function SettingsPage() {
               <input
                 type="checkbox"
                 checked={alcoholFriendly}
-                onChange={(e) => setAlcoholFriendly(e.target.checked)}
+                onChange={(e) => handleAlcoholFriendlyToggle(e.target.checked)}
                 className="w-4 h-4 accent-accent"
               />
               <span className="text-sm">Show alcohol-friendly badge</span>
@@ -83,9 +92,7 @@ export default function SettingsPage() {
 
       {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
 
-      <Button onClick={saveSettings} loading={saving} className="w-full">
-        Save Settings
-      </Button>
+      {saving && <p className="text-zinc-400 text-sm text-center">Saving...</p>}
     </div>
   )
 }

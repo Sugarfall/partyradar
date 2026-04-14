@@ -62,7 +62,8 @@ Given a social media post, extract the following fields and return ONLY valid JS
   "dressCode": "Dress code description or null",
   "vibeTags": ["array", "of", "up", "to", "6", "vibe", "tags"],
   "capacity": number or null,
-  "coverImageUrl": "Image URL from post or null"
+  "coverImageUrl": "Image URL from post or null",
+  "confidence": "number 0-100 indicating how confident you are about the extracted data overall"
 }
 
 Rules:
@@ -143,13 +144,17 @@ router.post('/create', requireAuth, async (req: AuthRequest, res, next) => {
     // Merge overrides
     const merged = { ...parsed, ...(overrides ?? {}) }
 
+    // Check confidence score
+    const confidence = typeof merged['confidence'] === 'number' ? merged['confidence'] : 0
+    if (confidence < 70) {
+      throw new AppError('Event data could not be verified with sufficient confidence', 422)
+    }
+
     // Validate required fields
     const name = (merged['name'] as string | undefined)?.trim()
-    if (!name) throw new AppError('Could not extract event name from post', 422)
-
     const startsAt = merged['startsAt'] ? new Date(merged['startsAt'] as string) : null
-    if (!startsAt || isNaN(startsAt.getTime())) {
-      throw new AppError('Could not extract event date from post', 422)
+    if (!name || !startsAt || isNaN(startsAt.getTime())) {
+      throw new AppError('Insufficient event data extracted', 422)
     }
 
     const address = (merged['address'] as string | undefined) ?? 'Glasgow'
@@ -188,7 +193,7 @@ router.post('/create', requireAuth, async (req: AuthRequest, res, next) => {
         dressCode: (merged['dressCode'] as string | undefined) ?? undefined,
         vibeTags: Array.isArray(merged['vibeTags']) ? (merged['vibeTags'] as string[]).slice(0, 8) : [],
         whatToBring: [],
-        isPublished: true,
+        isPublished: false,
         isCancelled: false,
         coverImageUrl: (imageUrl ?? (merged['coverImageUrl'] as string | undefined)) ?? undefined,
         socialSourceUrl: sourceUrl ?? undefined,

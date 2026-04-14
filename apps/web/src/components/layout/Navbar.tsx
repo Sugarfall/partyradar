@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3 } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -248,6 +248,17 @@ function NavbarInner() {
                     </Link>
                   </>
                 )}
+
+                {/* Earn */}
+                <Link href="/earn"
+                  className="p-2 rounded-lg transition-all duration-150"
+                  style={{
+                    color: pathname.startsWith('/earn') ? '#00e5ff' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/earn') ? 'rgba(0,229,255,0.08)' : 'transparent',
+                  }}
+                >
+                  <TrendingUp size={16} />
+                </Link>
 
                 {/* Referrals */}
                 <Link href="/referrals"

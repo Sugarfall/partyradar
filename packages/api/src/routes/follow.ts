@@ -179,6 +179,15 @@ router.delete('/:userId', requireAuth, async (req: AuthRequest, res, next) => {
     const followerId = req.user!.dbUser.id
     const followingId = req.params['userId']!
 
+    // Prevent unfollowing admin/official accounts
+    const targetUser = await prisma.user.findUnique({
+      where: { id: followingId },
+      select: { isAdmin: true },
+    })
+    if (targetUser?.isAdmin) {
+      throw new AppError('Cannot unfollow official accounts', 403)
+    }
+
     const existing = await prisma.follow.findUnique({
       where: { followerId_followingId: { followerId, followingId } },
     })

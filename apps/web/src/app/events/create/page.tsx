@@ -166,8 +166,31 @@ export default function CreateEventPage() {
 
   function canAdvance() {
     if (step === 0) return !!form.type
-    if (step === 1) return !!(form.name && form.startsAt && form.description)
+    if (step === 1) {
+      if (!(form.name && form.startsAt && form.description)) return false
+      // startsAt must be in the future
+      if (new Date(form.startsAt) <= new Date()) {
+        setError('Start date must be in the future')
+        return false
+      }
+      // endsAt must be after startsAt if provided
+      if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) {
+        setError('End time must be after the start time')
+        return false
+      }
+      setError(null)
+      return true
+    }
     if (step === 2) return !!(form.address && form.neighbourhood && form.lat && form.lng)
+    if (step === 3) {
+      // Paid events must have ticketQuantity > 0
+      if ((form.price ?? 0) > 0 && !(form.ticketQuantity && form.ticketQuantity > 0)) {
+        setError('Paid events must have a ticket quantity greater than 0')
+        return false
+      }
+      setError(null)
+      return true
+    }
     return true
   }
 

@@ -7,6 +7,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithApple as firebaseSignInWithApple,
   googleProvider,
   signOut,
   getFCMToken,
@@ -43,6 +44,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
+  signInWithApple: () => Promise<void>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -105,6 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await syncUser(cred.user)
   }
 
+  async function signInWithApple() {
+    const cred = await firebaseSignInWithApple(auth)
+    await syncUser(cred.user)
+  }
+
   async function logout() {
     await signOut(auth)
     setDbUser(null)
@@ -117,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return createElement(
     AuthContext.Provider,
     {
-      value: { firebaseUser, dbUser, loading, signIn, signUp, signInWithGoogle, logout, refreshUser },
+      value: { firebaseUser, dbUser, loading, signIn, signUp, signInWithGoogle, signInWithApple, logout, refreshUser },
     },
     children
   )

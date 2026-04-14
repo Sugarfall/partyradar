@@ -592,12 +592,14 @@ router.post('/seed-activity', async (_req, res, next) => {
         }
         continue
       }
+      const isDemoHost = demoHosts.find((h) => h.username === def.hostKey)?.firebaseUid?.startsWith('demo_') ?? false
+      const descriptionWithPrefix = isDemoHost ? `[DEMO] ${def.description}` : def.description
       const event = await prisma.event.create({
         data: {
           name: def.name, hostId, venueId: venue.id,
           type: def.type, price: def.price, capacity: def.capacity,
           startsAt: def.startsAt, endsAt: def.endsAt,
-          description: def.description,
+          description: descriptionWithPrefix,
           lat: venue.lat, lng: venue.lng, address: venue.address,
           neighbourhood: 'Glasgow City Centre',
           alcoholPolicy: def.alcoholPolicy, ageRestriction: def.ageRestriction,

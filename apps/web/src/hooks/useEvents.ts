@@ -235,19 +235,9 @@ export function useEvents(query: EventDiscoverQuery = {}) {
 
   const swrKey = `/events?${params.toString()}`
 
-  // Simple fetcher that skips auth for events (public endpoint)
-  const publicFetcher = async (path: string) => {
-    const res = await fetch(`${API_URL}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
-    })
-    const json = await res.json()
-    if (!res.ok) throw new Error(json.error ?? 'Fetch failed')
-    return json
-  }
-
   const { data, error, isLoading, isValidating, mutate } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
     swrKey,
-    DEV_MODE ? fetcher : publicFetcher,
+    fetcher,
     {
       shouldRetryOnError: true,
       errorRetryCount: 5,
@@ -321,19 +311,9 @@ export function useEvents(query: EventDiscoverQuery = {}) {
 export function useEvent(id: string | null) {
   const swrKey = id ? `/events/${id}` : null
 
-  // Public fetcher — no auth needed for event detail
-  const publicFetcher = async (path: string) => {
-    const res = await fetch(`${API_URL}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
-    })
-    const json = await res.json()
-    if (!res.ok) throw new Error(json.error ?? 'Fetch failed')
-    return json
-  }
-
   const { data, error, isLoading, mutate } = useSWR<{ data: Event }>(
     swrKey,
-    DEV_MODE ? fetcher : publicFetcher,
+    fetcher,
     {
       shouldRetryOnError: true,
       errorRetryCount: 3,
