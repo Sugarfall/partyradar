@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const [alcoholFriendly, setAlcoholFriendly] = useState(dbUser?.alcoholFriendly ?? false)
 
   if (!dbUser) {
-    router.push('/login')
+    if (typeof window !== 'undefined') router.push('/login')
     return null
   }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Check, Zap, Crown } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -18,6 +18,14 @@ const TIER_STYLE: Record<string, { color: string; glow: string; icon: string; ba
 }
 
 export default function SubscriptionsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen" style={{ background: '#04040d' }} />}>
+      <SubscriptionsContent />
+    </Suspense>
+  )
+}
+
+function SubscriptionsContent() {
   const { dbUser, refreshUser } = useAuth()
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
