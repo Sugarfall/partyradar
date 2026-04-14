@@ -1210,7 +1210,7 @@ function GroupChatView({
 // ─── DM Section ───────────────────────────────────────────────────────────────
 
 function DmSection({ dbUser, headers }: {
-  dbUser: { id: string } | null
+  dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
   headers: Record<string, string>
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
