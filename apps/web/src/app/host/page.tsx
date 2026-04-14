@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -8,8 +8,7 @@ import {
   ChevronRight, Megaphone, Clock, CheckCircle2, XCircle, AlertCircle,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { useEvents, DEMO_EVENTS } from '@/hooks/useEvents'
-import { DEV_MODE } from '@/lib/firebase'
+import { api } from '@/lib/api'
 import type { Event } from '@partyradar/shared'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -43,12 +42,17 @@ export default function HostDashboard() {
   const { dbUser } = useAuth()
   const router = useRouter()
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
+  const [myEvents, setMyEvents] = useState<Event[]>([])
+  const [eventsLoading, setEventsLoading] = useState(true)
 
-  // In dev mode use demo events owned by the demo user
-  const { events: allEvents } = useEvents()
-  const myEvents = DEV_MODE
-    ? DEMO_EVENTS.filter((e) => e.hostId === dbUser?.id)
-    : allEvents.filter((e) => e.hostId === dbUser?.id)
+  useEffect(() => {
+    if (!dbUser) return
+    setEventsLoading(true)
+    api.get<{ data: Event[] }>('/events/mine')
+      .then((res) => setMyEvents(res.data ?? []))
+      .catch(() => setMyEvents([]))
+      .finally(() => setEventsLoading(false))
+  }, [dbUser?.id])
 
   const now = Date.now()
   const upcoming = myEvents.filter((e) => !e.isCancelled && new Date(e.startsAt).getTime() > now - 3600000)
@@ -198,7 +202,12 @@ export default function HostDashboard() {
             ))}
           </div>
 
-          {displayed.length === 0 ? (
+          {eventsLoading ? (
+            <div className="py-12 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+            </div>
+          ) : displayed.length === 0 ? (
             <div className="py-12 text-center">
               <Calendar size={32} className="mx-auto mb-3" style={{ color: 'rgba(74,96,128,0.25)' }} />
               <p className="text-[11px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>

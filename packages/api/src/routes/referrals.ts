@@ -39,6 +39,9 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     const totalEarned = referrals.reduce((sum, r) => sum + r.earnedAmount, 0)
     const pendingPayout = user.referralBalance
+    // Active = referee has made at least one purchase (earnedAmount > 0 on referral record)
+    const activeReferrals = referrals.filter((r) => r.earnedAmount > 0)
+    const inactiveReferrals = referrals.filter((r) => r.earnedAmount === 0)
 
     res.json({
       data: {
@@ -46,10 +49,13 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         balance: pendingPayout,
         totalEarned,
         totalReferrals: referrals.length,
+        activeReferrals: activeReferrals.length,
+        inactiveReferrals: inactiveReferrals.length,
         referrals: referrals.map((r) => ({
           id: r.id,
           earned: r.earnedAmount,
           isPaidOut: r.isPaidOut,
+          isActive: r.earnedAmount > 0,
           createdAt: r.createdAt.toISOString(),
         })),
         config: REFERRAL_CONFIG,

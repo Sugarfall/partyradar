@@ -109,6 +109,25 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+/** GET /api/events/mine — get authenticated host's own events */
+router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const events = await prisma.event.findMany({
+      where: { hostId: userId, isCancelled: false },
+      orderBy: { startsAt: 'desc' },
+      include: {
+        host: { select: userSelect },
+        _count: { select: { guests: { where: { status: 'CONFIRMED' } } } },
+      },
+    })
+    const data = events.map((e) => ({ ...e, guestCount: e._count.guests }))
+    res.json({ data })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** GET /api/events/invite/:token */
 router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) => {
   try {

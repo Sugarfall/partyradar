@@ -48,20 +48,33 @@ router.post('/sync', async (req, res, next) => {
         },
       })
 
-      // Auto-follow all admin accounts so new users see official content
+      // Auto-follow all admin accounts + @Trippyboy so new users see official content
+      const toFollow: string[] = []
+
       if (adminUids.length > 0) {
         const adminUsers = await prisma.user.findMany({
           where: { firebaseUid: { in: adminUids }, id: { not: user.id } },
           select: { id: true },
         })
-        for (const admin of adminUsers) {
-          try {
-            await prisma.follow.create({
-              data: { followerId: user.id, followingId: admin.id },
-            })
-          } catch {
-            // Ignore if already following (e.g. duplicate constraint)
-          }
+        toFollow.push(...adminUsers.map((a) => a.id))
+      }
+
+      // Always auto-follow @Trippyboy by username (official account)
+      const trippyboy = await prisma.user.findUnique({
+        where: { username: 'trippyboy' },
+        select: { id: true },
+      })
+      if (trippyboy && trippyboy.id !== user.id && !toFollow.includes(trippyboy.id)) {
+        toFollow.push(trippyboy.id)
+      }
+
+      for (const followingId of toFollow) {
+        try {
+          await prisma.follow.create({
+            data: { followerId: user.id, followingId },
+          })
+        } catch {
+          // Ignore duplicate constraint
         }
       }
     } else if (shouldBeAdmin && !user.isAdmin) {
