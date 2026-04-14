@@ -60,11 +60,11 @@ export function useEvents(query: EventDiscoverQuery = {}) {
       shouldRetryOnError: true,
       errorRetryCount: 5,
       errorRetryInterval: 3000,
-      refreshInterval: 60000,
-      revalidateOnFocus: true,
+      refreshInterval: 120000,       // refresh every 2 min
+      revalidateOnFocus: false,      // don't wipe events on tab switch
       revalidateOnMount: true,
-      dedupingInterval: 0,
-      keepPreviousData: true,
+      dedupingInterval: 5000,
+      keepPreviousData: true,        // keep old events visible while new query loads
     }
   )
 

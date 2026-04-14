@@ -642,6 +642,15 @@ export default function DiscoverPage() {
     limit: 100,
   })
 
+  // Never flash empty — locationLoading means we're still waiting for geolocation
+  // before the real geo-filtered query fires, so keep showing spinner instead.
+  const [locationLoading, setLocationLoading] = useState(true)
+  useEffect(() => {
+    // Resolve after geolocation attempt (success, deny, or 3s timeout already in parent)
+    const t = setTimeout(() => setLocationLoading(false), 3500)
+    return () => clearTimeout(t)
+  }, [])
+
   const [partyAlert, setPartyAlert] = useState<null | Event>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
 
@@ -794,7 +803,7 @@ export default function DiscoverPage() {
 
         {/* Counter + controls */}
         <div className="flex items-center gap-2">
-          {tab === 'events' && !isLoading && events.length > 0 && (
+          {tab === 'events' && !isLoading && !locationLoading && events.length > 0 && (
             <span
               className="text-[10px] font-bold px-2 py-0.5 rounded"
               style={{ color: 'rgba(0,229,255,0.6)', border: '1px solid rgba(0,229,255,0.15)', background: 'rgba(0,229,255,0.05)', letterSpacing: '0.08em' }}
@@ -923,12 +932,12 @@ export default function DiscoverPage() {
               <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
                 style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
-                {isLoading ? 'SCANNING...' : `${events.length} EVENTS`}
+                {(isLoading || locationLoading) ? 'SCANNING...' : `${events.length} EVENTS`}
               </div>
             </div>
           )}
 
-          {isLoading ? (
+          {(isLoading || locationLoading) ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <div className="w-10 h-10 rounded-full border-2 animate-spin"
                 style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
@@ -1020,7 +1029,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {isLoading || events.length === 0 ? <EmptyState loading={isLoading} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} />}
+            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} />}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
