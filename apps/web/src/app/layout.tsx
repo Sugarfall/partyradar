@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import '@/styles/globals.css'
 import { AuthProvider } from '@/hooks/useAuth'
 import Navbar from '@/components/layout/Navbar'
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Navbar />
           <main className="pt-14 min-h-screen">{children}</main>
           <PWAInstallPrompt />
+          <SpeedInsights />
         </AuthProvider>
 
         {/* Register service worker */}
