@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npx turbo run build --filter=@partyradar/web",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "npm install",
+  "framework": "nextjs"
+}
