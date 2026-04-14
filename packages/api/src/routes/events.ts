@@ -50,28 +50,29 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
 
     const skip = (Number(page) - 1) * Number(limit)
-    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
+
+    const now = new Date()
+    // Show events that started up to 6h ago (live/ongoing) or haven't started yet
+    const cutoff = new Date(now.getTime() - 6 * 60 * 60 * 1000)
 
     const where: Record<string, unknown> = {
       isPublished: true,
       isCancelled: false,
-      startsAt: { gte: new Date() },
+      OR: [
+        { endsAt: { gte: now } },
+        { endsAt: null, startsAt: { gte: cutoff } },
+      ],
     }
 
     if (tonight === 'true') {
-      const now = new Date()
       const midnight = new Date(now)
       midnight.setHours(23, 59, 59, 999)
       where['startsAt'] = { gte: now, lte: midnight }
+      delete where['OR']
     }
 
     if (type) where['type'] = type
     if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
-
-    // Hide alcohol events only for logged-in users who haven't enabled the toggle
-    if (req.user && !showAlcohol) {
-      where['alcoholPolicy'] = 'NONE'
-    }
 
     // Geo filter
     if (lat && lng) {

@@ -624,16 +624,25 @@ export default function DiscoverPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  // locationLoading stays true until geolocation has resolved (success/deny/timeout)
+  // AND the subsequent event fetch is complete — prevents any flash-empty on load.
+  const [geoResolved, setGeoResolved] = useState(false)
 
   // Silently request geolocation on mount — used to centre the map and narrow the
   // event feed to the user's city. Falls back to no geo-filter (shows all events).
   useEffect(() => {
-    if (!navigator.geolocation) return
+    if (!navigator.geolocation) { setGeoResolved(true); return }
+    const fallback = setTimeout(() => setGeoResolved(true), 8500) // safety timeout
     navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => { /* permission denied — show all events */ },
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        clearTimeout(fallback)
+        // geoResolved will be set once the geo-filtered events finish loading (see below)
+      },
+      () => { clearTimeout(fallback); setGeoResolved(true) }, // denied / error
       { timeout: 8000, maximumAge: 300000 }
     )
+    return () => clearTimeout(fallback)
   }, [])
 
   const { events, isLoading, mutate, forceRetry } = useEvents({
@@ -642,14 +651,13 @@ export default function DiscoverPage() {
     limit: 100,
   })
 
-  // Never flash empty — locationLoading means we're still waiting for geolocation
-  // before the real geo-filtered query fires, so keep showing spinner instead.
-  const [locationLoading, setLocationLoading] = useState(true)
+  // Once geolocation resolved AND the matching events fetch is done, clear loading guard
   useEffect(() => {
-    // Resolve after geolocation attempt (success, deny, or 3s timeout already in parent)
-    const t = setTimeout(() => setLocationLoading(false), 3500)
-    return () => clearTimeout(t)
-  }, [])
+    if (userLocation && !isLoading) setGeoResolved(true)
+  }, [userLocation, isLoading])
+
+  // locationLoading: spinner until geo is settled and we have event data
+  const locationLoading = !geoResolved || (isLoading && events.length === 0)
 
   const [partyAlert, setPartyAlert] = useState<null | Event>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
