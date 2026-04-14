@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Map, { Marker, Popup, NavigationControl, GeolocateControl } from 'react-map-gl'
 import type { Event } from '@partyradar/shared'
 import { EVENT_TYPE_COLORS } from '@partyradar/shared'
@@ -9,41 +9,48 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 
 interface EventMapProps {
   events: Event[]
+  centerLat?: number
+  centerLng?: number
+  // Legacy prop — no longer drives filtering, kept for API compat
   onBoundsChange?: (bounds: { lat: number; lng: number; radius: number }) => void
 }
 
-export function EventMap({ events, onBoundsChange }: EventMapProps) {
+export function EventMap({ events, centerLat, centerLng, onBoundsChange }: EventMapProps) {
   const [selected, setSelected] = useState<Event | null>(null)
   const [viewport, setViewport] = useState({
-    longitude: -74.006,
-    latitude: 40.7128,
+    longitude: centerLng ?? -4.2518,  // Default: Glasgow city centre
+    latitude: centerLat ?? 55.8642,
     zoom: 12,
   })
 
-  const handleMapMove = useCallback((evt: { viewState: typeof viewport }) => {
-    setViewport(evt.viewState)
-    if (onBoundsChange) {
-      // Approximate radius from zoom level
-      const radius = 40075 / (2 ** (evt.viewState.zoom + 1)) * 0.621371
-      onBoundsChange({
-        lat: evt.viewState.latitude,
-        lng: evt.viewState.longitude,
-        radius: Math.max(1, Math.min(radius, 100)),
-      })
+  // Re-centre when parent provides a user location
+  useEffect(() => {
+    if (centerLat && centerLng) {
+      setViewport((v) => ({ ...v, latitude: centerLat, longitude: centerLng }))
     }
-  }, [onBoundsChange])
+  }, [centerLat, centerLng])
 
   return (
     <Map
       mapboxAccessToken={process.env['NEXT_PUBLIC_MAPBOX_TOKEN']}
       {...viewport}
-      onMove={handleMapMove}
+      onMove={(evt) => setViewport(evt.viewState)}
       style={{ width: '100%', height: '100%' }}
       mapStyle="mapbox://styles/mapbox/dark-v11"
       attributionControl={false}
     >
       <NavigationControl position="top-right" />
-      <GeolocateControl position="top-right" trackUserLocation />
+      <GeolocateControl
+        position="top-right"
+        trackUserLocation
+        onGeolocate={(e) => {
+          setViewport((v) => ({
+            ...v,
+            latitude: e.coords.latitude,
+            longitude: e.coords.longitude,
+          }))
+        }}
+      />
 
       {events.map((event) => (
         <Marker

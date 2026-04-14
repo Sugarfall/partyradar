@@ -50,7 +50,9 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
 
     const skip = (Number(page) - 1) * Number(limit)
-    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
+    // Default to showing alcohol events — this is a nightlife app.
+    // Only hide them for users who have explicitly opted out in settings.
+    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? true
 
     const now = new Date()
     // Show events that haven't ended yet — includes currently-live events.

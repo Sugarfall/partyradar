@@ -623,9 +623,24 @@ export default function DiscoverPage() {
   const [showMap, setShowMap] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
-  const [mapBounds, setMapBounds] = useState<{ lat?: number; lng?: number; radius?: number }>({})
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
 
-  const { events, isLoading, mutate, forceRetry } = useEvents({ ...filters, ...mapBounds })
+  // Silently request geolocation on mount — used to centre the map and narrow the
+  // event feed to the user's city. Falls back to no geo-filter (shows all events).
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => { /* permission denied — show all events */ },
+      { timeout: 8000, maximumAge: 300000 }
+    )
+  }, [])
+
+  const { events, isLoading, mutate, forceRetry } = useEvents({
+    ...filters,
+    ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
+    limit: 100,
+  })
 
   const [partyAlert, setPartyAlert] = useState<null | Event>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
@@ -905,7 +920,7 @@ export default function DiscoverPage() {
           {/* Map overlay */}
           {showMap && (
             <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
-              <EventMap events={events} onBoundsChange={setMapBounds} />
+              <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
                 style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
                 {isLoading ? 'SCANNING...' : `${events.length} EVENTS`}
@@ -997,7 +1012,7 @@ export default function DiscoverPage() {
         <div className="flex-1 flex flex-col relative overflow-hidden">
           {showMap && (
             <div className="absolute inset-0 z-10" style={{ background: '#07071a', border: '1px solid rgba(0,229,255,0.1)' }}>
-              <EventMap events={events} onBoundsChange={setMapBounds} />
+              <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
                 style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
                 {isLoading ? 'SCANNING...' : `${events.length} EVENTS NEARBY`}
