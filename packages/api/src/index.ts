@@ -35,6 +35,7 @@ import postsRouter from './routes/posts'
 import reviewsRouter from './routes/reviews'
 import referralsRouter from './routes/referrals'
 import dashboardRouter from './routes/dashboard'
+import leaderboardRouter from './routes/leaderboard'
 import venueDiscoverRouter from './routes/venue-discover'
 import walletRouter from './routes/wallet'
 import { errorHandler } from './middleware/errorHandler'
@@ -307,6 +308,7 @@ app.use('/api/groups', groupsRouter)
 app.use('/api/referrals', referralsRouter)
 app.use('/api/wallet', walletRouter)
 app.use('/api/dashboard', dashboardRouter)
+app.use('/api/leaderboard', leaderboardRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

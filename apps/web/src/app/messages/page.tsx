@@ -885,21 +885,45 @@ function GroupChatView({
     setSending(true)
     const draft = text.trim()
     setText('')
+
+    // Optimistic message — shown immediately while API call is in flight
+    const optimisticId = `optimistic_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const optimisticMsg: GroupMessage = {
+      id: optimisticId,
+      senderId: dbUserId,
+      senderName: '', // will be replaced by server response
+      senderPhoto: null,
+      senderUsername: null,
+      text: draft,
+      createdAt: new Date().toISOString(),
+      isFollowing: false,
+    }
+    setMessages((prev) => [...prev, optimisticMsg])
+
     try {
       const r = await fetch(`${API_URL}/groups/${groupId}/messages`, {
         method: 'POST', headers, body: JSON.stringify({ text: draft }),
       })
       const j = await r.json()
       if (j.data) {
-        setMessages((prev) => [...prev, j.data])
+        // Replace optimistic message with the real server response
+        setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
         // auto-join
         if (group && !group.isJoined) {
           const patch = { isJoined: true, memberCount: group.memberCount + 1, notificationsEnabled: true }
           setGroup((g) => g ? { ...g, ...patch } : g)
           onGroupUpdate(groupId, patch)
         }
+      } else {
+        // Server returned no data — rollback
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+        setText(draft)
       }
-    } catch { setText(draft) }
+    } catch {
+      // API call failed — rollback the optimistic message
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+      setText(draft)
+    }
     finally { setSending(false) }
   }
 
@@ -1240,14 +1264,38 @@ function DmSection({ dbUser, headers }: {
   }
 
   async function sendMessage() {
-    if (!text.trim() || !activeConvo || sending) return
+    if (!text.trim() || !activeConvo || sending || !dbUser) return
     setSending(true)
     const draft = text.trim(); setText('')
+
+    // Optimistic message — shown immediately while API call is in flight
+    const optimisticId = `optimistic_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const optimisticMsg: DmMessage = {
+      id: optimisticId,
+      senderId: dbUser.id,
+      senderName: dbUser.displayName ?? '',
+      senderPhoto: dbUser.photoUrl ?? null,
+      text: draft,
+      createdAt: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimisticMsg])
+
     try {
       const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: draft }) })
       const j = await res.json()
-      if (j.data) setMessages((prev) => [...prev, j.data])
-    } catch { setText(draft) }
+      if (j.data) {
+        // Replace optimistic message with server response
+        setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+      } else {
+        // Server returned no data — rollback
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+        setText(draft)
+      }
+    } catch {
+      // API call failed — rollback the optimistic message
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+      setText(draft)
+    }
     finally { setSending(false) }
   }
 

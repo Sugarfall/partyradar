@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Trophy, Star, Users, Zap, TrendingUp, Crown, Music, MapPin } from 'lucide-react'
 import { GLASGOW_VENUES } from '@/hooks/useEvents'
 import { DEV_MODE } from '@/lib/firebase'
+import { api } from '@/lib/api'
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
@@ -76,24 +77,49 @@ function Avatar({ name, color = '#00e5ff' }: { name: string; color?: string }) {
   )
 }
 
+// ─── Empty state for leaderboard tabs ────────────────────────────────────────
+function LeaderboardEmpty({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-8 text-center">
+      <div
+        className="w-16 h-16 rounded-full flex items-center justify-center mb-5"
+        style={{ background: 'rgba(255,214,0,0.05)', border: '1px solid rgba(255,214,0,0.12)' }}
+      >
+        <Trophy size={28} style={{ color: 'rgba(255,214,0,0.3)' }} />
+      </div>
+      <p className="text-sm font-black tracking-widest mb-2" style={{ color: 'rgba(224,242,254,0.4)' }}>
+        {title}
+      </p>
+      <p className="text-xs" style={{ color: 'rgba(74,96,128,0.6)' }}>
+        {subtitle}
+      </p>
+    </div>
+  )
+}
+
 // ─── Tab: Hosts ───────────────────────────────────────────────────────────────
-function HostsTab() {
+function HostsTab({ hosts }: { hosts: typeof MOCK_HOSTS }) {
+  if (hosts.length === 0) {
+    return <LeaderboardEmpty title="COMING SOON" subtitle="Host rankings will appear here once events are hosted in your area." />
+  }
+
   return (
     <div className="space-y-2 px-4 py-3 pb-24">
       {/* Hero — top 3 podium */}
+      {hosts.length >= 3 && (
       <div className="flex items-end justify-center gap-3 py-4 mb-2">
         {/* 2nd */}
         <div className="flex flex-col items-center gap-1.5">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg"
             style={{ background: 'rgba(192,192,192,0.12)', border: '1px solid rgba(192,192,192,0.3)' }}>
-            {MOCK_HOSTS[1]!.name[0]}
+            {hosts[1]!.name[0]}
           </div>
           <div className="w-16 rounded-t-lg flex flex-col items-center pt-2 pb-1"
             style={{ height: 52, background: 'rgba(192,192,192,0.06)', border: '1px solid rgba(192,192,192,0.15)' }}>
             <span style={{ fontSize: 16 }}>🥈</span>
           </div>
           <p className="text-[9px] font-bold text-center truncate w-16" style={{ color: 'rgba(224,242,254,0.6)' }}>
-            {MOCK_HOSTS[1]!.name.split(' ')[0]}
+            {hosts[1]!.name.split(' ')[0]}
           </p>
         </div>
         {/* 1st */}
@@ -101,34 +127,35 @@ function HostsTab() {
           <Crown size={16} style={{ color: '#ffd600', filter: 'drop-shadow(0 0 6px rgba(255,214,0,0.8))' }} />
           <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-xl"
             style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600', boxShadow: '0 0 20px rgba(255,214,0,0.2)' }}>
-            {MOCK_HOSTS[0]!.name[0]}
+            {hosts[0]!.name[0]}
           </div>
           <div className="w-16 rounded-t-lg flex flex-col items-center pt-2 pb-1"
             style={{ height: 68, background: 'rgba(255,214,0,0.06)', border: '1px solid rgba(255,214,0,0.2)', borderBottom: 'none', boxShadow: '0 0 20px rgba(255,214,0,0.08)' }}>
             <span style={{ fontSize: 18 }}>🥇</span>
           </div>
           <p className="text-[9px] font-bold text-center truncate w-16" style={{ color: '#ffd600' }}>
-            {MOCK_HOSTS[0]!.name.split(' ')[0]}
+            {hosts[0]!.name.split(' ')[0]}
           </p>
         </div>
         {/* 3rd */}
         <div className="flex flex-col items-center gap-1.5">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg"
             style={{ background: 'rgba(205,127,50,0.12)', border: '1px solid rgba(205,127,50,0.3)' }}>
-            {MOCK_HOSTS[2]!.name[0]}
+            {hosts[2]!.name[0]}
           </div>
           <div className="w-16 rounded-t-lg flex flex-col items-center pt-2 pb-1"
             style={{ height: 40, background: 'rgba(205,127,50,0.06)', border: '1px solid rgba(205,127,50,0.15)' }}>
             <span style={{ fontSize: 14 }}>🥉</span>
           </div>
           <p className="text-[9px] font-bold text-center truncate w-16" style={{ color: 'rgba(224,242,254,0.6)' }}>
-            {MOCK_HOSTS[2]!.name.split(' ')[0]}
+            {hosts[2]!.name.split(' ')[0]}
           </p>
         </div>
       </div>
+      )}
 
       {/* Full list */}
-      {MOCK_HOSTS.map((host) => {
+      {hosts.map((host) => {
         const tierColor = TIER_COLORS[host.tier] ?? '#00e5ff'
         return (
           <div
@@ -170,10 +197,14 @@ function HostsTab() {
 }
 
 // ─── Tab: Venues ──────────────────────────────────────────────────────────────
-function VenuesTab() {
+function VenuesTab({ venues }: { venues: typeof MOCK_VENUES }) {
+  if (venues.length === 0) {
+    return <LeaderboardEmpty title="COMING SOON" subtitle="Venue rankings will appear here as people check in around your city." />
+  }
+
   return (
     <div className="space-y-2 px-4 py-3 pb-24">
-      {MOCK_VENUES.map((venue) => {
+      {venues.map((venue) => {
         const color = VENUE_TYPE_COLORS[venue.type] ?? '#00e5ff'
         return (
           <div
@@ -246,7 +277,11 @@ const TITLE_COLORS: Record<string, string> = {
   'NEWCOMER':     'rgba(74,96,128,0.6)',
 }
 
-function PartygoersTab() {
+function PartygoersTab({ partygoers }: { partygoers: typeof MOCK_PARTYGOERS }) {
+  if (partygoers.length === 0) {
+    return <LeaderboardEmpty title="COMING SOON" subtitle="Partygoer rankings will appear here as people attend events." />
+  }
+
   return (
     <div className="space-y-2 px-4 py-3 pb-24">
       {/* Score explainer */}
@@ -260,7 +295,7 @@ function PartygoersTab() {
         </p>
       </div>
 
-      {MOCK_PARTYGOERS.map((pg) => {
+      {partygoers.map((pg) => {
         const titleColor = TITLE_COLORS[pg.title] ?? 'rgba(74,96,128,0.5)'
         return (
           <div
@@ -331,6 +366,32 @@ const TABS: { id: Tab; label: string; icon: typeof Trophy }[] = [
 
 export default function LeaderboardPage() {
   const [tab, setTab] = useState<Tab>('hosts')
+  const [hosts, setHosts] = useState<typeof MOCK_HOSTS>(DEV_MODE ? MOCK_HOSTS : [])
+  const [venues, setVenues] = useState<typeof MOCK_VENUES>(DEV_MODE ? MOCK_VENUES : [])
+  const [partygoers, setPartygoers] = useState<typeof MOCK_PARTYGOERS>(DEV_MODE ? MOCK_PARTYGOERS : [])
+  const [loading, setLoading] = useState(!DEV_MODE)
+
+  useEffect(() => {
+    if (DEV_MODE) return
+    async function loadLeaderboard() {
+      setLoading(true)
+      try {
+        const [hostsRes, venuesRes, partygoersRes] = await Promise.allSettled([
+          api.get<{ data: typeof MOCK_HOSTS }>('/leaderboard/hosts'),
+          api.get<{ data: typeof MOCK_VENUES }>('/leaderboard/venues'),
+          api.get<{ data: typeof MOCK_PARTYGOERS }>('/leaderboard/partygoers'),
+        ])
+        if (hostsRes.status === 'fulfilled' && hostsRes.value?.data?.length) setHosts(hostsRes.value.data)
+        if (venuesRes.status === 'fulfilled' && venuesRes.value?.data?.length) setVenues(venuesRes.value.data)
+        if (partygoersRes.status === 'fulfilled' && partygoersRes.value?.data?.length) setPartygoers(partygoersRes.value.data)
+      } catch {
+        // Keep empty arrays — shows "coming soon" empty states
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadLeaderboard()
+  }, [])
 
   return (
     <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 3.5rem)' }}>
@@ -376,9 +437,21 @@ export default function LeaderboardPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {tab === 'hosts'      && <HostsTab />}
-        {tab === 'venues'     && <VenuesTab />}
-        {tab === 'partygoers' && <PartygoersTab />}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <div className="w-10 h-10 rounded-full border-2 animate-spin"
+              style={{ borderColor: 'rgba(255,214,0,0.1)', borderTopColor: '#ffd600' }} />
+            <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>
+              LOADING LEADERBOARD...
+            </p>
+          </div>
+        ) : (
+          <>
+            {tab === 'hosts'      && <HostsTab hosts={hosts} />}
+            {tab === 'venues'     && <VenuesTab venues={venues} />}
+            {tab === 'partygoers' && <PartygoersTab partygoers={partygoers} />}
+          </>
+        )}
       </div>
     </div>
   )

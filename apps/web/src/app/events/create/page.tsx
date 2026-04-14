@@ -168,6 +168,10 @@ export default function CreateEventPage() {
     if (step === 0) return !!form.type
     if (step === 1) {
       if (!(form.name && form.startsAt && form.description)) return false
+      if (form.description.length < 10) {
+        setError('Description must be at least 10 characters')
+        return false
+      }
       // startsAt must be in the future
       if (new Date(form.startsAt) <= new Date()) {
         setError('Start date must be in the future')
@@ -536,18 +540,18 @@ export default function CreateEventPage() {
               </div>
               <input
                 type="range"
-                min={5}
-                max={500}
-                step={5}
+                min={1}
+                max={10000}
+                step={form.capacity !== undefined && form.capacity < 100 ? 1 : form.capacity !== undefined && form.capacity < 500 ? 5 : 50}
                 value={form.capacity ?? 50}
                 onChange={(e) => update({ capacity: Number(e.target.value) })}
                 className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
                 style={{
-                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((form.capacity ?? 50) / 500) * 100}%, rgba(0,229,255,0.1) ${((form.capacity ?? 50) / 500) * 100}%, rgba(0,229,255,0.1) 100%)`,
+                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((form.capacity ?? 50) / 10000) * 100}%, rgba(0,229,255,0.1) ${((form.capacity ?? 50) / 10000) * 100}%, rgba(0,229,255,0.1) 100%)`,
                 }}
               />
               <div className="flex justify-between text-[10px] mt-1" style={{ color: 'rgba(74,96,128,0.5)' }}>
-                <span>5</span><span>500</span>
+                <span>1</span><span>10,000</span>
               </div>
             </div>
 

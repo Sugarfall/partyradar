@@ -70,9 +70,20 @@ function zoomToRadius(zoom: number): number {
   return Math.round(40075000 / Math.pow(2, zoom + 1))
 }
 
+/** Haversine distance in km between two lat/lng points */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 // ─── VenueCard ────────────────────────────────────────────────────────────────
 
-function VenueCard({ venue, onClick }: { venue: Venue; onClick: () => void }) {
+function VenueCard({ venue, onClick, distanceKm }: { venue: Venue; onClick: () => void; distanceKm?: number }) {
   const color = TYPE_COLORS[venue.type]
   return (
     <button
@@ -121,6 +132,11 @@ function VenueCard({ venue, onClick }: { venue: Venue; onClick: () => void }) {
             {venue.city && (
               <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>
                 {venue.city}
+              </span>
+            )}
+            {distanceKm != null && (
+              <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
               </span>
             )}
             {(venue.upcomingEventsCount ?? 0) > 0 && (
@@ -183,6 +199,7 @@ export default function VenuesPage() {
   const [popupVenue, setPopupVenue] = useState<Venue | null>(null)
   const [discoveredCount, setDiscoveredCount] = useState(0)
   const [cityLabel, setCityLabel] = useState('NEARBY')
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [viewState, setViewState] = useState({
     latitude: 55.8642,
     longitude: -4.2518,
@@ -192,6 +209,20 @@ export default function VenuesPage() {
   // Track last discovered center to avoid re-fetching same area
   const lastDiscoverRef = useRef<{ lat: number; lng: number; zoom: number } | null>(null)
   const discoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Request user's geolocation on mount
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        // Also center the map on user's location
+        setViewState((v) => ({ ...v, latitude: pos.coords.latitude, longitude: pos.coords.longitude }))
+      },
+      () => { /* permission denied or unavailable — keep default Glasgow center */ },
+      { enableHighAccuracy: false, timeout: 8000 },
+    )
+  }, [])
 
   // Fetch venues from DB based on current viewport
   const fetchVenues = useCallback(async (lat: number, lng: number, radius: number) => {
@@ -295,10 +326,18 @@ export default function VenuesPage() {
     return () => clearTimeout(t)
   }, [viewState.latitude, viewState.longitude])
 
-  // Filtered venues for display
-  const displayVenues = typeFilter === 'ALL'
+  // Filtered venues for display, sorted by proximity when user location is available
+  const filteredVenues = typeFilter === 'ALL'
     ? venues
     : venues.filter((v) => v.type === typeFilter)
+
+  const displayVenues = userLocation
+    ? [...filteredVenues].sort(
+        (a, b) =>
+          haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng) -
+          haversineKm(userLocation.lat, userLocation.lng, b.lat, b.lng),
+      )
+    : filteredVenues
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0d0d0f', paddingTop: 56 }}>
@@ -488,6 +527,7 @@ export default function VenuesPage() {
                 <VenueCard
                   key={venue.id}
                   venue={venue}
+                  distanceKm={userLocation ? haversineKm(userLocation.lat, userLocation.lng, venue.lat, venue.lng) : undefined}
                   onClick={() => {
                     setViewState((v) => ({ ...v, latitude: venue.lat, longitude: venue.lng, zoom: 15 }))
                     setPopupVenue(venue)

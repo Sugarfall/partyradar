@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { MapPin, ThumbsUp, ThumbsDown, X, Search, Star, Clock, ChevronDown, ChevronUp, Crosshair } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { DEV_MODE } from '@/lib/firebase'
+import { api } from '@/lib/api'
 
 // Dynamic import for map (SSR safe)
 const RadarMap = dynamic(() => import('@/components/radar/RadarMap'), { ssr: false, loading: () => (
@@ -225,10 +227,28 @@ export default function RadarPage() {
   const { dbUser } = useAuth()
   // Start empty to avoid SSR/client hydration mismatch; populate on mount
   const [sightings, setSightings] = useState<Sighting[]>([])
+  const [sightingsLoading, setSightingsLoading] = useState(true)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
-    setSightings(makeMockSightings())
+    if (DEV_MODE) {
+      setSightings(makeMockSightings())
+      setSightingsLoading(false)
+      return
+    }
+    // Production: fetch real sightings from API
+    async function loadSightings() {
+      setSightingsLoading(true)
+      try {
+        const res = await api.get<{ data: Sighting[] }>('/sightings')
+        setSightings(res?.data ?? [])
+      } catch {
+        setSightings([])
+      } finally {
+        setSightingsLoading(false)
+      }
+    }
+    loadSightings()
   }, [])
   const [showList, setShowList] = useState(true)
   const [search, setSearch] = useState('')

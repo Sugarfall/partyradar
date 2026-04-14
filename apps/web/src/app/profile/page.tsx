@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
 
 import { api, API_URL as API_BASE } from '@/lib/api'
+import { DEV_MODE } from '@/lib/firebase'
 
 const TIER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   FREE:    { label: 'FREE',    color: '#4b5563', icon: '⚡' },
@@ -165,9 +166,9 @@ export default function ProfilePage() {
     if (stored === 'HOST' || stored === 'ATTENDEE') setAccountMode(stored)
   }, [])
 
-  // Activity / Reviews
-  const [activity, setActivity] = useState(DEMO_ACTIVITY)
-  const [reviews, setReviews] = useState(DEMO_REVIEWS)
+  // Activity / Reviews — only seed with demo data in dev mode
+  const [activity, setActivity] = useState(DEV_MODE ? DEMO_ACTIVITY : [])
+  const [reviews, setReviews] = useState(DEV_MODE ? DEMO_REVIEWS : [])
 
   // Don't hard-redirect — show guest profile with mode toggle accessible
 
@@ -183,9 +184,9 @@ export default function ProfilePage() {
     if (!dbUser) return
     async function loadFollowCounts() {
       try {
-        const res = await api.get<{ data: { isFollowing: boolean; followers: number; following: number } }>(`/follow/${dbUser!.id}`)
-        setFollowersCount(res.data.followers)
-        setFollowingCount(res.data.following)
+        const res = await api.get<{ data: { isFollowing: boolean; followersCount: number; followingCount: number } }>(`/follow/${dbUser!.id}`)
+        setFollowersCount(res.data.followersCount)
+        setFollowingCount(res.data.followingCount)
       } catch {
         // Keep demo fallback values
       }
@@ -193,25 +194,25 @@ export default function ProfilePage() {
     loadFollowCounts()
   }, [dbUser])
 
-  // Load activity from API (GET /api/feed), fall back to demo
+  // Load activity from API (GET /api/feed)
   useEffect(() => {
-    if (!dbUser) return
+    if (!dbUser || DEV_MODE) return
     async function loadActivity() {
       try {
         const res = await api.get<{ data: typeof DEMO_ACTIVITY }>('/feed')
         const items = res?.data ?? []
-        if (items.length > 0) setActivity(items)
+        setActivity(items)
       } catch {
-        // Keep demo data
+        // Keep empty array in production — no fake data
       }
     }
     async function loadReviews() {
       try {
         const res = await api.get<{ data: typeof DEMO_REVIEWS }>('/reviews')
         const items = res?.data ?? []
-        if (items.length > 0) setReviews(items)
+        setReviews(items)
       } catch {
-        // Keep demo data
+        // Keep empty array in production — no fake data
       }
     }
     loadActivity()
@@ -240,6 +241,7 @@ export default function ProfilePage() {
     setSaving(true)
     setSaveError(null)
     try {
+      await api.put('/auth/profile', { displayName, bio })
       setSavedOk(true)
       setTimeout(() => { setSavedOk(false); setEditing(false) }, 1200)
     } catch {

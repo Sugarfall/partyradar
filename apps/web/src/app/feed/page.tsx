@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Rss, Zap, Users, MapPin, Calendar, Heart, Plus } from 'lucide-react'
 
 import { API_URL as API_BASE } from '@/lib/api'
+import { DEV_MODE } from '@/lib/firebase'
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -273,8 +274,8 @@ function StoriesBar() {
           <span className="text-[9px] font-bold tracking-wide" style={{ color: 'rgba(0,229,255,0.5)' }}>YOUR STORY</span>
         </div>
 
-        {/* Friend stories */}
-        {DEMO_STORIES.map((s) => (
+        {/* Friend stories — only show demo data in dev mode */}
+        {(DEV_MODE ? DEMO_STORIES : []).map((s) => (
           <div key={s.name} className="flex flex-col items-center gap-1.5 shrink-0">
             <div
               className="w-14 h-14 rounded-full flex items-center justify-center"
@@ -356,12 +357,12 @@ export default function FeedPage() {
         if (res.ok) {
           const json = await res.json()
           const items: FeedItem[] = (json?.data ?? json ?? [])
-          setFeedItems(items.length > 0 ? items : DEMO_FEED)
+          setFeedItems(items.length > 0 ? items : DEV_MODE ? DEMO_FEED : [])
         } else {
-          setFeedItems(DEMO_FEED)
+          setFeedItems(DEV_MODE ? DEMO_FEED : [])
         }
       } catch {
-        setFeedItems(DEMO_FEED)
+        setFeedItems(DEV_MODE ? DEMO_FEED : [])
       } finally {
         setLoading(false)
       }
