@@ -27,8 +27,6 @@ export interface User {
   photoUrl?: string | null
   gender?: Gender | null
   ageVerified: boolean
-  alcoholFriendly: boolean
-  showAlcoholEvents: boolean
   subscriptionTier: SubscriptionTier
   accountMode: AccountMode
   stripeCustomerId?: string | null
@@ -43,7 +41,6 @@ export interface PublicUser {
   bio?: string | null
   gender?: Gender | null
   ageVerified: boolean
-  alcoholFriendly: boolean
   subscriptionTier: SubscriptionTier
 }
 

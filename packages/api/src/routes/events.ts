@@ -41,18 +41,15 @@ const eventSchema = z.object({
 const userSelect = {
   id: true, username: true, displayName: true,
   photoUrl: true, bio: true, ageVerified: true,
-  alcoholFriendly: true, subscriptionTier: true,
+  subscriptionTier: true,
 }
 
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
+    const { type, lat, lng, radius = 50, search, page = '1', limit = '20', tonight } = req.query
 
     const skip = (Number(page) - 1) * Number(limit)
-    // Default to showing alcohol events — this is a nightlife app.
-    // Only hide them for users who have explicitly opted out in settings.
-    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? true
 
     const now = new Date()
     // Show events that haven't ended yet — includes currently-live events.
@@ -79,11 +76,6 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     if (type) where['type'] = type
     if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
-
-    // Hide alcohol events only for logged-in users who haven't enabled the toggle
-    if (req.user && !showAlcohol) {
-      where['alcoholPolicy'] = 'NONE'
-    }
 
     // Geo filter
     if (lat && lng) {
@@ -176,11 +168,6 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
       if (!isHost && !isGuest && token !== event.inviteToken) {
         throw new AppError('This event is invite-only', 403)
       }
-    }
-
-    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
-    if (req.user && !showAlcohol && event.alcoholPolicy !== 'NONE' && req.user?.dbUser.id !== event.hostId) {
-      throw new AppError('Enable alcohol events in settings to view this event', 403)
     }
 
     res.json({ data: { ...event, guestCount: event._count.guests } })

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Edit2, Check, X, LogOut, ShieldCheck, Wine, Ticket,
+  Edit2, Check, X, LogOut, ShieldCheck, Ticket,
   Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare, Bookmark,
   ToggleLeft, Building2, Plus
 } from 'lucide-react'
@@ -567,15 +567,6 @@ export default function ProfilePage() {
               : <button className="text-[10px] font-bold px-2.5 py-1 rounded-lg" style={{ color: '#ffd600', border: '1px solid rgba(255,214,0,0.3)', background: 'rgba(255,214,0,0.06)' }}>VERIFY →</button>
             }
           </div>
-        </div>
-
-        {/* Preferences */}
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
-          <div className="px-4 py-2.5" style={{ background: 'rgba(0,229,255,0.04)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
-            <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.5)' }}>PREFERENCES</p>
-          </div>
-          <ToggleRow icon={<Wine size={13} />} label="Show alcohol events" value={dbUser.showAlcoholEvents} />
-          <ToggleRow icon={<Wine size={13} />} label="Alcohol-friendly profile" value={dbUser.alcoholFriendly} border />
         </div>
 
         {/* Subscription */}

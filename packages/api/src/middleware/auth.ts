@@ -12,7 +12,6 @@ export interface AuthRequest extends Request {
       displayName: string
       subscriptionTier: string
       ageVerified: boolean
-      showAlcoholEvents: boolean
       isAdmin: boolean
       isBanned: boolean
     }
@@ -37,7 +36,6 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
         displayName: true,
         subscriptionTier: true,
         ageVerified: true,
-        showAlcoholEvents: true,
         isAdmin: true,
         isBanned: true,
       },
@@ -80,7 +78,7 @@ export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunctio
         where: { firebaseUid: decoded.uid },
         select: {
           id: true, email: true, username: true, displayName: true,
-          subscriptionTier: true, ageVerified: true, showAlcoholEvents: true,
+          subscriptionTier: true, ageVerified: true,
           isAdmin: true, isBanned: true,
         },
       })

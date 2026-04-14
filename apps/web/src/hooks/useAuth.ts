@@ -28,8 +28,6 @@ function makeMockDbUser(email: string): DBUser {
     bio: null,
     photoUrl: null,
     ageVerified: false,
-    alcoholFriendly: false,
-    showAlcoholEvents: false,
     subscriptionTier: 'FREE',
     accountMode: 'ATTENDEE',
     stripeCustomerId: null,
