@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Wine, Star, Heart, Lock, Search, X, LayoutList, Layers } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useEvents, DEMO_EVENTS, GLASGOW_VENUES } from '@/hooks/useEvents'
+import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
 import type { DemoVenue } from '@/hooks/useEvents'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
@@ -627,7 +627,7 @@ export default function DiscoverPage() {
 
   const { events, isLoading, mutate, forceRetry } = useEvents({ ...filters, ...mapBounds })
 
-  const [partyAlert, setPartyAlert] = useState<null | typeof DEMO_EVENTS[0]>(null)
+  const [partyAlert, setPartyAlert] = useState<null | Event>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
 
   // Reset index when events change

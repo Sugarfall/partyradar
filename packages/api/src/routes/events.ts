@@ -52,17 +52,27 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const skip = (Number(page) - 1) * Number(limit)
     const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
 
+    const now = new Date()
+    // Show events that haven't ended yet — includes currently-live events.
+    // Events without an endsAt get a 6-hour grace window after startsAt.
+    const cutoff = new Date(now.getTime() - 6 * 60 * 60 * 1000)
+
     const where: Record<string, unknown> = {
       isPublished: true,
       isCancelled: false,
-      startsAt: { gte: new Date() },
+      OR: [
+        { endsAt: { gte: now } },
+        { endsAt: null, startsAt: { gte: cutoff } },
+      ],
     }
 
     if (tonight === 'true') {
-      const now = new Date()
       const midnight = new Date(now)
       midnight.setHours(23, 59, 59, 999)
-      where['startsAt'] = { gte: now, lte: midnight }
+      where['OR'] = [
+        { endsAt: { gte: now, lte: midnight } },
+        { endsAt: null, startsAt: { gte: now, lte: midnight } },
+      ]
     }
 
     if (type) where['type'] = type

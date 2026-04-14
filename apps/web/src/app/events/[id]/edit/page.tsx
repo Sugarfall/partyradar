@@ -5,10 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Check, Loader2, Save, Upload, Eye, Palette, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { useEvent, updateEvent } from '@/hooks/useEvents'
+import { useEvent } from '@/hooks/useEvents'
 import { uploadImage } from '@/lib/cloudinary'
 import { api } from '@/lib/api'
-import { DEV_MODE } from '@/lib/firebase'
 import { VIBE_TAGS } from '@partyradar/shared'
 
 const PARTY_SIGNALS = [
@@ -202,6 +201,7 @@ export default function EditEventPage() {
   }
 
   async function handleSave() {
+    if (!event) return
     setSaving(true)
     setError(null)
 
@@ -242,12 +242,8 @@ export default function EditEventPage() {
     }
 
     try {
-      if (DEV_MODE) {
-        await updateEvent(event.id, patch as any)
-      } else {
-        await api.put(`/events/${event.id}`, patch)
-        await mutate()
-      }
+      await api.put(`/events/${event.id}`, patch)
+      await mutate()
       setSaved(true)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save changes')
