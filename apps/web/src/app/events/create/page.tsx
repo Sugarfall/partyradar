@@ -164,20 +164,39 @@ export default function CreateEventPage() {
     )
   }
 
-  function canAdvance() {
+  // Pure check — no side effects, safe to call during render
+  function isStepValid() {
     if (step === 0) return !!form.type
     if (step === 1) {
-      if (!(form.name && form.startsAt && form.description)) return false
-      if (form.description.length < 10) {
+      if (!(form.name?.trim() && form.startsAt && form.description?.trim())) return false
+      if (form.description.trim().length < 10) return false
+      if (new Date(form.startsAt) <= new Date()) return false
+      if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) return false
+      return true
+    }
+    if (step === 2) return !!(form.address?.trim() && form.neighbourhood?.trim() && form.lat && form.lng)
+    if (step === 3) {
+      if ((form.price ?? 0) > 0 && !(form.ticketQuantity && form.ticketQuantity > 0)) return false
+      return true
+    }
+    return true
+  }
+
+  // Called on button click — sets error messages for user feedback
+  function canAdvance(): boolean {
+    if (step === 1) {
+      if (!(form.name?.trim() && form.startsAt && form.description?.trim())) {
+        setError('Please fill in all required fields')
+        return false
+      }
+      if (form.description.trim().length < 10) {
         setError('Description must be at least 10 characters')
         return false
       }
-      // startsAt must be in the future
       if (new Date(form.startsAt) <= new Date()) {
         setError('Start date must be in the future')
         return false
       }
-      // endsAt must be after startsAt if provided
       if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) {
         setError('End time must be after the start time')
         return false
@@ -185,9 +204,7 @@ export default function CreateEventPage() {
       setError(null)
       return true
     }
-    if (step === 2) return !!(form.address && form.neighbourhood && form.lat && form.lng)
     if (step === 3) {
-      // Paid events must have ticketQuantity > 0
       if ((form.price ?? 0) > 0 && !(form.ticketQuantity && form.ticketQuantity > 0)) {
         setError('Paid events must have a ticket quantity greater than 0')
         return false
@@ -195,7 +212,7 @@ export default function CreateEventPage() {
       setError(null)
       return true
     }
-    return true
+    return isStepValid()
   }
 
   async function handlePublish() {
@@ -934,14 +951,14 @@ export default function CreateEventPage() {
           )}
 
           <button
-            onClick={step < STEPS.length - 1 ? () => setStep((s) => s + 1) : handlePublish}
-            disabled={!canAdvance() || submitting}
+            onClick={step < STEPS.length - 1 ? () => { if (canAdvance()) setStep((s) => s + 1) } : handlePublish}
+            disabled={!isStepValid() || submitting}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm transition-all duration-250 disabled:opacity-30"
             style={{
-              background: canAdvance() && !submitting ? `linear-gradient(135deg, ${accentColor}20, rgba(61,90,254,0.15))` : 'rgba(0,229,255,0.04)',
-              border: `1px solid ${canAdvance() && !submitting ? accentColor + '60' : 'rgba(0,229,255,0.15)'}`,
-              color: canAdvance() ? accentColor : 'rgba(0,229,255,0.3)',
-              boxShadow: canAdvance() && !submitting ? `0 0 20px ${accentGlow}` : 'none',
+              background: isStepValid() && !submitting ? `linear-gradient(135deg, ${accentColor}20, rgba(61,90,254,0.15))` : 'rgba(0,229,255,0.04)',
+              border: `1px solid ${isStepValid() && !submitting ? accentColor + '60' : 'rgba(0,229,255,0.15)'}`,
+              color: isStepValid() ? accentColor : 'rgba(0,229,255,0.3)',
+              boxShadow: isStepValid() && !submitting ? `0 0 20px ${accentGlow}` : 'none',
               letterSpacing: '0.1em',
             }}
           >

@@ -60,6 +60,8 @@ export async function seedGroupChats(venueNames?: { id: string; name: string; ty
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user?.dbUser.id ?? null
+    const userLat = req.query['lat'] ? Number(req.query['lat']) : null
+    const userLng = req.query['lng'] ? Number(req.query['lng']) : null
 
     const groups = await prisma.groupChat.findMany({
       orderBy: [{ type: 'asc' }, { memberCount: 'desc' }, { name: 'asc' }],
@@ -72,6 +74,25 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         },
       },
     })
+
+    // Proximity sort for VENUE groups — extract venueId from slug (pattern: venue-{id})
+    let venueDistanceMap = new Map<string, number>()
+    if (userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng)) {
+      const venueGroups = groups.filter((g) => g.type === 'VENUE' && g.slug.startsWith('venue-'))
+      const venueIds = venueGroups.map((g) => g.slug.replace(/^venue-/, '')).filter(Boolean)
+      if (venueIds.length > 0) {
+        const venues = await prisma.venue.findMany({
+          where: { id: { in: venueIds } },
+          select: { id: true, lat: true, lng: true },
+        })
+        for (const venue of venues) {
+          const slug = `venue-${venue.id}`
+          const dLat = venue.lat - userLat
+          const dLng = venue.lng - userLng
+          venueDistanceMap.set(slug, Math.sqrt(dLat * dLat + dLng * dLng))
+        }
+      }
+    }
 
     // Batch-fetch memberships for current user
     const memberships = userId
@@ -116,10 +137,24 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         lastMessage: last
           ? { text: last.text, senderName: last.sender.displayName, createdAt: last.createdAt.toISOString() }
           : null,
+        _distance: venueDistanceMap.get(g.slug) ?? null,
       }
     })
 
-    res.json({ data })
+    // Sort venue groups by proximity when user location is provided
+    if (venueDistanceMap.size > 0) {
+      data.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'GENRE' ? -1 : 1 // GENRE first
+        if (a.type === 'VENUE' && b.type === 'VENUE') {
+          const da = a._distance ?? Infinity
+          const db = b._distance ?? Infinity
+          return da - db
+        }
+        return b.memberCount - a.memberCount
+      })
+    }
+
+    res.json({ data: data.map(({ _distance, ...g }) => g) })
   } catch (err) {
     next(err)
   }

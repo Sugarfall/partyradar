@@ -1478,11 +1478,24 @@ export default function MessagesPage() {
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   useEffect(() => {
-    fetch(`${API_URL}/groups`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => r.json())
-      .then((j) => setGroups(j.data ?? []))
-      .catch(() => {})
-      .finally(() => setGroupsLoading(false))
+    // Try to get user location for proximity-sorted venue groups
+    function fetchGroups(lat?: number, lng?: number) {
+      const params = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
+      fetch(`${API_URL}/groups${params}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        .then((r) => r.json())
+        .then((j) => setGroups(j.data ?? []))
+        .catch(() => {})
+        .finally(() => setGroupsLoading(false))
+    }
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => fetchGroups(coords.latitude, coords.longitude),
+        () => fetchGroups(),
+        { timeout: 3000 },
+      )
+    } else {
+      fetchGroups()
+    }
   }, [dbUser?.id])
 
   function handleGroupUpdate(id: string, patch: Partial<GroupChat>) {

@@ -11,7 +11,9 @@ interface ReferralData {
   balance: number
   totalEarned: number
   totalReferrals: number
-  referrals: { id: string; earned: number; isPaidOut: boolean; createdAt: string }[]
+  activeReferrals: number
+  inactiveReferrals: number
+  referrals: { id: string; earned: number; isPaidOut: boolean; isActive: boolean; createdAt: string }[]
   config: {
     TICKET_COMMISSION_PERCENT: number
     SUBSCRIPTION_COMMISSION_PERCENT: number
@@ -202,13 +204,21 @@ export default function ReferralsPage() {
 
       {/* Stats grid */}
       {data && (
-        <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <StatCard label="BALANCE" value={`£${data.balance.toFixed(2)}`}
             icon={<Wallet size={14} style={{ color: '#00ff88' }} />} color="#00ff88" />
           <StatCard label="TOTAL EARNED" value={`£${data.totalEarned.toFixed(2)}`}
             icon={<TrendingUp size={14} style={{ color: '#00e5ff' }} />} color="#00e5ff" />
-          <StatCard label="REFERRALS" value={String(data.totalReferrals)}
+        </div>
+      )}
+      {data && (
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <StatCard label="TOTAL REFS" value={String(data.totalReferrals)}
             icon={<Users size={14} style={{ color: '#a855f7' }} />} color="#a855f7" />
+          <StatCard label="ACTIVE" value={String(data.activeReferrals ?? 0)}
+            icon={<Users size={14} style={{ color: '#00ff88' }} />} color="#00ff88" />
+          <StatCard label="PENDING" value={String(data.inactiveReferrals ?? 0)}
+            icon={<Users size={14} style={{ color: 'rgba(74,96,128,0.6)' }} />} color="rgba(74,96,128,0.6)" />
         </div>
       )}
 

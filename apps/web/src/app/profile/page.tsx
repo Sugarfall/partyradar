@@ -12,7 +12,6 @@ import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
 
 import { api, API_URL as API_BASE } from '@/lib/api'
-import { DEV_MODE } from '@/lib/firebase'
 
 const TIER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   FREE:    { label: 'FREE',    color: '#4b5563', icon: '⚡' },
@@ -35,18 +34,6 @@ function timeAgo(dateStr: string) {
   if (s < 86400) return Math.floor(s / 3600) + 'h ago'
   return Math.floor(s / 86400) + 'd ago'
 }
-
-// Demo activity items shown when API returns nothing
-const DEMO_ACTIVITY = [
-  { type: 'CHECKIN', venue: 'SWG3', crowdLevel: 'BUSY',   createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-  { type: 'RSVP',    event: 'Sub Club — Techno Night',     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString() },
-  { type: 'POST',    text: 'Amazing night 🔥',             createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() },
-]
-
-const DEMO_REVIEWS = [
-  { event: 'Sub Club — Techno Night', rating: 5, text: 'Absolutely incredible. Sound system was mind-blowing.', createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
-  { event: 'Òran Mór Live',           rating: 4, text: 'Great venue, loved the atmosphere.',                   createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString() },
-]
 
 type ProfileTab = 'activity' | 'reviews'
 
@@ -128,7 +115,7 @@ function ClickableToggle({ icon, label, value, onChange, border }: {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { dbUser, loading: authLoading, logout: signOut } = useAuth()
+  const { dbUser, loading: authLoading, logout: signOut, refreshUser } = useAuth()
 
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -142,9 +129,9 @@ export default function ProfilePage() {
     typeof window !== 'undefined' ? localStorage.getItem('partyradar_gender') : null
   )
 
-  // Social counts — fetched from API, demo fallback
-  const [followersCount, setFollowersCount] = useState(128)
-  const [followingCount, setFollowingCount] = useState(47)
+  // Social counts — fetched from API
+  const [followersCount, setFollowersCount] = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
 
   // "Going Out Tonight?" toggle — persisted in localStorage
   const [goingOut, setGoingOut] = useState(() => {
@@ -166,9 +153,9 @@ export default function ProfilePage() {
     if (stored === 'HOST' || stored === 'ATTENDEE') setAccountMode(stored)
   }, [])
 
-  // Activity / Reviews — only seed with demo data in dev mode
-  const [activity, setActivity] = useState(DEV_MODE ? DEMO_ACTIVITY : [])
-  const [reviews, setReviews] = useState(DEV_MODE ? DEMO_REVIEWS : [])
+  // Activity / Reviews — real data only
+  const [activity, setActivity] = useState<any[]>([])
+  const [reviews, setReviews] = useState<any[]>([])
 
   // Don't hard-redirect — show guest profile with mode toggle accessible
 
@@ -188,7 +175,7 @@ export default function ProfilePage() {
         setFollowersCount(res.data.followersCount)
         setFollowingCount(res.data.followingCount)
       } catch {
-        // Keep demo fallback values
+        // On failure keep 0 — no demo fallback values
       }
     }
     loadFollowCounts()
@@ -196,19 +183,19 @@ export default function ProfilePage() {
 
   // Load activity from API (GET /api/feed)
   useEffect(() => {
-    if (!dbUser || DEV_MODE) return
+    if (!dbUser) return
     async function loadActivity() {
       try {
-        const res = await api.get<{ data: typeof DEMO_ACTIVITY }>('/feed')
+        const res = await api.get<{ data: any[] }>('/feed')
         const items = res?.data ?? []
         setActivity(items)
       } catch {
-        // Keep empty array in production — no fake data
+        // Keep empty array on failure
       }
     }
     async function loadReviews() {
       try {
-        const res = await api.get<{ data: typeof DEMO_REVIEWS }>('/reviews')
+        const res = await api.get<{ data: any[] }>('/reviews')
         const items = res?.data ?? []
         setReviews(items)
       } catch {
@@ -242,6 +229,7 @@ export default function ProfilePage() {
     setSaveError(null)
     try {
       await api.put('/auth/profile', { displayName, bio })
+      await refreshUser()
       setSavedOk(true)
       setTimeout(() => { setSavedOk(false); setEditing(false) }, 1200)
     } catch {
