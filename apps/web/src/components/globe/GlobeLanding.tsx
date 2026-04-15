@@ -54,9 +54,10 @@ type Phase = 'landing' | 'signin' | 'zooming' | 'choice'
 export default function GlobeLanding() {
   const globeRef = useRef<any>(null)
   const router = useRouter()
-  const { dbUser, loading: authLoading, signIn, signUp } = useAuth()
+  const { dbUser, loading: authLoading, signIn, signUp, signInWithGoogle, signInWithApple } = useAuth()
 
-  const [phase, setPhase] = useState<Phase>('landing')
+  // Start directly on the signin card — no unauthenticated skip allowed
+  const [phase, setPhase] = useState<Phase>('signin')
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -83,7 +84,7 @@ export default function GlobeLanding() {
 
   // If already signed in, skip straight to zoom
   useEffect(() => {
-    if (!authLoading && dbUser && phase === 'landing') {
+    if (!authLoading && dbUser && (phase === 'landing' || phase === 'signin')) {
       getLocationAndZoom()
     }
   }, [authLoading, dbUser])
@@ -129,6 +130,32 @@ export default function GlobeLanding() {
       getLocationAndZoom()
     } catch (err: any) {
       setError(err?.message?.replace('Firebase: ', '').replace(/\(.*\)\.?/, '') ?? 'Authentication failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setError('')
+    setSubmitting(true)
+    try {
+      await signInWithGoogle()
+      getLocationAndZoom()
+    } catch (err: any) {
+      setError(err?.message?.replace('Firebase: ', '').replace(/\(.*\)\.?/, '') ?? 'Google sign-in failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleAppleSignIn() {
+    setError('')
+    setSubmitting(true)
+    try {
+      await signInWithApple()
+      getLocationAndZoom()
+    } catch (err: any) {
+      setError(err?.message?.replace('Firebase: ', '').replace(/\(.*\)\.?/, '') ?? 'Apple sign-in failed')
     } finally {
       setSubmitting(false)
     }
@@ -269,62 +296,125 @@ export default function GlobeLanding() {
       )}
 
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* PHASE: SIGN IN — floating auth form                     */}
+      {/* PHASE: SIGN IN — clean auth card (entry point)         */}
       {/* ═══════════════════════════════════════════════════════ */}
       {phase === 'signin' && (
-        <div className="absolute inset-0 flex items-center justify-center px-4">
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6" style={{ background: '#04040d' }}>
+          {/* Logo */}
+          <div className="flex items-center gap-3 mb-10">
+            <Zap size={26} fill="rgba(0,229,255,0.2)"
+              style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 10px rgba(0,229,255,0.9))' }} />
+            <span
+              className="font-black text-xl tracking-[0.3em]"
+              style={{ color: '#00e5ff', textShadow: '0 0 24px rgba(0,229,255,0.7)' }}
+            >
+              PARTYRADAR
+            </span>
+          </div>
+
+          {/* Card */}
           <div
-            className="w-full max-w-sm animate-fade-up"
+            className="relative w-full max-w-sm"
             style={{
-              background: 'rgba(4,4,13,0.88)',
-              border: '1px solid rgba(0,229,255,0.2)',
+              background: 'rgba(8,12,24,0.95)',
+              border: '1px solid rgba(0,229,255,0.18)',
               borderRadius: 16,
-              boxShadow: '0 0 60px rgba(0,229,255,0.12), 0 0 120px rgba(0,0,0,0.8)',
-              backdropFilter: 'blur(24px)',
+              boxShadow: '0 0 80px rgba(0,229,255,0.08)',
               padding: '32px 28px',
             }}
           >
             {/* Corner brackets */}
-            <div className="absolute top-3 left-3 w-4 h-4" style={{ borderTop: '2px solid rgba(0,229,255,0.5)', borderLeft: '2px solid rgba(0,229,255,0.5)', borderRadius: '2px 0 0 0' }} />
-            <div className="absolute top-3 right-3 w-4 h-4" style={{ borderTop: '2px solid rgba(0,229,255,0.5)', borderRight: '2px solid rgba(0,229,255,0.5)', borderRadius: '0 2px 0 0' }} />
-            <div className="absolute bottom-3 left-3 w-4 h-4" style={{ borderBottom: '2px solid rgba(0,229,255,0.5)', borderLeft: '2px solid rgba(0,229,255,0.5)', borderRadius: '0 0 0 2px' }} />
-            <div className="absolute bottom-3 right-3 w-4 h-4" style={{ borderBottom: '2px solid rgba(0,229,255,0.5)', borderRight: '2px solid rgba(0,229,255,0.5)', borderRadius: '0 0 2px 0' }} />
+            <div className="absolute top-3 left-3 w-5 h-5" style={{ borderTop: '2px solid rgba(0,229,255,0.45)', borderLeft: '2px solid rgba(0,229,255,0.45)' }} />
+            <div className="absolute top-3 right-3 w-5 h-5" style={{ borderTop: '2px solid rgba(0,229,255,0.45)', borderRight: '2px solid rgba(0,229,255,0.45)' }} />
+            <div className="absolute bottom-3 left-3 w-5 h-5" style={{ borderBottom: '2px solid rgba(0,229,255,0.45)', borderLeft: '2px solid rgba(0,229,255,0.45)' }} />
+            <div className="absolute bottom-3 right-3 w-5 h-5" style={{ borderBottom: '2px solid rgba(0,229,255,0.45)', borderRight: '2px solid rgba(0,229,255,0.45)' }} />
 
             {/* Header */}
-            <div className="text-center mb-6">
-              <p className="text-xs font-bold tracking-[0.2em] mb-1" style={{ color: 'rgba(0,229,255,0.5)' }}>
-                {mode === 'login' ? 'AUTHENTICATE' : 'CREATE ACCOUNT'}
-              </p>
-              <div className="h-px mt-2" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent)' }} />
+            <p className="text-center text-xs font-black tracking-[0.25em] mb-6" style={{ color: 'rgba(0,229,255,0.6)' }}>
+              {mode === 'login' ? 'LOG IN' : 'CREATE ACCOUNT'}
+            </p>
+
+            {/* Google */}
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={submitting}
+              className="w-full py-3 rounded-lg font-bold text-sm transition-all duration-200 flex items-center justify-center gap-3 mb-3"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.14)',
+                color: '#e0f2fe',
+                letterSpacing: '0.1em',
+                opacity: submitting ? 0.6 : 1,
+              }}
+              onMouseEnter={(e) => { if (!submitting) { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.border = '1px solid rgba(255,255,255,0.28)' } }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.border = '1px solid rgba(255,255,255,0.14)' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+                <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+                <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+                <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+              </svg>
+              CONTINUE WITH GOOGLE
+            </button>
+
+            {/* Apple */}
+            <button
+              type="button"
+              onClick={handleAppleSignIn}
+              disabled={submitting}
+              className="w-full py-3 rounded-lg font-bold text-sm transition-all duration-200 flex items-center justify-center gap-3 mb-5"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.14)',
+                color: '#e0f2fe',
+                letterSpacing: '0.1em',
+                opacity: submitting ? 0.6 : 1,
+              }}
+              onMouseEnter={(e) => { if (!submitting) { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.border = '1px solid rgba(255,255,255,0.28)' } }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.border = '1px solid rgba(255,255,255,0.14)' }}
+            >
+              {/* Apple logo */}
+              <svg width="15" height="18" viewBox="0 0 814 1000" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.4-155.5-127.4C46 413.8 8.2 341.9 8.2 272.5c0-110.8 68.9-169.4 135.8-169.4 89.8 0 144.7 59.6 215.2 59.6 71.1 0 115.5-61.2 218.7-61.2zM656.8 71c30.2-35.9 52.4-86.2 52.4-136.5 0-7-.7-14.1-2.1-20.5-49.5 1.9-110 34.3-145.7 75.1-27.8 31.4-53.8 81.7-53.8 132.5 0 7.8 1.4 15.6 2.1 18.1 3.2.5 8.4 1.4 13.6 1.4 44.4 0 100.2-30.7 133.5-70.1z"/>
+              </svg>
+              CONTINUE WITH APPLE
+            </button>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.1)' }} />
+              <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.55)' }}>OR</span>
+              <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.1)' }} />
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Email */}
               <div>
-                <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                <label className="block text-[10px] font-black tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
                   EMAIL
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="agent@partyradar.io"
+                  placeholder="you@example.com"
                   required
-                  className="w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none"
+                  className="w-full px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none"
                   style={{
                     background: 'rgba(0,229,255,0.04)',
-                    border: '1px solid rgba(0,229,255,0.2)',
+                    border: '1px solid rgba(0,229,255,0.18)',
                     color: '#e0f2fe',
-                    letterSpacing: '0.02em',
                   }}
-                  onFocus={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.1)' }}
-                  onBlur={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.2)'; e.target.style.boxShadow = 'none' }}
+                  onFocus={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.08)' }}
+                  onBlur={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.18)'; e.target.style.boxShadow = 'none' }}
                 />
               </div>
 
               {/* Password */}
               <div>
-                <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                <label className="block text-[10px] font-black tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
                   PASSWORD
                 </label>
                 <div className="relative">
@@ -332,22 +422,22 @@ export default function GlobeLanding() {
                     type={showPw ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Min. 6 characters"
                     required
                     minLength={6}
-                    className="w-full px-3 py-2.5 pr-10 rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none"
+                    className="w-full px-3 py-3 pr-10 rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none"
                     style={{
                       background: 'rgba(0,229,255,0.04)',
-                      border: '1px solid rgba(0,229,255,0.2)',
+                      border: '1px solid rgba(0,229,255,0.18)',
                       color: '#e0f2fe',
                     }}
-                    onFocus={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.1)' }}
-                    onBlur={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.2)'; e.target.style.boxShadow = 'none' }}
+                    onFocus={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.08)' }}
+                    onBlur={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.18)'; e.target.style.boxShadow = 'none' }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPw((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
                     style={{ color: 'rgba(0,229,255,0.4)' }}
                   >
                     {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -366,44 +456,49 @@ export default function GlobeLanding() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-3 rounded-lg font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-lg font-black text-sm transition-all duration-200 flex items-center justify-center gap-2"
                 style={{
-                  background: submitting
-                    ? 'rgba(0,229,255,0.06)'
-                    : 'linear-gradient(135deg, rgba(0,229,255,0.18), rgba(61,90,254,0.18))',
-                  border: '1px solid rgba(0,229,255,0.5)',
+                  background: submitting ? 'rgba(0,229,255,0.08)' : 'linear-gradient(135deg, rgba(0,229,255,0.2), rgba(61,90,254,0.2))',
+                  border: '1px solid rgba(0,229,255,0.55)',
                   color: '#00e5ff',
-                  boxShadow: submitting ? 'none' : '0 0 20px rgba(0,229,255,0.2)',
-                  letterSpacing: '0.12em',
+                  boxShadow: submitting ? 'none' : '0 0 24px rgba(0,229,255,0.18)',
+                  letterSpacing: '0.14em',
                   opacity: submitting ? 0.7 : 1,
                 }}
               >
                 {submitting
-                  ? <><Loader2 size={14} className="animate-spin" /> AUTHENTICATING...</>
-                  : <>{mode === 'login' ? 'ACCESS SYSTEM' : 'ACTIVATE ACCOUNT'} <ChevronRight size={14} /></>
+                  ? <><Loader2 size={14} className="animate-spin" /> {mode === 'login' ? 'SIGNING IN...' : 'CREATING...'}</>
+                  : <>CONTINUE <ChevronRight size={14} /></>
                 }
               </button>
             </form>
 
-            {/* Toggle mode */}
-            <div className="mt-4 text-center">
-              <button
-                onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}
-                className="text-xs font-bold transition-all duration-200"
-                style={{ color: 'rgba(0,229,255,0.45)', letterSpacing: '0.1em' }}
-              >
-                {mode === 'login' ? "NO ACCOUNT? → CREATE ONE" : "HAVE AN ACCOUNT? → LOG IN"}
-              </button>
+            {/* Toggle login / register */}
+            <div className="mt-5 text-center">
+              {mode === 'login' ? (
+                <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                  Don't have an account?{' '}
+                  <button
+                    onClick={() => { setMode('register'); setError('') }}
+                    className="font-black transition-colors"
+                    style={{ color: '#00e5ff' }}
+                  >
+                    SIGN UP
+                  </button>
+                </p>
+              ) : (
+                <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                  Already have an account?{' '}
+                  <button
+                    onClick={() => { setMode('login'); setError('') }}
+                    className="font-black transition-colors"
+                    style={{ color: '#00e5ff' }}
+                  >
+                    LOG IN
+                  </button>
+                </p>
+              )}
             </div>
-
-            {/* Back */}
-            <button
-              onClick={() => setPhase('landing')}
-              className="mt-3 w-full text-center text-xs font-bold transition-all"
-              style={{ color: 'rgba(74,96,128,0.6)', letterSpacing: '0.1em' }}
-            >
-              ← BACK
-            </button>
           </div>
         </div>
       )}
@@ -539,7 +634,7 @@ export default function GlobeLanding() {
                 <div className="text-5xl">🎉</div>
                 <div className="text-center">
                   <p className="font-black text-base tracking-wider" style={{ color: '#00ff88', textShadow: '0 0 12px rgba(0,255,136,0.6)' }}>
-                    JOINING
+                    DISCOVER
                   </p>
                   <p className="text-[10px] mt-1 font-medium tracking-wider" style={{ color: 'rgba(74,96,128,0.8)' }}>
                     FIND A PARTY
@@ -548,14 +643,6 @@ export default function GlobeLanding() {
               </button>
             </div>
 
-            {/* Skip / explore */}
-            <button
-              onClick={() => router.push('/discover')}
-              className="mt-6 w-full text-center text-xs font-bold transition-all"
-              style={{ color: 'rgba(74,96,128,0.55)', letterSpacing: '0.12em' }}
-            >
-              EXPLORE WITHOUT COMMITTING →
-            </button>
           </div>
         </div>
       )}

@@ -329,25 +329,6 @@ export default function EarnPage() {
           <RevenueCalculator />
         </SectionCard>
 
-        {/* CTA */}
-        <div className="pt-4 text-center">
-          <Link
-            href="/register"
-            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl text-sm font-bold tracking-wider transition-all active:scale-95"
-            style={{
-              background: 'linear-gradient(135deg, rgba(0,229,255,0.15) 0%, rgba(168,85,247,0.1) 100%)',
-              border: '1px solid rgba(0,229,255,0.3)',
-              color: '#00e5ff',
-              boxShadow: '0 0 30px rgba(0,229,255,0.1)',
-            }}
-          >
-            START EARNING TODAY
-            <ArrowRight size={16} />
-          </Link>
-          <p className="text-xs mt-3" style={{ color: 'rgba(224,242,254,0.3)' }}>
-            Free to join. No upfront costs.
-          </p>
-        </div>
       </div>
     </div>
   )
