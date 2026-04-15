@@ -574,24 +574,21 @@ router.post('/seed-activity', async (_req, res, next) => {
       // If event exists but has expired, update its dates to new future times
       if (existing) {
         const hasExpired = existing.startsAt < new Date()
-        if (hasExpired) {
-          await prisma.event.update({
-            where: { id: existing.id },
-            data: {
-              type: def.type,
-              startsAt: def.startsAt,
-              endsAt: def.endsAt,
-              isCancelled: false,
-              isPublished: true,
-              vibeTags: def.vibeTags,
-              ticketsRemaining: Math.floor(def.capacity * 0.4),
-            },
-          })
-          createdEventIds.push(existing.id)
-          eventsCreated++
-        } else {
-          createdEventIds.push(existing.id)
+        // Always update type + vibe tags so corrections in seed defs propagate to DB
+        const updateData: Record<string, unknown> = {
+          type: def.type,
+          vibeTags: def.vibeTags,
+          isPublished: true,
         }
+        if (hasExpired) {
+          updateData['startsAt'] = def.startsAt
+          updateData['endsAt'] = def.endsAt
+          updateData['isCancelled'] = false
+          updateData['ticketsRemaining'] = Math.floor(def.capacity * 0.4)
+          eventsCreated++
+        }
+        await prisma.event.update({ where: { id: existing.id }, data: updateData })
+        createdEventIds.push(existing.id)
         continue
       }
       const isDemoHost = demoHosts.find((h) => h.username === def.hostKey)?.firebaseUid?.startsWith('demo_') ?? false
