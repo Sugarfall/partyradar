@@ -274,9 +274,42 @@ router.post('/seed-venues', async (_req, res, next) => {
   }
 })
 
+/** POST /api/admin/fix-event-types — one-shot migration: correct HOME_PARTY → proper type */
+router.post('/fix-event-types', async (_req, res, next) => {
+  try {
+    const pubNightNames = [
+      'The Doublet: Pub Karaoke',
+      'Lucky Cat: Private Room Karaoke Party',
+      'Drygate Tap Takeover: Craft Beer Night',
+      "Maggie May's: Saturday Singalong",
+      'Horseshoe Bar: Karaoke Night',
+      'Ben Nevis: Live Folk Session',
+      'State Bar: Blues Night',
+      'Polo Lounge: Drag Bingo & Karaoke',
+    ]
+    const { count } = await prisma.event.updateMany({
+      where: { name: { in: pubNightNames } },
+      data: { type: 'PUB_NIGHT' },
+    })
+    res.json({ message: `Fixed ${count} events → PUB_NIGHT` })
+  } catch (err) { next(err) }
+})
+
 /** POST /api/admin/seed-activity — seed Glasgow nightlife activity (idempotent) */
 router.post('/seed-activity', async (_req, res, next) => {
   try {
+    // ── 0. One-shot type corrections (idempotent) ────────────────────────────
+    const pubNightFix = [
+      'The Doublet: Pub Karaoke', 'Lucky Cat: Private Room Karaoke Party',
+      'Drygate Tap Takeover: Craft Beer Night', "Maggie May's: Saturday Singalong",
+      'Horseshoe Bar: Karaoke Night', 'Ben Nevis: Live Folk Session',
+      'State Bar: Blues Night', 'Polo Lounge: Drag Bingo & Karaoke',
+    ]
+    await prisma.event.updateMany({
+      where: { name: { in: pubNightFix } },
+      data: { type: 'PUB_NIGHT' },
+    })
+
     // ── 1. Ensure demo host users exist ──────────────────────────────────────
     const demoHosts = [
       { firebaseUid: 'demo_subclub', email: 'bookings@subclub.co.uk', username: 'subclub_gla', displayName: 'Sub Club Glasgow' },
