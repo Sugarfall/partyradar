@@ -14,6 +14,7 @@ import {
   DEV_MODE,
   type User,
 } from '@/lib/firebase'
+import { getRedirectResult } from 'firebase/auth'
 import { api } from '@/lib/api'
 import type { User as DBUser } from '@partyradar/shared'
 
@@ -78,6 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // Pick up Google redirect result (mobile flow — page reloads after sign-in)
+    if (!DEV_MODE && auth.currentUser === null) {
+      getRedirectResult(auth).then(async (result) => {
+        if (result?.user) await syncUser(result.user)
+      }).catch(() => {})
+    }
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user)
       if (user) {
