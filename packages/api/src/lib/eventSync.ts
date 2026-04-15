@@ -329,7 +329,9 @@ function mapEBEventType(categories: string[]): EventTypeName {
   const cat = categories.join(' ').toLowerCase()
   if (cat.includes('music') || cat.includes('concert') || cat.includes('festival')) return 'CONCERT'
   if (cat.includes('nightlife') || cat.includes('club') || cat.includes('party')) return 'CLUB_NIGHT'
-  return 'HOME_PARTY'
+  if (cat.includes('pub') || cat.includes('bar') || cat.includes('quiz') || cat.includes('karaoke') || cat.includes('drinks')) return 'PUB_NIGHT'
+  // Default to PUB_NIGHT for unmatched venue events — HOME_PARTY is reserved for private house parties
+  return 'PUB_NIGHT'
 }
 
 async function syncEventbrite(

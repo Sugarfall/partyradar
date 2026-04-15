@@ -18,7 +18,7 @@ const TYPE_COLORS: Record<string, string> = {
   PUB_NIGHT: '#f59e0b',
 }
 const TYPE_LABELS: Record<string, string> = {
-  HOME_PARTY: 'HOME PARTY',
+  HOME_PARTY: 'HOUSE PARTY',
   CLUB_NIGHT: 'CLUB NIGHT',
   CONCERT: 'CONCERT',
   PUB_NIGHT: 'PUB NIGHT',

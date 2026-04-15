@@ -80,7 +80,7 @@ export const TIERS: Record<SubscriptionTier, TierConfig> = {
 // ─── Event Types ──────────────────────────────────────────────────────────────
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {
-  HOME_PARTY: 'Home Party',
+  HOME_PARTY: 'House Party',
   CLUB_NIGHT: 'Club Night',
   CONCERT: 'Concert',
   PUB_NIGHT: 'Pub Night',
