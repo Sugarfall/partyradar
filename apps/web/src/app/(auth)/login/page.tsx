@@ -32,14 +32,28 @@ export default function LoginPage() {
     }
   }
 
+  function parseAuthError(err: any): string {
+    const code = err?.code ?? ''
+    if (code === 'auth/unauthorized-domain') {
+      const domain = typeof window !== 'undefined' ? window.location.hostname : 'this domain'
+      return `Add "${domain}" to Firebase Console → Authentication → Authorised Domains`
+    }
+    if (code === 'auth/operation-not-allowed') return 'Google sign-in is not enabled — check Firebase Console → Sign-in method'
+    if (code === 'auth/popup-blocked') return 'Popup was blocked — allow popups for this site and try again'
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return ''
+    if (code === 'auth/account-exists-with-different-credential') return 'An account already exists with this email — try signing in with email/password'
+    return err?.message?.replace('Firebase: ', '').replace(/\s*\(auth\/[^)]+\)\.?/, '') ?? `Sign-in failed (${code || 'unknown'})`
+  }
+
   async function handleGoogleLogin() {
     setGoogleLoading(true)
     setError(null)
     try {
       await signInWithGoogle()
       router.push('/discover')
-    } catch {
-      setError('GOOGLE AUTH FAILED — TRY AGAIN')
+    } catch (err: any) {
+      const msg = parseAuthError(err)
+      if (msg) setError(msg)
     } finally {
       setGoogleLoading(false)
     }
@@ -51,8 +65,9 @@ export default function LoginPage() {
     try {
       await signInWithApple()
       router.push('/discover')
-    } catch {
-      setError('APPLE AUTH FAILED — TRY AGAIN')
+    } catch (err: any) {
+      const msg = parseAuthError(err)
+      if (msg) setError(msg)
     } finally {
       setAppleLoading(false)
     }

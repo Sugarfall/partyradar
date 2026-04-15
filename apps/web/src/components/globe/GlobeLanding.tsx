@@ -168,10 +168,17 @@ export default function GlobeLanding() {
       getLocationAndZoom()
     } catch (err: any) {
       const code = err?.code ?? ''
-      if (code === 'auth/popup-closed-by-user') {
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
         setError('')
+      } else if (code === 'auth/unauthorized-domain') {
+        const domain = typeof window !== 'undefined' ? window.location.hostname : 'this domain'
+        setError(`Add "${domain}" to Firebase Console → Authentication → Authorised Domains`)
+      } else if (code === 'auth/operation-not-allowed') {
+        setError('Apple sign-in is not enabled — check Firebase Console → Sign-in method')
+      } else if (code === 'auth/account-exists-with-different-credential') {
+        setError('An account already exists with this email — try Google or email/password sign-in')
       } else {
-        setError(err?.message?.replace('Firebase: ', '') ?? `Apple sign-in failed (${code})`)
+        setError(err?.message?.replace('Firebase: ', '').replace(/\s*\(auth\/[^)]+\)\.?/, '') ?? `Apple sign-in failed (${code || 'unknown'})`)
       }
     } finally {
       setSubmitting(false)
