@@ -1,14 +1,15 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Wine, Star, Heart, Lock, Search, X, LayoutList, Layers } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
 import type { DemoVenue } from '@/hooks/useEvents'
+import { useVenueDiscover } from '@/hooks/useVenues'
+import type { LiveVenue } from '@/hooks/useVenues'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
-import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS } from '@partyradar/shared'
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
@@ -420,15 +421,35 @@ const VENUE_TYPE_COLORS: Record<string, string> = {
   CONCERT_HALL: '#3d5afe', ROOFTOP_BAR: '#f59e0b', LOUNGE: '#ec4899',
 }
 
-function VenueCard({ venue }: { venue: DemoVenue }) {
+function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
   const color = VENUE_TYPE_COLORS[venue.type] ?? '#00e5ff'
+  const typeLabel = VENUE_TYPE_LABELS[venue.type] ?? venue.type
+  const rating = typeof venue.rating === 'number' ? venue.rating : null
+  const website = 'website' in venue ? venue.website : null
+  const phone = 'phone' in venue ? venue.phone : null
+  const photoUrl = 'photoUrl' in venue ? venue.photoUrl : null
+
   return (
     <div
       className="rounded-2xl overflow-hidden"
       style={{ background: 'rgba(7,7,26,0.95)', border: `1px solid ${color}25`, boxShadow: `0 0 20px ${color}08` }}
     >
-      {/* Top color band */}
-      <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${color}60, transparent)` }} />
+      {/* Cover photo or color band */}
+      {photoUrl ? (
+        <div className="relative h-24 overflow-hidden">
+          <img src={photoUrl} alt={venue.name} className="w-full h-full object-cover" style={{ filter: 'brightness(0.55) saturate(1.2)' }} />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 30%, rgba(7,7,26,0.95) 100%)' }} />
+          <span className="absolute bottom-2 left-3 text-[9px] font-bold px-2 py-0.5 rounded"
+            style={{ color, border: `1px solid ${color}50`, background: `rgba(7,7,26,0.75)`, backdropFilter: 'blur(4px)', letterSpacing: '0.12em' }}>
+            {typeLabel}
+          </span>
+          {rating && (
+            <span className="absolute bottom-2 right-3 text-[10px] font-bold" style={{ color: '#ffd600' }}>★ {rating.toFixed(1)}</span>
+          )}
+        </div>
+      ) : (
+        <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${color}60, transparent)` }} />
+      )}
 
       <div className="p-4 space-y-3">
         {/* Header row */}
@@ -441,55 +462,62 @@ function VenueCard({ venue }: { venue: DemoVenue }) {
               <MapPin size={9} className="inline mr-0.5" />{venue.address}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <span
-              className="text-[9px] font-bold px-2 py-0.5 rounded"
-              style={{ color, border: `1px solid ${color}50`, background: `${color}12`, letterSpacing: '0.12em' }}
-            >
-              {VENUE_TYPE_LABELS[venue.type]}
-            </span>
-            <span className="text-[10px] font-bold" style={{ color: '#ffd600' }}>
-              ★ {venue.rating.toFixed(1)}
-            </span>
-          </div>
+          {!photoUrl && (
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded"
+                style={{ color, border: `1px solid ${color}50`, background: `${color}12`, letterSpacing: '0.12em' }}>
+                {typeLabel}
+              </span>
+              {rating && <span className="text-[10px] font-bold" style={{ color: '#ffd600' }}>★ {rating.toFixed(1)}</span>}
+            </div>
+          )}
         </div>
 
         {/* Vibe tags */}
-        <div className="flex gap-1 flex-wrap">
-          {venue.vibeTags.slice(0, 5).map((tag) => (
-            <span
-              key={tag}
-              className="text-[9px] font-bold px-2 py-0.5 rounded-full"
-              style={{ color: `${color}bb`, border: `1px solid ${color}25`, background: `${color}0a`, letterSpacing: '0.08em' }}
-            >
-              #{tag}
-            </span>
-          ))}
-        </div>
+        {venue.vibeTags.length > 0 && (
+          <div className="flex gap-1 flex-wrap">
+            {venue.vibeTags.slice(0, 5).map((tag) => (
+              <span key={tag} className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                style={{ color: `${color}bb`, border: `1px solid ${color}25`, background: `${color}0a`, letterSpacing: '0.08em' }}>
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Contact links */}
+        {(phone || website) && (
+          <div className="flex gap-3">
+            {phone && (
+              <a href={`tel:${phone}`} className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                <Phone size={9} /> {phone}
+              </a>
+            )}
+            {website && (
+              <a href={website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                <Globe size={9} /> Website <ExternalLink size={8} />
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex gap-2 pt-1">
-          <Link
-            href={`/events/venue-event-${venue.id}`}
+          <Link href={`/venues/${venue.id}`}
             className="flex-1 text-center py-2 rounded-lg text-[10px] font-black"
-            style={{ background: `${color}15`, border: `1px solid ${color}40`, color, letterSpacing: '0.1em' }}
-          >
+            style={{ background: `${color}15`, border: `1px solid ${color}40`, color, letterSpacing: '0.1em' }}>
             VIEW EVENTS →
           </Link>
-          {!venue.isClaimed && (
+          {!venue.isClaimed ? (
             <button
               className="flex-1 text-center py-2 rounded-lg text-[10px] font-black"
               style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600', letterSpacing: '0.08em' }}
-              onClick={() => alert(`Claim flow for ${venue.name} — coming soon!`)}
-            >
+              onClick={() => alert(`Claim flow for ${venue.name} — coming soon!`)}>
               CLAIM VENUE ★
             </button>
-          )}
-          {venue.isClaimed && (
-            <span
-              className="flex-1 text-center py-2 rounded-lg text-[10px] font-bold"
-              style={{ border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', letterSpacing: '0.08em' }}
-            >
+          ) : (
+            <span className="flex-1 text-center py-2 rounded-lg text-[10px] font-bold"
+              style={{ border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', letterSpacing: '0.08em' }}>
               ✓ CLAIMED
             </span>
           )}
@@ -503,14 +531,29 @@ function VenueCard({ venue }: { venue: DemoVenue }) {
 function VenuesList() {
   const [search, setSearch] = useState('')
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
+  const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
 
+  // Discover venues on mount via Google Places; fall back to Glasgow defaults
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => discover(pos.coords.latitude, pos.coords.longitude, 8000),
+        () => discover(55.8642, -4.2518, 8000),
+        { timeout: 5000, maximumAge: 600000 }
+      )
+    } else {
+      discover(55.8642, -4.2518, 8000)
+    }
+  }, [discover])
+
+  const baseVenues: (DemoVenue | LiveVenue)[] = liveVenues.length > 0 ? liveVenues : GLASGOW_VENUES
   const filtered = search
-    ? GLASGOW_VENUES.filter((v) =>
+    ? baseVenues.filter((v) =>
         v.name.toLowerCase().includes(search.toLowerCase()) ||
         v.vibeTags.some((t) => t.toLowerCase().includes(search.toLowerCase())) ||
         v.type.toLowerCase().includes(search.toLowerCase())
       )
-    : GLASGOW_VENUES
+    : baseVenues
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -530,7 +573,7 @@ function VenuesList() {
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
           <input
             type="text"
-            placeholder="Search venues..."
+            placeholder="Search venues, vibe, type..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
@@ -544,19 +587,27 @@ function VenuesList() {
         </div>
       </div>
 
-      {/* Count */}
-      <div className="flex-shrink-0 px-4 py-2" style={{ background: 'rgba(4,4,13,0.6)' }}>
-        <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>
-          {filtered.length} VENUES · GLASGOW
-        </p>
+      {/* Status bar */}
+      <div className="flex-shrink-0 px-4 py-2 flex items-center gap-2" style={{ background: 'rgba(4,4,13,0.6)' }}>
+        {venuesLoading ? (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full border border-t-transparent animate-spin" style={{ borderColor: 'rgba(255,214,0,0.3)', borderTopColor: '#ffd600' }} />
+            <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.5)' }}>SCANNING NEARBY VENUES...</span>
+          </div>
+        ) : (
+          <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>
+            {filtered.length} VENUES
+            {venueSource === 'google' ? ' · POWERED BY GOOGLE PLACES' : ' · GLASGOW'}
+          </p>
+        )}
       </div>
 
       {/* Scrollable list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-20">
-        {filtered.map((venue) => (
+        {!venuesLoading && filtered.map((venue) => (
           <VenueCard key={venue.id} venue={venue} />
         ))}
-        {filtered.length === 0 && (
+        {!venuesLoading && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <span style={{ fontSize: 32 }}>🏢</span>
             <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>NO VENUES FOUND</p>

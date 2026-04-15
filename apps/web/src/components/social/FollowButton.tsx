@@ -1,18 +1,24 @@
 'use client'
 
 import { useState } from 'react'
-import { UserPlus, UserCheck } from 'lucide-react'
-
-import { API_URL as API_BASE } from '@/lib/api'
+import { UserPlus, UserCheck, UserMinus } from 'lucide-react'
+import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/useAuth'
 
 interface FollowButtonProps {
   userId: string
   initialFollowing?: boolean
+  size?: 'sm' | 'md'
 }
 
-export default function FollowButton({ userId, initialFollowing = false }: FollowButtonProps) {
+export default function FollowButton({ userId, initialFollowing = false, size = 'sm' }: FollowButtonProps) {
+  const { dbUser } = useAuth()
   const [following, setFollowing] = useState(initialFollowing)
+  const [hover, setHover] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // Don't show follow button for own profile or when not logged in
+  if (!dbUser || dbUser.id === userId) return null
 
   async function handleToggle() {
     if (loading) return
@@ -20,44 +26,51 @@ export default function FollowButton({ userId, initialFollowing = false }: Follo
     setFollowing(!prev)
     setLoading(true)
     try {
-      const token = typeof window !== 'undefined'
-        ? localStorage.getItem('partyradar_mock_session') ?? ''
-        : ''
-      const method = prev ? 'DELETE' : 'POST'
-      const res = await fetch(`${API_BASE}/follow/${userId}`, {
-        method,
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      })
-      if (!res.ok) throw new Error('Failed')
+      if (prev) {
+        await api.delete(`/follow/${userId}`)
+      } else {
+        await api.post(`/follow/${userId}`)
+      }
     } catch {
-      // Revert optimistic update
-      setFollowing(prev)
+      setFollowing(prev) // revert on error
     } finally {
       setLoading(false)
     }
   }
 
+  const pad = size === 'md' ? '10px 18px' : '6px 12px'
+  const fs = size === 'md' ? 11 : 9
+
   return (
     <button
       onClick={handleToggle}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       disabled={loading}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all duration-200 disabled:opacity-60"
+      className="flex items-center gap-1.5 rounded-lg font-black transition-all duration-200 disabled:opacity-60"
       style={{
-        background: following ? 'rgba(0,229,255,0.12)' : 'transparent',
-        border: following ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.25)',
-        color: following ? '#00e5ff' : 'rgba(0,229,255,0.6)',
+        padding: pad,
+        fontSize: fs,
         letterSpacing: '0.1em',
-        boxShadow: following ? '0 0 10px rgba(0,229,255,0.15)' : 'none',
+        background: following
+          ? hover ? 'rgba(255,0,110,0.1)' : 'rgba(0,229,255,0.08)'
+          : 'transparent',
+        border: following
+          ? hover ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(0,229,255,0.35)'
+          : '1px solid rgba(0,229,255,0.25)',
+        color: following
+          ? hover ? '#ff006e' : '#00e5ff'
+          : 'rgba(0,229,255,0.6)',
       }}
     >
       {loading ? (
         <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
       ) : following ? (
-        <UserCheck size={12} />
+        hover ? <UserMinus size={11} /> : <UserCheck size={11} />
       ) : (
-        <UserPlus size={12} />
+        <UserPlus size={11} />
       )}
-      {following ? 'FOLLOWING' : 'FOLLOW'}
+      {following ? (hover ? 'UNFOLLOW' : 'FOLLOWING') : 'FOLLOW'}
     </button>
   )
 }

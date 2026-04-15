@@ -17,6 +17,7 @@ import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
+import FollowButton from '@/components/social/FollowButton'
 import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS } from '@partyradar/shared'
 import type { PushBlastTier } from '@partyradar/shared'
 import useSWR from 'swr'
@@ -606,6 +607,11 @@ export default function EventDetailPage() {
     isHostView && guestListOpen ? `/events/${params['id']}/guests` : null,
     fetcher
   )
+  // Also fetch a small attendee preview for the guest-view "Who's going" section
+  const { data: attendeePreview } = useSWR<{ data: EventGuest[] }>(
+    event && dbUser && !isHostView ? `/events/${params['id']}/guests?limit=8` : null,
+    fetcher
+  )
 
   if (isLoading) {
     return (
@@ -684,8 +690,7 @@ export default function EventDetailPage() {
     setCancelLoading(true)
     try {
       await cancelEvent(event!.id)
-      if (!DEV_MODE) await mutate()
-      else router.push('/host')
+      await mutate()
       setCancelConfirm(false)
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Cancel failed')
@@ -698,8 +703,7 @@ export default function EventDetailPage() {
     setPublishLoading(true)
     try {
       await updateEvent(event!.id, { isPublished: !event!.isPublished } as any)
-      if (!DEV_MODE) await mutate()
-      else router.refresh()
+      await mutate()
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed')
     } finally {
@@ -1001,6 +1005,46 @@ export default function EventDetailPage() {
               </span>
               {friendsGoing.count === 1 ? ' is' : ' are'} going
             </p>
+          </div>
+        )}
+
+        {/* ── Who's going (attendee preview with follow buttons) ── */}
+        {!isHost && attendeePreview && attendeePreview.data.length > 0 && (
+          <div className="mb-5 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
+            <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: 'rgba(0,229,255,0.03)' }}>
+              <div className="flex items-center gap-2">
+                <Users size={11} style={{ color: 'rgba(0,229,255,0.5)' }} />
+                <span className="text-[10px] font-black tracking-widest" style={{ color: '#00e5ff' }}>WHO'S GOING</span>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.7)' }}>
+                  {event.guestCount}
+                </span>
+              </div>
+            </div>
+            <div className="divide-y" style={{ borderColor: 'rgba(0,229,255,0.05)' }}>
+              {attendeePreview.data.slice(0, 6).map((guest) => {
+                const u = (guest as any).user
+                if (!u) return null
+                return (
+                  <div key={guest.id} className="flex items-center gap-3 px-4 py-2.5">
+                    {u.photoUrl ? (
+                      <img src={u.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0"
+                        style={{ border: '1px solid rgba(0,229,255,0.2)' }} />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                        style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.15)', color: '#00e5ff' }}>
+                        {u.displayName?.[0] ?? '?'}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                      {u.username && <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.5)' }}>@{u.username}</p>}
+                    </div>
+                    <FollowButton userId={u.id} size="sm" />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -1454,14 +1498,19 @@ export default function EventDetailPage() {
                               @{(guest as any).user?.username ?? '—'}
                             </p>
                           </div>
-                          <span className="text-[9px] font-black px-2 py-0.5 rounded tracking-wide"
-                            style={{
-                              color: guest.status === 'CONFIRMED' ? '#00ff88' : guest.status === 'CANCELLED' ? '#ff006e' : 'rgba(255,214,0,0.8)',
-                              background: guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.08)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.08)' : 'rgba(255,214,0,0.08)',
-                              border: `1px solid ${guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.2)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.2)' : 'rgba(255,214,0,0.2)'}`,
-                            }}>
-                            {guest.status}
-                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {(guest as any).user?.id && (
+                              <FollowButton userId={(guest as any).user.id} size="sm" />
+                            )}
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded tracking-wide"
+                              style={{
+                                color: guest.status === 'CONFIRMED' ? '#00ff88' : guest.status === 'CANCELLED' ? '#ff006e' : 'rgba(255,214,0,0.8)',
+                                background: guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.08)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.08)' : 'rgba(255,214,0,0.08)',
+                                border: `1px solid ${guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.2)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.2)' : 'rgba(255,214,0,0.2)'}`,
+                              }}>
+                              {guest.status}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
