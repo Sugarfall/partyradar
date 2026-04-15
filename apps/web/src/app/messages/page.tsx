@@ -7,6 +7,12 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
+import { auth } from '@/lib/firebase'
+
+/** Get a fresh Firebase ID token for API calls */
+async function getToken(): Promise<string> {
+  try { return (await auth.currentUser?.getIdToken()) ?? '' } catch { return '' }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +49,9 @@ interface GroupChat {
   coverColor: string
   isPrivate?: boolean
   isPaid?: boolean
+  hasPassword?: boolean
+  pendingRequest?: boolean
+  joinRequestCount?: number
   priceMonthly?: number | null
   isOwner?: boolean
   isSubscribed?: boolean
@@ -50,6 +59,16 @@ interface GroupChat {
   isJoined: boolean
   notificationsEnabled: boolean
   lastMessage: { text: string; senderName: string; createdAt: string } | null
+}
+
+interface GroupMember {
+  id: string
+  displayName: string
+  username?: string | null
+  photoUrl?: string | null
+  isOwner: boolean
+  isMe: boolean
+  isFollowing: boolean
 }
 
 interface GroupMessage {
@@ -108,8 +127,6 @@ function HostGroupDashboard({
   const [newPriceTier, setNewPriceTier] = useState('MICRO')
   const [creating, setCreating] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   const myGroups = groups.filter((g) => g.isOwner)
   const totalSubs = myGroups.reduce((sum, g) => sum + (g.isPaid ? g.memberCount : 0), 0)
   const paidGroups = myGroups.filter((g) => g.isPaid)
@@ -119,11 +136,11 @@ function HostGroupDashboard({
 
   async function handleCreate() {
     if (!newName.trim() || creating) return
-    if (newPrivate && !newPaid && newPassword.trim().length < 4) return
     setCreating(true)
     try {
+      const tok = await getToken()
       const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
+      if (tok) hdrs['Authorization'] = `Bearer ${tok}`
       const body: Record<string, unknown> = {
         name: newName.trim(), description: newDesc.trim() || undefined,
         emoji: newEmoji, coverColor: newColor,
@@ -133,7 +150,7 @@ function HostGroupDashboard({
         body.priceTierId = newPriceTier
       } else if (newPrivate) {
         body.isPrivate = true
-        body.password = newPassword.trim()
+        if (newPassword.trim()) body.password = newPassword.trim()
       }
       const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
       const j = await r.json()
@@ -322,18 +339,23 @@ function HostGroupDashboard({
               </div>
             </div>
 
-            {/* Password field for private groups */}
+            {/* Password / access for private groups */}
             {newPrivate && !newPaid && (
-              <div className="relative">
-                <input type={showPw ? 'text' : 'password'} placeholder="Group password (min 4 chars)"
-                  value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent outline-none"
-                  style={{ border: '1px solid rgba(255,0,110,0.25)', color: '#e0f2fe' }} />
-                <button onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                  style={{ color: 'rgba(224,242,254,0.3)' }}>
-                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
+              <div className="space-y-2">
+                <div className="relative">
+                  <input type={showPw ? 'text' : 'password'} placeholder="Join code (optional — leave blank for request-to-join)"
+                    value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent outline-none"
+                    style={{ border: '1px solid rgba(255,0,110,0.2)', color: '#e0f2fe' }} />
+                  <button onClick={() => setShowPw(!showPw)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: 'rgba(224,242,254,0.3)' }}>
+                    {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                  {newPassword ? '🔑 Password access — members enter this code to join' : '✋ Request-to-join — you approve each member'}
+                </p>
               </div>
             )}
 
@@ -382,7 +404,7 @@ function HostGroupDashboard({
             </div>
 
             <button onClick={handleCreate}
-              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
+              disabled={!newName.trim() || creating}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
                 background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(168,85,247,0.12)',
@@ -408,7 +430,7 @@ function GroupBrowser({
   onCreateGroup: (group: GroupChat) => void
   dbUserId: string | null
 }) {
-  const [sub, setSub] = useState<'genres' | 'venues'>('genres')
+  const [sub, setSub] = useState<'public' | 'venues' | 'private' | 'paid'>('public')
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
@@ -421,39 +443,36 @@ function GroupBrowser({
   const [newPriceTier, setNewPriceTier] = useState('MICRO')
   const [creating, setCreating] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
-  const genres = groups.filter((g) => g.type === 'GENRE')
-  const venues = groups.filter((g) => g.type === 'VENUE')
+  // 4 categories
+  const publicGroups = groups.filter((g) => g.type === 'GENRE' && !g.isPrivate && !g.isPaid)
+  const venueGroups = groups.filter((g) => g.type === 'VENUE')
+  const privateGroups = groups.filter((g) => g.isPrivate && !g.isPaid)
+  const paidGroups = groups.filter((g) => g.isPaid)
 
   const GENRE_ORDER = ['genre-rave', 'genre-house', 'genre-rnb', 'genre-trippy', 'genre-dnb', 'genre-afrobeats', 'genre-rock', 'genre-electronic']
-  const sortedGenres = [...genres].sort((a, b) => {
-    const aIdx = GENRE_ORDER.indexOf(a.slug)
-    const bIdx = GENRE_ORDER.indexOf(b.slug)
-    // Known genres first, then user-created sorted by name
+  const sortedPublic = [...publicGroups].sort((a, b) => {
+    const aIdx = GENRE_ORDER.indexOf(a.slug); const bIdx = GENRE_ORDER.indexOf(b.slug)
     if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx
-    if (aIdx >= 0) return -1
-    if (bIdx >= 0) return 1
+    if (aIdx >= 0) return -1; if (bIdx >= 0) return 1
     return a.name.localeCompare(b.name)
   })
 
   async function handleCreate() {
     if (!newName.trim() || creating) return
-    if (newPrivate && !newPaid && newPassword.trim().length < 4) return
     setCreating(true)
     try {
+      const tok = await getToken()
       const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
+      if (tok) hdrs['Authorization'] = `Bearer ${tok}`
       const body: Record<string, unknown> = {
         name: newName.trim(), description: newDesc.trim() || undefined,
         emoji: newEmoji, coverColor: newColor,
       }
       if (newPaid) {
-        body.isPaid = true
-        body.priceTierId = newPriceTier
+        body.isPaid = true; body.priceTierId = newPriceTier
       } else if (newPrivate) {
         body.isPrivate = true
-        body.password = newPassword.trim()
+        if (newPassword.trim()) body.password = newPassword.trim()
       }
       const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
       const j = await r.json()
@@ -461,6 +480,7 @@ function GroupBrowser({
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO')
+        setSub(newPaid ? 'paid' : newPrivate ? 'private' : 'public')
       }
     } catch {}
     finally { setCreating(false) }
@@ -469,109 +489,168 @@ function GroupBrowser({
   const COLORS = ['#a855f7', '#3b82f6', '#ec4899', '#10b981', '#f97316', '#ef4444', '#06b6d4', '#6366f1', '#eab308', '#f43f5e']
   const EMOJIS = ['💬', '🎵', '🎉', '🌙', '🔥', '💜', '🎶', '⚡', '🌈', '🫶', '🎪', '🤙']
 
+  const TABS = [
+    { id: 'public' as const, label: '🌐 PUBLIC', count: publicGroups.length, color: '#00e5ff' },
+    { id: 'venues' as const, label: '🏙️ VENUES', count: venueGroups.length, color: '#00ff88' },
+    { id: 'private' as const, label: '🔒 PRIVATE', count: privateGroups.length, color: '#ff006e' },
+    { id: 'paid' as const, label: '👑 PAID', count: paidGroups.length, color: '#ffd600' },
+  ]
+
+  function GroupRow({ g }: { g: GroupChat }) {
+    return (
+      <button key={g.id} onClick={() => onOpen(g)}
+        className="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left transition-all active:scale-[0.98]"
+        style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(0,229,255,0.07)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${g.coverColor}40`; e.currentTarget.style.background = `${g.coverColor}06` }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(0,229,255,0.07)'; e.currentTarget.style.background = 'rgba(7,7,26,0.85)' }}>
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-xl"
+          style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}30` }}>
+          {g.emoji}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-black" style={{ color: '#ffffff' }}>{g.name}</p>
+            {g.isJoined && (
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded"
+                style={{ background: `${g.coverColor}20`, border: `1px solid ${g.coverColor}40`, color: g.coverColor }}>
+                {g.isPaid ? 'SUBSCRIBED' : 'JOINED'}
+              </span>
+            )}
+            {g.pendingRequest && (
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}>
+                PENDING
+              </span>
+            )}
+          </div>
+          {g.description ? (
+            <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>{g.description}</p>
+          ) : g.lastMessage ? (
+            <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
+              {g.lastMessage.senderName}: {g.lastMessage.text}
+            </p>
+          ) : (
+            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(0,229,255,0.25)' }}>No messages yet</p>
+          )}
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[9px] flex items-center gap-1" style={{ color: `${g.coverColor}80` }}>
+              <Users size={8} /> {g.memberCount}
+            </span>
+            {g.lastMessage && (
+              <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>{timeAgo(g.lastMessage.createdAt)}</span>
+            )}
+          </div>
+        </div>
+        <div className="shrink-0">
+          <div className="w-2 h-2 rounded-full" style={{ background: g.coverColor, boxShadow: `0 0 6px ${g.coverColor}` }} />
+        </div>
+      </button>
+    )
+  }
+
   return (
     <div className="pb-28">
-      {/* Sub-tabs */}
-      <div className="flex gap-1 px-4 pb-3">
-        {(['genres', 'venues'] as const).map((s) => (
-          <button key={s} onClick={() => setSub(s)}
-            className="flex-1 py-2 rounded-xl text-[11px] font-black tracking-widest transition-all"
-            style={{
-              background: sub === s ? 'rgba(0,229,255,0.1)' : 'transparent',
-              border: `1px solid ${sub === s ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
-              color: sub === s ? '#00e5ff' : 'rgba(74,96,128,0.5)',
-            }}>
-            {s === 'genres' ? '🎵 GENRES' : '🏙️ VENUES'}
-          </button>
-        ))}
-      </div>
-
-      {sub === 'genres' && (
-        <div className="px-4 grid grid-cols-2 gap-3">
-          {sortedGenres.map((g) => (
-            <button key={g.id} onClick={() => onOpen(g)}
-              className="relative p-4 rounded-2xl text-left overflow-hidden transition-transform active:scale-95"
-              style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}40` }}>
-              {/* Badges */}
-              <div className="absolute top-2 right-2 flex gap-1">
-                {g.isPaid && (
-                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"
-                    style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600' }}>
-                    <Crown size={7} /> £{g.priceMonthly?.toFixed(2)}/mo
-                  </span>
-                )}
-                {g.isPrivate && !g.isPaid && (
-                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"
-                    style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.3)', color: '#ff006e' }}>
-                    <Lock size={7} />
-                  </span>
-                )}
-              </div>
-              <div className="text-3xl mb-2">{g.emoji}</div>
-              <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{g.name}</p>
-              <p className="text-[10px] mt-0.5 leading-snug line-clamp-2" style={{ color: 'rgba(224,242,254,0.45)' }}>
-                {g.description}
-              </p>
-              <div className="flex items-center gap-1 mt-2">
-                <Users size={9} style={{ color: g.coverColor }} />
-                <span className="text-[9px] font-bold" style={{ color: g.coverColor }}>{g.memberCount} members</span>
-                {g.isJoined && (
-                  <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded font-bold"
-                    style={{ background: `${g.coverColor}20`, color: g.coverColor }}>
-                    {g.isPaid ? 'SUBSCRIBED' : 'JOINED'}
-                  </span>
-                )}
-              </div>
-              {g.lastMessage && (
-                <p className="text-[9px] mt-1.5 truncate" style={{ color: 'rgba(224,242,254,0.25)' }}>
-                  {g.lastMessage.senderName}: {g.lastMessage.text}
-                </p>
+      {/* 4-tab category nav */}
+      <div className="px-4 pb-3 overflow-x-auto">
+        <div className="flex gap-1.5 min-w-max">
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => setSub(t.id)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all whitespace-nowrap"
+              style={{
+                background: sub === t.id ? `${t.color}15` : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${sub === t.id ? t.color + '50' : 'rgba(255,255,255,0.06)'}`,
+                color: sub === t.id ? t.color : 'rgba(255,255,255,0.3)',
+                boxShadow: sub === t.id ? `0 0 12px ${t.color}20` : 'none',
+              }}>
+              {t.label}
+              {t.count > 0 && (
+                <span className="text-[9px] px-1 rounded-full font-bold"
+                  style={{ background: sub === t.id ? `${t.color}25` : 'rgba(255,255,255,0.06)', color: sub === t.id ? t.color : 'rgba(255,255,255,0.3)' }}>
+                  {t.count}
+                </span>
               )}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Public chat groups */}
+      {sub === 'public' && (
+        <div className="px-4 space-y-2">
+          {sortedPublic.length === 0 ? (
+            <div className="py-16 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No public groups yet</div>
+          ) : sortedPublic.map((g) => <GroupRow key={g.id} g={g} />)}
+        </div>
       )}
 
+      {/* Venue chat groups */}
       {sub === 'venues' && (
         <div className="px-4 space-y-2">
-          {venues.length === 0 ? (
+          {venueGroups.length === 0 ? (
             <div className="py-16 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
               Venue chats loading — run seed-activity to populate
             </div>
-          ) : venues.map((g) => (
+          ) : venueGroups.map((g) => <GroupRow key={g.id} g={g} />)}
+        </div>
+      )}
+
+      {/* Private groups */}
+      {sub === 'private' && (
+        <div className="px-4 space-y-2">
+          {privateGroups.length === 0 ? (
+            <div className="py-16 flex flex-col items-center gap-3">
+              <Lock size={28} style={{ color: 'rgba(255,0,110,0.2)' }} />
+              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(255,0,110,0.4)' }}>NO PRIVATE GROUPS YET</p>
+              <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)', maxWidth: 260 }}>
+                Create a private group with a password or request-to-join access
+              </p>
+            </div>
+          ) : privateGroups.map((g) => <GroupRow key={g.id} g={g} />)}
+        </div>
+      )}
+
+      {/* Paid groups */}
+      {sub === 'paid' && (
+        <div className="px-4 space-y-2">
+          {paidGroups.length === 0 ? (
+            <div className="py-16 flex flex-col items-center gap-3">
+              <Crown size={28} style={{ color: 'rgba(255,214,0,0.2)' }} />
+              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>NO PAID GROUPS YET</p>
+              <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)', maxWidth: 260 }}>
+                Subscribe to exclusive communities for premium content
+              </p>
+            </div>
+          ) : paidGroups.map((g) => (
             <button key={g.id} onClick={() => onOpen(g)}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all"
-              style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(0,229,255,0.07)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.2)')}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.07)')}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left transition-all active:scale-[0.98]"
+              style={{
+                background: g.isJoined ? 'linear-gradient(135deg, rgba(255,214,0,0.06),rgba(168,85,247,0.04))' : 'rgba(7,7,26,0.85)',
+                border: `1px solid ${g.isJoined ? 'rgba(255,214,0,0.25)' : 'rgba(255,214,0,0.12)'}`,
+              }}>
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-xl"
                 style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}30` }}>
                 {g.emoji}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{g.name}</p>
-                  {g.isJoined && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0"
-                      style={{ background: `${g.coverColor}20`, color: g.coverColor }}>JOINED</span>
-                  )}
-                </div>
-                {g.lastMessage ? (
-                  <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
-                    {g.lastMessage.senderName}: {g.lastMessage.text}
-                  </p>
-                ) : (
-                  <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.25)' }}>No messages yet — be first!</p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1 shrink-0">
-                <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
-                  {g.memberCount} <Users size={8} className="inline" />
-                </span>
-                {g.lastMessage && (
-                  <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
-                    {timeAgo(g.lastMessage.createdAt)}
+                  <p className="text-sm font-black" style={{ color: '#ffffff' }}>{g.name}</p>
+                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                    style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}>
+                    <Crown size={7} /> £{g.priceMonthly?.toFixed(2)}/mo
                   </span>
+                </div>
+                {g.description && <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>{g.description}</p>}
+                <span className="text-[9px] flex items-center gap-1 mt-1" style={{ color: 'rgba(255,214,0,0.5)' }}>
+                  <Users size={8} /> {g.memberCount} subscribers
+                </span>
+              </div>
+              <div className="shrink-0">
+                {g.isJoined ? (
+                  <span className="text-[9px] font-black px-2 py-1 rounded-lg"
+                    style={{ background: 'rgba(255,214,0,0.12)', color: '#ffd600' }}>ACTIVE</span>
+                ) : (
+                  <span className="text-[9px] font-black px-2 py-1 rounded-lg"
+                    style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.2)', color: '#ffd600' }}>JOIN</span>
                 )}
               </div>
             </button>
@@ -667,18 +746,23 @@ function GroupBrowser({
               </div>
             </div>
 
-            {/* Password field for private groups */}
+            {/* Password / access for private groups */}
             {newPrivate && !newPaid && (
-              <div className="relative">
-                <input type={showPw ? 'text' : 'password'} placeholder="Group password (min 4 chars)"
-                  value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent outline-none"
-                  style={{ border: '1px solid rgba(255,0,110,0.25)', color: '#e0f2fe' }} />
-                <button onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                  style={{ color: 'rgba(224,242,254,0.3)' }}>
-                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
+              <div className="space-y-2">
+                <div className="relative">
+                  <input type={showPw ? 'text' : 'password'} placeholder="Join code (optional — leave blank for request-to-join)"
+                    value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent outline-none"
+                    style={{ border: '1px solid rgba(255,0,110,0.2)', color: '#e0f2fe' }} />
+                  <button onClick={() => setShowPw(!showPw)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: 'rgba(224,242,254,0.3)' }}>
+                    {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                  {newPassword ? '🔑 Password access — members enter this code to join' : '✋ Request-to-join — you approve each member'}
+                </p>
               </div>
             )}
 
@@ -727,7 +811,7 @@ function GroupBrowser({
             </div>
 
             <button onClick={handleCreate}
-              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
+              disabled={!newName.trim() || creating}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
                 background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.12)',
@@ -746,13 +830,12 @@ function GroupBrowser({
 // ─── Community: Group Chat View ───────────────────────────────────────────────
 
 function GroupChatView({
-  groupId, onBack, dbUserId, token,
+  groupId, onBack, dbUserId,
   onGroupUpdate,
 }: {
   groupId: string
   onBack: () => void
   dbUserId: string | null
-  token: string
   onGroupUpdate: (id: string, patch: Partial<GroupChat>) => void
 }) {
   const [group, setGroup] = useState<GroupChat | null>(null)
@@ -768,15 +851,28 @@ function GroupChatView({
   const [pwError, setPwError] = useState('')
   const [showSubModal, setShowSubModal] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
+  const [requesting, setRequesting] = useState(false)
+  // Member list
+  const [showMembers, setShowMembers] = useState(false)
+  const [members, setMembers] = useState<GroupMember[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
+  // Join requests (owner only)
+  const [showRequests, setShowRequests] = useState(false)
+  const [joinRequests, setJoinRequests] = useState<GroupMember[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  async function buildHeaders(): Promise<Record<string, string>> {
+    const tok = await getToken()
+    const h: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (tok) h['Authorization'] = `Bearer ${tok}`
+    return h
+  }
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/messages`, { headers })
+      const h = await buildHeaders()
+      const r = await fetch(`${API_URL}/groups/${groupId}/messages`, { headers: h })
       const j = await r.json()
       if (j.data) {
         setGroup(j.data.group)
@@ -815,14 +911,20 @@ function GroupChatView({
       return
     }
 
-    // If trying to join a private (non-paid) group — show password modal
+    // If trying to join a private (non-paid) group
     if (!joined && group.isPrivate && !group.isPaid && !group.isOwner) {
-      setShowPwModal(true)
+      if (group.hasPassword) {
+        setShowPwModal(true)
+      } else {
+        // Request-to-join flow
+        await sendJoinRequest()
+      }
       return
     }
 
+    const h = await buildHeaders()
     const r = await fetch(`${API_URL}/groups/${groupId}/${joined ? 'leave' : 'join'}`, {
-      method: joined ? 'DELETE' : 'POST', headers,
+      method: joined ? 'DELETE' : 'POST', headers: h,
     })
     if (r.ok) {
       const patch = {
@@ -836,11 +938,29 @@ function GroupChatView({
     }
   }
 
+  async function sendJoinRequest() {
+    if (requesting) return
+    // Cancel if already pending
+    if (group?.pendingRequest) {
+      const h = await buildHeaders()
+      await fetch(`${API_URL}/groups/${groupId}/join-request`, { method: 'DELETE', headers: h })
+      setGroup((g) => g ? { ...g, pendingRequest: false } : g)
+      return
+    }
+    setRequesting(true)
+    try {
+      const h = await buildHeaders()
+      const r = await fetch(`${API_URL}/groups/${groupId}/join-request`, { method: 'POST', headers: h })
+      if (r.ok) setGroup((g) => g ? { ...g, pendingRequest: true } : g)
+    } catch {} finally { setRequesting(false) }
+  }
+
   async function joinWithPassword() {
     if (!pwInput.trim()) return
     setPwError('')
+    const h = await buildHeaders()
     const r = await fetch(`${API_URL}/groups/${groupId}/join`, {
-      method: 'POST', headers, body: JSON.stringify({ password: pwInput.trim() }),
+      method: 'POST', headers: h, body: JSON.stringify({ password: pwInput.trim() }),
     })
     if (r.ok) {
       setShowPwModal(false); setPwInput('')
@@ -850,16 +970,15 @@ function GroupChatView({
       load()
     } else {
       const j = await r.json().catch(() => ({}))
-      setPwError(j.error ?? 'Incorrect password')
+      setPwError(j.error ?? 'Incorrect code')
     }
   }
 
   async function handleSubscribe() {
     setSubscribing(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/subscribe`, {
-        method: 'POST', headers,
-      })
+      const h = await buildHeaders()
+      const r = await fetch(`${API_URL}/groups/${groupId}/subscribe`, { method: 'POST', headers: h })
       if (r.ok) {
         setShowSubModal(false)
         const patch = { isJoined: true, isSubscribed: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
@@ -874,10 +993,46 @@ function GroupChatView({
   async function toggleNotifications() {
     if (!group) return
     const enabled = !group.notificationsEnabled
+    const h = await buildHeaders()
     await fetch(`${API_URL}/groups/${groupId}/notifications`, {
-      method: 'PUT', headers, body: JSON.stringify({ enabled }),
+      method: 'PUT', headers: h, body: JSON.stringify({ enabled }),
     })
     setGroup((g) => g ? { ...g, notificationsEnabled: enabled } : g)
+  }
+
+  async function loadMembers() {
+    setMembersLoading(true)
+    try {
+      const h = await buildHeaders()
+      const r = await fetch(`${API_URL}/groups/${groupId}/members`, { headers: h })
+      const j = await r.json()
+      if (j.data) setMembers(j.data)
+    } catch {} finally { setMembersLoading(false) }
+  }
+
+  async function loadJoinRequests() {
+    try {
+      const h = await buildHeaders()
+      const r = await fetch(`${API_URL}/groups/${groupId}/join-requests`, { headers: h })
+      const j = await r.json()
+      if (j.data) setJoinRequests(j.data)
+    } catch {}
+  }
+
+  async function approveRequest(userId: string) {
+    const h = await buildHeaders()
+    const r = await fetch(`${API_URL}/groups/${groupId}/join-requests/${userId}/approve`, { method: 'PUT', headers: h })
+    if (r.ok) {
+      setJoinRequests((prev) => prev.filter((u) => u.id !== userId))
+      setGroup((g) => g ? { ...g, memberCount: (g.memberCount ?? 0) + 1, joinRequestCount: Math.max(0, (g.joinRequestCount ?? 0) - 1) } : g)
+    }
+  }
+
+  async function rejectRequest(userId: string) {
+    const h = await buildHeaders()
+    await fetch(`${API_URL}/groups/${groupId}/join-requests/${userId}/reject`, { method: 'DELETE', headers: h })
+    setJoinRequests((prev) => prev.filter((u) => u.id !== userId))
+    setGroup((g) => g ? { ...g, joinRequestCount: Math.max(0, (g.joinRequestCount ?? 0) - 1) } : g)
   }
 
   async function sendMessage() {
@@ -886,12 +1041,11 @@ function GroupChatView({
     const draft = text.trim()
     setText('')
 
-    // Optimistic message — shown immediately while API call is in flight
     const optimisticId = `optimistic_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const optimisticMsg: GroupMessage = {
       id: optimisticId,
       senderId: dbUserId,
-      senderName: '', // will be replaced by server response
+      senderName: '',
       senderPhoto: null,
       senderUsername: null,
       text: draft,
@@ -901,8 +1055,9 @@ function GroupChatView({
     setMessages((prev) => [...prev, optimisticMsg])
 
     try {
+      const h = await buildHeaders()
       const r = await fetch(`${API_URL}/groups/${groupId}/messages`, {
-        method: 'POST', headers, body: JSON.stringify({ text: draft }),
+        method: 'POST', headers: h, body: JSON.stringify({ text: draft }),
       })
       const j = await r.json()
       if (j.data) {
@@ -931,7 +1086,8 @@ function GroupChatView({
     if (!dbUserId || senderId === dbUserId) return
     const already = followingSet.has(senderId)
     const method = already ? 'DELETE' : 'POST'
-    const r = await fetch(`${API_URL}/follow/${senderId}`, { method, headers })
+    const h = await buildHeaders()
+    const r = await fetch(`${API_URL}/follow/${senderId}`, { method, headers: h })
     if (r.ok || r.status === 409) {
       setFollowingSet((s) => {
         const next = new Set(s)
@@ -953,9 +1109,9 @@ function GroupChatView({
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem)', background: '#04040d' }}>
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-3"
         style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
-        <button onClick={onBack} className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
+        <button onClick={onBack} className="p-1.5 rounded-lg shrink-0" style={{ color: 'rgba(0,229,255,0.6)' }}>
           <ArrowLeft size={18} />
         </button>
         {group && (
@@ -965,13 +1121,31 @@ function GroupChatView({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-black truncate" style={{ color: '#e0f2fe' }}>{group?.name ?? '...'}</p>
-          <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+          <p className="text-sm font-black truncate" style={{ color: '#ffffff' }}>{group?.name ?? '...'}</p>
+          <button
+            onClick={() => { setShowMembers(true); loadMembers() }}
+            className="text-[10px] transition-colors hover:underline text-left"
+            style={{ color: 'rgba(0,229,255,0.5)' }}
+          >
             {group?.memberCount ?? 0} members
-          </p>
+          </button>
         </div>
         {group && dbUserId && (
           <div className="flex items-center gap-1.5">
+            {/* Owner: join requests badge */}
+            {group.isOwner && group.isPrivate && !group.hasPassword && (group.joinRequestCount ?? 0) > 0 && (
+              <button
+                onClick={() => { setShowRequests(true); loadJoinRequests() }}
+                className="relative p-2 rounded-xl"
+                style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}
+              >
+                <Users size={13} />
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[8px] font-black flex items-center justify-center"
+                  style={{ background: '#ffd600', color: '#04040d' }}>
+                  {group.joinRequestCount}
+                </span>
+              </button>
+            )}
             {group.isJoined && (
               <button onClick={toggleNotifications}
                 className="p-2 rounded-xl transition-all"
@@ -983,23 +1157,31 @@ function GroupChatView({
                 {group.notificationsEnabled ? <Bell size={13} /> : <BellOff size={13} />}
               </button>
             )}
-            <button onClick={toggleJoin}
-              className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
-              style={{
-                background: group.isJoined
-                  ? 'rgba(0,229,255,0.06)'
-                  : group.isPaid ? 'rgba(255,214,0,0.12)' : `${group.coverColor}22`,
-                border: `1px solid ${group.isJoined
-                  ? 'rgba(0,229,255,0.2)'
-                  : group.isPaid ? 'rgba(255,214,0,0.4)' : group.coverColor + '60'}`,
-                color: group.isJoined
-                  ? 'rgba(0,229,255,0.6)'
-                  : group.isPaid ? '#ffd600' : group.coverColor,
-              }}>
-              {group.isJoined
-                ? (group.isPaid ? 'SUBSCRIBED' : 'JOINED')
-                : group.isPaid ? `£${group.priceMonthly?.toFixed(2)}` : group.isPrivate ? 'LOCKED' : 'JOIN'}
-            </button>
+            {!group.isOwner && (
+              <button onClick={toggleJoin}
+                className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
+                style={{
+                  background: group.isJoined
+                    ? 'rgba(0,229,255,0.06)'
+                    : group.pendingRequest ? 'rgba(255,214,0,0.08)'
+                    : group.isPaid ? 'rgba(255,214,0,0.12)' : `${group.coverColor}22`,
+                  border: `1px solid ${group.isJoined
+                    ? 'rgba(0,229,255,0.2)'
+                    : group.pendingRequest ? 'rgba(255,214,0,0.3)'
+                    : group.isPaid ? 'rgba(255,214,0,0.4)' : group.coverColor + '60'}`,
+                  color: group.isJoined
+                    ? 'rgba(0,229,255,0.6)'
+                    : group.pendingRequest ? '#ffd600'
+                    : group.isPaid ? '#ffd600' : group.coverColor,
+                }}>
+                {group.isJoined
+                  ? (group.isPaid ? 'SUBSCRIBED' : 'JOINED')
+                  : group.pendingRequest ? 'PENDING ✕'
+                  : group.isPaid ? `£${group.priceMonthly?.toFixed(2)}`
+                  : group.isPrivate ? (group.hasPassword ? '🔑 CODE' : '✋ REQUEST')
+                  : 'JOIN'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1024,6 +1206,22 @@ function GroupChatView({
                   SUBSCRIBE
                 </button>
               </>
+            ) : group?.hasPassword ? (
+              <>
+                <div className="w-16 h-16 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.3)' }}>
+                  <Lock size={28} style={{ color: '#ff006e' }} />
+                </div>
+                <p className="text-sm font-black tracking-wide" style={{ color: '#ff006e' }}>PRIVATE GROUP</p>
+                <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)', maxWidth: 260 }}>
+                  This group requires a password to join
+                </p>
+                <button onClick={() => setShowPwModal(true)}
+                  className="mt-1 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest"
+                  style={{ background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.35)', color: '#ff006e' }}>
+                  🔑 ENTER CODE
+                </button>
+              </>
             ) : (
               <>
                 <div className="w-16 h-16 rounded-full flex items-center justify-center"
@@ -1032,12 +1230,20 @@ function GroupChatView({
                 </div>
                 <p className="text-sm font-black tracking-wide" style={{ color: '#ff006e' }}>PRIVATE GROUP</p>
                 <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)', maxWidth: 260 }}>
-                  Enter the password to join and view messages
+                  {group?.pendingRequest
+                    ? 'Your request is pending approval by the group owner.'
+                    : 'Request to join — the owner will review and approve your request.'}
                 </p>
-                <button onClick={() => setShowPwModal(true)}
-                  className="mt-1 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest"
-                  style={{ background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.35)', color: '#ff006e' }}>
-                  ENTER PASSWORD
+                <button
+                  onClick={sendJoinRequest}
+                  disabled={requesting}
+                  className="mt-1 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest disabled:opacity-50"
+                  style={{
+                    background: group?.pendingRequest ? 'rgba(255,214,0,0.1)' : 'rgba(255,0,110,0.1)',
+                    border: `1px solid ${group?.pendingRequest ? 'rgba(255,214,0,0.3)' : 'rgba(255,0,110,0.35)'}`,
+                    color: group?.pendingRequest ? '#ffd600' : '#ff006e',
+                  }}>
+                  {requesting ? 'SENDING...' : group?.pendingRequest ? '⏳ REQUEST PENDING — CANCEL?' : '✋ REQUEST TO JOIN'}
                 </button>
               </>
             )}
@@ -1112,31 +1318,146 @@ function GroupChatView({
         <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
           style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
           onClick={() => setUserPopup(null)}>
-          <div className="w-full max-w-sm rounded-2xl p-5" onClick={(e) => e.stopPropagation()}
+          <div className="w-full max-w-sm rounded-2xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}
             style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)' }}>
-            <div className="flex items-center gap-3 mb-4">
-              <Avatar user={{ displayName: userPopup.senderName, photoUrl: userPopup.senderPhoto }} size={44} />
-              <div>
-                <p className="font-black text-sm" style={{ color: '#e0f2fe' }}>{userPopup.senderName}</p>
+            <div className="flex items-center gap-3">
+              <Avatar user={{ displayName: userPopup.senderName, photoUrl: userPopup.senderPhoto }} size={48} />
+              <div className="flex-1">
+                <p className="font-black text-sm" style={{ color: '#ffffff' }}>{userPopup.senderName}</p>
                 {userPopup.senderUsername && (
                   <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{userPopup.senderUsername}</p>
                 )}
               </div>
             </div>
-            {dbUserId && userPopup.senderId !== dbUserId && (
-              <button onClick={() => followUser(userPopup.senderId)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
-                style={{
-                  background: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-                  border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.35)'}`,
-                  color: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.5)' : '#00e5ff',
-                }}>
-                {followingSet.has(userPopup.senderId)
-                  ? <><UserCheck size={13} /> FOLLOWING</>
-                  : <><UserPlus size={13} /> FOLLOW</>
-                }
-              </button>
-            )}
+            <div className="flex gap-2">
+              {userPopup.senderUsername && (
+                <a href={`/profile/${userPopup.senderUsername}`}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black"
+                  style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: '#00e5ff' }}
+                  onClick={() => setUserPopup(null)}>
+                  <Eye size={12} /> VIEW PROFILE
+                </a>
+              )}
+              {dbUserId && userPopup.senderId !== dbUserId && (
+                <button onClick={() => followUser(userPopup.senderId)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
+                  style={{
+                    background: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
+                    border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.35)'}`,
+                    color: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                  }}>
+                  {followingSet.has(userPopup.senderId)
+                    ? <><UserCheck size={12} /> FOLLOWING</>
+                    : <><UserPlus size={12} /> FOLLOW</>
+                  }
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Member list modal */}
+      {showMembers && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center pb-2 px-2"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowMembers(false)}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)', maxHeight: '80vh' }}>
+            <div className="flex items-center justify-between px-5 py-4"
+              style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+              <div>
+                <p className="text-sm font-black" style={{ color: '#ffffff' }}>Group Members</p>
+                <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>{members.length} people</p>
+              </div>
+              <button onClick={() => setShowMembers(false)} style={{ color: 'rgba(255,255,255,0.3)' }}>✕</button>
+            </div>
+            <div className="overflow-y-auto" style={{ maxHeight: 'calc(80vh - 80px)' }}>
+              {membersLoading ? (
+                <div className="flex justify-center py-10">
+                  <div className="w-6 h-6 rounded-full border-2 animate-spin"
+                    style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                </div>
+              ) : members.map((m) => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-3"
+                  style={{ borderBottom: '1px solid rgba(0,229,255,0.04)' }}>
+                  <Avatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={38} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold truncate" style={{ color: '#ffffff' }}>{m.displayName}</p>
+                      {m.isOwner && (
+                        <span className="text-[8px] px-1.5 py-0.5 rounded font-black shrink-0"
+                          style={{ background: 'rgba(255,214,0,0.12)', color: '#ffd600', border: '1px solid rgba(255,214,0,0.25)' }}>
+                          OWNER
+                        </span>
+                      )}
+                      {m.isMe && (
+                        <span className="text-[8px] px-1.5 py-0.5 rounded font-black shrink-0"
+                          style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff', border: '1px solid rgba(0,229,255,0.2)' }}>
+                          YOU
+                        </span>
+                      )}
+                    </div>
+                    {m.username && (
+                      <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{m.username}</p>
+                    )}
+                  </div>
+                  {!m.isMe && m.username && (
+                    <a href={`/profile/${m.username}`}
+                      onClick={() => setShowMembers(false)}
+                      className="text-[9px] font-black px-2.5 py-1.5 rounded-lg transition-all"
+                      style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.6)' }}>
+                      PROFILE
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Join requests modal (owner only) */}
+      {showRequests && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center pb-2 px-2"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowRequests(false)}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(255,214,0,0.2)', maxHeight: '80vh' }}>
+            <div className="flex items-center justify-between px-5 py-4"
+              style={{ borderBottom: '1px solid rgba(255,214,0,0.08)' }}>
+              <div>
+                <p className="text-sm font-black" style={{ color: '#ffd600' }}>Join Requests</p>
+                <p className="text-[10px]" style={{ color: 'rgba(255,214,0,0.5)' }}>{joinRequests.length} pending</p>
+              </div>
+              <button onClick={() => setShowRequests(false)} style={{ color: 'rgba(255,255,255,0.3)' }}>✕</button>
+            </div>
+            <div className="overflow-y-auto" style={{ maxHeight: 'calc(80vh - 80px)' }}>
+              {joinRequests.length === 0 ? (
+                <div className="py-10 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No pending requests</div>
+              ) : joinRequests.map((u) => (
+                <div key={u.id} className="flex items-center gap-3 px-4 py-3"
+                  style={{ borderBottom: '1px solid rgba(255,214,0,0.04)' }}>
+                  <Avatar user={{ displayName: u.displayName, photoUrl: u.photoUrl }} size={38} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold" style={{ color: '#ffffff' }}>{u.displayName}</p>
+                    {u.username && <p className="text-[10px]" style={{ color: 'rgba(255,214,0,0.4)' }}>@{u.username}</p>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => approveRequest(u.id)}
+                      className="text-[9px] font-black px-2.5 py-1.5 rounded-lg"
+                      style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88' }}>
+                      ✓ APPROVE
+                    </button>
+                    <button onClick={() => rejectRequest(u.id)}
+                      className="text-[9px] font-black px-2.5 py-1.5 rounded-lg"
+                      style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.25)', color: '#ff006e' }}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1209,9 +1530,8 @@ function GroupChatView({
 
 // ─── DM Section ───────────────────────────────────────────────────────────────
 
-function DmSection({ dbUser, headers }: {
+function DmSection({ dbUser }: {
   dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
-  headers: Record<string, string>
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -1226,40 +1546,53 @@ function DmSection({ dbUser, headers }: {
   const [searching, setSearching] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  async function dmHeaders() {
+    const tok = await getToken()
+    const h: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (tok) h['Authorization'] = `Bearer ${tok}`
+    return h
+  }
+
   useEffect(() => {
     if (!dbUser) { setLoading(false); return }
-    fetch(`${API_URL}/dm`, { headers })
-      .then((r) => r.json()).then((j) => setConversations(j.data ?? [])).catch(() => {}).finally(() => setLoading(false))
-  }, [dbUser])
+    dmHeaders().then((h) =>
+      fetch(`${API_URL}/dm`, { headers: h })
+        .then((r) => r.json()).then((j) => setConversations(j.data ?? [])).catch(() => {}).finally(() => setLoading(false))
+    )
+  }, [dbUser?.id])
 
   useEffect(() => {
     if (!activeConvo) return
     setMsgsLoading(true)
-    fetch(`${API_URL}/dm/${activeConvo}`, { headers })
-      .then((r) => r.json())
-      .then((j) => { setMessages(j.data?.messages ?? []); setActiveOther(j.data?.other ?? null) })
-      .catch(() => {}).finally(() => setMsgsLoading(false))
+    dmHeaders().then((h) =>
+      fetch(`${API_URL}/dm/${activeConvo}`, { headers: h })
+        .then((r) => r.json())
+        .then((j) => { setMessages(j.data?.messages ?? []); setActiveOther(j.data?.other ?? null) })
+        .catch(() => {}).finally(() => setMsgsLoading(false))
+    )
   }, [activeConvo])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   useEffect(() => {
     if (!search.trim()) { setSearchResults([]); return }
-    const t = setTimeout(() => {
+    const t = setTimeout(async () => {
       setSearching(true)
-      fetch(`${API_URL}/dm/users?q=${encodeURIComponent(search)}`, { headers })
+      const h = await dmHeaders()
+      fetch(`${API_URL}/dm/users?q=${encodeURIComponent(search)}`, { headers: h })
         .then((r) => r.json()).then((j) => setSearchResults(j.data ?? [])).catch(() => {}).finally(() => setSearching(false))
     }, 300)
     return () => clearTimeout(t)
   }, [search])
 
   async function openOrCreateConvo(recipientId: string) {
-    const res = await fetch(`${API_URL}/dm`, { method: 'POST', headers, body: JSON.stringify({ recipientId }) })
+    const h = await dmHeaders()
+    const res = await fetch(`${API_URL}/dm`, { method: 'POST', headers: h, body: JSON.stringify({ recipientId }) })
     const j = await res.json()
     if (j.data?.id) {
       setSearch(''); setSearchResults([])
       setActiveConvo(j.data.id)
-      fetch(`${API_URL}/dm`, { headers }).then((r) => r.json()).then((d) => setConversations(d.data ?? [])).catch(() => {})
+      dmHeaders().then((h2) => fetch(`${API_URL}/dm`, { headers: h2 }).then((r) => r.json()).then((d) => setConversations(d.data ?? [])).catch(() => {}))
     }
   }
 
@@ -1268,7 +1601,6 @@ function DmSection({ dbUser, headers }: {
     setSending(true)
     const draft = text.trim(); setText('')
 
-    // Optimistic message — shown immediately while API call is in flight
     const optimisticId = `optimistic_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const optimisticMsg: DmMessage = {
       id: optimisticId,
@@ -1281,7 +1613,8 @@ function DmSection({ dbUser, headers }: {
     setMessages((prev) => [...prev, optimisticMsg])
 
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: draft }) })
+      const h = await dmHeaders()
+      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers: h, body: JSON.stringify({ text: draft }) })
       const j = await res.json()
       if (j.data) {
         // Replace optimistic message with server response
@@ -1473,15 +1806,13 @@ export default function MessagesPage() {
     return () => window.removeEventListener('partyradar:mode-change', onModeChange)
   }, [])
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
   useEffect(() => {
-    // Try to get user location for proximity-sorted venue groups
-    function fetchGroups(lat?: number, lng?: number) {
+    async function fetchGroups(lat?: number, lng?: number) {
+      const tok = await getToken()
       const params = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
-      fetch(`${API_URL}/groups${params}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      const h: Record<string, string> = {}
+      if (tok) h['Authorization'] = `Bearer ${tok}`
+      fetch(`${API_URL}/groups${params}`, { headers: h })
         .then((r) => r.json())
         .then((j) => setGroups(j.data ?? []))
         .catch(() => {})
@@ -1510,7 +1841,6 @@ export default function MessagesPage() {
           groupId={activeGroupId}
           onBack={() => setActiveGroupId(null)}
           dbUserId={dbUser?.id ?? null}
-          token={token}
           onGroupUpdate={handleGroupUpdate}
         />
       </div>
@@ -1535,7 +1865,7 @@ export default function MessagesPage() {
       </div>
 
       {tab === 'dms' && (
-        <DmSection dbUser={dbUser} headers={headers} />
+        <DmSection dbUser={dbUser} />
       )}
 
       {tab === 'community' && (

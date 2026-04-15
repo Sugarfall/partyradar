@@ -532,34 +532,69 @@ export default function GlobeLanding() {
       {/* PHASE: CHOICE — Host or Join?                           */}
       {/* ═══════════════════════════════════════════════════════ */}
       {phase === 'choice' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
-          <div className="w-full max-w-md animate-fade-up">
-            {/* Greeting */}
-            <div className="text-center mb-8">
-              <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(0,255,136,0.6)' }}>
-                SIGNAL LOCKED · {dbUser?.displayName?.toUpperCase() ?? 'AGENT'}
-              </p>
-              <h2
-                className="text-2xl font-black tracking-widest"
-                style={{ color: '#e0f2fe', textShadow: '0 0 20px rgba(224,242,254,0.3)' }}
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center px-6"
+          style={{ background: 'rgba(4,4,13,0.88)', backdropFilter: 'blur(12px)' }}
+        >
+          <div className="w-full max-w-md">
+            {/* Top logo */}
+            <div className="flex items-center justify-center gap-3 mb-8">
+              <Zap size={22} fill="rgba(0,229,255,0.2)"
+                style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 10px rgba(0,229,255,0.9))' }} />
+              <span
+                className="font-black text-lg tracking-[0.3em]"
+                style={{ color: '#00e5ff', textShadow: '0 0 24px rgba(0,229,255,0.7)' }}
               >
-                WHAT'S YOUR MISSION?
+                PARTYRADAR
+              </span>
+            </div>
+
+            {/* Greeting */}
+            <div className="text-center mb-7">
+              <div
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-4"
+                style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)' }}
+              >
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#00ff88' }} />
+                <p className="text-[10px] font-black tracking-[0.25em]" style={{ color: '#00ff88' }}>
+                  SIGNAL LOCKED · {dbUser?.displayName?.toUpperCase() ?? 'AGENT'}
+                </p>
+              </div>
+              <h2
+                className="text-3xl sm:text-4xl font-black tracking-widest"
+                style={{
+                  color: '#ffffff',
+                  textShadow: '0 2px 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,229,255,0.2)',
+                  letterSpacing: '0.12em',
+                }}
+              >
+                WHAT'S YOUR
+                <br />
+                <span style={{ color: '#00e5ff', textShadow: '0 0 30px rgba(0,229,255,0.6), 0 0 60px rgba(0,229,255,0.2)' }}>
+                  MISSION?
+                </span>
               </h2>
-              <div className="mt-3 h-px mx-auto w-32" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.5), transparent)' }} />
+              <div className="mt-4 h-px mx-auto w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.6), transparent)' }} />
             </div>
 
             {/* Live party alert */}
-            <div className="mb-5 rounded-2xl overflow-hidden"
-              style={{ border: '1px solid rgba(255,0,110,0.35)', background: 'rgba(255,0,110,0.05)', animation: 'pulse 2s infinite' }}>
+            <div
+              className="mb-6 rounded-2xl overflow-hidden"
+              style={{
+                border: '1px solid rgba(255,0,110,0.4)',
+                background: 'rgba(255,0,110,0.08)',
+                boxShadow: '0 0 20px rgba(255,0,110,0.1)',
+              }}
+            >
               <div className="h-0.5" style={{ background: 'linear-gradient(90deg, transparent, #ff006e, transparent)' }} />
-              <div className="px-4 py-3 flex items-center gap-3">
-                <div className="text-2xl animate-bounce">🎉</div>
+              <div className="px-4 py-3.5 flex items-center gap-3">
+                <div className="text-2xl">🎉</div>
                 <div className="flex-1">
-                  <p className="text-[10px] font-black tracking-widest" style={{ color: '#ff006e' }}>PARTY DETECTED NEAR YOU</p>
-                  <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>WAREHOUSE RAVE — LONDON</p>
-                  <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.5)' }}>Farringdon · 187 tickets left · £15</p>
+                  <p className="text-[10px] font-black tracking-[0.2em]" style={{ color: '#ff006e' }}>PARTY DETECTED NEAR YOU</p>
+                  <p className="text-sm font-black mt-0.5" style={{ color: '#ffffff' }}>WAREHOUSE RAVE — LONDON</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>Farringdon · 187 tickets left · £15</p>
                 </div>
-                <div className="w-2 h-2 rounded-full animate-ping" style={{ background: '#ff006e' }} />
+                <div className="w-2 h-2 rounded-full animate-ping shrink-0" style={{ background: '#ff006e' }} />
               </div>
             </div>
 
@@ -568,81 +603,101 @@ export default function GlobeLanding() {
               {/* HOST */}
               <button
                 onClick={() => router.push('/events/create')}
-                className="group relative flex flex-col items-center gap-4 p-6 rounded-2xl transition-all duration-300"
+                className="group relative flex flex-col items-center gap-4 p-6 rounded-2xl transition-all duration-300 active:scale-95"
                 style={{
-                  background: 'rgba(0,229,255,0.05)',
-                  border: '1px solid rgba(0,229,255,0.25)',
-                  boxShadow: '0 0 30px rgba(0,229,255,0.06)',
+                  background: 'rgba(0,229,255,0.08)',
+                  border: '1px solid rgba(0,229,255,0.35)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,229,255,0.1)',
                 }}
                 onMouseEnter={(e) => {
                   const el = e.currentTarget
-                  el.style.background = 'rgba(0,229,255,0.12)'
-                  el.style.border = '1px solid rgba(0,229,255,0.55)'
-                  el.style.boxShadow = '0 0 40px rgba(0,229,255,0.2)'
-                  el.style.transform = 'translateY(-3px)'
+                  el.style.background = 'rgba(0,229,255,0.15)'
+                  el.style.border = '1px solid rgba(0,229,255,0.65)'
+                  el.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5), 0 0 40px rgba(0,229,255,0.25), inset 0 1px 0 rgba(0,229,255,0.15)'
+                  el.style.transform = 'translateY(-4px)'
                 }}
                 onMouseLeave={(e) => {
                   const el = e.currentTarget
-                  el.style.background = 'rgba(0,229,255,0.05)'
-                  el.style.border = '1px solid rgba(0,229,255,0.25)'
-                  el.style.boxShadow = '0 0 30px rgba(0,229,255,0.06)'
+                  el.style.background = 'rgba(0,229,255,0.08)'
+                  el.style.border = '1px solid rgba(0,229,255,0.35)'
+                  el.style.boxShadow = '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,229,255,0.1)'
                   el.style.transform = 'none'
                 }}
               >
                 {/* Corner brackets */}
-                <div className="absolute top-2 left-2 w-3 h-3" style={{ borderTop: '1.5px solid rgba(0,229,255,0.4)', borderLeft: '1.5px solid rgba(0,229,255,0.4)' }} />
-                <div className="absolute bottom-2 right-2 w-3 h-3" style={{ borderBottom: '1.5px solid rgba(0,229,255,0.4)', borderRight: '1.5px solid rgba(0,229,255,0.4)' }} />
+                <div className="absolute top-2.5 left-2.5 w-4 h-4" style={{ borderTop: '2px solid rgba(0,229,255,0.5)', borderLeft: '2px solid rgba(0,229,255,0.5)' }} />
+                <div className="absolute bottom-2.5 right-2.5 w-4 h-4" style={{ borderBottom: '2px solid rgba(0,229,255,0.5)', borderRight: '2px solid rgba(0,229,255,0.5)' }} />
 
-                <div className="text-5xl">🎙️</div>
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                  style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)' }}
+                >
+                  🎙️
+                </div>
                 <div className="text-center">
-                  <p className="font-black text-base tracking-wider" style={{ color: '#00e5ff', textShadow: '0 0 12px rgba(0,229,255,0.6)' }}>
+                  <p
+                    className="font-black text-lg tracking-wider"
+                    style={{ color: '#00e5ff', textShadow: '0 0 16px rgba(0,229,255,0.8)' }}
+                  >
                     HOSTING
                   </p>
-                  <p className="text-[10px] mt-1 font-medium tracking-wider" style={{ color: 'rgba(74,96,128,0.8)' }}>
+                  <p className="text-xs mt-1 font-semibold tracking-widest" style={{ color: 'rgba(224,242,254,0.55)' }}>
                     CREATE AN EVENT
                   </p>
                 </div>
               </button>
 
-              {/* JOIN */}
+              {/* DISCOVER */}
               <button
                 onClick={() => router.push('/discover')}
-                className="group relative flex flex-col items-center gap-4 p-6 rounded-2xl transition-all duration-300"
+                className="group relative flex flex-col items-center gap-4 p-6 rounded-2xl transition-all duration-300 active:scale-95"
                 style={{
-                  background: 'rgba(0,255,136,0.05)',
-                  border: '1px solid rgba(0,255,136,0.25)',
-                  boxShadow: '0 0 30px rgba(0,255,136,0.06)',
+                  background: 'rgba(0,255,136,0.08)',
+                  border: '1px solid rgba(0,255,136,0.35)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,255,136,0.1)',
                 }}
                 onMouseEnter={(e) => {
                   const el = e.currentTarget
-                  el.style.background = 'rgba(0,255,136,0.12)'
-                  el.style.border = '1px solid rgba(0,255,136,0.55)'
-                  el.style.boxShadow = '0 0 40px rgba(0,255,136,0.2)'
-                  el.style.transform = 'translateY(-3px)'
+                  el.style.background = 'rgba(0,255,136,0.15)'
+                  el.style.border = '1px solid rgba(0,255,136,0.65)'
+                  el.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5), 0 0 40px rgba(0,255,136,0.25), inset 0 1px 0 rgba(0,255,136,0.15)'
+                  el.style.transform = 'translateY(-4px)'
                 }}
                 onMouseLeave={(e) => {
                   const el = e.currentTarget
-                  el.style.background = 'rgba(0,255,136,0.05)'
-                  el.style.border = '1px solid rgba(0,255,136,0.25)'
-                  el.style.boxShadow = '0 0 30px rgba(0,255,136,0.06)'
+                  el.style.background = 'rgba(0,255,136,0.08)'
+                  el.style.border = '1px solid rgba(0,255,136,0.35)'
+                  el.style.boxShadow = '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,255,136,0.1)'
                   el.style.transform = 'none'
                 }}
               >
-                <div className="absolute top-2 left-2 w-3 h-3" style={{ borderTop: '1.5px solid rgba(0,255,136,0.4)', borderLeft: '1.5px solid rgba(0,255,136,0.4)' }} />
-                <div className="absolute bottom-2 right-2 w-3 h-3" style={{ borderBottom: '1.5px solid rgba(0,255,136,0.4)', borderRight: '1.5px solid rgba(0,255,136,0.4)' }} />
+                <div className="absolute top-2.5 left-2.5 w-4 h-4" style={{ borderTop: '2px solid rgba(0,255,136,0.5)', borderLeft: '2px solid rgba(0,255,136,0.5)' }} />
+                <div className="absolute bottom-2.5 right-2.5 w-4 h-4" style={{ borderBottom: '2px solid rgba(0,255,136,0.5)', borderRight: '2px solid rgba(0,255,136,0.5)' }} />
 
-                <div className="text-5xl">🎉</div>
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                  style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.2)' }}
+                >
+                  🎉
+                </div>
                 <div className="text-center">
-                  <p className="font-black text-base tracking-wider" style={{ color: '#00ff88', textShadow: '0 0 12px rgba(0,255,136,0.6)' }}>
+                  <p
+                    className="font-black text-lg tracking-wider"
+                    style={{ color: '#00ff88', textShadow: '0 0 16px rgba(0,255,136,0.8)' }}
+                  >
                     DISCOVER
                   </p>
-                  <p className="text-[10px] mt-1 font-medium tracking-wider" style={{ color: 'rgba(74,96,128,0.8)' }}>
+                  <p className="text-xs mt-1 font-semibold tracking-widest" style={{ color: 'rgba(224,242,254,0.55)' }}>
                     FIND A PARTY
                   </p>
                 </div>
               </button>
             </div>
 
+            {/* Bottom hint */}
+            <p className="text-center mt-5 text-[10px] tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
+              YOU CAN SWITCH MODES ANYTIME FROM YOUR PROFILE
+            </p>
           </div>
         </div>
       )}

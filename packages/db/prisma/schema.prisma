@@ -509,6 +509,7 @@ model GroupChat {
   stripePriceId String?
   createdById  String?
   memberCount  Int       @default(0)
+  joinRequests String[]  @default([])
   lastMessage  String?
   lastAt       DateTime?
   createdAt    DateTime  @default(now())
