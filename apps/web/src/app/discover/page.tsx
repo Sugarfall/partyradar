@@ -10,6 +10,7 @@ import { useVenueDiscover } from '@/hooks/useVenues'
 import type { LiveVenue } from '@/hooks/useVenues'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
+import { AGE_RESTRICTION_LABELS } from '@partyradar/shared'
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
