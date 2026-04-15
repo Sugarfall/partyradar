@@ -562,9 +562,10 @@ function VenuesList() {
     // If no geolocation at all, leave empty — user can search
   }, [discover])
 
-  // Only use Glasgow hardcoded list when user is actually in Glasgow area (no live results yet)
-  // For everyone else, show live results or empty state
-  const baseVenues: (DemoVenue | LiveVenue)[] = liveVenues.length > 0
+  // Use Google Places results when available.
+  // Only fall back to Glasgow demo list when we have no location at all (location denied + no city detected).
+  const hasGoogleResults = liveVenues.length > 0 && (venueSource === 'google' || venueSource === 'database')
+  const baseVenues: (DemoVenue | LiveVenue)[] = hasGoogleResults
     ? liveVenues
     : (venueCity === null && !venuesLoading ? GLASGOW_VENUES : [])
   const filtered = search

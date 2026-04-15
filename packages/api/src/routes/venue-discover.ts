@@ -30,6 +30,8 @@ const GOOGLE_TYPE_MAP: Record<string, VenueType> = {
 const SEARCH_TYPES = [
   'night_club',
   'bar',
+  'pub',             // important for UK, Ireland, Australia
+  'casino',
 ]
 
 // Additional text search queries to cover more venues
@@ -37,7 +39,9 @@ const TEXT_QUERIES = [
   'live music venue',
   'concert hall',
   'rooftop bar',
-  'pub nightlife',
+  'nightclub',
+  'karaoke bar',
+  'sports bar',
 ]
 
 interface GooglePlace {
@@ -270,7 +274,7 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     res.json({
       data: venues,
-      source: 'google_places',
+      source: 'google',   // matches frontend LiveVenue source type
       discovered,
       total: venues.length,
     })

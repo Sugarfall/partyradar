@@ -22,7 +22,7 @@ export interface LiveVenue {
 
 interface VenueDiscoverResult {
   data: LiveVenue[]
-  source: 'google' | 'database'
+  source: 'google' | 'database' | 'google_places'
   discovered: number
 }
 
