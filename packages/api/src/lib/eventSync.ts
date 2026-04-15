@@ -12,7 +12,7 @@ const SYNC_THROTTLE_MS = 30 * 60 * 1000 // 30 minutes
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
 
-type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT'
+type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT'
 
 interface SyncResult {
   imported: number

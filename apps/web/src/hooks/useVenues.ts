@@ -30,7 +30,7 @@ export function useVenueDiscover() {
   const [venues, setVenues] = useState<LiveVenue[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [source, setSource] = useState<'google' | 'database' | null>(null)
+  const [source, setSource] = useState<'google' | 'database' | 'google_places' | null>(null)
 
   const discover = useCallback(async (lat: number, lng: number, radius = 5000) => {
     setLoading(true)

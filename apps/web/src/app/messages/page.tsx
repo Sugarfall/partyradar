@@ -820,6 +820,31 @@ function GroupBrowser({
                     )
                   })}
                 </div>
+                {/* Custom price option */}
+                <button
+                  onClick={() => setNewPriceTier('CUSTOM')}
+                  className="w-full mt-2 py-2 rounded-xl text-center transition-all"
+                  style={{
+                    background: newPriceTier === 'CUSTOM' ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.03)',
+                    border: `1px solid ${newPriceTier === 'CUSTOM' ? 'rgba(255,214,0,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                  }}>
+                  <p className="text-sm font-black" style={{ color: newPriceTier === 'CUSTOM' ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>✏ Custom<span className="text-[9px] font-normal"> amount</span></p>
+                  <p className="text-[9px]" style={{ color: newPriceTier === 'CUSTOM' ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>Set your own monthly price</p>
+                </button>
+                {newPriceTier === 'CUSTOM' && (
+                  <div className="mt-2 relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'rgba(255,214,0,0.6)' }}>£</span>
+                    <input
+                      type="number" min={0.5} max={99.99} step={0.5}
+                      placeholder="e.g. 3.50"
+                      value={newCustomPrice}
+                      onChange={(e) => setNewCustomPrice(e.target.value)}
+                      className="w-full pl-7 pr-10 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+                      style={{ border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold" style={{ color: 'rgba(255,214,0,0.4)' }}>/mo</span>
+                  </div>
+                )}
                 <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
                   You earn 80% of subscription revenue. Platform takes 20%.
                 </p>
@@ -1559,6 +1584,145 @@ function GroupChatView({
 
 // ─── DM Section ───────────────────────────────────────────────────────────────
 
+function NewMessageModal({
+  onClose, onSelect,
+}: {
+  onClose: () => void
+  onSelect: (userId: string) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState<OtherUser[]>([])
+  const [isSuggestions, setIsSuggestions] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  async function dmHeaders() {
+    const tok = await getToken()
+    const h: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (tok) h['Authorization'] = `Bearer ${tok}`
+    return h
+  }
+
+  // Load suggestions immediately on open
+  useEffect(() => {
+    inputRef.current?.focus()
+    setLoading(true)
+    dmHeaders().then((h) =>
+      fetch(`${API_URL}/dm/users`, { headers: h })
+        .then((r) => r.json())
+        .then((j) => { setResults(j.data ?? []); setIsSuggestions(j.isSuggestions ?? false) })
+        .catch(() => {})
+        .finally(() => setLoading(false))
+    )
+  }, [])
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      setLoading(true)
+      const h = await dmHeaders()
+      fetch(`${API_URL}/dm/users?q=${encodeURIComponent(search)}`, { headers: h })
+        .then((r) => r.json())
+        .then((j) => { setResults(j.data ?? []); setIsSuggestions(j.isSuggestions ?? false) })
+        .catch(() => {})
+        .finally(() => setLoading(false))
+    }, search ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [search])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center pb-0 px-0 sm:items-center sm:px-4 sm:pb-8"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl sm:rounded-2xl overflow-hidden"
+        style={{ background: 'rgba(7,7,26,0.99)', border: '1px solid rgba(0,229,255,0.18)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+        onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-4"
+          style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+          <div className="flex-1">
+            <p className="text-sm font-black tracking-widest" style={{ color: '#00e5ff' }}>NEW MESSAGE</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>Find someone to chat with</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center text-xs"
+            style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.5)' }}>
+            ✕
+          </button>
+        </div>
+
+        {/* Search input */}
+        <div className="px-4 py-3">
+          <div className="relative">
+            <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Search by name or @username..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+              style={{ border: '1px solid rgba(0,229,255,0.2)', color: '#e0f2fe', background: 'rgba(0,229,255,0.03)' }}
+            />
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-5 h-5 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+            </div>
+          ) : results.length === 0 ? (
+            <div className="py-8 text-center">
+              <User size={24} className="mx-auto mb-2" style={{ color: 'rgba(0,229,255,0.15)' }} />
+              <p className="text-xs font-bold" style={{ color: 'rgba(0,229,255,0.3)' }}>
+                {search ? 'No users found' : 'No other users yet'}
+              </p>
+              {!search && (
+                <p className="text-[10px] mt-1" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                  Invite friends to join PartyRadar
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
+              {isSuggestions && !search && (
+                <p className="px-5 py-2 text-[9px] font-black tracking-widest" style={{ color: 'rgba(0,229,255,0.3)' }}>
+                  PEOPLE ON PARTYRADAR
+                </p>
+              )}
+              {results.map((u, idx) => (
+                <button
+                  key={u.id}
+                  onClick={() => onSelect(u.id)}
+                  className="w-full flex items-center gap-3 px-5 py-3 text-left transition-all active:scale-[0.98]"
+                  style={{
+                    borderBottom: idx < results.length - 1 ? '1px solid rgba(0,229,255,0.05)' : 'none',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,229,255,0.04)' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
+                  <Avatar user={u} size={40} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                    {u.username
+                      ? <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.45)' }}>@{u.username}</p>
+                      : <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.25)' }}>PartyRadar member</p>
+                    }
+                  </div>
+                  <div className="shrink-0">
+                    <MessageCircle size={14} style={{ color: 'rgba(0,229,255,0.3)' }} />
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DmSection({ dbUser }: {
   dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
 }) {
@@ -1570,9 +1734,7 @@ function DmSection({ dbUser }: {
   const [activeOther, setActiveOther] = useState<OtherUser | null>(null)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
-  const [search, setSearch] = useState('')
-  const [searchResults, setSearchResults] = useState<OtherUser[]>([])
-  const [searching, setSearching] = useState(false)
+  const [showNewMsg, setShowNewMsg] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   async function dmHeaders() {
@@ -1603,23 +1765,12 @@ function DmSection({ dbUser }: {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  useEffect(() => {
-    if (!search.trim()) { setSearchResults([]); return }
-    const t = setTimeout(async () => {
-      setSearching(true)
-      const h = await dmHeaders()
-      fetch(`${API_URL}/dm/users?q=${encodeURIComponent(search)}`, { headers: h })
-        .then((r) => r.json()).then((j) => setSearchResults(j.data ?? [])).catch(() => {}).finally(() => setSearching(false))
-    }, 300)
-    return () => clearTimeout(t)
-  }, [search])
-
   async function openOrCreateConvo(recipientId: string) {
+    setShowNewMsg(false)
     const h = await dmHeaders()
     const res = await fetch(`${API_URL}/dm`, { method: 'POST', headers: h, body: JSON.stringify({ recipientId }) })
     const j = await res.json()
     if (j.data?.id) {
-      setSearch(''); setSearchResults([])
       setActiveConvo(j.data.id)
       dmHeaders().then((h2) => fetch(`${API_URL}/dm`, { headers: h2 }).then((r) => r.json()).then((d) => setConversations(d.data ?? [])).catch(() => {}))
     }
@@ -1646,15 +1797,12 @@ function DmSection({ dbUser }: {
       const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers: h, body: JSON.stringify({ text: draft }) })
       const j = await res.json()
       if (j.data) {
-        // Replace optimistic message with server response
         setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
       } else {
-        // Server returned no data — rollback
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
         setText(draft)
       }
     } catch {
-      // API call failed — rollback the optimistic message
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
       setText(draft)
     }
@@ -1741,78 +1889,88 @@ function DmSection({ dbUser }: {
   }
 
   return (
-    <div className="px-4 max-w-xl mx-auto pb-4">
-      <div className="relative mb-3">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
-        <input type="text" placeholder="Search users to message..." value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-8 pr-3 py-2.5 rounded-xl text-xs bg-transparent outline-none"
-          style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
-      </div>
-      {search.trim() && (
-        <div className="mb-3 rounded-xl overflow-hidden"
-          style={{ border: '1px solid rgba(0,229,255,0.12)', background: 'rgba(7,7,26,0.95)' }}>
-          {searching ? (
-            <div className="py-4 flex justify-center">
-              <div className="w-4 h-4 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
-            </div>
-          ) : searchResults.length === 0 ? (
-            <div className="py-4 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No users found</div>
-          ) : searchResults.map((u) => (
-            <button key={u.id} onClick={() => openOrCreateConvo(u.id)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left"
-              style={{ borderBottom: '1px solid rgba(0,229,255,0.06)' }}>
-              <Avatar user={u} size={36} />
-              <div>
-                <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                {u.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
-          ))}
-        </div>
-      ) : conversations.length === 0 ? (
-        <div className="py-16 flex flex-col items-center gap-3">
-          <User size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
-          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>NO MESSAGES YET</p>
-          <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>
-            Search for a user above to start a conversation
-          </p>
-        </div>
-      ) : conversations.map((c) => (
-        <button key={c.id} onClick={() => setActiveConvo(c.id)}
-          className="w-full flex items-center gap-3 p-3 rounded-2xl text-left mb-2 transition-all"
-          style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}>
-          {c.other ? <Avatar user={c.other} size={44} /> : (
-            <div className="w-11 h-11 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
-              <User size={18} style={{ color: 'rgba(0,229,255,0.3)' }} />
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{c.other?.displayName ?? 'Unknown User'}</p>
-            {c.lastMessage ? (
-              <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>
-                {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}{c.lastMessage.text}
-              </p>
-            ) : (
-              <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.3)' }}>No messages yet</p>
-            )}
-          </div>
-          {c.lastMessage && (
-            <span className="text-[9px] shrink-0" style={{ color: 'rgba(224,242,254,0.25)' }}>
-              {timeAgo(c.lastMessage.createdAt)}
-            </span>
-          )}
+    <div className="max-w-xl mx-auto pb-28">
+      {/* New Message button */}
+      <div className="px-4 pt-1 pb-3">
+        <button
+          onClick={() => setShowNewMsg(true)}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest transition-all active:scale-[0.98]"
+          style={{
+            background: 'linear-gradient(135deg, rgba(0,229,255,0.12) 0%, rgba(0,229,255,0.06) 100%)',
+            border: '1px solid rgba(0,229,255,0.35)',
+            color: '#00e5ff',
+            boxShadow: '0 0 20px rgba(0,229,255,0.08)',
+          }}>
+          <UserPlus size={14} />
+          NEW MESSAGE
         </button>
-      ))}
+      </div>
+
+      {/* Conversation list */}
+      <div className="px-4">
+        {loading ? (
+          <div className="space-y-2 pt-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-[68px] rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
+            ))}
+          </div>
+        ) : conversations.length === 0 ? (
+          <div className="py-12 flex flex-col items-center gap-4">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.12)' }}>
+              <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.25)' }} />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'rgba(0,229,255,0.35)' }}>NO MESSAGES YET</p>
+              <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                Tap <span style={{ color: 'rgba(0,229,255,0.5)' }}>NEW MESSAGE</span> above to find people
+              </p>
+            </div>
+            <button
+              onClick={() => setShowNewMsg(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
+              style={{ background: 'rgba(0,229,255,0.10)', border: '1px solid rgba(0,229,255,0.3)', color: '#00e5ff' }}>
+              <Search size={12} /> FIND PEOPLE
+            </button>
+          </div>
+        ) : conversations.map((c) => (
+          <button key={c.id} onClick={() => setActiveConvo(c.id)}
+            className="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left mb-2 transition-all active:scale-[0.98]"
+            style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,229,255,0.2)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,229,255,0.08)' }}>
+            {c.other ? <Avatar user={c.other} size={44} /> : (
+              <div className="w-11 h-11 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
+                <User size={18} style={{ color: 'rgba(0,229,255,0.3)' }} />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{c.other?.displayName ?? 'Unknown User'}</p>
+              {c.other?.username && (
+                <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.35)' }}>@{c.other.username}</p>
+              )}
+              {c.lastMessage ? (
+                <p className="text-[11px] truncate mt-0.5" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                  {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}{c.lastMessage.text}
+                </p>
+              ) : (
+                <p className="text-[11px] mt-0.5" style={{ color: 'rgba(0,229,255,0.25)' }}>No messages yet</p>
+              )}
+            </div>
+            {c.lastMessage && (
+              <span className="text-[9px] shrink-0" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                {timeAgo(c.lastMessage.createdAt)}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* New message modal */}
+      {showNewMsg && (
+        <NewMessageModal onClose={() => setShowNewMsg(false)} onSelect={openOrCreateConvo} />
+      )}
     </div>
   )
 }

@@ -10,12 +10,32 @@ const participantSelect = {
   user: { select: { id: true, displayName: true, photoUrl: true, username: true } },
 }
 
-/** GET /api/dm/users?q= — search users to DM */
+/** GET /api/dm/users?q= — search users to DM, or return suggestions when q is blank */
 router.get('/users', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const q = String(req.query['q'] ?? '').trim()
     const myId = req.user!.dbUser.id
-    if (!q) return res.json({ data: [] })
+
+    if (!q) {
+      // Return recently-created users as suggestions (excluding self and existing convo partners)
+      const existingConvos = await prisma.conversation.findMany({
+        where: { participants: { some: { userId: myId } } },
+        include: { participants: { select: { userId: true } } },
+      })
+      const alreadyTalkedTo = new Set(
+        existingConvos.flatMap((c) => c.participants.map((p) => p.userId)).filter((id) => id !== myId),
+      )
+
+      const suggestions = await prisma.user.findMany({
+        where: {
+          id: { not: myId, notIn: alreadyTalkedTo.size > 0 ? [...alreadyTalkedTo] : undefined },
+        },
+        select: { id: true, displayName: true, username: true, photoUrl: true },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+      })
+      return res.json({ data: suggestions, isSuggestions: true })
+    }
 
     const users = await prisma.user.findMany({
       where: {
@@ -29,7 +49,7 @@ router.get('/users', requireAuth, async (req: AuthRequest, res, next) => {
       take: 8,
     })
 
-    res.json({ data: users })
+    res.json({ data: users, isSuggestions: false })
   } catch (err) { next(err) }
 })
 
