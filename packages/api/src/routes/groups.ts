@@ -128,9 +128,9 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const { name, description, emoji, coverColor, isPrivate, password, isPaid, priceTierId } = req.body as {
+    const { name, description, emoji, coverColor, isPrivate, password, isPaid, priceTierId, customPrice } = req.body as {
       name: string; description?: string; emoji?: string; coverColor?: string
-      isPrivate?: boolean; password?: string; isPaid?: boolean; priceTierId?: string
+      isPrivate?: boolean; password?: string; isPaid?: boolean; priceTierId?: string; customPrice?: number
     }
     if (!name?.trim() || name.trim().length < 2) throw new AppError('Group name must be at least 2 characters', 400)
     if (name.trim().length > 40) throw new AppError('Group name too long (max 40)', 400)
@@ -140,9 +140,16 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     let priceMonthly: number | null = null
     if (isPaid) {
-      const tier = GROUP_PRICE_TIERS.find((t) => t.id === priceTierId)
-      if (!tier) throw new AppError('Invalid price tier', 400)
-      priceMonthly = tier.price
+      if (priceTierId === 'CUSTOM') {
+        if (!customPrice || customPrice < 0.5 || customPrice > 99.99) {
+          throw new AppError('Custom price must be between £0.50 and £99.99', 400)
+        }
+        priceMonthly = Math.round(customPrice * 100) / 100
+      } else {
+        const tier = GROUP_PRICE_TIERS.find((t) => t.id === priceTierId && t.id !== 'CUSTOM')
+        if (!tier) throw new AppError('Invalid price tier', 400)
+        priceMonthly = tier.price
+      }
     }
 
     const slug = `user-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString(36)}`

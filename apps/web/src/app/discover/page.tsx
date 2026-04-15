@@ -536,20 +536,37 @@ function VenuesList() {
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
   const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
 
-  // Discover venues on mount via Google Places; fall back to Glasgow defaults
+  const [venueCity, setVenueCity] = useState<string | null>(null)
+
+  // Discover venues on mount via Google Places using real user location.
+  // Only falls back to Glasgow demo data when geolocation is unavailable (not just denied).
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => discover(pos.coords.latitude, pos.coords.longitude, 8000),
-        () => discover(55.8642, -4.2518, 8000),
-        { timeout: 5000, maximumAge: 600000 }
+        (pos) => {
+          const { latitude: lat, longitude: lng } = pos.coords
+          discover(lat, lng, 15000) // 15 km radius
+          // Reverse-geocode city name for display
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+            .then((r) => r.json())
+            .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
+            .catch(() => {})
+        },
+        () => {
+          // Location denied — don't pretend to be Glasgow; show empty state so user can search
+          setVenueCity(null)
+        },
+        { timeout: 8000, maximumAge: 600000 }
       )
-    } else {
-      discover(55.8642, -4.2518, 8000)
     }
+    // If no geolocation at all, leave empty — user can search
   }, [discover])
 
-  const baseVenues: (DemoVenue | LiveVenue)[] = liveVenues.length > 0 ? liveVenues : GLASGOW_VENUES
+  // Only use Glasgow hardcoded list when user is actually in Glasgow area (no live results yet)
+  // For everyone else, show live results or empty state
+  const baseVenues: (DemoVenue | LiveVenue)[] = liveVenues.length > 0
+    ? liveVenues
+    : (venueCity === null && !venuesLoading ? GLASGOW_VENUES : [])
   const filtered = search
     ? baseVenues.filter((v) =>
         v.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -600,7 +617,7 @@ function VenuesList() {
         ) : (
           <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>
             {filtered.length} VENUES
-            {venueSource === 'google' ? ' · POWERED BY GOOGLE PLACES' : ' · GLASGOW'}
+            {venueCity ? ` · ${venueCity.toUpperCase()}` : venueSource === 'google' ? ' · NEARBY' : ' · GLASGOW (DEMO)'}
           </p>
         )}
       </div>
@@ -611,9 +628,27 @@ function VenuesList() {
           <VenueCard key={venue.id} venue={venue} />
         ))}
         {!venuesLoading && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <span style={{ fontSize: 32 }}>🏢</span>
-            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>NO VENUES FOUND</p>
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
+            <span style={{ fontSize: 36 }}>📍</span>
+            <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>NO VENUES FOUND NEARBY</p>
+            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.35)' }}>
+              Allow location access so we can scan pubs, clubs &amp; bars near you — or search by name above.
+            </p>
+            <button
+              onClick={() => {
+                if (navigator.geolocation) {
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => discover(pos.coords.latitude, pos.coords.longitude, 25000),
+                    () => {},
+                    { timeout: 8000 }
+                  )
+                }
+              }}
+              className="px-4 py-2 rounded-lg text-[10px] font-black tracking-widest transition-all"
+              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}
+            >
+              SEARCH WIDER AREA →
+            </button>
           </div>
         )}
       </div>
@@ -649,10 +684,10 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
         <>
           <div style={{ fontSize: 40 }}>📡</div>
           <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>
-            NO EVENTS DETECTED
+            NO EVENTS NEAR YOU YET
           </p>
-          <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 240 }}>
-            Try adjusting filters or check back later
+          <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
+            PartyRadar is growing — no events have been listed in your area yet. Be the first to create one, or try searching a different city.
           </p>
           {onRetry && (
             <button onClick={handleRetry}

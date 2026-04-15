@@ -605,14 +605,53 @@ export default function CreateEventPage() {
             {/* Ticket price (if paid) */}
             {(form.price ?? 0) > 0 && (
               <div className="space-y-3 animate-fade-up">
-                <CyberInput
-                  label="TICKET PRICE (£) *"
-                  type="number"
-                  min={0.5}
-                  step={0.5}
-                  value={form.price ?? ''}
-                  onChange={(e) => update({ price: Number(e.target.value) })}
-                />
+                {/* Quick-pick price chips */}
+                <div>
+                  <label className="text-[10px] font-bold tracking-[0.2em] mb-2 block" style={{ color: 'rgba(0,229,255,0.55)' }}>TICKET PRICE (£)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[3, 5, 8, 10, 15, 20, 25, 30].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => update({ price: p })}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all"
+                        style={{
+                          background: form.price === p ? 'rgba(255,214,0,0.18)' : 'rgba(255,214,0,0.04)',
+                          border: `1px solid ${form.price === p ? 'rgba(255,214,0,0.6)' : 'rgba(255,214,0,0.15)'}`,
+                          color: form.price === p ? '#ffd600' : 'rgba(224,242,254,0.45)',
+                          boxShadow: form.price === p ? '0 0 10px rgba(255,214,0,0.2)' : 'none',
+                        }}
+                      >
+                        £{p}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => update({ price: 0.01 })}
+                      className="px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all"
+                      style={{
+                        background: form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) ? 'rgba(255,214,0,0.18)' : 'rgba(255,214,0,0.04)',
+                        border: `1px solid ${form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) ? 'rgba(255,214,0,0.6)' : 'rgba(255,214,0,0.15)'}`,
+                        color: form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) ? '#ffd600' : 'rgba(224,242,254,0.45)',
+                      }}
+                    >
+                      ✏ Custom
+                    </button>
+                  </div>
+                  {/* Custom amount input shown when not a preset */}
+                  {form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) && (
+                    <div className="mt-2">
+                      <CyberInput
+                        label="ENTER YOUR PRICE (£)"
+                        type="number"
+                        min={0.5}
+                        step={0.5}
+                        value={form.price === 0.01 ? '' : (form.price ?? '')}
+                        onChange={(e) => update({ price: Number(e.target.value) || 0.01 })}
+                      />
+                    </div>
+                  )}
+                </div>
                 <CyberInput
                   label="TICKET QUANTITY"
                   type="number"

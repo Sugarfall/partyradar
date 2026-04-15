@@ -1364,30 +1364,38 @@ export default function EventDetailPage() {
                   {/* Tier selector */}
                   <div>
                     <p className="text-[9px] font-bold tracking-[0.18em] mb-2" style={{ color: 'rgba(255,0,110,0.5)' }}>
-                      BLAST RADIUS
+                      BLAST RADIUS — AREA COVERED
                     </p>
                     <div className="grid grid-cols-2 gap-2">
-                      {PUSH_BLAST_TIERS.map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => setBlastTier(t)}
-                          className="p-3 rounded-xl text-left transition-all"
-                          style={{
-                            background: blastTier.id === t.id ? 'rgba(255,0,110,0.12)' : 'rgba(4,4,13,0.6)',
-                            border: `1px solid ${blastTier.id === t.id ? 'rgba(255,0,110,0.5)' : 'rgba(255,0,110,0.1)'}`,
-                            boxShadow: blastTier.id === t.id ? '0 0 12px rgba(255,0,110,0.15)' : 'none',
-                          }}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-black" style={{ color: blastTier.id === t.id ? '#ff006e' : 'rgba(224,242,254,0.6)' }}>
-                              {t.label}
-                            </span>
-                            <span className="text-[11px] font-black" style={{ color: blastTier.id === t.id ? '#ff006e' : 'rgba(224,242,254,0.5)' }}>
-                              £{t.price.toFixed(2)}
-                            </span>
-                          </div>
-                          <p className="text-[9px]" style={{ color: 'rgba(74,96,128,0.7)' }}>{t.reach}</p>
-                        </button>
-                      ))}
+                      {PUSH_BLAST_TIERS.map((t) => {
+                        const active = blastTier.id === t.id
+                        const areaSqKm = t.km > 0 ? (Math.PI * t.km * t.km).toFixed(0) : null
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => setBlastTier(t)}
+                            className="p-3 rounded-xl text-left transition-all"
+                            style={{
+                              background: active ? 'rgba(255,0,110,0.12)' : 'rgba(4,4,13,0.6)',
+                              border: `1px solid ${active ? 'rgba(255,0,110,0.5)' : 'rgba(255,0,110,0.1)'}`,
+                              boxShadow: active ? '0 0 12px rgba(255,0,110,0.15)' : 'none',
+                            }}>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] font-black" style={{ color: active ? '#ff006e' : 'rgba(224,242,254,0.7)' }}>
+                                {t.label}
+                              </span>
+                              <span className="text-[11px] font-black" style={{ color: active ? '#ff006e' : 'rgba(224,242,254,0.5)' }}>
+                                £{t.price.toFixed(2)}
+                              </span>
+                            </div>
+                            <p className="text-[9px] mb-1" style={{ color: active ? 'rgba(255,0,110,0.7)' : 'rgba(74,96,128,0.6)' }}>{t.sublabel}</p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.5)' }}>{areaSqKm ? `~${areaSqKm} km²` : 'whole city'}</span>
+                              <span className="text-[9px] font-bold" style={{ color: active ? 'rgba(255,0,110,0.8)' : 'rgba(74,96,128,0.5)' }}>{t.reach}</span>
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -1414,12 +1422,26 @@ export default function EventDetailPage() {
                     </p>
                   </div>
 
-                  {/* Estimated reach */}
-                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
-                    style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
-                    <Radio size={11} style={{ color: 'rgba(255,0,110,0.5)' }} />
-                    <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>ESTIMATED REACH</span>
-                    <span className="ml-auto text-[11px] font-black" style={{ color: '#ff006e' }}>{blastTier.reach}</span>
+                  {/* Estimated reach + area summary */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                      style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
+                      <Radio size={10} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                      <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>AREA</span>
+                      <span className="ml-auto text-[10px] font-black" style={{ color: '#ff006e' }}>{blastTier.sublabel}</span>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                      style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
+                      <Radio size={10} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                      <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>PEOPLE REACHED</span>
+                      <span className="ml-auto text-[10px] font-black" style={{ color: '#ff006e' }}>{blastTier.reach}</span>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                      style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
+                      <Radio size={10} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                      <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>AMOUNT PAID</span>
+                      <span className="ml-auto text-[10px] font-black" style={{ color: '#ff006e' }}>£{blastTier.price.toFixed(2)}</span>
+                    </div>
                   </div>
 
                   {/* Pay & blast CTA */}

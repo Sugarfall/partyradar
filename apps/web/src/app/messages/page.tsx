@@ -125,6 +125,7 @@ function HostGroupDashboard({
   const [showPw, setShowPw] = useState(false)
   const [newPaid, setNewPaid] = useState(false)
   const [newPriceTier, setNewPriceTier] = useState('MICRO')
+  const [newCustomPrice, setNewCustomPrice] = useState('')
   const [creating, setCreating] = useState(false)
 
   const myGroups = groups.filter((g) => g.isOwner)
@@ -148,6 +149,7 @@ function HostGroupDashboard({
       if (newPaid) {
         body.isPaid = true
         body.priceTierId = newPriceTier
+        if (newPriceTier === 'CUSTOM' && newCustomPrice) body.customPrice = parseFloat(newCustomPrice)
       } else if (newPrivate) {
         body.isPrivate = true
         if (newPassword.trim()) body.password = newPassword.trim()
@@ -384,6 +386,31 @@ function HostGroupDashboard({
                     )
                   })}
                 </div>
+                {/* Custom price option */}
+                <button
+                  onClick={() => setNewPriceTier('CUSTOM')}
+                  className="w-full mt-2 py-2 rounded-xl text-center transition-all"
+                  style={{
+                    background: newPriceTier === 'CUSTOM' ? 'rgba(255,214,0,0.12)' : 'rgba(168,85,247,0.03)',
+                    border: `1px solid ${newPriceTier === 'CUSTOM' ? 'rgba(255,214,0,0.4)' : 'rgba(168,85,247,0.08)'}`,
+                  }}>
+                  <p className="text-sm font-black" style={{ color: newPriceTier === 'CUSTOM' ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>✏ Custom<span className="text-[9px] font-normal"> amount</span></p>
+                  <p className="text-[9px]" style={{ color: newPriceTier === 'CUSTOM' ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>Set your own monthly price</p>
+                </button>
+                {newPriceTier === 'CUSTOM' && (
+                  <div className="mt-2 relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'rgba(255,214,0,0.6)' }}>£</span>
+                    <input
+                      type="number" min={0.5} max={99.99} step={0.5}
+                      placeholder="e.g. 3.50"
+                      value={newCustomPrice}
+                      onChange={(e) => setNewCustomPrice(e.target.value)}
+                      className="w-full pl-7 pr-10 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+                      style={{ border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold" style={{ color: 'rgba(255,214,0,0.4)' }}>/mo</span>
+                  </div>
+                )}
                 <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
                   You earn 80% of subscription revenue. Platform takes 20%.
                 </p>
@@ -441,6 +468,7 @@ function GroupBrowser({
   const [showPw, setShowPw] = useState(false)
   const [newPaid, setNewPaid] = useState(false)
   const [newPriceTier, setNewPriceTier] = useState('MICRO')
+  const [newCustomPrice, setNewCustomPrice] = useState('')
   const [creating, setCreating] = useState(false)
 
   // 4 categories
@@ -470,6 +498,7 @@ function GroupBrowser({
       }
       if (newPaid) {
         body.isPaid = true; body.priceTierId = newPriceTier
+        if (newPriceTier === 'CUSTOM' && newCustomPrice) body.customPrice = parseFloat(newCustomPrice)
       } else if (newPrivate) {
         body.isPrivate = true
         if (newPassword.trim()) body.password = newPassword.trim()
