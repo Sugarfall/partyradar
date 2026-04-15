@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart, Wine } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
@@ -10,7 +10,7 @@ import { useVenueDiscover } from '@/hooks/useVenues'
 import type { LiveVenue } from '@/hooks/useVenues'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
-import { AGE_RESTRICTION_LABELS } from '@partyradar/shared'
+import { AGE_RESTRICTION_LABELS, ALCOHOL_POLICY_LABELS } from '@partyradar/shared'
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
