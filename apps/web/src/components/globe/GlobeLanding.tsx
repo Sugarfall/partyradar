@@ -144,7 +144,8 @@ export default function GlobeLanding() {
     } catch (err: any) {
       const code = err?.code ?? ''
       if (code === 'auth/unauthorized-domain') {
-        setError('Domain not authorised in Firebase Console — add partyradar.vercel.app to Authorised Domains')
+        const currentDomain = typeof window !== 'undefined' ? window.location.hostname : 'this domain'
+        setError(`Add "${currentDomain}" to Firebase Console → Authentication → Settings → Authorised Domains. Also ensure Google is enabled under Sign-in method.`)
       } else if (code === 'auth/operation-not-allowed') {
         setError('Google sign-in not enabled in Firebase Console — enable it under Authentication → Sign-in method')
       } else if (code === 'auth/popup-blocked') {
