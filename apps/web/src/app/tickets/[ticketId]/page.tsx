@@ -19,6 +19,7 @@ const TYPE_COLOR: Record<string, string> = {
   HOME_PARTY: '#ff006e',
   CLUB_NIGHT:  '#00e5ff',
   CONCERT:     '#3d5afe',
+  PUB_NIGHT:   '#f59e0b',
 }
 
 export default function TicketPage() {

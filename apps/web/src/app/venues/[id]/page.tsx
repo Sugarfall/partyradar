@@ -17,7 +17,7 @@ const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type VenueType = 'BAR' | 'NIGHTCLUB' | 'CONCERT_HALL' | 'ROOFTOP_BAR' | 'PUB' | 'LOUNGE'
-type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT'
+type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT'
 
 interface UpcomingEvent {
   id: string
@@ -83,6 +83,7 @@ const EVENT_TYPE_COLORS: Record<EventType, string> = {
   HOME_PARTY: '#ff006e',
   CLUB_NIGHT:  '#00e5ff',
   CONCERT:     '#3d5afe',
+  PUB_NIGHT:   '#f59e0b',
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

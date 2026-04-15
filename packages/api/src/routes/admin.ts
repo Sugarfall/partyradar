@@ -374,7 +374,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Drygate Tap Takeover: Craft Beer Night',
         venueKey: 'Drygate Brewery', hostKey: 'ross_gla',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 150,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 150,
         startsAt: inDays(3, 18), endsAt: inDays(3, 23),
         description: 'Monthly tap takeover. New seasonal releases, brewery tour, food pairings. All welcome.',
         vibeTags: ['Craft Beer', 'Casual', 'Food', 'Social'],
@@ -445,27 +445,27 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Horseshoe Bar: Karaoke Night',
         venueKey: 'The Horseshoe Bar', hostKey: 'kezia_out',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 120,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 120,
         startsAt: tonight(21), endsAt: inDays(1, 0, 30),
         description: 'Karaoke upstairs at Glasgow\'s most iconic pub. Free entry, longest bar in Europe downstairs. Belters and ballads welcome.',
-        vibeTags: ['Karaoke', 'Free Entry', 'Iconic', 'Traditional'],
+        vibeTags: ['Karaoke', 'Free Entry', 'Iconic', 'Traditional', 'Pub Night'],
         alcoholPolicy: 'PROVIDED' as const,
         ageRestriction: 'AGE_18' as const,
       },
       {
         name: 'The Doublet: Pub Karaoke',
         venueKey: 'The Doublet', hostKey: 'sarah_vibes',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 60,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 60,
         startsAt: inDays(1, 20, 30), endsAt: inDays(1, 23, 30),
         description: 'A proper Glasgow local with the best karaoke atmosphere in the West End. Regulars, students and everyone in between.',
-        vibeTags: ['Karaoke', 'Free Entry', 'West End', 'Locals'],
+        vibeTags: ['Karaoke', 'Free Entry', 'West End', 'Locals', 'Pub Night'],
         alcoholPolicy: 'PROVIDED' as const,
         ageRestriction: 'AGE_18' as const,
       },
       {
         name: 'Ben Nevis: Live Folk Session',
         venueKey: 'The Ben Nevis', hostKey: 'ross_gla',
-        type: 'CONCERT' as const, price: 0, capacity: 80,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 80,
         startsAt: tonight(21), endsAt: tonight(23, 30),
         description: 'Live traditional folk music session. Fiddles, guitars, bodhráns. Huge whisky selection. The spirit of Scotland in Finnieston.',
         vibeTags: ['Folk', 'Live Music', 'Whisky', 'Traditional', 'Free Entry'],
@@ -475,7 +475,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Lucky Cat: Private Room Karaoke Party',
         venueKey: 'Lucky Cat', hostKey: 'kezia_out',
-        type: 'HOME_PARTY' as const, price: 15, capacity: 100,
+        type: 'PUB_NIGHT' as const, price: 15, capacity: 100,
         startsAt: inDays(2, 19), endsAt: inDays(2, 23, 30),
         description: 'Japanese-style private room karaoke. Sing your heart out with cocktails & Asian street food. Book a room or walk in.',
         vibeTags: ['Karaoke', 'Private Rooms', 'Cocktails', 'Asian', 'Party'],
@@ -505,7 +505,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'State Bar: Blues Night',
         venueKey: 'The State Bar', hostKey: 'ross_gla',
-        type: 'CONCERT' as const, price: 0, capacity: 80,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 80,
         startsAt: inDays(2, 20), endsAt: inDays(2, 23),
         description: 'Live blues & jazz from Glasgow\'s finest. Free entry, real ale on tap. A proper midweek wind-down.',
         vibeTags: ['Blues', 'Jazz', 'Live Music', 'Free Entry', 'Chill'],
@@ -525,7 +525,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Maggie May\'s: Saturday Singalong',
         venueKey: "Maggie May's", hostKey: 'kezia_out',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 100,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 100,
         startsAt: inDays(3, 21), endsAt: inDays(4, 1),
         description: 'Trongate\'s karaoke headquarters. No judgement, maximum volume. Two stages, massive song library, cheap drinks.',
         vibeTags: ['Karaoke', 'Free Entry', 'Late Night', 'Fun', 'Party'],
@@ -578,10 +578,12 @@ router.post('/seed-activity', async (_req, res, next) => {
           await prisma.event.update({
             where: { id: existing.id },
             data: {
+              type: def.type,
               startsAt: def.startsAt,
               endsAt: def.endsAt,
               isCancelled: false,
               isPublished: true,
+              vibeTags: def.vibeTags,
               ticketsRemaining: Math.floor(def.capacity * 0.4),
             },
           })

@@ -14,6 +14,7 @@ const EVENT_TYPES: { id: EventType; label: string; emoji: string; desc: string; 
   { id: 'HOME_PARTY', label: 'Home Party',  emoji: '🏠', desc: 'Private space, intimate crowd, your rules',        sub: 'Unlisted address · RSVP gating · Party signals', color: '#ff006e', glow: 'rgba(255,0,110,0.3)' },
   { id: 'CLUB_NIGHT', label: 'Club Night',  emoji: '🎵', desc: 'Licensed venue, ticketed entry, professional setup', sub: 'Ticket tiers · Lineup · Promoter profile',          color: '#00e5ff', glow: 'rgba(0,229,255,0.3)' },
   { id: 'CONCERT',   label: 'Concert',     emoji: '🎤', desc: 'Live performance or touring act',                  sub: 'General admission · Artist info · Stage times',     color: '#3d5afe', glow: 'rgba(61,90,254,0.3)' },
+  { id: 'PUB_NIGHT', label: 'Pub Night',   emoji: '🍺', desc: 'Pub quiz, karaoke, live music or just a great night out', sub: 'Open access · Casual vibe · Real ale welcome', color: '#f59e0b', glow: 'rgba(245,158,11,0.3)' },
 ]
 
 // ── Party signals (HOME_PARTY only) ──────────────────────────────────────────

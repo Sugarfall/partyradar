@@ -58,6 +58,7 @@ const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
   CLUB_NIGHT: '#00e5ff',
   CONCERT:    '#3d5afe',
+  PUB_NIGHT:  '#f59e0b',
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -234,7 +235,7 @@ export default function EditEventPage() {
       accentColor: form.accentColor || null,
     }
 
-    if (event.type === 'CLUB_NIGHT' || event.type === 'CONCERT') {
+    if (event.type === 'CLUB_NIGHT' || event.type === 'CONCERT' || event.type === 'PUB_NIGHT') {
       patch.lineup = form.lineup || undefined
     }
     if (event.type === 'HOME_PARTY') {
@@ -253,7 +254,7 @@ export default function EditEventPage() {
   }
 
   const isHomeparty = event.type === 'HOME_PARTY'
-  const isClubOrConcert = event.type === 'CLUB_NIGHT' || event.type === 'CONCERT'
+  const isClubOrConcert = event.type === 'CLUB_NIGHT' || event.type === 'CONCERT' || event.type === 'PUB_NIGHT'
 
   return (
     <div className="min-h-screen pb-28 px-4 pt-20 max-w-lg mx-auto" style={{ background: '#04040d' }}>

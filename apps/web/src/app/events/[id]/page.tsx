@@ -28,6 +28,7 @@ const TYPE_CONFIG: Record<string, { color: string; glow: string; label: string }
   HOME_PARTY: { color: '#ff006e', glow: 'rgba(255,0,110,0.25)', label: 'HOME PARTY' },
   CLUB_NIGHT:  { color: '#00e5ff', glow: 'rgba(0,229,255,0.25)',  label: 'CLUB NIGHT'  },
   CONCERT:     { color: '#3d5afe', glow: 'rgba(61,90,254,0.25)',  label: 'CONCERT'     },
+  PUB_NIGHT:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)', label: 'PUB NIGHT'   },
 }
 
 function formatDate(d: string) {
@@ -203,7 +204,7 @@ function EventHighlights({ event, color }: { event: any; color: string }) {
   // Duration
   if (event.endsAt) {
     const durationHrs = Math.round((new Date(event.endsAt).getTime() - new Date(event.startsAt).getTime()) / 3600000)
-    if (durationHrs > 0) highlights.push({ icon: Clock, text: `${durationHrs} hour${durationHrs > 1 ? 's' : ''} of ${event.type === 'CONCERT' ? 'live music' : event.type === 'HOME_PARTY' ? 'partying' : 'nightlife'}` })
+    if (durationHrs > 0) highlights.push({ icon: Clock, text: `${durationHrs} hour${durationHrs > 1 ? 's' : ''} of ${event.type === 'CONCERT' ? 'live music' : event.type === 'HOME_PARTY' ? 'partying' : event.type === 'PUB_NIGHT' ? 'pub fun' : 'nightlife'}` })
   }
 
   // Tickets

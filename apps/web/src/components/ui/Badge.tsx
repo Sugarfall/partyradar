@@ -32,6 +32,7 @@ const TYPE_COLORS: Record<string, CSSProperties> = {
   HOME_PARTY: { color: '#ff006e', border: '1px solid rgba(255,0,110,0.4)', background: 'rgba(255,0,110,0.1)' },
   CLUB_NIGHT:  { color: '#00e5ff', border: '1px solid rgba(0,229,255,0.4)', background: 'rgba(0,229,255,0.1)' },
   CONCERT:     { color: '#3d5afe', border: '1px solid rgba(61,90,254,0.4)', background: 'rgba(61,90,254,0.1)' },
+  PUB_NIGHT:   { color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.1)' },
 }
 
 export function Badge({ children, variant = 'default', className = '' }: BadgeProps) {

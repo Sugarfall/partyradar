@@ -83,18 +83,21 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'Home Party',
   CLUB_NIGHT: 'Club Night',
   CONCERT: 'Concert',
+  PUB_NIGHT: 'Pub Night',
 }
 
 export const EVENT_TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ec4899',   // pink
   CLUB_NIGHT: '#a855f7',   // purple
   CONCERT: '#3b82f6',      // blue
+  PUB_NIGHT: '#f59e0b',    // amber
 }
 
 export const EVENT_TYPE_BG: Record<string, string> = {
   HOME_PARTY: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
   CLUB_NIGHT: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   CONCERT: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  PUB_NIGHT: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
 }
 
 // ─── Alcohol Policy ───────────────────────────────────────────────────────────

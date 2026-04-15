@@ -1,6 +1,6 @@
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-export type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT'
+export type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT'
 export type AlcoholPolicy = 'NONE' | 'PROVIDED' | 'BYOB'
 export type AgeRestriction = 'ALL_AGES' | 'AGE_18' | 'AGE_21'
 export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED'

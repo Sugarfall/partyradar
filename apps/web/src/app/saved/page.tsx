@@ -12,12 +12,14 @@ const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
   CLUB_NIGHT: '#a855f7',
   CONCERT: '#3b82f6',
+  PUB_NIGHT: '#f59e0b',
 }
 
 const TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'Home Party',
   CLUB_NIGHT: 'Club Night',
   CONCERT: 'Concert',
+  PUB_NIGHT: 'Pub Night',
 }
 
 function formatDate(d: string) {

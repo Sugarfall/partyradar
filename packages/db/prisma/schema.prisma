@@ -13,6 +13,7 @@ enum EventType {
   HOME_PARTY
   CLUB_NIGHT
   CONCERT
+  PUB_NIGHT
 }
 
 enum AlcoholPolicy {

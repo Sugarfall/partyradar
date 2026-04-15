@@ -65,7 +65,7 @@ export function EventMap({ events, centerLat, centerLng, onBoundsChange }: Event
             style={{ backgroundColor: EVENT_TYPE_COLORS[event.type] ?? '#a855f7' }}
           >
             <span className="text-white text-xs font-bold">
-              {event.type === 'HOME_PARTY' ? '🏠' : event.type === 'CLUB_NIGHT' ? '🎵' : '🎤'}
+              {event.type === 'HOME_PARTY' ? '🏠' : event.type === 'CLUB_NIGHT' ? '🎵' : event.type === 'PUB_NIGHT' ? '🍺' : '🎤'}
             </span>
           </div>
         </Marker>

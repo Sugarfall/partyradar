@@ -106,7 +106,7 @@ function fmtDate(dateStr: string) {
 function isFuture(dateStr: string) { return new Date(dateStr) > new Date() }
 
 const TYPE_COLORS: Record<string, string> = {
-  HOME_PARTY: '#ec4899', CLUB_NIGHT: '#a855f7', CONCERT: '#3b82f6',
+  HOME_PARTY: '#ec4899', CLUB_NIGHT: '#a855f7', CONCERT: '#3b82f6', PUB_NIGHT: '#f59e0b',
 }
 
 const BLAST_STATUS_STYLE: Record<string, { bg: string; border: string; color: string; label: string }> = {

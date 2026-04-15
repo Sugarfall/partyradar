@@ -38,11 +38,13 @@ const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
   CLUB_NIGHT: '#00e5ff',
   CONCERT: '#3d5afe',
+  PUB_NIGHT: '#f59e0b',
 }
 const TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'HOME PARTY',
   CLUB_NIGHT: 'CLUB NIGHT',
   CONCERT: 'CONCERT',
+  PUB_NIGHT: 'PUB NIGHT',
 }
 
 type SlideDir = 'next' | 'prev' | null
@@ -925,7 +927,7 @@ export default function DiscoverPage() {
         className="flex-shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar"
         style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}
       >
-        {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'CONCERT'] as (EventType | undefined)[]).map((type) => {
+        {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'CONCERT', 'PUB_NIGHT'] as (EventType | undefined)[]).map((type) => {
           const isActive = filters.type === type
           const label = type ? TYPE_LABELS[type] : 'ALL'
           const color = type ? TYPE_COLORS[type] : '#00e5ff'
