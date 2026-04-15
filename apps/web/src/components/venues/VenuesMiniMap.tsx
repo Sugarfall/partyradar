@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import Map, { Marker, Popup, NavigationControl } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import Link from 'next/link'
-import type { DemoVenue } from '@/hooks/useEvents'
 
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
@@ -26,28 +25,45 @@ const TYPE_LABELS: Record<string, string> = {
   LOUNGE:       'LOUNGE',
 }
 
+// Accept any venue shape that has the fields the map needs
+export interface MapVenue {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  type: string
+  vibeTags?: string[]
+  rating?: number | null
+}
+
 interface Props {
-  venues: DemoVenue[]
+  venues: MapVenue[]
   selectedId: string | null
   onSelect: (id: string) => void
 }
 
 export default function VenuesMiniMap({ venues, selectedId, onSelect }: Props) {
-  const [popupVenue, setPopupVenue] = useState<DemoVenue | null>(null)
+  const [popupVenue, setPopupVenue] = useState<MapVenue | null>(null)
 
-  const handleMarkerClick = useCallback((venue: DemoVenue) => {
+  const handleMarkerClick = useCallback((venue: MapVenue) => {
     setPopupVenue(venue)
     onSelect(venue.id)
   }, [onSelect])
 
+  // Centre the map on the median of all venues rather than hardcoding Glasgow
+  const initialView = useMemo(() => {
+    if (venues.length === 0) return { longitude: -4.2518, latitude: 55.8642, zoom: 12.5 }
+    const lats = venues.map((v) => v.lat).sort((a, b) => a - b)
+    const lngs = venues.map((v) => v.lng).sort((a, b) => a - b)
+    const midLat = lats[Math.floor(lats.length / 2)]!
+    const midLng = lngs[Math.floor(lngs.length / 2)]!
+    return { longitude: midLng, latitude: midLat, zoom: 12 }
+  }, [venues])  // recalculates when venue set changes
+
   return (
     <Map
       mapboxAccessToken={MAPBOX_TOKEN}
-      initialViewState={{
-        longitude: -4.2518,
-        latitude: 55.8642,
-        zoom: 12.5,
-      }}
+      initialViewState={initialView}
       style={{ width: '100%', height: '100%' }}
       mapStyle="mapbox://styles/mapbox/dark-v11"
       attributionControl={false}
@@ -113,7 +129,7 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect }: Props) {
               {popupVenue.name}
             </p>
             <p style={{ color: TYPE_COLORS[popupVenue.type] ?? '#00e5ff', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', marginBottom: 6 }}>
-              {TYPE_LABELS[popupVenue.type]}
+              {TYPE_LABELS[popupVenue.type] ?? popupVenue.type}
             </p>
             <div style={{ display: 'flex', gap: 6 }}>
               <Link

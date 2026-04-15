@@ -531,43 +531,26 @@ function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
 }
 
 // ── Venues list ───────────────────────────────────────────────────────────────
-function VenuesList() {
+interface VenuesListProps {
+  liveVenues: LiveVenue[]
+  venuesLoading: boolean
+  venueSource: 'google' | 'database' | 'google_places' | null
+  venueCity: string | null
+  locationObtained: boolean  // true once geo coords were successfully obtained
+  onWiderSearch: () => void
+}
+
+function VenuesList({ liveVenues, venuesLoading, venueSource, venueCity, locationObtained, onWiderSearch }: VenuesListProps) {
   const [search, setSearch] = useState('')
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
-  const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
 
-  const [venueCity, setVenueCity] = useState<string | null>(null)
-
-  // Discover venues on mount via Google Places using real user location.
-  // Only falls back to Glasgow demo data when geolocation is unavailable (not just denied).
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude: lat, longitude: lng } = pos.coords
-          discover(lat, lng, 15000) // 15 km radius
-          // Reverse-geocode city name for display
-          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
-            .then((r) => r.json())
-            .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
-            .catch(() => {})
-        },
-        () => {
-          // Location denied — don't pretend to be Glasgow; show empty state so user can search
-          setVenueCity(null)
-        },
-        { timeout: 8000, maximumAge: 600000 }
-      )
-    }
-    // If no geolocation at all, leave empty — user can search
-  }, [discover])
-
-  // Use Google Places results when available.
-  // Only fall back to Glasgow demo list when we have no location at all (location denied + no city detected).
-  const hasGoogleResults = liveVenues.length > 0 && (venueSource === 'google' || venueSource === 'database')
-  const baseVenues: (DemoVenue | LiveVenue)[] = hasGoogleResults
+  // Show real venues when we have them. Show Glasgow ONLY when we never got a location
+  // (i.e. user denied geo and there's no cached data either).
+  const hasRealVenues = liveVenues.length > 0
+  const baseVenues: (DemoVenue | LiveVenue)[] = hasRealVenues
     ? liveVenues
-    : (venueCity === null && !venuesLoading ? GLASGOW_VENUES : [])
+    : (!locationObtained && !venuesLoading ? GLASGOW_VENUES : [])
+
   const filtered = search
     ? baseVenues.filter((v) =>
         v.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -576,13 +559,16 @@ function VenuesList() {
       )
     : baseVenues
 
+  // Use real venue coords for the mini map when available
+  const mapVenues = hasRealVenues ? liveVenues : GLASGOW_VENUES
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
 
       {/* ── Mini venues map ── */}
       <div className="flex-shrink-0" style={{ height: 200, borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
         <VenuesMiniMap
-          venues={GLASGOW_VENUES}
+          venues={mapVenues}
           selectedId={selectedVenueId}
           onSelect={(id) => setSelectedVenueId(id === selectedVenueId ? null : id)}
         />
@@ -618,7 +604,11 @@ function VenuesList() {
         ) : (
           <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>
             {filtered.length} VENUES
-            {venueCity ? ` · ${venueCity.toUpperCase()}` : venueSource === 'google' ? ' · NEARBY' : ' · GLASGOW (DEMO)'}
+            {venueCity
+              ? ` · ${venueCity.toUpperCase()}`
+              : hasRealVenues
+                ? ' · NEARBY'
+                : ' · GLASGOW (DEMO)'}
           </p>
         )}
       </div>
@@ -636,15 +626,7 @@ function VenuesList() {
               Allow location access so we can scan pubs, clubs &amp; bars near you — or search by name above.
             </p>
             <button
-              onClick={() => {
-                if (navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(
-                    (pos) => discover(pos.coords.latitude, pos.coords.longitude, 25000),
-                    () => {},
-                    { timeout: 8000 }
-                  )
-                }
-              }}
+              onClick={onWiderSearch}
               className="px-4 py-2 rounded-lg text-[10px] font-black tracking-widest transition-all"
               style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}
             >
@@ -718,22 +700,55 @@ export default function DiscoverPage() {
   // AND the subsequent event fetch is complete — prevents any flash-empty on load.
   const [geoResolved, setGeoResolved] = useState(false)
 
-  // Silently request geolocation on mount — used to centre the map and narrow the
-  // event feed to the user's city. Falls back to no geo-filter (shows all events).
+  // ── Venue discovery state (lifted here so it survives tab switches) ──────────
+  const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
+  const [venueCity, setVenueCity] = useState<string | null>(null)
+  // true once we successfully got GPS coordinates (even if discover returned 0 results)
+  const [venueLocationObtained, setVenueLocationObtained] = useState(false)
+
+  // Silently request geolocation on mount — used to centre the map, narrow the
+  // event feed, AND discover venues. Falls back to no geo-filter (shows all events).
   useEffect(() => {
     if (!navigator.geolocation) { setGeoResolved(true); return }
     const fallback = setTimeout(() => setGeoResolved(true), 8500) // safety timeout
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        const { latitude: lat, longitude: lng } = pos.coords
+        setUserLocation({ lat, lng })
         clearTimeout(fallback)
-        // geoResolved will be set once the geo-filtered events finish loading (see below)
+
+        // Discover venues for this location (cached for 5 min — safe to call every mount)
+        discover(lat, lng, 15000)
+        setVenueLocationObtained(true)
+
+        // Reverse-geocode city name for display label
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+          .then((r) => r.json())
+          .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
+          .catch(() => {})
       },
-      () => { clearTimeout(fallback); setGeoResolved(true) }, // denied / error
-      { timeout: 8000, maximumAge: 300000 }
+      () => {
+        clearTimeout(fallback)
+        setGeoResolved(true)
+        // Location denied — venueLocationObtained stays false → shows Glasgow demo
+      },
+      { timeout: 8000, maximumAge: 300000 },
     )
     return () => clearTimeout(fallback)
-  }, [])
+  }, [discover])
+
+  function handleVenueWiderSearch() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          discover(pos.coords.latitude, pos.coords.longitude, 25000)
+          setVenueLocationObtained(true)
+        },
+        () => {},
+        { timeout: 8000 },
+      )
+    }
+  }
 
   const { events, isLoading, mutate, forceRetry } = useEvents({
     ...filters,
@@ -953,8 +968,17 @@ export default function DiscoverPage() {
         </div>
       </div>
 
-      {/* ── Venues tab ── */}
-      {tab === 'venues' && <VenuesList />}
+      {/* ── Venues tab — always mounted, hidden when not active to preserve discovery state ── */}
+      <div style={{ display: tab === 'venues' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+        <VenuesList
+          liveVenues={liveVenues}
+          venuesLoading={venuesLoading}
+          venueSource={venueSource}
+          venueCity={venueCity}
+          locationObtained={venueLocationObtained}
+          onWiderSearch={handleVenueWiderSearch}
+        />
+      </div>
 
       {/* ── Events tab content ── */}
       {tab === 'events' && <>
