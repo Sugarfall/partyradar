@@ -142,7 +142,18 @@ export default function GlobeLanding() {
       await signInWithGoogle()
       getLocationAndZoom()
     } catch (err: any) {
-      setError(err?.message?.replace('Firebase: ', '').replace(/\(.*\)\.?/, '') ?? 'Google sign-in failed')
+      const code = err?.code ?? ''
+      if (code === 'auth/unauthorized-domain') {
+        setError('Domain not authorised in Firebase Console — add partyradar.vercel.app to Authorised Domains')
+      } else if (code === 'auth/operation-not-allowed') {
+        setError('Google sign-in not enabled in Firebase Console — enable it under Authentication → Sign-in method')
+      } else if (code === 'auth/popup-blocked') {
+        setError('Popup was blocked — please allow popups for this site and try again')
+      } else if (code === 'auth/popup-closed-by-user') {
+        setError('') // user closed popup intentionally — no error shown
+      } else {
+        setError(err?.message?.replace('Firebase: ', '') ?? `Google sign-in failed (${code})`)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -155,7 +166,12 @@ export default function GlobeLanding() {
       await signInWithApple()
       getLocationAndZoom()
     } catch (err: any) {
-      setError(err?.message?.replace('Firebase: ', '').replace(/\(.*\)\.?/, '') ?? 'Apple sign-in failed')
+      const code = err?.code ?? ''
+      if (code === 'auth/popup-closed-by-user') {
+        setError('')
+      } else {
+        setError(err?.message?.replace('Firebase: ', '') ?? `Apple sign-in failed (${code})`)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -299,7 +315,8 @@ export default function GlobeLanding() {
       {/* PHASE: SIGN IN — clean auth card (entry point)         */}
       {/* ═══════════════════════════════════════════════════════ */}
       {phase === 'signin' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-6" style={{ background: '#04040d' }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6"
+          style={{ background: 'rgba(4,4,13,0.82)', backdropFilter: 'blur(6px)' }}>
           {/* Logo */}
           <div className="flex items-center gap-3 mb-10">
             <Zap size={26} fill="rgba(0,229,255,0.2)"
