@@ -36,3 +36,4 @@ Thumbs.db
 *.swp
 scripts/railway-deploy.mjs
 scripts/reseed-events.mjs
+.vercel

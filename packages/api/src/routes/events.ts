@@ -82,6 +82,27 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }
 
+    // Background sync external events if lat/lng provided and we have API keys
+    if (lat && lng) {
+      const { syncExternalEvents } = await import('../lib/eventSync')
+      const latN = Number(lat), lngN = Number(lng)
+      // Reverse-geocode to get a city name for throttle key, fall back to coord string
+      const getCityName = async (): Promise<string> => {
+        try {
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latN}&lon=${lngN}&format=json`,
+            { headers: { 'User-Agent': 'PartyRadar/1.0' } }
+          )
+          const d = (await r.json()) as { address?: { city?: string; town?: string; village?: string; county?: string } }
+          return d.address?.city ?? d.address?.town ?? d.address?.village ?? d.address?.county ?? `${latN},${lngN}`
+        } catch {
+          return `${latN},${lngN}`
+        }
+      }
+      // fire-and-forget — don't await, don't fail request if sync errors
+      getCityName().then((city) => syncExternalEvents(city, latN, lngN, 'system')).catch(() => {})
+    }
+
     const [events, total] = await Promise.all([
       prisma.event.findMany({
         where,
