@@ -23,4 +23,14 @@ router.post('/image', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+/** POST /api/uploads/audio — get a signed Cloudinary upload credential for voice notes */
+router.post('/audio', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const credentials = await getSignedUploadUrl('partyradar/voice')
+    res.json({ data: credentials })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router

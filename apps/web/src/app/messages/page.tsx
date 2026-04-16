@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
-  Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff,
+  Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff, Mic, Radio,
+  Play, Square,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
@@ -12,6 +13,176 @@ import { auth } from '@/lib/firebase'
 /** Get a fresh Firebase ID token for API calls */
 async function getToken(): Promise<string> {
   try { return (await auth.currentUser?.getIdToken()) ?? '' } catch { return '' }
+}
+
+// ─── VoiceMessagePlayer ───────────────────────────────────────────────────────
+
+function VoiceMessagePlayer({ url }: { url: string }) {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  function toggle() {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(url)
+      audioRef.current.onended = () => setPlaying(false)
+    }
+    if (playing) {
+      audioRef.current.pause()
+      setPlaying(false)
+    } else {
+      audioRef.current.play().catch(() => {})
+      setPlaying(true)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2" style={{ minWidth: 140 }}>
+      <button onClick={toggle}
+        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all"
+        style={{ background: playing ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.4)' }}>
+        {playing ? <Square size={12} style={{ color: '#00e5ff' }} /> : <Play size={12} style={{ color: '#00e5ff' }} />}
+      </button>
+      <div className="flex-1 flex items-center gap-0.5 h-5">
+        {Array.from({ length: 18 }).map((_, i) => (
+          <div key={i} className="flex-1 rounded-full transition-all"
+            style={{
+              height: `${30 + Math.sin(i * 1.3) * 60}%`,
+              background: playing ? 'rgba(0,229,255,0.7)' : 'rgba(0,229,255,0.3)',
+            }} />
+        ))}
+      </div>
+      <Radio size={12} style={{ color: 'rgba(0,229,255,0.4)', flexShrink: 0 }} />
+    </div>
+  )
+}
+
+// ─── WalkieTalkieButton ───────────────────────────────────────────────────────
+
+function WalkieTalkieButton({ onSend }: { onSend: (url: string) => void }) {
+  const [recording, setRecording] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' })
+      chunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType })
+        if (blob.size < 100) return // nothing recorded
+        setUploading(true)
+        try {
+          const tok = await getToken()
+          const h: Record<string,string> = { 'Content-Type': 'application/json' }
+          if (tok) h['Authorization'] = `Bearer ${tok}`
+          const credsRes = await fetch(`${API_URL}/uploads/audio`, { method: 'POST', headers: h })
+          const creds = await credsRes.json()
+          if (!creds.data) return
+
+          const fd = new FormData()
+          fd.append('file', blob, 'voice.webm')
+          fd.append('api_key', creds.data.apiKey)
+          fd.append('timestamp', creds.data.timestamp)
+          fd.append('signature', creds.data.signature)
+          fd.append('folder', creds.data.folder ?? 'partyradar/voice')
+          fd.append('resource_type', 'video') // Cloudinary uses 'video' for audio
+
+          const uploadRes = await fetch(
+            `https://api.cloudinary.com/v1_1/${creds.data.cloudName}/video/upload`,
+            { method: 'POST', body: fd }
+          )
+          const result = await uploadRes.json()
+          if (result.secure_url) onSend(result.secure_url)
+        } catch (err) {
+          console.error('[WalkieTalkie] upload failed', err)
+        } finally {
+          setUploading(false)
+        }
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setRecording(true)
+    } catch {
+      // microphone denied
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop()
+    mediaRecorderRef.current = null
+    setRecording(false)
+  }
+
+  return (
+    <button
+      onPointerDown={(e) => { e.preventDefault(); startRecording() }}
+      onPointerUp={() => stopRecording()}
+      onPointerLeave={() => { if (recording) stopRecording() }}
+      disabled={uploading}
+      className="p-2.5 rounded-xl transition-all shrink-0 select-none touch-none"
+      style={{
+        background: recording ? 'rgba(255,0,110,0.2)' : uploading ? 'rgba(255,214,0,0.1)' : 'rgba(0,229,255,0.06)',
+        border: `1px solid ${recording ? 'rgba(255,0,110,0.5)' : uploading ? 'rgba(255,214,0,0.3)' : 'rgba(0,229,255,0.15)'}`,
+        color: recording ? '#ff006e' : uploading ? '#ffd600' : 'rgba(0,229,255,0.5)',
+        boxShadow: recording ? '0 0 12px rgba(255,0,110,0.3)' : 'none',
+      }}
+      title="Hold to record voice message"
+    >
+      {uploading ? <Radio size={16} className="animate-pulse" /> : <Mic size={16} />}
+    </button>
+  )
+}
+
+// ─── FollowButtonDm ────────────────────────────────────────────────────────────
+
+function FollowButtonDm({ targetId }: { targetId: string }) {
+  const [following, setFollowing] = useState<boolean | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    getToken().then((tok) => {
+      if (!tok) return
+      fetch(`${API_URL}/follow/${targetId}`, { headers: { Authorization: `Bearer ${tok}` } })
+        .then((r) => r.json())
+        .then((j) => setFollowing(j.data?.isFollowing ?? false))
+        .catch(() => {})
+    })
+  }, [targetId])
+
+  async function toggle() {
+    if (following === null || loading) return
+    setLoading(true)
+    try {
+      const tok = await getToken()
+      const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` }
+      if (following) {
+        await fetch(`${API_URL}/follow/${targetId}`, { method: 'DELETE', headers: h })
+        setFollowing(false)
+      } else {
+        await fetch(`${API_URL}/follow/${targetId}`, { method: 'POST', headers: h })
+        setFollowing(true)
+      }
+    } catch {} finally { setLoading(false) }
+  }
+
+  if (following === null) return null
+
+  return (
+    <button onClick={toggle} disabled={loading}
+      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
+      style={{
+        background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
+        border: `1px solid ${following ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.4)'}`,
+        color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+      }}>
+      {following ? <UserCheck size={11} /> : <UserPlus size={11} />}
+      {loading ? '...' : following ? 'FOLLOWING' : 'FOLLOW'}
+    </button>
+  )
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1161,7 +1332,7 @@ function GroupChatView({
   )
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 7.5rem)', background: '#04040d' }}>
+    <div className="flex flex-col" style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 64, background: '#04040d' }}>
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-2 px-3 py-3"
         style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
@@ -1311,6 +1482,8 @@ function GroupChatView({
           </div>
         ) : messages.map((m) => {
           const isMe = m.senderId === dbUserId
+          const isVoice = m.text.startsWith('[VOICE]')
+          const voiceUrl = isVoice ? m.text.slice(7) : null
           return (
             <div key={m.id} className={`flex gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
               {!isMe && (
@@ -1318,17 +1491,19 @@ function GroupChatView({
                   <Avatar user={{ displayName: m.senderName, photoUrl: m.senderPhoto }} size={30} />
                 </button>
               )}
-              <div className="max-w-[72%]">
+              <div className="max-w-[75%]">
                 {!isMe && (
                   <p className="text-[10px] mb-0.5 ml-1 font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>
                     {m.senderName}
                   </p>
                 )}
-                <div className="px-3 py-2 rounded-2xl text-sm"
+                <div className={isVoice ? 'px-3 py-2 rounded-2xl' : 'px-3 py-2 rounded-2xl text-sm'}
                   style={isMe
                     ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
                     : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
-                  {m.text}
+                  {isVoice
+                    ? <VoiceMessagePlayer url={voiceUrl!} />
+                    : m.text}
                 </div>
                 <p className={`text-[9px] mt-0.5 ${isMe ? 'text-right' : 'text-left'}`}
                   style={{ color: 'rgba(224,242,254,0.2)' }}>{timeAgo(m.createdAt)}</p>
@@ -1341,8 +1516,20 @@ function GroupChatView({
 
       {/* Input */}
       {dbUserId ? (
-        <div className="flex-shrink-0 px-4 py-3 flex gap-2"
+        <div className="flex-shrink-0 px-3 py-3 flex gap-2 items-center"
           style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          <WalkieTalkieButton onSend={(url) => {
+            const draft = `[VOICE]${url}`
+            // Directly post voice note to group
+            getToken().then((tok) => {
+              const h: Record<string,string> = { 'Content-Type': 'application/json' }
+              if (tok) h['Authorization'] = `Bearer ${tok}`
+              fetch(`${API_URL}/groups/${groupId}/messages`, { method: 'POST', headers: h, body: JSON.stringify({ text: draft }) })
+                .then((r) => r.json())
+                .then((j) => { if (j.data) setMessages((prev) => [...prev, j.data]) })
+                .catch(() => {})
+            })
+          }} />
           <input type="text" placeholder={`Message #${group?.name.toLowerCase() ?? 'group'}...`}
             value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
@@ -1838,7 +2025,7 @@ function DmSection({ dbUser }: {
 
   if (activeConvo) {
     return (
-      <div className="flex flex-col" style={{ height: 'calc(100vh - 7.5rem)', background: '#04040d' }}>
+      <div className="flex flex-col" style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 64, background: '#04040d' }}>
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
           style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
           <button onClick={() => { setActiveConvo(null); setMessages([]) }} className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
@@ -1849,6 +2036,16 @@ function DmSection({ dbUser }: {
             <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{activeOther?.displayName ?? '...'}</p>
             {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{activeOther.username}</p>}
           </div>
+          {/* Follow button in DM header */}
+          {activeOther && dbUser && activeOther.id !== dbUser.id && (
+            <FollowButtonDm targetId={activeOther.id} />
+          )}
+          {activeOther?.username && (
+            <a href={`/profile/${activeOther.username}`} className="p-1.5 rounded-lg"
+              style={{ color: 'rgba(0,229,255,0.5)', border: '1px solid rgba(0,229,255,0.12)', background: 'rgba(0,229,255,0.04)' }}>
+              <User size={14} />
+            </a>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {msgsLoading ? (
@@ -1863,15 +2060,19 @@ function DmSection({ dbUser }: {
             </div>
           ) : messages.map((m) => {
             const isMe = m.senderId === dbUser?.id
+            const isVoice = m.text.startsWith('[VOICE]')
+            const voiceUrl = isVoice ? m.text.slice(7) : null
             return (
               <div key={m.id} className={`flex gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
                 {!isMe && activeOther && <Avatar user={activeOther} size={28} />}
-                <div className="max-w-[72%]">
-                  <div className="px-3 py-2 rounded-2xl text-sm"
+                <div className="max-w-[75%]">
+                  <div className={isVoice ? 'px-3 py-2 rounded-2xl' : 'px-3 py-2 rounded-2xl text-sm'}
                     style={isMe
                       ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
                       : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
-                    {m.text}
+                    {isVoice
+                      ? <VoiceMessagePlayer url={voiceUrl!} />
+                      : m.text}
                   </div>
                   <p className={`text-[9px] mt-0.5 ${isMe ? 'text-right' : 'text-left'}`}
                     style={{ color: 'rgba(224,242,254,0.2)' }}>{timeAgo(m.createdAt)}</p>
@@ -1881,8 +2082,24 @@ function DmSection({ dbUser }: {
           })}
           <div ref={bottomRef} />
         </div>
-        <div className="flex-shrink-0 px-4 py-3 flex gap-2"
+        <div className="flex-shrink-0 px-3 py-3 flex gap-2 items-center"
           style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          <WalkieTalkieButton onSend={(url) => {
+            const msg = `[VOICE]${url}`
+            const prev = text; setText(msg)
+            setTimeout(async () => {
+              await sendMessage()
+              setText('')
+            }, 0)
+            // Directly send voice message
+            const draft = msg
+            dmHeaders().then((h) =>
+              fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers: h, body: JSON.stringify({ text: draft }) })
+                .then((r) => r.json())
+                .then((j) => { if (j.data) setMessages((prev) => [...prev, j.data]) })
+                .catch(() => {})
+            )
+          }} />
           <input type="text" placeholder="Message..." value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
@@ -2050,7 +2267,7 @@ export default function MessagesPage() {
   // If a group chat is open, render it full-screen (no tab bar)
   if (tab === 'community' && activeGroupId) {
     return (
-      <div style={{ paddingTop: 56 }}>
+      <div>
         <GroupChatView
           groupId={activeGroupId}
           onBack={() => setActiveGroupId(null)}
