@@ -520,4 +520,134 @@ router.post('/:id/messages', requireAuth, async (req: AuthRequest, res, next) =>
   }
 })
 
+// ─── Pub Crawl Routes ──────────────────────────────────────────────────────────
+
+/** GET /api/groups/:groupId/pub-crawl — get active pub crawl for group */
+router.get('/:groupId/pub-crawl', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { groupId } = req.params as { groupId: string }
+    const userId = req.user?.dbUser.id ?? null
+
+    const crawl = await prisma.pubCrawl.findFirst({
+      where: { groupId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        createdBy: { select: { id: true, displayName: true, username: true, photoUrl: true } },
+        stops: {
+          orderBy: { order: 'asc' },
+          include: {
+            checkIns: {
+              include: { user: { select: { id: true, displayName: true, photoUrl: true, username: true } } },
+            },
+          },
+        },
+      },
+    })
+
+    if (!crawl) return res.json({ data: null })
+
+    // Build leaderboard
+    const scoreMap = new Map<string, { user: { id: string; displayName: string; photoUrl: string | null; username: string | null }; score: number }>()
+    for (const stop of crawl.stops) {
+      for (const ci of stop.checkIns) {
+        const existing = scoreMap.get(ci.userId)
+        if (existing) {
+          existing.score++
+        } else {
+          scoreMap.set(ci.userId, { user: ci.user, score: 1 })
+        }
+      }
+    }
+    const leaderboard = [...scoreMap.values()].sort((a, b) => b.score - a.score)
+
+    const stopsFormatted = crawl.stops.map((s) => ({
+      id: s.id,
+      name: s.name,
+      address: s.address,
+      order: s.order,
+      checkInCount: s.checkIns.length,
+      checkedIn: userId ? s.checkIns.some((c) => c.userId === userId) : false,
+      checkers: s.checkIns.map((c) => ({ id: c.user.id, displayName: c.user.displayName, photoUrl: c.user.photoUrl })),
+    }))
+
+    res.json({ data: { ...crawl, stops: stopsFormatted, leaderboard } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/groups/:groupId/pub-crawl — create a pub crawl */
+router.post('/:groupId/pub-crawl', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { groupId } = req.params as { groupId: string }
+    const userId = req.user!.dbUser.id
+    const { name, stops } = req.body as {
+      name: string
+      stops: Array<{ name: string; address?: string }>
+    }
+
+    if (!name?.trim()) throw new AppError('Pub crawl name required', 400)
+    if (!Array.isArray(stops) || stops.length < 2) throw new AppError('At least 2 stops required', 400)
+    if (stops.length > 12) throw new AppError('Max 12 stops', 400)
+
+    // End any existing active crawl
+    await prisma.pubCrawl.updateMany({ where: { groupId, status: 'ACTIVE' }, data: { status: 'COMPLETED' } })
+
+    const crawl = await prisma.pubCrawl.create({
+      data: {
+        groupId,
+        createdById: userId,
+        name: name.trim(),
+        stops: {
+          create: stops.map((s, i) => ({
+            name: s.name.trim(),
+            address: s.address?.trim() ?? null,
+            order: i,
+          })),
+        },
+      },
+      include: {
+        stops: { orderBy: { order: 'asc' }, include: { checkIns: true } },
+        createdBy: { select: { id: true, displayName: true } },
+      },
+    })
+
+    res.status(201).json({ data: crawl })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/groups/:groupId/pub-crawl/stops/:stopId/checkin — check in at a stop */
+router.post('/:groupId/pub-crawl/stops/:stopId/checkin', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { stopId } = req.params as { stopId: string }
+    const userId = req.user!.dbUser.id
+
+    const stop = await prisma.pubCrawlStop.findUnique({ where: { id: stopId } })
+    if (!stop) throw new AppError('Stop not found', 404)
+
+    const ci = await prisma.pubCrawlCheckIn.upsert({
+      where: { stopId_userId: { stopId, userId } },
+      update: {},
+      create: { stopId, userId },
+    })
+
+    res.json({ data: ci })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** DELETE /api/groups/:groupId/pub-crawl — end/delete active pub crawl */
+router.delete('/:groupId/pub-crawl', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { groupId } = req.params as { groupId: string }
+    await prisma.pubCrawl.updateMany({ where: { groupId, status: 'ACTIVE' }, data: { status: 'COMPLETED' } })
+    res.json({ data: { ok: true } })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router

@@ -14,6 +14,11 @@ export type NotificationType =
   | 'CELEBRITY_NEARBY'
   | 'EVENT_UPDATED'
   | 'PARTY_BLAST'
+  | 'FOLLOW'
+  | 'NUDGE'
+  | 'GO_OUT_REQUEST'
+  | 'GO_OUT_ACCEPTED'
+  | 'PROFILE_VIEW'
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 

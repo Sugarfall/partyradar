@@ -148,6 +148,8 @@ model User {
   nudgesReceived       Nudge[]       @relation("NudgeReceiver")
   goOutSent            GoOutRequest[] @relation("GoOutSender")
   goOutReceived        GoOutRequest[] @relation("GoOutReceiver")
+  pubCrawlsCreated     PubCrawl[]     @relation("PubCrawlCreator")
+  pubCrawlCheckIns     PubCrawlCheckIn[] @relation("PubCrawlCheckIns")
 }
 
 model Event {
@@ -535,6 +537,48 @@ model GroupChat {
   memberships GroupMembership[]
   messages    GroupMessage[]
   subscriptions GroupSubscription[]
+  pubCrawls   PubCrawl[]
+}
+
+// ─── Pub Crawl ────────────────────────────────────────────────────────────────
+
+model PubCrawl {
+  id          String         @id @default(cuid())
+  groupId     String
+  createdById String
+  name        String
+  status      String         @default("ACTIVE")
+  createdAt   DateTime       @default(now())
+  group       GroupChat      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdBy   User           @relation("PubCrawlCreator", fields: [createdById], references: [id])
+  stops       PubCrawlStop[]
+
+  @@index([groupId])
+}
+
+model PubCrawlStop {
+  id        String           @id @default(cuid())
+  crawlId   String
+  name      String
+  address   String?
+  order     Int              @default(0)
+  createdAt DateTime         @default(now())
+  crawl     PubCrawl         @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  checkIns  PubCrawlCheckIn[]
+
+  @@index([crawlId])
+}
+
+model PubCrawlCheckIn {
+  id        String       @id @default(cuid())
+  stopId    String
+  userId    String
+  createdAt DateTime     @default(now())
+  stop      PubCrawlStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  user      User         @relation("PubCrawlCheckIns", fields: [userId], references: [id])
+
+  @@unique([stopId, userId])
+  @@index([userId])
 }
 
 model GroupSubscription {
