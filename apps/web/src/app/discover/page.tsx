@@ -776,7 +776,7 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
             style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }}
           />
           <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>
-            {retrying ? 'RETRYING...' : 'SCANNING AREA...'}
+            {retrying ? 'RETRYING...' : 'FINDING EVENTS NEAR YOU...'}
           </p>
         </>
       ) : (
@@ -911,6 +911,22 @@ export default function DiscoverPage() {
     // Also clear if no location (denied) and events fetch finished
     if (!userLocation && !isLoading) setGeoResolved(true)
   }, [userLocation, isLoading])
+
+  // Auto-retry once when 0 events returned with a location — the first load triggers
+  // the background sync; 4 s later events will be in the DB and a re-fetch will find them.
+  const autoRetried = useRef(false)
+  const [syncing, setSyncing] = useState(false)
+  useEffect(() => {
+    if (autoRetried.current) return
+    if (isLoading || !geoResolved || !userLocation || events.length > 0) return
+    autoRetried.current = true
+    setSyncing(true)
+    const t = setTimeout(async () => {
+      await forceRetry().catch(() => {})
+      setSyncing(false)
+    }, 4000)
+    return () => clearTimeout(t)
+  }, [isLoading, geoResolved, userLocation, events.length, forceRetry])
 
   // locationLoading: spinner until geo is settled and we have event data
   const locationLoading = !geoResolved || (isLoading && events.length === 0)
@@ -1228,7 +1244,7 @@ export default function DiscoverPage() {
               <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>SCANNING AREA...</p>
             </div>
           ) : events.length === 0 ? (
-            <EmptyState loading={false} onRetry={forceRetry} />
+            <EmptyState loading={syncing} onRetry={forceRetry} />
           ) : (() => {
             const liveEvents = events.filter(e => {
               const start = new Date(e.startsAt).getTime()
@@ -1313,7 +1329,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} />}
+            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} />}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
