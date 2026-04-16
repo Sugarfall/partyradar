@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 
@@ -10,12 +10,31 @@ const participantSelect = {
   user: { select: { id: true, displayName: true, photoUrl: true, username: true } },
 }
 
-/** GET /api/dm/users?q= — search users to DM */
+/** GET /api/dm/users?q= — search users to DM, or return suggestions when q is blank */
 router.get('/users', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const q = String(req.query['q'] ?? '').trim()
     const myId = req.user!.dbUser.id
-    if (!q) return res.json({ data: [] })
+
+    if (!q) {
+      const existingConvos = await prisma.conversation.findMany({
+        where: { participants: { some: { userId: myId } } },
+        include: { participants: { select: { userId: true } } },
+      })
+      const alreadyTalkedTo = new Set(
+        existingConvos.flatMap((c) => c.participants.map((p) => p.userId)).filter((id) => id !== myId),
+      )
+
+      const suggestions = await prisma.user.findMany({
+        where: {
+          id: { not: myId, notIn: alreadyTalkedTo.size > 0 ? [...alreadyTalkedTo] : undefined },
+        },
+        select: { id: true, displayName: true, username: true, photoUrl: true },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+      })
+      return res.json({ data: suggestions, isSuggestions: true })
+    }
 
     const users = await prisma.user.findMany({
       where: {
@@ -29,7 +48,32 @@ router.get('/users', requireAuth, async (req: AuthRequest, res, next) => {
       take: 8,
     })
 
-    res.json({ data: users })
+    res.json({ data: users, isSuggestions: false })
+  } catch (err) { next(err) }
+})
+
+/** GET /api/dm/public-key/:userId — get a user's E2E public key */
+router.get('/public-key/:userId', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { userId } = req.params as { userId: string }
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, e2ePublicKey: true },
+    })
+    if (!user) throw new AppError('User not found', 404)
+    res.json({ data: { publicKey: user.e2ePublicKey ?? null } })
+  } catch (err) { next(err) }
+})
+
+/** PUT /api/dm/public-key — save own E2E public key */
+router.put('/public-key', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { publicKey } = req.body as { publicKey: string }
+    if (!publicKey || typeof publicKey !== 'string') throw new AppError('publicKey required', 400)
+
+    await prisma.user.update({ where: { id: userId }, data: { e2ePublicKey: publicKey } })
+    res.json({ data: { ok: true } })
   } catch (err) { next(err) }
 })
 
@@ -50,11 +94,14 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
     const data = conversations.map((c) => {
       const other = c.participants.find((p) => p.userId !== userId)?.user
       const last = c.messages[0]
+      const lastText = last
+        ? last.isSnap ? '📸 Snap' : last.text
+        : null
       return {
         id: c.id,
         updatedAt: c.lastAt ?? c.createdAt,
         other: other ?? null,
-        lastMessage: last ? { text: last.text, senderId: last.senderId, createdAt: last.createdAt } : null,
+        lastMessage: last ? { text: lastText, senderId: last.senderId, createdAt: last.createdAt } : null,
       }
     })
 
@@ -70,11 +117,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     if (!recipientId) throw new AppError('recipientId required', 400)
     if (recipientId === myId) throw new AppError('Cannot DM yourself', 400)
 
-    // Check recipient exists
     const recipient = await prisma.user.findUnique({ where: { id: recipientId }, select: { id: true, displayName: true } })
     if (!recipient) throw new AppError('User not found', 404)
 
-    // Find existing conversation between these two users
     const existing = await prisma.conversation.findFirst({
       where: {
         AND: [
@@ -87,7 +132,6 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     if (existing) return res.json({ data: { id: existing.id } })
 
-    // Create new conversation
     const convo = await prisma.conversation.create({
       data: {
         participants: {
@@ -124,18 +168,34 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 
     const other = convo.participants.find((p) => p.userId !== userId)?.user
 
+    // Also return the other user's public key for E2E encryption
+    const otherPublicKey = other
+      ? (await prisma.user.findUnique({ where: { id: other.id }, select: { e2ePublicKey: true } }))?.e2ePublicKey ?? null
+      : null
+
     res.json({
       data: {
         id: convo.id,
         other,
-        messages: convo.messages.map((m) => ({
-          id: m.id,
-          senderId: m.senderId,
-          senderName: m.sender.displayName,
-          senderPhoto: m.sender.photoUrl,
-          text: m.text,
-          createdAt: m.createdAt,
-        })),
+        otherPublicKey,
+        messages: convo.messages.map((m) => {
+          // For snaps: only the sender or pre-view recipient sees the URL
+          // Once viewed (snapViewedAt set), all parties see [SNAP_VIEWED]
+          let text = m.text
+          if (m.isSnap && m.snapViewedAt) {
+            text = '[SNAP_VIEWED]'
+          }
+          return {
+            id: m.id,
+            senderId: m.senderId,
+            senderName: m.sender.displayName,
+            senderPhoto: m.sender.photoUrl,
+            text,
+            isSnap: m.isSnap,
+            snapViewed: !!m.snapViewedAt,
+            createdAt: m.createdAt,
+          }
+        }),
       },
     })
   } catch (err) { next(err) }
@@ -146,7 +206,7 @@ router.post('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
     const { id } = req.params as { id: string }
-    const { text } = req.body as { text: string }
+    const { text, isSnap = false } = req.body as { text: string; isSnap?: boolean }
     if (!text?.trim()) throw new AppError('text required', 400)
 
     const convo = await prisma.conversation.findUnique({
@@ -156,14 +216,16 @@ router.post('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     if (!convo) throw new AppError('Conversation not found', 404)
     if (!convo.participants.some((p) => p.userId === userId)) throw new AppError('Forbidden', 403)
 
+    const lastPreview = isSnap ? '📸 Snap' : text.trim().slice(0, 100)
+
     const [msg] = await prisma.$transaction([
       prisma.directMessage.create({
-        data: { conversationId: id, senderId: userId, text: text.trim() },
+        data: { conversationId: id, senderId: userId, text: text.trim(), isSnap },
         include: { sender: { select: { id: true, displayName: true, photoUrl: true } } },
       }),
       prisma.conversation.update({
         where: { id },
-        data: { lastMessage: text.trim().slice(0, 100), lastAt: new Date() },
+        data: { lastMessage: lastPreview, lastAt: new Date() },
       }),
     ])
 
@@ -174,9 +236,41 @@ router.post('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         senderName: msg.sender.displayName,
         senderPhoto: msg.sender.photoUrl,
         text: msg.text,
+        isSnap: msg.isSnap,
+        snapViewed: false,
         createdAt: msg.createdAt,
       },
     })
+  } catch (err) { next(err) }
+})
+
+/** POST /api/dm/:convoId/messages/:msgId/view-snap — mark a snap as viewed */
+router.post('/:convoId/messages/:msgId/view-snap', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { convoId, msgId } = req.params as { convoId: string; msgId: string }
+
+    const convo = await prisma.conversation.findUnique({
+      where: { id: convoId },
+      include: { participants: { select: { userId: true } } },
+    })
+    if (!convo) throw new AppError('Conversation not found', 404)
+    if (!convo.participants.some((p) => p.userId === userId)) throw new AppError('Forbidden', 403)
+
+    const msg = await prisma.directMessage.findUnique({ where: { id: msgId } })
+    if (!msg) throw new AppError('Message not found', 404)
+    if (!msg.isSnap) throw new AppError('Not a snap', 400)
+    if (msg.snapViewedAt) return res.json({ data: { alreadyViewed: true } })
+
+    // Only the recipient (not the sender) can mark it as viewed
+    if (msg.senderId === userId) return res.json({ data: { alreadyViewed: false, isSender: true } })
+
+    const updated = await prisma.directMessage.update({
+      where: { id: msgId },
+      data: { snapViewedAt: new Date() },
+    })
+
+    res.json({ data: { ok: true, viewedAt: updated.snapViewedAt } })
   } catch (err) { next(err) }
 })
 

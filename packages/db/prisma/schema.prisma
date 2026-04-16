@@ -105,6 +105,7 @@ model User {
   referralCode      String?          @unique
   referralBalance   Float            @default(0)
   referredBy        String?
+  e2ePublicKey      String?          @db.Text
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -171,6 +172,9 @@ model Event {
   eventbriteId          String?        @unique
   eventbriteUrl         String?
   socialSourceUrl       String?
+  ticketmasterId        String?        @unique
+  skiddleId             String?        @unique
+  externalSource        String?        // "ticketmaster" | "eventbrite" | "skiddle"
   venueId               String?
   venue                 Venue?         @relation(fields: [venueId], references: [id])
   createdAt             DateTime       @default(now())
@@ -347,6 +351,8 @@ model DirectMessage {
   conversationId String
   senderId       String
   text           String       @db.Text
+  isSnap         Boolean      @default(false)
+  snapViewedAt   DateTime?
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User         @relation("SentDMs", fields: [senderId], references: [id])

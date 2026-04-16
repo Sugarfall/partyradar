@@ -38,6 +38,7 @@ import dashboardRouter from './routes/dashboard'
 import leaderboardRouter from './routes/leaderboard'
 import venueDiscoverRouter from './routes/venue-discover'
 import walletRouter from './routes/wallet'
+import usersRouter from './routes/users'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -309,6 +310,7 @@ app.use('/api/referrals', referralsRouter)
 app.use('/api/wallet', walletRouter)
 app.use('/api/dashboard', dashboardRouter)
 app.use('/api/leaderboard', leaderboardRouter)
+app.use('/api/users', usersRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

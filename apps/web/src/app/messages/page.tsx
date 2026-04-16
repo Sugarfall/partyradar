@@ -4,9 +4,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
   Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff,
+  Camera, Mic, Radio, Play, Square, ShieldCheck, Timer,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
+import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,8 @@ interface DmMessage {
   senderName: string
   senderPhoto?: string | null
   text: string
+  isSnap?: boolean
+  snapViewed?: boolean
   createdAt: string
 }
 
@@ -1209,6 +1213,253 @@ function GroupChatView({
 
 // ─── DM Section ───────────────────────────────────────────────────────────────
 
+// ── Voice message player ───────────────────────────────────────────────────────
+
+function VoiceMessagePlayer({ url }: { url: string }) {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  function toggle() {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(url)
+      audioRef.current.onended = () => setPlaying(false)
+    }
+    if (playing) {
+      audioRef.current.pause()
+      setPlaying(false)
+    } else {
+      audioRef.current.play().catch(() => {})
+      setPlaying(true)
+    }
+  }
+
+  return (
+    <button onClick={toggle}
+      className="flex items-center gap-2 px-3 py-2 rounded-2xl"
+      style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', minWidth: 120 }}>
+      {playing ? <Square size={12} style={{ color: '#00e5ff' }} /> : <Play size={12} style={{ color: '#00e5ff' }} />}
+      <div className="flex items-end gap-0.5">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="rounded-full"
+            style={{
+              width: 3, background: '#00e5ff',
+              height: playing ? `${6 + Math.sin(i * 1.3) * 5}px` : '4px',
+              opacity: 0.6 + i * 0.04,
+              transition: 'height 0.2s',
+            }} />
+        ))}
+      </div>
+      <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.6)' }}>VOICE</span>
+    </button>
+  )
+}
+
+// ── Walkie talkie button ───────────────────────────────────────────────────────
+
+function WalkieTalkieButton({
+  headers, onSend,
+}: {
+  headers: Record<string, string>
+  onSend: (voiceUrl: string) => void
+}) {
+  const [recording, setRecording] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      recorderRef.current = recorder
+      chunksRef.current = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        setUploading(true)
+        try {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+          // Get signed upload credentials
+          const credRes = await fetch(`${API_URL}/uploads/audio`, { method: 'POST', headers })
+          const credJson = await credRes.json()
+          const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
+
+          const formData = new FormData()
+          formData.append('file', blob, 'voice.webm')
+          formData.append('timestamp', String(timestamp))
+          formData.append('signature', signature)
+          formData.append('api_key', apiKey)
+          formData.append('folder', folder)
+          formData.append('resource_type', 'video')
+
+          const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+            method: 'POST', body: formData,
+          })
+          const upJson = await upRes.json()
+          if (upJson.secure_url) onSend(`[VOICE]${upJson.secure_url}`)
+        } catch {}
+        finally { setUploading(false) }
+      }
+      recorder.start()
+      setRecording(true)
+    } catch {}
+  }
+
+  function stopRecording() {
+    recorderRef.current?.stop()
+    recorderRef.current = null
+    setRecording(false)
+  }
+
+  return (
+    <button
+      onPointerDown={startRecording}
+      onPointerUp={stopRecording}
+      onPointerLeave={stopRecording}
+      disabled={uploading}
+      className="p-2.5 rounded-xl transition-all select-none"
+      style={{
+        background: recording ? 'rgba(255,0,110,0.2)' : uploading ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.06)',
+        border: `1px solid ${recording ? 'rgba(255,0,110,0.5)' : uploading ? 'rgba(255,214,0,0.3)' : 'rgba(0,229,255,0.12)'}`,
+        color: recording ? '#ff006e' : uploading ? '#ffd600' : 'rgba(0,229,255,0.5)',
+      }}>
+      {uploading ? <Radio size={16} className="animate-pulse" /> : <Mic size={16} />}
+    </button>
+  )
+}
+
+// ── Snap message bubble ────────────────────────────────────────────────────────
+
+function SnapMessageBubble({
+  message, isMe, headers, convoId,
+  onViewed,
+}: {
+  message: DmMessage
+  isMe: boolean
+  headers: Record<string, string>
+  convoId: string
+  onViewed: (msgId: string) => void
+}) {
+  const [viewing, setViewing] = useState(false)
+  const [secondsLeft, setSecondsLeft] = useState(10)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  async function handleTap() {
+    if (isMe || message.snapViewed || viewing) return
+    // Mark as viewed on server
+    try {
+      await fetch(`${API_URL}/dm/${convoId}/messages/${message.id}/view-snap`, { method: 'POST', headers })
+    } catch {}
+    setViewing(true)
+    setSecondsLeft(10)
+    timerRef.current = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(timerRef.current!)
+          setViewing(false)
+          onViewed(message.id)
+          return 0
+        }
+        return s - 1
+      })
+    }, 1000)
+  }
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
+
+  const url = message.text.replace('[SNAP]', '')
+
+  if (message.snapViewed && !viewing) {
+    return (
+      <div className="px-3 py-2 rounded-2xl flex items-center gap-2"
+        style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(224,242,254,0.06)' }}>
+        <Camera size={14} style={{ color: 'rgba(224,242,254,0.2)' }} />
+        <span className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Snap viewed</span>
+      </div>
+    )
+  }
+
+  if (viewing) {
+    return (
+      <div className="relative rounded-2xl overflow-hidden" style={{ maxWidth: 200 }}>
+        <img src={url} alt="snap" className="w-full rounded-2xl" style={{ maxHeight: 280, objectFit: 'cover' }} />
+        <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full"
+          style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <Timer size={10} style={{ color: '#ff006e' }} />
+          <span className="text-[10px] font-black" style={{ color: '#ff006e' }}>{secondsLeft}s</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (isMe) {
+    return (
+      <div className="px-3 py-2 rounded-2xl flex items-center gap-2"
+        style={{ background: 'rgba(255,0,110,0.1)', border: '1px solid rgba(255,0,110,0.25)' }}>
+        <Camera size={14} style={{ color: '#ff006e' }} />
+        <span className="text-xs font-bold" style={{ color: '#ff006e' }}>📸 Snap sent</span>
+      </div>
+    )
+  }
+
+  return (
+    <button onClick={handleTap}
+      className="px-3 py-2.5 rounded-2xl flex items-center gap-2 transition-all active:scale-95"
+      style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.35)' }}>
+      <Camera size={14} style={{ color: '#ff006e' }} />
+      <div>
+        <p className="text-xs font-black" style={{ color: '#ff006e' }}>📸 Tap to view</p>
+        <p className="text-[9px]" style={{ color: 'rgba(255,0,110,0.5)' }}>1 time only · 10s</p>
+      </div>
+    </button>
+  )
+}
+
+// ── Follow button in DM header ─────────────────────────────────────────────────
+
+function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Record<string, string> }) {
+  const [following, setFollowing] = useState<boolean | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API_URL}/follow/${targetId}`, { headers })
+      .then((r) => r.json())
+      .then((j) => setFollowing(j.data?.isFollowing ?? false))
+      .catch(() => {})
+  }, [targetId])
+
+  async function toggle() {
+    if (following === null || loading) return
+    setLoading(true)
+    try {
+      if (following) {
+        await fetch(`${API_URL}/follow/${targetId}`, { method: 'DELETE', headers })
+      } else {
+        await fetch(`${API_URL}/follow/${targetId}`, { method: 'POST', headers })
+      }
+      setFollowing(!following)
+    } catch {}
+    finally { setLoading(false) }
+  }
+
+  if (following === null) return null
+
+  return (
+    <button onClick={toggle} disabled={loading}
+      className="flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all"
+      style={{
+        background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
+        border: `1px solid ${following ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.3)'}`,
+        color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+      }}>
+      {following ? <UserCheck size={11} /> : <UserPlus size={11} />}
+      <span className="text-[9px] font-black tracking-wide">{following ? 'FOLLOWING' : 'FOLLOW'}</span>
+    </button>
+  )
+}
+
+// ── DM Section ─────────────────────────────────────────────────────────────────
+
 function DmSection({ dbUser, headers }: {
   dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
   headers: Record<string, string>
@@ -1217,14 +1468,29 @@ function DmSection({ dbUser, headers }: {
   const [loading, setLoading] = useState(true)
   const [activeConvo, setActiveConvo] = useState<string | null>(null)
   const [messages, setMessages] = useState<DmMessage[]>([])
+  const [decrypted, setDecrypted] = useState<Record<string, string>>({})
   const [msgsLoading, setMsgsLoading] = useState(false)
   const [activeOther, setActiveOther] = useState<OtherUser | null>(null)
+  const [otherPublicKey, setOtherPublicKey] = useState<string | null>(null)
+  const [e2eReady, setE2eReady] = useState(false)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState<OtherUser[]>([])
   const [searching, setSearching] = useState(false)
+  const snapInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Init E2E keys on mount
+  useEffect(() => {
+    if (!dbUser) return
+    getOrCreateKeyPair().then(({ publicKeyJWK }) => {
+      const pubStr = serializePublicKey(publicKeyJWK)
+      fetch(`${API_URL}/dm/public-key`, { method: 'PUT', headers, body: JSON.stringify({ publicKey: pubStr }) })
+        .then(() => setE2eReady(true))
+        .catch(() => setE2eReady(true))
+    }).catch(() => {})
+  }, [dbUser?.id])
 
   useEffect(() => {
     if (!dbUser) { setLoading(false); return }
@@ -1237,9 +1503,32 @@ function DmSection({ dbUser, headers }: {
     setMsgsLoading(true)
     fetch(`${API_URL}/dm/${activeConvo}`, { headers })
       .then((r) => r.json())
-      .then((j) => { setMessages(j.data?.messages ?? []); setActiveOther(j.data?.other ?? null) })
+      .then((j) => {
+        setMessages(j.data?.messages ?? [])
+        setActiveOther(j.data?.other ?? null)
+        setOtherPublicKey(j.data?.otherPublicKey ?? null)
+      })
       .catch(() => {}).finally(() => setMsgsLoading(false))
   }, [activeConvo])
+
+  // Decrypt messages whenever messages or otherPublicKey changes
+  useEffect(() => {
+    if (!otherPublicKey || messages.length === 0) return
+    const encryptedMsgs = messages.filter((m) => m.text.startsWith('[E2E]'))
+    if (encryptedMsgs.length === 0) return
+    Promise.all(
+      encryptedMsgs.map(async (m) => {
+        const plain = await decryptMessage(m.text, otherPublicKey).catch(() => null)
+        return [m.id, plain ?? m.text] as [string, string]
+      })
+    ).then((pairs) => {
+      setDecrypted((prev) => {
+        const next = { ...prev }
+        pairs.forEach(([id, text]) => { next[id] = text })
+        return next
+      })
+    })
+  }, [messages, otherPublicKey])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
@@ -1263,56 +1552,140 @@ function DmSection({ dbUser, headers }: {
     }
   }
 
-  async function sendMessage() {
+  async function sendTextMessage() {
     if (!text.trim() || !activeConvo || sending || !dbUser) return
     setSending(true)
     const draft = text.trim(); setText('')
 
-    // Optimistic message — shown immediately while API call is in flight
+    // Encrypt if we have the other party's public key
+    let textToSend = draft
+    if (otherPublicKey) {
+      try { textToSend = await encryptMessage(draft, otherPublicKey) } catch {}
+    }
+
     const optimisticId = `optimistic_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const optimisticMsg: DmMessage = {
-      id: optimisticId,
-      senderId: dbUser.id,
-      senderName: dbUser.displayName ?? '',
-      senderPhoto: dbUser.photoUrl ?? null,
-      text: draft,
-      createdAt: new Date().toISOString(),
+      id: optimisticId, senderId: dbUser.id, senderName: dbUser.displayName ?? '',
+      senderPhoto: dbUser.photoUrl ?? null, text: draft, createdAt: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, optimisticMsg])
+    // Store plaintext for optimistic display
+    setDecrypted((prev) => ({ ...prev, [optimisticId]: draft }))
 
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: draft }) })
+      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: textToSend }) })
       const j = await res.json()
       if (j.data) {
-        // Replace optimistic message with server response
         setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+        setDecrypted((prev) => { const n = { ...prev }; n[j.data.id] = draft; delete n[optimisticId]; return n })
       } else {
-        // Server returned no data — rollback
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+        setDecrypted((prev) => { const n = { ...prev }; delete n[optimisticId]; return n })
         setText(draft)
       }
     } catch {
-      // API call failed — rollback the optimistic message
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+      setDecrypted((prev) => { const n = { ...prev }; delete n[optimisticId]; return n })
       setText(draft)
     }
     finally { setSending(false) }
   }
 
+  async function sendVoiceMessage(voiceUrl: string) {
+    if (!activeConvo || !dbUser) return
+    const optimisticId = `optimistic_${Date.now()}`
+    const optimisticMsg: DmMessage = {
+      id: optimisticId, senderId: dbUser.id, senderName: dbUser.displayName ?? '',
+      senderPhoto: dbUser.photoUrl ?? null, text: voiceUrl, createdAt: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimisticMsg])
+    try {
+      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: voiceUrl }) })
+      const j = await res.json()
+      if (j.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+      else setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+    }
+  }
+
+  async function sendSnap(file: File) {
+    if (!activeConvo || !dbUser) return
+    try {
+      const credRes = await fetch(`${API_URL}/uploads/image`, { method: 'POST', headers, body: JSON.stringify({ folder: 'events' }) })
+      const credJson = await credRes.json()
+      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('timestamp', String(timestamp))
+      formData.append('signature', signature)
+      formData.append('api_key', apiKey)
+      formData.append('folder', folder)
+
+      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData })
+      const upJson = await upRes.json()
+      if (!upJson.secure_url) return
+
+      const snapText = `[SNAP]${upJson.secure_url}`
+      const optimisticId = `optimistic_${Date.now()}`
+      const optimisticMsg: DmMessage = {
+        id: optimisticId, senderId: dbUser.id, senderName: dbUser.displayName ?? '',
+        senderPhoto: dbUser.photoUrl ?? null, text: snapText, isSnap: true, snapViewed: false,
+        createdAt: new Date().toISOString(),
+      }
+      setMessages((prev) => [...prev, optimisticMsg])
+
+      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: snapText, isSnap: true }) })
+      const j = await res.json()
+      if (j.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+      else setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+    } catch {}
+  }
+
+  function handleSnapViewed(msgId: string) {
+    setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, snapViewed: true, text: '[SNAP_VIEWED]' } : m))
+  }
+
+  function displayText(m: DmMessage): string {
+    if (decrypted[m.id]) return decrypted[m.id]
+    if (m.text.startsWith('[E2E]')) return '🔒 ...'
+    return m.text
+  }
+
   if (activeConvo) {
     return (
-      <div className="flex flex-col" style={{ height: 'calc(100vh - 6.5rem)', background: '#04040d' }}>
+      <div style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 64, background: '#04040d', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
           style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
-          <button onClick={() => { setActiveConvo(null); setMessages([]) }} className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
+          <button onClick={() => { setActiveConvo(null); setMessages([]); setDecrypted({}); setOtherPublicKey(null) }}
+            className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
             <ArrowLeft size={18} />
           </button>
-          {activeOther && <Avatar user={activeOther} size={32} />}
+          {activeOther && (
+            <a href={`/profile/${activeOther.username ?? activeOther.id}`}>
+              <Avatar user={activeOther} size={32} />
+            </a>
+          )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{activeOther?.displayName ?? '...'}</p>
-            {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{activeOther.username}</p>}
+            <a href={activeOther?.username ? `/profile/${activeOther.username}` : '#'} className="block">
+              <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{activeOther?.displayName ?? '...'}</p>
+              {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{activeOther.username}</p>}
+            </a>
           </div>
+          {/* E2E badge */}
+          {e2eReady && otherPublicKey && (
+            <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black tracking-wide"
+              style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.2)', color: '#00ff88' }}>
+              <ShieldCheck size={10} /> E2E
+            </span>
+          )}
+          {/* Follow button */}
+          {activeOther && dbUser && <FollowButtonDm targetId={activeOther.id} headers={headers} />}
         </div>
+
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {msgsLoading ? (
             <div className="flex items-center justify-center h-32">
@@ -1326,16 +1699,27 @@ function DmSection({ dbUser, headers }: {
             </div>
           ) : messages.map((m) => {
             const isMe = m.senderId === dbUser?.id
+            const isVoice = m.text.startsWith('[VOICE]')
+            const isSnap = m.isSnap || m.text.startsWith('[SNAP]') || m.text === '[SNAP_VIEWED]'
             return (
               <div key={m.id} className={`flex gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
                 {!isMe && activeOther && <Avatar user={activeOther} size={28} />}
-                <div className="max-w-[72%]">
-                  <div className="px-3 py-2 rounded-2xl text-sm"
-                    style={isMe
-                      ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
-                      : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
-                    {m.text}
-                  </div>
+                <div className="max-w-[75%]">
+                  {isVoice ? (
+                    <VoiceMessagePlayer url={m.text.replace('[VOICE]', '')} />
+                  ) : isSnap ? (
+                    <SnapMessageBubble
+                      message={m} isMe={isMe} headers={headers}
+                      convoId={activeConvo} onViewed={handleSnapViewed}
+                    />
+                  ) : (
+                    <div className="px-3 py-2 rounded-2xl text-sm break-words"
+                      style={isMe
+                        ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
+                        : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
+                      {displayText(m)}
+                    </div>
+                  )}
                   <p className={`text-[9px] mt-0.5 ${isMe ? 'text-right' : 'text-left'}`}
                     style={{ color: 'rgba(224,242,254,0.2)' }}>{timeAgo(m.createdAt)}</p>
                 </div>
@@ -1344,14 +1728,30 @@ function DmSection({ dbUser, headers }: {
           })}
           <div ref={bottomRef} />
         </div>
-        <div className="flex-shrink-0 px-4 py-3 flex gap-2"
+
+        {/* Input bar */}
+        <div className="flex-shrink-0 px-4 py-3 flex gap-2 items-center"
           style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          {/* Snap camera button */}
+          <button onClick={() => snapInputRef.current?.click()}
+            className="p-2.5 rounded-xl"
+            style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)', color: 'rgba(255,0,110,0.6)' }}>
+            <Camera size={16} />
+          </button>
+          <input ref={snapInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) { sendSnap(f); e.target.value = '' } }} />
+
           <input type="text" placeholder="Message..." value={text}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTextMessage() } }}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm bg-transparent outline-none"
             style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
-          <button onClick={sendMessage} disabled={!text.trim() || sending}
+
+          {/* Walkie talkie */}
+          <WalkieTalkieButton headers={headers} onSend={sendVoiceMessage} />
+
+          {/* Send */}
+          <button onClick={sendTextMessage} disabled={!text.trim() || sending}
             className="p-2.5 rounded-xl transition-all"
             style={{
               background: text.trim() ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.04)',
