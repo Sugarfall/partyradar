@@ -14,6 +14,11 @@ export type NotificationType =
   | 'CELEBRITY_NEARBY'
   | 'EVENT_UPDATED'
   | 'PARTY_BLAST'
+  | 'FOLLOW'
+  | 'NUDGE'
+  | 'GO_OUT_REQUEST'
+  | 'GO_OUT_ACCEPTED'
+  | 'PROFILE_VIEW'
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +32,8 @@ export interface User {
   photoUrl?: string | null
   gender?: Gender | null
   ageVerified: boolean
+  alcoholFriendly: boolean
+  showAlcoholEvents: boolean
   subscriptionTier: SubscriptionTier
   accountMode: AccountMode
   stripeCustomerId?: string | null
