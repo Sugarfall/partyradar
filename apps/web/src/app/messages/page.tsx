@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
-  Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff,
+  Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff, X,
   Camera, Mic, Radio, Play, Square, ShieldCheck, Timer,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -825,6 +825,14 @@ function GroupChatView({
   const [showSubModal, setShowSubModal] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // Pub crawl
+  const [activeTab, setActiveTab] = useState<'chat' | 'crawl'>('chat')
+  const [crawl, setCrawl] = useState<any>(null)
+  const [crawlLoading, setCrawlLoading] = useState(false)
+  const [showCreateCrawl, setShowCreateCrawl] = useState(false)
+  const [crawlName, setCrawlName] = useState('')
+  const [crawlStops, setCrawlStops] = useState([{ name: '', address: '' }, { name: '', address: '' }])
+  const [crawlCreating, setCrawlCreating] = useState(false)
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -860,6 +868,48 @@ function GroupChatView({
     const t = setInterval(() => load(true), 8000)
     return () => clearInterval(t)
   }, [load])
+
+  // Load pub crawl when switching to crawl tab
+  const loadCrawl = useCallback(async () => {
+    setCrawlLoading(true)
+    try {
+      const r = await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, { headers })
+      const j = await r.json()
+      setCrawl(j.data)
+    } catch {}
+    finally { setCrawlLoading(false) }
+  }, [groupId])
+
+  useEffect(() => {
+    if (activeTab === 'crawl') loadCrawl()
+  }, [activeTab, loadCrawl])
+
+  async function createCrawl() {
+    if (!crawlName.trim() || crawlCreating) return
+    const validStops = crawlStops.filter((s) => s.name.trim())
+    if (validStops.length < 2) return
+    setCrawlCreating(true)
+    try {
+      const r = await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, {
+        method: 'POST', headers, body: JSON.stringify({ name: crawlName.trim(), stops: validStops }),
+      })
+      const j = await r.json()
+      if (j.data) { setCrawl(j.data); setShowCreateCrawl(false); setCrawlName(''); setCrawlStops([{ name: '', address: '' }, { name: '', address: '' }]) }
+    } catch {}
+    finally { setCrawlCreating(false) }
+  }
+
+  async function checkIn(stopId: string) {
+    try {
+      await fetch(`${API_URL}/groups/${groupId}/pub-crawl/stops/${stopId}/checkin`, { method: 'POST', headers })
+      await loadCrawl()
+    } catch {}
+  }
+
+  async function endCrawl() {
+    await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, { method: 'DELETE', headers }).catch(() => {})
+    setCrawl(null)
+  }
 
   async function toggleJoin() {
     if (!group) return
@@ -1060,7 +1110,180 @@ function GroupChatView({
         )}
       </div>
 
+      {/* Chat / Pub Crawl tab bar */}
+      <div className="flex-shrink-0 flex gap-1 px-4 py-2"
+        style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(0,229,255,0.07)' }}>
+        {([
+          { key: 'chat', label: '💬 Chat' },
+          { key: 'crawl', label: '🍺 Pub Crawl' },
+        ] as const).map(({ key, label }) => (
+          <button key={key} onClick={() => setActiveTab(key)}
+            className="flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-wide transition-all"
+            style={{
+              background: activeTab === key ? 'rgba(0,229,255,0.1)' : 'transparent',
+              border: `1px solid ${activeTab === key ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.06)'}`,
+              color: activeTab === key ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Pub Crawl View */}
+      {activeTab === 'crawl' && (
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {crawlLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(245,158,11,0.1)', borderTopColor: '#f59e0b' }} />
+            </div>
+          ) : !crawl ? (
+            <div className="flex flex-col items-center gap-4 py-12 text-center">
+              <span className="text-4xl">🍺</span>
+              <p className="text-sm font-black tracking-wide" style={{ color: 'rgba(245,158,11,0.8)' }}>NO ACTIVE PUB CRAWL</p>
+              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Plan a pub crawl for the group — add stops, check in, and see the leaderboard.</p>
+              {dbUserId && (
+                <button onClick={() => setShowCreateCrawl(true)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
+                  style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b' }}>
+                  + PLAN PUB CRAWL
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Crawl header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-black" style={{ color: '#f59e0b' }}>{crawl.name}</p>
+                  <p className="text-[10px]" style={{ color: 'rgba(245,158,11,0.5)' }}>{crawl.stops?.length} stops</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={loadCrawl} className="p-1.5 rounded-lg" style={{ color: 'rgba(245,158,11,0.5)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                    <Radio size={12} />
+                  </button>
+                  {dbUserId && (
+                    <button onClick={endCrawl} className="px-2.5 py-1 rounded-lg text-[9px] font-black"
+                      style={{ color: 'rgba(255,0,110,0.6)', border: '1px solid rgba(255,0,110,0.15)' }}>
+                      END
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Stops */}
+              <div className="space-y-2">
+                {crawl.stops?.map((stop: any, i: number) => (
+                  <div key={stop.id} className="p-3 rounded-xl"
+                    style={{ background: stop.checkedIn ? 'rgba(0,255,136,0.04)' : 'rgba(7,7,26,0.8)', border: `1px solid ${stop.checkedIn ? 'rgba(0,255,136,0.25)' : 'rgba(245,158,11,0.15)'}` }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-black"
+                          style={{ background: stop.checkedIn ? 'rgba(0,255,136,0.15)' : 'rgba(245,158,11,0.1)', color: stop.checkedIn ? '#00ff88' : '#f59e0b' }}>
+                          {stop.checkedIn ? '✓' : i + 1}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{stop.name}</p>
+                          {stop.address && <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>{stop.address}</p>}
+                        </div>
+                      </div>
+                      {dbUserId && !stop.checkedIn && (
+                        <button onClick={() => checkIn(stop.id)}
+                          className="px-2.5 py-1 rounded-lg text-[9px] font-black shrink-0"
+                          style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#f59e0b' }}>
+                          CHECK IN
+                        </button>
+                      )}
+                    </div>
+                    {stop.checkInCount > 0 && (
+                      <div className="flex items-center gap-1 mt-2">
+                        <div className="flex -space-x-1">
+                          {stop.checkers?.slice(0, 4).map((c: any) => (
+                            c.photoUrl
+                              ? <img key={c.id} src={c.photoUrl} className="w-5 h-5 rounded-full object-cover" style={{ border: '1px solid #04040d' }} />
+                              : <div key={c.id} className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black" style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid #04040d' }}>{c.displayName[0]}</div>
+                          ))}
+                        </div>
+                        <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.35)' }}>{stop.checkInCount} checked in</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Leaderboard */}
+              {crawl.leaderboard?.length > 0 && (
+                <div>
+                  <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(245,158,11,0.5)' }}>🏆 LEADERBOARD</p>
+                  <div className="space-y-1.5">
+                    {crawl.leaderboard.slice(0, 5).map((entry: any, i: number) => (
+                      <div key={entry.user.id} className="flex items-center gap-3 p-2.5 rounded-xl"
+                        style={{ background: i === 0 ? 'rgba(255,214,0,0.06)' : 'rgba(7,7,26,0.6)', border: `1px solid ${i === 0 ? 'rgba(255,214,0,0.2)' : 'rgba(245,158,11,0.08)'}` }}>
+                        <span className="text-sm" style={{ minWidth: 16 }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
+                        {entry.user.photoUrl
+                          ? <img src={entry.user.photoUrl} className="w-6 h-6 rounded-full object-cover" />
+                          : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>{entry.user.displayName[0]}</div>
+                        }
+                        <p className="flex-1 text-xs font-bold" style={{ color: '#e0f2fe' }}>{entry.user.displayName}</p>
+                        <p className="text-xs font-black" style={{ color: '#f59e0b' }}>{entry.score} <span className="text-[9px] font-normal" style={{ color: 'rgba(245,158,11,0.5)' }}>stops</span></p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Create crawl modal */}
+          {showCreateCrawl && (
+            <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
+              style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+              onClick={() => setShowCreateCrawl(false)}>
+              <div className="w-full max-w-sm rounded-2xl p-5 space-y-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
+                style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                <p className="text-sm font-black" style={{ color: '#f59e0b' }}>🍺 PLAN PUB CRAWL</p>
+                <input type="text" placeholder="Crawl name (e.g. Friday Night Crawl)" value={crawlName}
+                  onChange={(e) => setCrawlName(e.target.value.slice(0, 50))}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+                  style={{ border: '1px solid rgba(245,158,11,0.2)', color: '#e0f2fe' }} />
+                <div className="space-y-2">
+                  <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(245,158,11,0.5)' }}>STOPS</p>
+                  {crawlStops.map((stop, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
+                        style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>{i + 1}</div>
+                      <input type="text" placeholder="Pub name" value={stop.name}
+                        onChange={(e) => { const next = [...crawlStops]; next[i] = { ...next[i], name: e.target.value }; setCrawlStops(next) }}
+                        className="flex-1 px-2.5 py-2 rounded-lg text-xs bg-transparent outline-none"
+                        style={{ border: '1px solid rgba(245,158,11,0.15)', color: '#e0f2fe' }} />
+                      {crawlStops.length > 2 && (
+                        <button onClick={() => setCrawlStops((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="p-1" style={{ color: 'rgba(255,0,110,0.5)' }}>
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {crawlStops.length < 12 && (
+                    <button onClick={() => setCrawlStops((prev) => [...prev, { name: '', address: '' }])}
+                      className="w-full py-2 rounded-lg text-[10px] font-black"
+                      style={{ border: '1px dashed rgba(245,158,11,0.25)', color: 'rgba(245,158,11,0.5)' }}>
+                      + ADD STOP
+                    </button>
+                  )}
+                </div>
+                <button onClick={createCrawl} disabled={crawlCreating || !crawlName.trim() || crawlStops.filter((s) => s.name.trim()).length < 2}
+                  className="w-full py-3 rounded-xl text-xs font-black tracking-widest disabled:opacity-40"
+                  style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b' }}>
+                  {crawlCreating ? 'CREATING...' : 'START CRAWL 🍺'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
+      {activeTab === 'chat' && (
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {locked ? (
           <div className="flex flex-col items-center justify-center h-60 gap-3 text-center px-4">
@@ -1134,9 +1357,10 @@ function GroupChatView({
         })}
         <div ref={bottomRef} />
       </div>
+      )}
 
-      {/* Input */}
-      {dbUserId ? (
+      {/* Input — only shown in chat tab */}
+      {activeTab === 'chat' && dbUserId ? (
         <div className="flex-shrink-0 px-4 py-3 flex gap-2"
           style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
           <input type="text" placeholder={`Message #${group?.name.toLowerCase() ?? 'group'}...`}
