@@ -1,9 +1,10 @@
 /**
  * Multi-source external event sync utility.
- * Supports Ticketmaster, Skiddle, and Eventbrite.
+ * Supports Ticketmaster, Skiddle, Eventbrite, SerpAPI Google Events, and Perplexity AI.
  * Throttled to once per 30 minutes per city.
  */
 import { prisma } from '@partyradar/db'
+import { createHash } from 'crypto'
 
 // ── Throttle ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,10 @@ interface SyncResult {
 function truncateDescription(text: string | undefined | null, fallback: string): string {
   const desc = text?.trim() || fallback
   return desc.slice(0, 2000)
+}
+
+function stableHash(input: string): string {
+  return createHash('sha256').update(input).digest('hex').slice(0, 32)
 }
 
 // ── Ticketmaster ──────────────────────────────────────────────────────────────
@@ -431,6 +436,214 @@ async function syncEventbrite(
   return { imported, skipped }
 }
 
+// ── SerpAPI Google Events ─────────────────────────────────────────────────────
+
+interface SerpEvent {
+  title?: string
+  date?: { start_date?: string; when?: string }
+  address?: string[]
+  link?: string
+  description?: string
+  thumbnail?: string
+  ticket_info?: Array<{ source?: string; link?: string; is_paid?: boolean }>
+  venue?: { name?: string }
+}
+
+interface SerpResponse {
+  events_results?: SerpEvent[]
+}
+
+function parseSerpDate(when: string | undefined, startDate: string | undefined): Date {
+  const str = when ?? startDate ?? ''
+  if (!str) return new Date()
+  // Try direct parse
+  const d = new Date(str)
+  if (!isNaN(d.getTime())) return d
+  // Append current year and retry (handles "Mon, Apr 14, 8:00 PM")
+  const d2 = new Date(`${str} ${new Date().getFullYear()}`)
+  if (!isNaN(d2.getTime())) return d2
+  return new Date()
+}
+
+function mapSerpEventType(title: string, description: string): EventTypeName {
+  const text = `${title} ${description}`.toLowerCase()
+  if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes('tour')) return 'CONCERT'
+  if (text.includes('club') || text.includes('nightclub') || text.includes('dj') || text.includes('rave') || text.includes('techno') || text.includes('dance night')) return 'CLUB_NIGHT'
+  return 'CONCERT'
+}
+
+async function syncSerpApi(
+  city: string,
+  lat: number,
+  lng: number,
+  hostId: string
+): Promise<{ imported: number; skipped: number }> {
+  const apiKey = process.env['SERPAPI_KEY']
+  if (!apiKey) return { imported: 0, skipped: 0 }
+
+  const url = new URL('https://serpapi.com/search.json')
+  url.searchParams.set('engine', 'google_events')
+  url.searchParams.set('q', `Events in ${city}`)
+  url.searchParams.set('api_key', apiKey)
+  url.searchParams.set('hl', 'en')
+
+  const res = await fetch(url.toString())
+  if (!res.ok) throw new Error(`SerpAPI error: ${res.status}`)
+  const data = (await res.json()) as SerpResponse
+
+  const events = data.events_results ?? []
+  let imported = 0
+  let skipped = 0
+
+  for (const ev of events) {
+    try {
+      const name = ev.title ?? 'Unnamed Event'
+      const startsAt = parseSerpDate(ev.date?.when, ev.date?.start_date)
+      if (startsAt < new Date()) { skipped++; continue }
+
+      const serpApiId = stableHash(`${name}|${ev.date?.start_date ?? ''}|${ev.address?.[0] ?? ''}`)
+      const address = ev.address?.join(', ') ?? city
+      const neighbourhood = ev.venue?.name ?? address.split(',')[0] ?? city
+      const description = truncateDescription(ev.description, name)
+      const type = mapSerpEventType(name, ev.description ?? '')
+      const coverImageUrl = ev.thumbnail ?? null
+      const socialSourceUrl = ev.ticket_info?.find((t) => t.link)?.link ?? ev.link
+      const isPaid = ev.ticket_info?.some((t) => t.is_paid) ?? false
+      const price = isPaid ? 10 : 0
+
+      await prisma.event.upsert({
+        where: { serpApiId },
+        update: { name, description, startsAt, address, neighbourhood, coverImageUrl, socialSourceUrl },
+        create: {
+          hostId, name, type, description, startsAt, endsAt: null,
+          lat, lng, address, neighbourhood,
+          showNeighbourhoodOnly: false, capacity: 500, price,
+          ticketQuantity: 0, ticketsRemaining: 0,
+          alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
+          vibeTags: [], whatToBring: [],
+          isPublished: true, isCancelled: false,
+          coverImageUrl, serpApiId,
+          externalSource: 'serpapi', socialSourceUrl,
+        },
+      })
+      imported++
+    } catch {
+      skipped++
+    }
+  }
+
+  return { imported, skipped }
+}
+
+// ── Perplexity AI Search ──────────────────────────────────────────────────────
+
+interface PerplexityEvent {
+  name?: string
+  date?: string
+  endDate?: string
+  venue?: string
+  address?: string
+  price?: number
+  type?: string
+  description?: string
+  url?: string
+  imageUrl?: string
+}
+
+async function syncPerplexity(
+  city: string,
+  lat: number,
+  lng: number,
+  hostId: string
+): Promise<{ imported: number; skipped: number }> {
+  const apiKey = process.env['PERPLEXITY_API_KEY']
+  if (!apiKey) return { imported: 0, skipped: 0 }
+
+  const today = new Date().toISOString().split('T')[0]
+  const twoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  const prompt =
+    `Find upcoming events, concerts, club nights, parties, and nightlife in ${city} between ${today} and ${twoWeeks}. ` +
+    `Search across Facebook Events, venue websites, Resident Advisor, local listings, and any other sources. ` +
+    `Return ONLY a valid JSON array with no markdown, no explanation, in this exact format:\n` +
+    `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"","address":"","price":0,"type":"CONCERT","description":"","url":"","imageUrl":""}]\n` +
+    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY. price is 0 if free or unknown.`
+
+  const res = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [
+        { role: 'system', content: 'You are an event aggregator. Respond only with valid JSON — no markdown, no prose.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.1,
+      max_tokens: 4000,
+    }),
+  })
+
+  if (!res.ok) throw new Error(`Perplexity API error: ${res.status}`)
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+  const content = data.choices?.[0]?.message?.content ?? ''
+
+  // Extract JSON array — handle both raw and markdown-wrapped responses
+  let events: PerplexityEvent[] = []
+  const tryParse = (str: string) => { try { return JSON.parse(str) as PerplexityEvent[] } catch { return null } }
+  const jsonBlock = content.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const arrayMatch = content.match(/\[[\s\S]*\]/)
+  events = tryParse(content) ?? (jsonBlock ? tryParse(jsonBlock[1] ?? '') : null) ?? (arrayMatch ? tryParse(arrayMatch[0] ?? '') : null) ?? []
+
+  if (!Array.isArray(events)) return { imported: 0, skipped: 0 }
+
+  let imported = 0
+  let skipped = 0
+  const validTypes: EventTypeName[] = ['CONCERT', 'CLUB_NIGHT', 'HOME_PARTY']
+
+  for (const ev of events) {
+    try {
+      const name = ev.name ?? 'Unnamed Event'
+      const startsAt = new Date(ev.date ?? '')
+      if (isNaN(startsAt.getTime()) || startsAt < new Date()) { skipped++; continue }
+
+      const endsAt = ev.endDate ? new Date(ev.endDate) : undefined
+      const aiEventId = stableHash(`perplexity|${name}|${ev.date ?? ''}|${city}`)
+      const address = ev.address ?? ev.venue ?? city
+      const neighbourhood = ev.venue ?? address.split(',')[0] ?? city
+      const description = truncateDescription(ev.description, name)
+      const type: EventTypeName = validTypes.includes(ev.type as EventTypeName) ? (ev.type as EventTypeName) : 'CONCERT'
+      const price = typeof ev.price === 'number' ? ev.price : 0
+
+      await prisma.event.upsert({
+        where: { aiEventId },
+        update: {
+          name, description, startsAt, endsAt,
+          address, neighbourhood,
+          coverImageUrl: ev.imageUrl ?? null,
+          socialSourceUrl: ev.url,
+        },
+        create: {
+          hostId, name, type, description, startsAt,
+          endsAt: endsAt ?? null, lat, lng, address, neighbourhood,
+          showNeighbourhoodOnly: false, capacity: 300, price,
+          ticketQuantity: 0, ticketsRemaining: 0,
+          alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
+          vibeTags: [], whatToBring: [],
+          isPublished: true, isCancelled: false,
+          coverImageUrl: ev.imageUrl ?? null,
+          aiEventId, externalSource: 'perplexity',
+          socialSourceUrl: ev.url,
+        },
+      })
+      imported++
+    } catch {
+      skipped++
+    }
+  }
+
+  return { imported, skipped }
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function syncExternalEvents(
@@ -487,6 +700,30 @@ export async function syncExternalEvents(
       totalImported += result.imported
       totalSkipped += result.skipped
       sources.push('eventbrite')
+    } catch {
+      // source failure is non-fatal
+    }
+  }
+
+  // SerpAPI Google Events
+  if (process.env['SERPAPI_KEY']) {
+    try {
+      const result = await syncSerpApi(city, lat, lng, hostId)
+      totalImported += result.imported
+      totalSkipped += result.skipped
+      sources.push('serpapi')
+    } catch {
+      // source failure is non-fatal
+    }
+  }
+
+  // Perplexity AI Search
+  if (process.env['PERPLEXITY_API_KEY']) {
+    try {
+      const result = await syncPerplexity(city, lat, lng, hostId)
+      totalImported += result.imported
+      totalSkipped += result.skipped
+      sources.push('perplexity')
     } catch {
       // source failure is non-fatal
     }
