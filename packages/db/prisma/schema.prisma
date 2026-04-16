@@ -83,6 +83,8 @@ enum VenueType {
 enum GroupType {
   GENRE
   VENUE
+  FESTIVAL
+  TRIP
 }
 
 // ─── Models ───────────────────────────────────────────────────────────────────

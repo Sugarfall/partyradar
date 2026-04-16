@@ -27,13 +27,31 @@ export default function RadarMap({ sightings }: { sightings: Sighting[] }) {
     mapboxgl.accessToken = token
 
     if (!mapRef.current && containerRef.current) {
+      // Start with a world view, then fly to user location once GPS resolves
       mapRef.current = new mapboxgl.Map({
         container: containerRef.current,
         style: 'mapbox://styles/mapbox/dark-v11',
-        center: [-0.118, 51.509],
-        zoom: 11,
+        center: [0, 20],
+        zoom: 2,
         attributionControl: false,
       })
+
+      // Fly to user's actual GPS position
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            if (mapRef.current) {
+              mapRef.current.flyTo({
+                center: [pos.coords.longitude, pos.coords.latitude],
+                zoom: 12,
+                duration: 1500,
+              })
+            }
+          },
+          () => {/* permission denied — keep world view */},
+          { timeout: 5000 },
+        )
+      }
     }
 
     // Remove old markers
