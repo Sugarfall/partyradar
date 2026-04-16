@@ -536,16 +536,19 @@ interface VenuesListProps {
   venuesLoading: boolean
   venueCity: string | null
   mapCenter: { lat: number; lng: number } | null
+  isTracking: boolean
   onCitySearch: (city: string, lat: number, lng: number) => void
   onWiderSearch: () => void
 }
 
-function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, onCitySearch, onWiderSearch }: VenuesListProps) {
+function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTracking, onCitySearch, onWiderSearch }: VenuesListProps) {
   const [venueSearch, setVenueSearch] = useState('')
   const [cityInput, setCityInput] = useState('')
   const [citySearching, setCitySearching] = useState(false)
   const [cityError, setCityError] = useState('')
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
+  // When GPS is active, city search starts collapsed
+  const [showCitySearch, setShowCitySearch] = useState(!isTracking)
 
   const hasRealVenues = liveVenues.length > 0
   const mapVenues = hasRealVenues ? liveVenues : GLASGOW_VENUES
@@ -585,34 +588,75 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, onCitySea
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
 
-      {/* ── City explorer bar ── */}
-      <div className="flex-shrink-0 px-4 py-3" style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
-        <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>
-          🌍 EXPLORE A CITY
-        </p>
-        <form onSubmit={handleCitySearch} className="flex gap-2">
-          <div className="relative flex-1">
-            <MapPin size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,214,0,0.45)' }} />
-            <input
-              type="text"
-              placeholder="London, New York, Tokyo..."
-              value={cityInput}
-              onChange={(e) => { setCityInput(e.target.value); setCityError('') }}
-              className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
-              style={{ border: '1px solid rgba(255,214,0,0.25)', color: '#e0f2fe' }}
-            />
+      {/* ── Location header / City explorer bar ── */}
+      <div className="flex-shrink-0" style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
+        {/* GPS active: show detected city prominently */}
+        {isTracking && venueCity ? (
+          <div className="px-4 py-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: '#00ff88', boxShadow: '0 0 6px #00ff88' }} />
+                <div>
+                  <p className="text-[8px] font-black tracking-widest" style={{ color: 'rgba(0,255,136,0.55)' }}>VENUES NEAR YOU</p>
+                  <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe', letterSpacing: '0.06em' }}>{venueCity}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCitySearch((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest transition-all"
+                style={{
+                  background: showCitySearch ? 'rgba(255,214,0,0.12)' : 'rgba(255,214,0,0.06)',
+                  border: `1px solid ${showCitySearch ? 'rgba(255,214,0,0.45)' : 'rgba(255,214,0,0.2)'}`,
+                  color: showCitySearch ? '#ffd600' : 'rgba(255,214,0,0.55)',
+                }}
+              >
+                🌍 {showCitySearch ? 'HIDE' : 'EXPLORE ELSEWHERE'}
+              </button>
+            </div>
           </div>
-          <button
-            type="submit"
-            disabled={!cityInput.trim() || citySearching}
-            className="px-3 py-2 rounded-lg text-[10px] font-black tracking-widest transition-all disabled:opacity-40"
-            style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
-          >
-            {citySearching ? '...' : 'GO'}
-          </button>
-        </form>
-        {cityError && (
-          <p className="text-[10px] mt-1.5 font-bold" style={{ color: '#ff006e' }}>{cityError}</p>
+        ) : !isTracking ? (
+          /* No GPS: show city search prominently as the primary way to get started */
+          <div className="px-4 py-3">
+            <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>
+              🌍 EXPLORE A CITY
+            </p>
+          </div>
+        ) : (
+          /* GPS active but city not yet resolved */
+          <div className="px-4 py-2.5 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: '#00ff88', boxShadow: '0 0 6px #00ff88' }} />
+            <p className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(0,255,136,0.55)' }}>LOCATING YOU...</p>
+          </div>
+        )}
+
+        {/* City search form — shown when GPS is off OR user toggled "Explore elsewhere" */}
+        {(!isTracking || showCitySearch) && (
+          <div className="px-4 pb-3">
+            <form onSubmit={handleCitySearch} className="flex gap-2">
+              <div className="relative flex-1">
+                <MapPin size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,214,0,0.45)' }} />
+                <input
+                  type="text"
+                  placeholder="London, New York, Tokyo..."
+                  value={cityInput}
+                  onChange={(e) => { setCityInput(e.target.value); setCityError('') }}
+                  className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
+                  style={{ border: '1px solid rgba(255,214,0,0.25)', color: '#e0f2fe' }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!cityInput.trim() || citySearching}
+                className="px-3 py-2 rounded-lg text-[10px] font-black tracking-widest transition-all disabled:opacity-40"
+                style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
+              >
+                {citySearching ? '...' : 'GO'}
+              </button>
+            </form>
+            {cityError && (
+              <p className="text-[10px] mt-1.5 font-bold" style={{ color: '#ff006e' }}>{cityError}</p>
+            )}
+          </div>
         )}
       </div>
 
@@ -686,16 +730,19 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, onCitySea
             <span style={{ fontSize: 36 }}>🌍</span>
             <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(255,214,0,0.6)' }}>EXPLORE VENUES WORLDWIDE</p>
             <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.3)', maxWidth: 280 }}>
-              Type any city above — London, Berlin, Tokyo, New York — to discover pubs, clubs and bars nearby.
-              Or allow location access to find venues around you automatically.
+              {isTracking
+                ? 'Scanning for venues near you — this may take a moment.'
+                : 'Allow location access to auto-discover venues around you, or type any city above — London, Berlin, Tokyo, New York.'}
             </p>
-            <button
-              onClick={onWiderSearch}
-              className="mt-1 px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all"
-              style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
-            >
-              📍 USE MY LOCATION
-            </button>
+            {!isTracking && (
+              <button
+                onClick={onWiderSearch}
+                className="mt-1 px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all"
+                style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
+              >
+                📍 USE MY LOCATION
+              </button>
+            )}
           </div>
         )}
         {!venuesLoading && hasRealVenues && filtered.length === 0 && (
@@ -1089,6 +1136,7 @@ export default function DiscoverPage() {
           venuesLoading={venuesLoading}
           venueCity={venueCity}
           mapCenter={mapCenter}
+          isTracking={isTracking}
           onCitySearch={handleCitySearch}
           onWiderSearch={handleVenueWiderSearch}
         />
