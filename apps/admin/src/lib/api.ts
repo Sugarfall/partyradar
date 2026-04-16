@@ -18,4 +18,4 @@ export async function adminFetch<T>(path: string, options: RequestInit = {}): Pr
   return data
 }
 
-export const fetcher = (path: string) => adminFetch(path)
+export const fetcher = <T = unknown>(path: string) => adminFetch<T>(path)
