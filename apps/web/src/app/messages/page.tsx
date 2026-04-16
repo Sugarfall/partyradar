@@ -42,7 +42,7 @@ interface GroupChat {
   slug: string
   name: string
   description?: string | null
-  type: 'GENRE' | 'VENUE'
+  type: 'GENRE' | 'VENUE' | 'FESTIVAL' | 'TRIP'
   emoji: string
   coverColor: string
   isPrivate?: boolean
@@ -412,7 +412,8 @@ function GroupBrowser({
   onCreateGroup: (group: GroupChat) => void
   dbUserId: string | null
 }) {
-  const [sub, setSub] = useState<'genres' | 'venues'>('genres')
+  const [sub, setSub] = useState<'genres' | 'venues' | 'festivals' | 'trips'>('genres')
+  const [groupSearch, setGroupSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
@@ -423,12 +424,17 @@ function GroupBrowser({
   const [showPw, setShowPw] = useState(false)
   const [newPaid, setNewPaid] = useState(false)
   const [newPriceTier, setNewPriceTier] = useState('MICRO')
+  const [newGroupType, setNewGroupType] = useState<'GENRE' | 'FESTIVAL' | 'TRIP'>('GENRE')
   const [creating, setCreating] = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
 
-  const genres = groups.filter((g) => g.type === 'GENRE')
-  const venues = groups.filter((g) => g.type === 'VENUE')
+  const q = groupSearch.toLowerCase()
+  const filteredGroups = q ? groups.filter((g) => g.name.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q)) : groups
+  const genres = filteredGroups.filter((g) => g.type === 'GENRE')
+  const venues = filteredGroups.filter((g) => g.type === 'VENUE')
+  const festivals = filteredGroups.filter((g) => g.type === 'FESTIVAL')
+  const trips = filteredGroups.filter((g) => g.type === 'TRIP')
 
   const GENRE_ORDER = ['genre-rave', 'genre-house', 'genre-rnb', 'genre-trippy', 'genre-dnb', 'genre-afrobeats', 'genre-rock', 'genre-electronic']
   const sortedGenres = [...genres].sort((a, b) => {
@@ -451,6 +457,7 @@ function GroupBrowser({
       const body: Record<string, unknown> = {
         name: newName.trim(), description: newDesc.trim() || undefined,
         emoji: newEmoji, coverColor: newColor,
+        type: newGroupType,
       }
       if (newPaid) {
         body.isPaid = true
@@ -464,7 +471,7 @@ function GroupBrowser({
       if (j.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
-        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO')
+        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO'); setNewGroupType('GENRE')
       }
     } catch {}
     finally { setCreating(false) }
@@ -475,17 +482,34 @@ function GroupBrowser({
 
   return (
     <div className="pb-28">
+      {/* Group search */}
+      <div className="px-4 pb-3 relative">
+        <Search size={12} className="absolute left-7 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <input
+          value={groupSearch}
+          onChange={(e) => setGroupSearch(e.target.value)}
+          placeholder="Search groups..."
+          className="w-full pl-8 pr-3 py-2 rounded-xl text-xs font-medium focus:outline-none"
+          style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: '#e0f2fe' }}
+        />
+      </div>
+
       {/* Sub-tabs */}
-      <div className="flex gap-1 px-4 pb-3">
-        {(['genres', 'venues'] as const).map((s) => (
-          <button key={s} onClick={() => setSub(s)}
-            className="flex-1 py-2 rounded-xl text-[11px] font-black tracking-widest transition-all"
+      <div className="flex gap-1 px-4 pb-3 overflow-x-auto no-scrollbar">
+        {([
+          { key: 'genres', label: '🎵 GENRES' },
+          { key: 'venues', label: '🏙️ VENUES' },
+          { key: 'festivals', label: '🎪 FESTIVALS' },
+          { key: 'trips', label: '✈️ TRIPS' },
+        ] as const).map(({ key, label }) => (
+          <button key={key} onClick={() => setSub(key)}
+            className="shrink-0 py-2 px-3 rounded-xl text-[11px] font-black tracking-widest transition-all"
             style={{
-              background: sub === s ? 'rgba(0,229,255,0.1)' : 'transparent',
-              border: `1px solid ${sub === s ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
-              color: sub === s ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: sub === key ? 'rgba(0,229,255,0.1)' : 'transparent',
+              border: `1px solid ${sub === key ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
+              color: sub === key ? '#00e5ff' : 'rgba(74,96,128,0.5)',
             }}>
-            {s === 'genres' ? '🎵 GENRES' : '🏙️ VENUES'}
+            {label}
           </button>
         ))}
       </div>
@@ -536,52 +560,58 @@ function GroupBrowser({
         </div>
       )}
 
-      {sub === 'venues' && (
-        <div className="px-4 space-y-2">
-          {venues.length === 0 ? (
-            <div className="py-16 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
-              Venue chats loading — run seed-activity to populate
-            </div>
-          ) : venues.map((g) => (
-            <button key={g.id} onClick={() => onOpen(g)}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all"
-              style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(0,229,255,0.07)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.2)')}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.07)')}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
-                style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}30` }}>
-                {g.emoji}
+      {(sub === 'venues' || sub === 'festivals' || sub === 'trips') && (() => {
+        const list = sub === 'venues' ? venues : sub === 'festivals' ? festivals : trips
+        const emptyMsg = sub === 'venues' ? 'No venue chats nearby yet'
+          : sub === 'festivals' ? 'No festival groups yet — create one!'
+          : 'No trip groups yet — plan your first trip!'
+        return (
+          <div className="px-4 space-y-2">
+            {list.length === 0 ? (
+              <div className="py-16 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                {emptyMsg}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{g.name}</p>
-                  {g.isJoined && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0"
-                      style={{ background: `${g.coverColor}20`, color: g.coverColor }}>JOINED</span>
+            ) : list.map((g) => (
+              <button key={g.id} onClick={() => onOpen(g)}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all"
+                style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(0,229,255,0.07)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.2)')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.07)')}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
+                  style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}30` }}>
+                  {g.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{g.name}</p>
+                    {g.isJoined && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0"
+                        style={{ background: `${g.coverColor}20`, color: g.coverColor }}>JOINED</span>
+                    )}
+                  </div>
+                  {g.lastMessage ? (
+                    <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                      {g.lastMessage.senderName}: {g.lastMessage.text}
+                    </p>
+                  ) : (
+                    <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.25)' }}>No messages yet — be first!</p>
                   )}
                 </div>
-                {g.lastMessage ? (
-                  <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
-                    {g.lastMessage.senderName}: {g.lastMessage.text}
-                  </p>
-                ) : (
-                  <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.25)' }}>No messages yet — be first!</p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1 shrink-0">
-                <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
-                  {g.memberCount} <Users size={8} className="inline" />
-                </span>
-                {g.lastMessage && (
+                <div className="flex flex-col items-end gap-1 shrink-0">
                   <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
-                    {timeAgo(g.lastMessage.createdAt)}
+                    {g.memberCount} <Users size={8} className="inline" />
                   </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+                  {g.lastMessage && (
+                    <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                      {timeAgo(g.lastMessage.createdAt)}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Create group button */}
       {dbUserId && (
@@ -602,6 +632,28 @@ function GroupBrowser({
           <div className="w-full max-w-sm rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}
             style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)' }}>
             <p className="text-xs font-black tracking-widest" style={{ color: '#00e5ff' }}>CREATE GROUP</p>
+
+            {/* Group type */}
+            <div>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>TYPE</p>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { id: 'GENRE', label: '🎵 Music', color: '#a855f7' },
+                  { id: 'FESTIVAL', label: '🎪 Festival', color: '#f97316' },
+                  { id: 'TRIP', label: '✈️ Trip', color: '#10b981' },
+                ] as const).map((t) => (
+                  <button key={t.id} onClick={() => setNewGroupType(t.id)}
+                    className="py-2 rounded-xl text-center text-[10px] font-black transition-all"
+                    style={{
+                      background: newGroupType === t.id ? `${t.color}18` : 'rgba(0,229,255,0.03)',
+                      border: `1px solid ${newGroupType === t.id ? `${t.color}50` : 'rgba(0,229,255,0.08)'}`,
+                      color: newGroupType === t.id ? t.color : 'rgba(224,242,254,0.4)',
+                    }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <input type="text" placeholder="Group name" value={newName}
               onChange={(e) => setNewName(e.target.value.slice(0, 40))}
@@ -1480,6 +1532,7 @@ function DmSection({ dbUser, headers }: {
   const [searching, setSearching] = useState(false)
   const snapInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const initialLoadRef = useRef(false)
 
   // Init E2E keys on mount
   useEffect(() => {
@@ -1500,6 +1553,7 @@ function DmSection({ dbUser, headers }: {
 
   useEffect(() => {
     if (!activeConvo) return
+    initialLoadRef.current = true
     setMsgsLoading(true)
     fetch(`${API_URL}/dm/${activeConvo}`, { headers })
       .then((r) => r.json())
@@ -1530,7 +1584,12 @@ function DmSection({ dbUser, headers }: {
     })
   }, [messages, otherPublicKey])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    if (!bottomRef.current) return
+    const behavior = initialLoadRef.current ? 'instant' : 'smooth'
+    initialLoadRef.current = false
+    bottomRef.current.scrollIntoView({ behavior } as ScrollIntoViewOptions)
+  }, [messages])
 
   useEffect(() => {
     if (!search.trim()) { setSearchResults([]); return }

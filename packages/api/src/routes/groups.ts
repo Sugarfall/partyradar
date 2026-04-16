@@ -62,8 +62,15 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const userId = req.user?.dbUser.id ?? null
     const userLat = req.query['lat'] ? Number(req.query['lat']) : null
     const userLng = req.query['lng'] ? Number(req.query['lng']) : null
+    const searchQ = req.query['q'] ? String(req.query['q']).trim().toLowerCase() : null
 
     const groups = await prisma.groupChat.findMany({
+      where: searchQ
+        ? { OR: [
+            { name: { contains: searchQ, mode: 'insensitive' } },
+            { description: { contains: searchQ, mode: 'insensitive' } },
+          ]}
+        : undefined,
       orderBy: [{ type: 'asc' }, { memberCount: 'desc' }, { name: 'asc' }],
       include: {
         _count: { select: { memberships: true } },
@@ -164,9 +171,10 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const { name, description, emoji, coverColor, isPrivate, password, isPaid, priceTierId } = req.body as {
+    const { name, description, emoji, coverColor, isPrivate, password, isPaid, priceTierId, type: groupType } = req.body as {
       name: string; description?: string; emoji?: string; coverColor?: string
       isPrivate?: boolean; password?: string; isPaid?: boolean; priceTierId?: string
+      type?: 'GENRE' | 'FESTIVAL' | 'TRIP'
     }
     if (!name?.trim() || name.trim().length < 2) throw new AppError('Group name must be at least 2 characters', 400)
     if (name.trim().length > 40) throw new AppError('Group name too long (max 40)', 400)
@@ -189,7 +197,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         slug,
         name: name.trim(),
         description: description?.trim()?.slice(0, 200) ?? null,
-        type: 'GENRE',
+        type: (['GENRE', 'FESTIVAL', 'TRIP'] as const).includes(groupType as any) ? (groupType as 'GENRE' | 'FESTIVAL' | 'TRIP') : 'GENRE',
         emoji: emoji?.trim() || '💬',
         coverColor: coverColor || '#6366f1',
         isPrivate: !!(isPrivate || isPaid),

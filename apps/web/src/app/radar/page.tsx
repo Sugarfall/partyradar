@@ -59,7 +59,12 @@ function timeAgo(createdAt: string) {
 }
 
 // ── Report form ───────────────────────────────────────────────────────────────
-function ReportForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: Sighting) => void }) {
+function ReportForm({ onClose, onSubmit, userLat, userLng }: {
+  onClose: () => void
+  onSubmit: (s: Sighting) => void
+  userLat: number | null
+  userLng: number | null
+}) {
   const [celebrity, setCelebrity] = useState('')
   const [desc, setDesc] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -69,13 +74,16 @@ function ReportForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: 
     e.preventDefault()
     if (!celebrity.trim()) return
     setSubmitting(true)
+    // Use actual GPS with small random offset so exact location isn't exposed
+    const baseLat = userLat ?? 51.505
+    const baseLng = userLng ?? -0.09
     await new Promise((r) => setTimeout(r, 600))
     onSubmit({
       id: Date.now().toString(),
       celebrity: celebrity.trim(),
       description: desc.trim(),
-      lat: 51.505 + (Math.random() - 0.5) * 0.05,
-      lng: -0.09 + (Math.random() - 0.5) * 0.05,
+      lat: baseLat + (Math.random() - 0.5) * 0.01,
+      lng: baseLng + (Math.random() - 0.5) * 0.01,
       upvotes: 1,
       downvotes: 0,
       expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
@@ -229,6 +237,18 @@ export default function RadarPage() {
   const [sightings, setSightings] = useState<Sighting[]>([])
   const [sightingsLoading, setSightingsLoading] = useState(true)
   const [showReport, setShowReport] = useState(false)
+  const [userLat, setUserLat] = useState<number | null>(null)
+  const [userLng, setUserLng] = useState<number | null>(null)
+
+  // Capture GPS on mount for sighting placement
+  useEffect(() => {
+    if (typeof window === 'undefined' || !navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setUserLat(pos.coords.latitude); setUserLng(pos.coords.longitude) },
+      () => {},
+      { timeout: 8000 },
+    )
+  }, [])
 
   useEffect(() => {
     if (DEV_MODE) {
@@ -305,7 +325,7 @@ export default function RadarPage() {
       {/* ── Report form (slide in) ── */}
       {showReport && (
         <div className="flex-shrink-0 px-4 pt-3">
-          <ReportForm onClose={() => setShowReport(false)} onSubmit={handleNewSighting} />
+          <ReportForm onClose={() => setShowReport(false)} onSubmit={handleNewSighting} userLat={userLat} userLng={userLng} />
         </div>
       )}
 

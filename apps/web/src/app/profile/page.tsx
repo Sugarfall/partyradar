@@ -13,6 +13,65 @@ import type { Gender } from '@partyradar/shared'
 
 import { api, API_URL as API_BASE } from '@/lib/api'
 
+// ── Follow List Modal (own profile) ─────────────────────────────────────────
+function FollowListModal({ username, mode, onClose, token }: {
+  username: string; mode: 'followers' | 'following'; onClose: () => void; token: string
+}) {
+  interface FollowUser { id: string; displayName: string; username: string; photoUrl?: string | null; isFollowing: boolean }
+  const [users, setUsers] = useState<FollowUser[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const h: Record<string, string> = {}
+    if (token) h['Authorization'] = `Bearer ${token}`
+    fetch(`${API_BASE}/users/${username}/${mode}`, { headers: h })
+      .then((r) => r.json())
+      .then((j) => setUsers(j.data ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [username, mode, token])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}
+        style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.12)', maxHeight: '70vh' }}>
+        <div className="px-5 py-4 flex items-center justify-between"
+          style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+          <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{mode === 'followers' ? 'Followers' : 'Following'}</p>
+          <button onClick={onClose} style={{ color: 'rgba(224,242,254,0.3)' }}>✕</button>
+        </div>
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(70vh - 56px)' }}>
+          {loading ? (
+            <div className="flex justify-center py-10">
+              <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+            </div>
+          ) : users.length === 0 ? (
+            <p className="text-center text-xs py-8" style={{ color: 'rgba(224,242,254,0.3)' }}>Nobody here yet</p>
+          ) : users.map((u) => (
+            <Link key={u.id} href={`/profile/${u.username}`} onClick={onClose}
+              className="flex items-center gap-3 px-4 py-3"
+              style={{ borderBottom: '1px solid rgba(0,229,255,0.05)' }}>
+              {u.photoUrl
+                ? <img src={u.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover" style={{ border: '1.5px solid rgba(0,229,255,0.2)' }} />
+                : <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black"
+                    style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff' }}>
+                    {u.displayName[0]?.toUpperCase()}
+                  </div>
+              }
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const TIER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   FREE:    { label: 'FREE',    color: '#4b5563', icon: '⚡' },
   BASIC:   { label: 'BASIC',   color: '#3b82f6', icon: '🔵' },
@@ -249,6 +308,9 @@ export default function ProfilePage() {
 
   // Profile tabs
   const [profileTab, setProfileTab] = useState<ProfileTab>('activity')
+
+  // Follow list modal
+  const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
 
   // Account mode — stored in localStorage, no login required
   const [accountMode, setAccountMode] = useState<'ATTENDEE' | 'HOST'>('ATTENDEE')
@@ -533,14 +595,25 @@ export default function ProfilePage() {
             { label: 'EVENTS',    value: '—',              icon: Crown    },
             { label: 'FOLLOWERS', value: String(followersCount), icon: Users },
             { label: 'FOLLOWING', value: String(followingCount), icon: Users },
-          ]).map(({ label, value, icon: Icon }) => (
-            <div key={label} className="p-2 rounded-xl text-center"
-              style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-              <Icon size={12} style={{ color: 'rgba(0,229,255,0.35)', margin: '0 auto 3px' }} />
-              <p className="text-base font-black" style={{ color: '#e0f2fe' }}>{value}</p>
-              <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(0,229,255,0.35)' }}>{label}</p>
-            </div>
-          ))}
+          ]).map(({ label, value, icon: Icon }) => {
+            const isFollowStat = label === 'FOLLOWERS' || label === 'FOLLOWING'
+            const action = label === 'FOLLOWERS' ? () => setShowFollowList('followers')
+              : label === 'FOLLOWING' ? () => setShowFollowList('following')
+              : undefined
+            return (
+              <button key={label} onClick={action}
+                className="p-2 rounded-xl text-center transition-all"
+                style={{
+                  background: isFollowStat ? 'rgba(0,229,255,0.05)' : 'rgba(0,229,255,0.03)',
+                  border: isFollowStat ? '1px solid rgba(0,229,255,0.15)' : '1px solid rgba(0,229,255,0.08)',
+                  cursor: isFollowStat ? 'pointer' : 'default',
+                }}>
+                <Icon size={12} style={{ color: 'rgba(0,229,255,0.35)', margin: '0 auto 3px' }} />
+                <p className="text-base font-black" style={{ color: '#e0f2fe' }}>{value}</p>
+                <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(0,229,255,0.35)' }}>{label}</p>
+              </button>
+            )
+          })}
         </div>
 
         {/* ── Social Inbox ── */}
@@ -817,6 +890,16 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Follow list modal */}
+      {showFollowList && dbUser?.username && (
+        <FollowListModal
+          username={dbUser.username}
+          mode={showFollowList}
+          onClose={() => setShowFollowList(null)}
+          token={typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''}
+        />
       )}
     </div>
   )

@@ -37,11 +37,13 @@ const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
   CLUB_NIGHT: '#00e5ff',
   CONCERT: '#3d5afe',
+  PUB_NIGHT: '#f59e0b',
 }
 const TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'HOME PARTY',
   CLUB_NIGHT: 'CLUB NIGHT',
   CONCERT: 'CONCERT',
+  PUB_NIGHT: 'PUB NIGHT',
 }
 
 type SlideDir = 'next' | 'prev' | null

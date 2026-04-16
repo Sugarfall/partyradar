@@ -83,12 +83,14 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'Home Party',
   CLUB_NIGHT: 'Club Night',
   CONCERT: 'Concert',
+  PUB_NIGHT: 'Pub Night',
 }
 
 export const EVENT_TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ec4899',   // pink
   CLUB_NIGHT: '#a855f7',   // purple
   CONCERT: '#3b82f6',      // blue
+  PUB_NIGHT: '#f59e0b',    // amber
 }
 
 export const EVENT_TYPE_BG: Record<string, string> = {
