@@ -11,10 +11,10 @@ import { VIBE_TAGS } from '@partyradar/shared'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 const EVENT_TYPES: { id: EventType; label: string; emoji: string; desc: string; sub: string; color: string; glow: string }[] = [
-  { id: 'HOME_PARTY', label: 'House Party', emoji: '🏠', desc: 'Private house hosted by you — your space, your crowd', sub: 'Hidden address · RSVP gating · Party signals',    color: '#ff006e', glow: 'rgba(255,0,110,0.3)' },
+  { id: 'HOME_PARTY', label: 'Home Party',  emoji: '🏠', desc: 'Private space, intimate crowd, your rules',        sub: 'Unlisted address · RSVP gating · Party signals', color: '#ff006e', glow: 'rgba(255,0,110,0.3)' },
   { id: 'CLUB_NIGHT', label: 'Club Night',  emoji: '🎵', desc: 'Licensed venue, ticketed entry, professional setup', sub: 'Ticket tiers · Lineup · Promoter profile',          color: '#00e5ff', glow: 'rgba(0,229,255,0.3)' },
   { id: 'CONCERT',   label: 'Concert',     emoji: '🎤', desc: 'Live performance or touring act',                  sub: 'General admission · Artist info · Stage times',     color: '#3d5afe', glow: 'rgba(61,90,254,0.3)' },
-  { id: 'PUB_NIGHT', label: 'Pub Night',   emoji: '🍺', desc: 'Pub quiz, karaoke, live music or just a great night out', sub: 'Open access · Casual vibe · Real ale welcome', color: '#f59e0b', glow: 'rgba(245,158,11,0.3)' },
+  { id: 'PUB_NIGHT', label: 'Pub Night',   emoji: '🍺', desc: 'Pub crawl, quiz night, bar event or open mic',     sub: 'Casual entry · Pub venue · Drinks social',          color: '#f59e0b', glow: 'rgba(245,158,11,0.3)' },
 ]
 
 // ── Party signals (HOME_PARTY only) ──────────────────────────────────────────
@@ -605,53 +605,14 @@ export default function CreateEventPage() {
             {/* Ticket price (if paid) */}
             {(form.price ?? 0) > 0 && (
               <div className="space-y-3 animate-fade-up">
-                {/* Quick-pick price chips */}
-                <div>
-                  <label className="text-[10px] font-bold tracking-[0.2em] mb-2 block" style={{ color: 'rgba(0,229,255,0.55)' }}>TICKET PRICE (£)</label>
-                  <div className="flex flex-wrap gap-2">
-                    {[3, 5, 8, 10, 15, 20, 25, 30].map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => update({ price: p })}
-                        className="px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all"
-                        style={{
-                          background: form.price === p ? 'rgba(255,214,0,0.18)' : 'rgba(255,214,0,0.04)',
-                          border: `1px solid ${form.price === p ? 'rgba(255,214,0,0.6)' : 'rgba(255,214,0,0.15)'}`,
-                          color: form.price === p ? '#ffd600' : 'rgba(224,242,254,0.45)',
-                          boxShadow: form.price === p ? '0 0 10px rgba(255,214,0,0.2)' : 'none',
-                        }}
-                      >
-                        £{p}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => update({ price: 0.01 })}
-                      className="px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all"
-                      style={{
-                        background: form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) ? 'rgba(255,214,0,0.18)' : 'rgba(255,214,0,0.04)',
-                        border: `1px solid ${form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) ? 'rgba(255,214,0,0.6)' : 'rgba(255,214,0,0.15)'}`,
-                        color: form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) ? '#ffd600' : 'rgba(224,242,254,0.45)',
-                      }}
-                    >
-                      ✏ Custom
-                    </button>
-                  </div>
-                  {/* Custom amount input shown when not a preset */}
-                  {form.price !== undefined && form.price > 0 && ![3,5,8,10,15,20,25,30].includes(form.price) && (
-                    <div className="mt-2">
-                      <CyberInput
-                        label="ENTER YOUR PRICE (£)"
-                        type="number"
-                        min={0.5}
-                        step={0.5}
-                        value={form.price === 0.01 ? '' : (form.price ?? '')}
-                        onChange={(e) => update({ price: Number(e.target.value) || 0.01 })}
-                      />
-                    </div>
-                  )}
-                </div>
+                <CyberInput
+                  label="TICKET PRICE (£) *"
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={form.price ?? ''}
+                  onChange={(e) => update({ price: Number(e.target.value) })}
+                />
                 <CyberInput
                   label="TICKET QUANTITY"
                   type="number"
