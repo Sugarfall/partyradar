@@ -18,4 +18,5 @@ export async function adminFetch<T>(path: string, options: RequestInit = {}): Pr
   return data
 }
 
-export const fetcher = <T = unknown>(path: string) => adminFetch<T>(path)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const fetcher = (path: string): Promise<any> => adminFetch<any>(path)
