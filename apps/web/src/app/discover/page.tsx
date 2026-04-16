@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart, Wine } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -765,56 +765,84 @@ export default function DiscoverPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
-  // locationLoading stays true until geolocation has resolved (success/deny/timeout)
-  // AND the subsequent event fetch is complete — prevents any flash-empty on load.
   const [geoResolved, setGeoResolved] = useState(false)
+  const [isTracking, setIsTracking] = useState(false)   // true when watchPosition is active
 
   // ── Venue discovery state (lifted here so it survives tab switches) ──────────
   const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
   const [venueCity, setVenueCity] = useState<string | null>(null)
-  // mapCenter drives the flyTo in VenuesMiniMap whenever location changes
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
 
-  // Silently request geolocation on mount — used to centre the map, narrow the
-  // event feed, AND discover venues.
+  // Track the last position we fetched for, to avoid re-fetching on tiny GPS jitter
+  const lastFetchedPos = useRef<{ lat: number; lng: number } | null>(null)
+
+  // Haversine distance in km between two coords
+  function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  }
+
+  // watchPosition — continuously tracks; re-fetches events + venues when moved >500 m
   useEffect(() => {
     if (!navigator.geolocation) { setGeoResolved(true); return }
+
     const fallback = setTimeout(() => setGeoResolved(true), 8500)
-    navigator.geolocation.getCurrentPosition(
+
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
-        setUserLocation({ lat, lng })
         clearTimeout(fallback)
+        setIsTracking(true)
 
-        // Discover venues (cache-aware — skips API if fresh data exists for this area)
-        discover(lat, lng, 15000)
-        setMapCenter({ lat, lng })
+        const last = lastFetchedPos.current
+        const moved = last ? haversineKm(last.lat, last.lng, lat, lng) : Infinity
 
-        // Reverse-geocode city name for display label
-        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
-          .then((r) => r.json())
-          .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
-          .catch(() => {})
+        // Only re-fetch when first lock OR moved more than 500 m
+        if (moved > 0.5) {
+          lastFetchedPos.current = { lat, lng }
+          setUserLocation({ lat, lng })
+          setMapCenter({ lat, lng })
+          discover(lat, lng, 15000)
+
+          // Reverse-geocode for display label (throttled by the moved>500m guard)
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+            .then((r) => r.json())
+            .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
+            .catch(() => {})
+        }
       },
-      () => { clearTimeout(fallback); setGeoResolved(true) },
-      { timeout: 8000, maximumAge: 300000 },
+      () => { clearTimeout(fallback); setGeoResolved(true); setIsTracking(false) },
+      {
+        timeout: 10000,
+        maximumAge: 30000,      // accept a cached fix up to 30 s old between updates
+        enableHighAccuracy: false, // battery-efficient
+      },
     )
-    return () => clearTimeout(fallback)
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
+      clearTimeout(fallback)
+    }
   }, [discover])
 
-  // City search: geocoded externally and passed in via onCitySearch
+  // City search from the Venues tab search bar
   function handleCitySearch(cityName: string, lat: number, lng: number) {
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
     discover(lat, lng, 15000)
   }
 
-  // "Use my location" / "Wider area" button
+  // "Use my location" / "Wider area"
   function handleVenueWiderSearch() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude: lat, longitude: lng } = pos.coords
+          lastFetchedPos.current = { lat, lng }
           discover(lat, lng, 25000)
           setMapCenter({ lat, lng })
         },
@@ -830,9 +858,11 @@ export default function DiscoverPage() {
     limit: 100,
   })
 
-  // Once geolocation resolved AND the matching events fetch is done, clear loading guard
+  // Clear the loading guard once we have a location fix and the first event fetch completes
   useEffect(() => {
     if (userLocation && !isLoading) setGeoResolved(true)
+    // Also clear if no location (denied) and events fetch finished
+    if (!userLocation && !isLoading) setGeoResolved(true)
   }, [userLocation, isLoading])
 
   // locationLoading: spinner until geo is settled and we have event data
@@ -960,32 +990,42 @@ export default function DiscoverPage() {
           backdropFilter: 'blur(12px)',
         }}
       >
-        {/* Tab switcher */}
-        <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
-          <button
-            onClick={() => setTab('events')}
-            className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
-            style={{
-              background: tab === 'events' ? 'rgba(0,229,255,0.15)' : 'transparent',
-              color: tab === 'events' ? '#00e5ff' : 'rgba(74,96,128,0.6)',
-              letterSpacing: '0.12em',
-              boxShadow: tab === 'events' ? '0 0 8px rgba(0,229,255,0.2)' : 'none',
-            }}
-          >
-            EVENTS
-          </button>
-          <button
-            onClick={() => setTab('venues')}
-            className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
-            style={{
-              background: tab === 'venues' ? 'rgba(255,214,0,0.12)' : 'transparent',
-              color: tab === 'venues' ? '#ffd600' : 'rgba(74,96,128,0.6)',
-              letterSpacing: '0.12em',
-              boxShadow: tab === 'venues' ? '0 0 8px rgba(255,214,0,0.15)' : 'none',
-            }}
-          >
-            VENUES
-          </button>
+        {/* Tab switcher + live tracking badge */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
+            <button
+              onClick={() => setTab('events')}
+              className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
+              style={{
+                background: tab === 'events' ? 'rgba(0,229,255,0.15)' : 'transparent',
+                color: tab === 'events' ? '#00e5ff' : 'rgba(74,96,128,0.6)',
+                letterSpacing: '0.12em',
+                boxShadow: tab === 'events' ? '0 0 8px rgba(0,229,255,0.2)' : 'none',
+              }}
+            >
+              EVENTS
+            </button>
+            <button
+              onClick={() => setTab('venues')}
+              className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
+              style={{
+                background: tab === 'venues' ? 'rgba(255,214,0,0.12)' : 'transparent',
+                color: tab === 'venues' ? '#ffd600' : 'rgba(74,96,128,0.6)',
+                letterSpacing: '0.12em',
+                boxShadow: tab === 'venues' ? '0 0 8px rgba(255,214,0,0.15)' : 'none',
+              }}
+            >
+              VENUES
+            </button>
+          </div>
+          {/* Live location tracking badge */}
+          {isTracking && (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#00ff88', boxShadow: '0 0 6px #00ff88' }} />
+              <span className="text-[9px] font-black tracking-widest" style={{ color: '#00ff88' }}>LIVE</span>
+            </div>
+          )}
         </div>
 
         {/* Counter + controls */}
