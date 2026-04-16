@@ -13,7 +13,7 @@ const SYNC_THROTTLE_MS = 30 * 60 * 1000 // 30 minutes
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
 
-type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT'
+type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT'
 
 interface SyncResult {
   imported: number
@@ -82,6 +82,7 @@ function mapTMEventType(classifications: TMClassification[] | undefined): EventT
     .join(' ')
     .toLowerCase()
   if (names.includes('nightlife') || names.includes('club') || names.includes('dj')) return 'CLUB_NIGHT'
+  if (names.includes('pub') || names.includes('bar') || names.includes('tavern')) return 'PUB_NIGHT'
   return 'CONCERT'
 }
 
@@ -209,6 +210,7 @@ function mapSkiddleEventType(genres: Array<{ name?: string }> | undefined): Even
   if (!genres) return 'CLUB_NIGHT'
   const names = genres.map((g) => g.name ?? '').join(' ').toLowerCase()
   if (names.includes('live') || names.includes('acoustic') || names.includes('singer')) return 'CONCERT'
+  if (names.includes('pub') || names.includes('bar') || names.includes('quiz')) return 'PUB_NIGHT'
   return 'CLUB_NIGHT'
 }
 
@@ -334,6 +336,7 @@ function mapEBEventType(categories: string[]): EventTypeName {
   const cat = categories.join(' ').toLowerCase()
   if (cat.includes('music') || cat.includes('concert') || cat.includes('festival')) return 'CONCERT'
   if (cat.includes('nightlife') || cat.includes('club') || cat.includes('party')) return 'CLUB_NIGHT'
+  if (cat.includes('pub') || cat.includes('bar') || cat.includes('tavern') || cat.includes('brewery')) return 'PUB_NIGHT'
   return 'HOME_PARTY'
 }
 
@@ -469,6 +472,7 @@ function mapSerpEventType(title: string, description: string): EventTypeName {
   const text = `${title} ${description}`.toLowerCase()
   if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes('tour')) return 'CONCERT'
   if (text.includes('club') || text.includes('nightclub') || text.includes('dj') || text.includes('rave') || text.includes('techno') || text.includes('dance night')) return 'CLUB_NIGHT'
+  if (text.includes('pub') || text.includes('bar night') || text.includes('pub quiz') || text.includes('open mic') || text.includes('brewery') || text.includes('tavern')) return 'PUB_NIGHT'
   return 'CONCERT'
 }
 
@@ -567,7 +571,7 @@ async function syncPerplexity(
     `Search across Facebook Events, venue websites, Resident Advisor, local listings, and any other sources. ` +
     `Return ONLY a valid JSON array with no markdown, no explanation, in this exact format:\n` +
     `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"","address":"","price":0,"type":"CONCERT","description":"","url":"","imageUrl":""}]\n` +
-    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY. price is 0 if free or unknown.`
+    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY, PUB_NIGHT. price is 0 if free or unknown.`
 
   const res = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
@@ -598,7 +602,7 @@ async function syncPerplexity(
 
   let imported = 0
   let skipped = 0
-  const validTypes: EventTypeName[] = ['CONCERT', 'CLUB_NIGHT', 'HOME_PARTY']
+  const validTypes: EventTypeName[] = ['CONCERT', 'CLUB_NIGHT', 'HOME_PARTY', 'PUB_NIGHT']
 
   for (const ev of events) {
     try {
