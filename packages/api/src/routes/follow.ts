@@ -167,6 +167,19 @@ router.post('/:userId', requireAuth, async (req: AuthRequest, res, next) => {
     if (existing) throw new AppError('Already following this user', 409)
 
     const follow = await prisma.follow.create({ data: { followerId, followingId } })
+
+    // Notify the followed user
+    const me = await prisma.user.findUnique({ where: { id: followerId }, select: { displayName: true, username: true } })
+    prisma.notification.create({
+      data: {
+        userId: followingId,
+        type: 'FOLLOW',
+        title: `${me?.displayName ?? 'Someone'} started following you`,
+        body: `@${me?.username ?? ''} is now following you`,
+        data: { fromUserId: followerId, fromUsername: me?.username },
+      },
+    }).catch(() => {})
+
     res.status(201).json({ data: follow })
   } catch (err) {
     next(err)

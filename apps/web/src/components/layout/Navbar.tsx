@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -16,11 +16,27 @@ const NAV = [
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
-  RSVP_CONFIRMED:   <Ticket size={13} style={{ color: '#00ff88' }} />,
-  INVITE_RECEIVED:  <Zap    size={13} style={{ color: '#00e5ff' }} />,
+  RSVP_CONFIRMED:   <Ticket   size={13} style={{ color: '#00ff88' }} />,
+  INVITE_RECEIVED:  <Zap      size={13} style={{ color: '#00e5ff' }} />,
   EVENT_REMINDER:   <Calendar size={13} style={{ color: '#ffd600' }} />,
-  CELEBRITY_NEARBY: <Star  size={13} style={{ color: '#ffd600' }} />,
-  EVENT_UPDATED:    <Zap   size={13} style={{ color: '#3d5afe' }} />,
+  CELEBRITY_NEARBY: <Star     size={13} style={{ color: '#ffd600' }} />,
+  EVENT_UPDATED:    <Zap      size={13} style={{ color: '#3d5afe' }} />,
+  FOLLOW:           <UserPlus size={13} style={{ color: '#00e5ff' }} />,
+  PROFILE_VIEW:     <Eye      size={13} style={{ color: '#a855f7' }} />,
+  NUDGE:            <Bell     size={13} style={{ color: '#00ff88' }} />,
+  GO_OUT_REQUEST:   <Sparkles size={13} style={{ color: '#ff006e' }} />,
+  GO_OUT_ACCEPTED:  <Sparkles size={13} style={{ color: '#00ff88' }} />,
+  MESSAGE:          <MessageCircle size={13} style={{ color: '#00e5ff' }} />,
+}
+
+function notifLink(n: Notification): string | null {
+  const data = n.data as Record<string, string> | null
+  if (!data) return null
+  const social = ['FOLLOW', 'NUDGE', 'GO_OUT_REQUEST', 'GO_OUT_ACCEPTED']
+  if (social.includes(n.type) && data['fromUsername']) return `/profile/${data['fromUsername']}`
+  // PROFILE_VIEW → own profile page to see viewers
+  if (n.type === 'PROFILE_VIEW') return '/profile'
+  return null
 }
 
 function timeAgo(date: string) {
@@ -34,15 +50,23 @@ function timeAgo(date: string) {
 // ── Notifications panel ──────────────────────────────────────────────────────
 function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const { data, mutate } = useSWR<{ data: Notification[]; unreadCount: number }>(
-    '/notifications?limit=15', fetcher
+    '/notifications?limit=20', fetcher
   )
   const notifications = data?.data ?? []
+  const router = useRouter()
 
   async function markAll() {
     await Promise.allSettled(
       notifications.filter((n) => !n.read).map((n) => api.put(`/notifications/${n.id}/read`, {}))
     )
     mutate()
+  }
+
+  async function handleClick(n: Notification) {
+    await api.put(`/notifications/${n.id}/read`, {}).catch(() => {})
+    mutate()
+    const link = notifLink(n)
+    if (link) { onClose(); router.push(link) }
   }
 
   return (
@@ -78,7 +102,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
           </div>
         ) : notifications.map((n) => (
           <button key={n.id}
-            onClick={() => api.put(`/notifications/${n.id}/read`, {}).then(() => mutate())}
+            onClick={() => handleClick(n)}
             className="w-full text-left px-4 py-3 flex items-start gap-3 transition-all hover:bg-white/5"
             style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
           >
