@@ -876,11 +876,16 @@ export default function DiscoverPage() {
     }
   }, [discover])
 
-  // City search from the Venues tab search bar
+  // City search from the Venues tab search bar — also refreshes events for that location
   function handleCitySearch(cityName: string, lat: number, lng: number) {
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
     discover(lat, lng, 15000)
+    // Update userLocation so useEvents re-fetches for this city
+    setUserLocation({ lat, lng })
+    // Allow auto-retry to fire again for the new city
+    autoRetried.current = false
+    setSyncing(false)
   }
 
   // "Use my location" / "Wider area"

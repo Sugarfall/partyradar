@@ -660,10 +660,11 @@ export async function syncExternalEvents(
   }
   lastSyncTime.set(key, Date.now())
 
-  // Resolve admin hostId from DB
-  const adminUser = await prisma.user.findFirst({ where: { isAdmin: true } })
-  if (!adminUser) return { imported: 0, skipped: 0, sources: [] }
-  const hostId = adminUser.id
+  // Resolve hostId — prefer admin, fall back to any user
+  const hostUser = (await prisma.user.findFirst({ where: { isAdmin: true } }))
+    ?? (await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } }))
+  if (!hostUser) return { imported: 0, skipped: 0, sources: [] }
+  const hostId = hostUser.id
 
   let totalImported = 0
   let totalSkipped = 0
