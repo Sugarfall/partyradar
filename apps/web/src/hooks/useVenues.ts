@@ -76,7 +76,11 @@ export function useVenueDiscover() {
       const dLat = Math.abs(existing.lat - lat)
       const dLng = Math.abs(existing.lng - lng)
       if (dLat < 0.01 && dLng < 0.01 && existing.radius >= radius) {
-        setVenues(existing.venues)
+        // Re-sort cached venues by distance to the (possibly slightly different) current position
+        const sorted = existing.venues.slice().sort((a, b) =>
+          Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
+        )
+        setVenues(sorted)
         setSource(existing.source)
         return
       }

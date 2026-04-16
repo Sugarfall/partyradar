@@ -24,7 +24,21 @@ const GOOGLE_TYPE_MAP: Record<string, VenueType> = {
   wine_bar: 'BAR',
   brewery: 'BAR',
   beer_hall: 'PUB',
+  comedy_club: 'LOUNGE',
+  dance_hall: 'NIGHTCLUB',
+  sports_bar: 'BAR',
 }
+
+/**
+ * A place must have at least one of these Google types to be accepted.
+ * This prevents supermarkets, petrol stations, restaurants, etc. from appearing.
+ */
+const NIGHTLIFE_TYPES = new Set([
+  'night_club', 'bar', 'pub', 'casino', 'concert_hall', 'music_venue',
+  'performing_arts_theater', 'live_music_venue', 'karaoke', 'lounge',
+  'cocktail_bar', 'wine_bar', 'brewery', 'beer_hall', 'comedy_club',
+  'dance_hall', 'sports_bar',
+])
 
 // Types to search for in Google Places
 const SEARCH_TYPES = [
@@ -192,9 +206,11 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
           lng: { gte: lng - lngDelta, lte: lng + lngDelta },
         },
         take: 100,
-        orderBy: { name: 'asc' },
       })
-      return res.json({ data: existing, source: 'database', discovered: 0 })
+      const sortedExisting = existing.slice().sort((a, b) =>
+        Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
+      )
+      return res.json({ data: sortedExisting, source: 'database', discovered: 0 })
     }
 
     // Fetch from multiple Google Places searches in parallel
@@ -204,11 +220,15 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
       Promise.all(TEXT_QUERIES.map((q) => fetchTextSearch(q, lat, lng, searchRadius))),
     ])
 
-    // Dedupe by place_id
+    // Dedupe by place_id, filtering to nightlife venues only
     const placeMap = new Map<string, GooglePlace>()
     for (const results of [...nearbyResults, ...textResults]) {
       for (const place of results) {
         if (place.business_status === 'CLOSED_PERMANENTLY') continue
+        // Skip anything that isn't a real nightlife/drinking venue
+        const types = place.types ?? []
+        const isNightlife = types.some((t) => NIGHTLIFE_TYPES.has(t))
+        if (!isNightlife) continue
         if (!placeMap.has(place.place_id)) {
           placeMap.set(place.place_id, place)
         }
@@ -272,11 +292,18 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     const venues = await Promise.all(upsertPromises)
 
+    // Sort by distance from the requested coords (closest first)
+    const sorted = venues.slice().sort((a, b) => {
+      const distA = Math.hypot(a.lat - lat, a.lng - lng)
+      const distB = Math.hypot(b.lat - lat, b.lng - lng)
+      return distA - distB
+    })
+
     res.json({
-      data: venues,
+      data: sorted,
       source: 'google',   // matches frontend LiveVenue source type
       discovered,
-      total: venues.length,
+      total: sorted.length,
     })
   } catch (err) { next(err) }
 })
