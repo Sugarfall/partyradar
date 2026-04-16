@@ -218,7 +218,7 @@ export default function VenueDetailPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#0d0d0f', paddingTop: 56 }}>
+    <div className="min-h-screen" style={{ background: '#0d0d0f', paddingTop: 56, paddingBottom: 88 }}>
 
       {claimOpen && <ClaimModal venueName={venue.name} onClose={() => setClaimOpen(false)} />}
 

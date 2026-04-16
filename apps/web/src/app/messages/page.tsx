@@ -1161,7 +1161,7 @@ function GroupChatView({
   )
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem)', background: '#04040d' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 7.5rem)', background: '#04040d' }}>
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-2 px-3 py-3"
         style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
@@ -1693,27 +1693,54 @@ function NewMessageModal({
                 </p>
               )}
               {results.map((u, idx) => (
-                <button
+                <div
                   key={u.id}
-                  onClick={() => onSelect(u.id)}
-                  className="w-full flex items-center gap-3 px-5 py-3 text-left transition-all active:scale-[0.98]"
-                  style={{
-                    borderBottom: idx < results.length - 1 ? '1px solid rgba(0,229,255,0.05)' : 'none',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,229,255,0.04)' }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
-                  <Avatar user={u} size={40} />
+                  className="flex items-center gap-3 px-5 py-3"
+                  style={{ borderBottom: idx < results.length - 1 ? '1px solid rgba(0,229,255,0.05)' : 'none' }}
+                >
+                  {/* Avatar — tapping goes to profile */}
+                  {u.username ? (
+                    <a href={`/profile/${u.username}`} className="shrink-0">
+                      <Avatar user={u} size={40} />
+                    </a>
+                  ) : (
+                    <div className="shrink-0"><Avatar user={u} size={40} /></div>
+                  )}
+
+                  {/* Name / handle — tapping goes to profile */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                    {u.username
-                      ? <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.45)' }}>@{u.username}</p>
-                      : <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.25)' }}>PartyRadar member</p>
-                    }
+                    {u.username ? (
+                      <a href={`/profile/${u.username}`} className="block">
+                        <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                        <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.45)' }}>@{u.username}</p>
+                      </a>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                        <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.25)' }}>PartyRadar member</p>
+                      </>
+                    )}
                   </div>
-                  <div className="shrink-0">
-                    <MessageCircle size={14} style={{ color: 'rgba(0,229,255,0.3)' }} />
+
+                  {/* Actions */}
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    {u.username && (
+                      <a href={`/profile/${u.username}`}
+                        className="px-2 py-1.5 rounded-lg text-[9px] font-black tracking-widest"
+                        style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.7)' }}>
+                        PROFILE
+                      </a>
+                    )}
+                    <button
+                      onClick={() => onSelect(u.id)}
+                      className="p-2 rounded-lg transition-all"
+                      style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}
+                      title="Send message"
+                    >
+                      <MessageCircle size={14} />
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
             </>
           )}
@@ -1811,7 +1838,7 @@ function DmSection({ dbUser }: {
 
   if (activeConvo) {
     return (
-      <div className="flex flex-col" style={{ height: 'calc(100vh - 6.5rem)', background: '#04040d' }}>
+      <div className="flex flex-col" style={{ height: 'calc(100vh - 7.5rem)', background: '#04040d' }}>
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
           style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
           <button onClick={() => { setActiveConvo(null); setMessages([]) }} className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
