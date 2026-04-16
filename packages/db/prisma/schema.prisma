@@ -57,6 +57,11 @@ enum NotificationType {
   MESSAGE
   INTEREST_MATCH
   PARTY_BLAST
+  FOLLOW
+  PROFILE_VIEW
+  NUDGE
+  GO_OUT_REQUEST
+  GO_OUT_ACCEPTED
 }
 
 enum Gender {
@@ -106,6 +111,7 @@ model User {
   referralCode      String?          @unique
   referralBalance   Float            @default(0)
   referredBy        String?
+  e2ePublicKey      String?          @db.Text
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -133,6 +139,13 @@ model User {
   groupMemberships  GroupMembership[]
   sentGroupMessages GroupMessage[] @relation("SentGroupMessages")
   wallet            Wallet?
+
+  profileViewsReceived ProfileView[] @relation("ProfileViewed")
+  profileViewsGiven    ProfileView[] @relation("ProfileViewer")
+  nudgesSent           Nudge[]       @relation("NudgeSender")
+  nudgesReceived       Nudge[]       @relation("NudgeReceiver")
+  goOutSent            GoOutRequest[] @relation("GoOutSender")
+  goOutReceived        GoOutRequest[] @relation("GoOutReceiver")
 }
 
 model Event {
@@ -174,7 +187,9 @@ model Event {
   socialSourceUrl       String?
   ticketmasterId        String?        @unique
   skiddleId             String?        @unique
-  externalSource        String?        // "ticketmaster" | "eventbrite" | "skiddle"
+  serpApiId             String?        @unique
+  aiEventId             String?        @unique
+  externalSource        String?        // "ticketmaster" | "eventbrite" | "skiddle" | "serpapi" | "perplexity"
   venueId               String?
   venue                 Venue?         @relation(fields: [venueId], references: [id])
   createdAt             DateTime       @default(now())
@@ -351,6 +366,8 @@ model DirectMessage {
   conversationId String
   senderId       String
   text           String       @db.Text
+  isSnap         Boolean      @default(false)
+  snapViewedAt   DateTime?
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User         @relation("SentDMs", fields: [senderId], references: [id])
@@ -509,7 +526,6 @@ model GroupChat {
   stripePriceId String?
   createdById  String?
   memberCount  Int       @default(0)
-  joinRequests String[]  @default([])
   lastMessage  String?
   lastAt       DateTime?
   createdAt    DateTime  @default(now())
@@ -749,4 +765,47 @@ model PlatformRevenue {
 
   @@index([source, createdAt])
   @@index([createdAt])
+}
+
+// ─── Social Graph ─────────────────────────────────────────────────────────────
+
+model ProfileView {
+  id        String   @id @default(cuid())
+  viewerId  String
+  profileId String
+  viewer    User     @relation("ProfileViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  profile   User     @relation("ProfileViewed", fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([viewerId, profileId])
+  @@index([profileId, updatedAt])
+  @@index([viewerId])
+}
+
+model Nudge {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  from      User     @relation("NudgeSender", fields: [fromId], references: [id], onDelete: Cascade)
+  to        User     @relation("NudgeReceiver", fields: [toId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([fromId, toId])
+  @@index([toId, createdAt])
+}
+
+model GoOutRequest {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  message   String?
+  status    String   @default("pending") // pending, accepted, declined
+  from      User     @relation("GoOutSender", fields: [fromId], references: [id], onDelete: Cascade)
+  to        User     @relation("GoOutReceiver", fields: [toId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fromId, toId])
+  @@index([toId, status])
 }

@@ -4,11 +4,12 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
   Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff, Mic, Radio,
-  Play, Square,
+  Play, Square, Camera, ShieldCheck, Timer,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
 import { auth } from '@/lib/firebase'
+import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage, isEncrypted } from '@/lib/e2e'
 
 /** Get a fresh Firebase ID token for API calls */
 async function getToken(): Promise<string> {
@@ -207,6 +208,8 @@ interface DmMessage {
   senderName: string
   senderPhoto?: string | null
   text: string
+  isSnap?: boolean
+  snapViewed?: boolean
   createdAt: string
 }
 
