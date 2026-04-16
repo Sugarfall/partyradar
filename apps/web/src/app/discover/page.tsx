@@ -534,104 +534,173 @@ function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
 interface VenuesListProps {
   liveVenues: LiveVenue[]
   venuesLoading: boolean
-  venueSource: 'google' | 'database' | 'google_places' | null
   venueCity: string | null
-  locationObtained: boolean  // true once geo coords were successfully obtained
+  mapCenter: { lat: number; lng: number } | null
+  onCitySearch: (city: string, lat: number, lng: number) => void
   onWiderSearch: () => void
 }
 
-function VenuesList({ liveVenues, venuesLoading, venueSource, venueCity, locationObtained, onWiderSearch }: VenuesListProps) {
-  const [search, setSearch] = useState('')
+function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, onCitySearch, onWiderSearch }: VenuesListProps) {
+  const [venueSearch, setVenueSearch] = useState('')
+  const [cityInput, setCityInput] = useState('')
+  const [citySearching, setCitySearching] = useState(false)
+  const [cityError, setCityError] = useState('')
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
 
-  // Show real venues when we have them. Show Glasgow ONLY when we never got a location
-  // (i.e. user denied geo and there's no cached data either).
   const hasRealVenues = liveVenues.length > 0
-  const baseVenues: (DemoVenue | LiveVenue)[] = hasRealVenues
-    ? liveVenues
-    : (!locationObtained && !venuesLoading ? GLASGOW_VENUES : [])
-
-  const filtered = search
-    ? baseVenues.filter((v) =>
-        v.name.toLowerCase().includes(search.toLowerCase()) ||
-        v.vibeTags.some((t) => t.toLowerCase().includes(search.toLowerCase())) ||
-        v.type.toLowerCase().includes(search.toLowerCase())
-      )
-    : baseVenues
-
-  // Use real venue coords for the mini map when available
   const mapVenues = hasRealVenues ? liveVenues : GLASGOW_VENUES
+
+  const filtered = venueSearch
+    ? liveVenues.filter((v) =>
+        v.name.toLowerCase().includes(venueSearch.toLowerCase()) ||
+        v.vibeTags.some((t) => t.toLowerCase().includes(venueSearch.toLowerCase())) ||
+        v.type.toLowerCase().includes(venueSearch.toLowerCase())
+      )
+    : liveVenues
+
+  async function handleCitySearch(e: React.FormEvent) {
+    e.preventDefault()
+    const q = cityInput.trim()
+    if (!q || citySearching) return
+    setCitySearching(true)
+    setCityError('')
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'en' } },
+      )
+      const results = await r.json() as Array<{ lat: string; lon: string; display_name: string }>
+      if (!results.length) { setCityError('City not found — try a different name'); return }
+      const { lat, lon, display_name } = results[0]!
+      const cityName = display_name.split(',')[0]!.trim()
+      onCitySearch(cityName, parseFloat(lat), parseFloat(lon))
+      setCityInput('')
+    } catch {
+      setCityError('Search failed — check your connection')
+    } finally {
+      setCitySearching(false)
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
 
-      {/* ── Mini venues map ── */}
-      <div className="flex-shrink-0" style={{ height: 200, borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
+      {/* ── City explorer bar ── */}
+      <div className="flex-shrink-0 px-4 py-3" style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
+        <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>
+          🌍 EXPLORE A CITY
+        </p>
+        <form onSubmit={handleCitySearch} className="flex gap-2">
+          <div className="relative flex-1">
+            <MapPin size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,214,0,0.45)' }} />
+            <input
+              type="text"
+              placeholder="London, New York, Tokyo..."
+              value={cityInput}
+              onChange={(e) => { setCityInput(e.target.value); setCityError('') }}
+              className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
+              style={{ border: '1px solid rgba(255,214,0,0.25)', color: '#e0f2fe' }}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!cityInput.trim() || citySearching}
+            className="px-3 py-2 rounded-lg text-[10px] font-black tracking-widest transition-all disabled:opacity-40"
+            style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
+          >
+            {citySearching ? '...' : 'GO'}
+          </button>
+        </form>
+        {cityError && (
+          <p className="text-[10px] mt-1.5 font-bold" style={{ color: '#ff006e' }}>{cityError}</p>
+        )}
+      </div>
+
+      {/* ── Mini venues map (flies to new city) ── */}
+      <div className="flex-shrink-0" style={{ height: 180, borderBottom: '1px solid rgba(255,214,0,0.08)' }}>
         <VenuesMiniMap
           venues={mapVenues}
           selectedId={selectedVenueId}
           onSelect={(id) => setSelectedVenueId(id === selectedVenueId ? null : id)}
+          flyToCenter={mapCenter}
         />
       </div>
 
-      {/* Search */}
-      <div className="flex-shrink-0 px-4 py-2.5" style={{ background: 'rgba(4,4,13,0.8)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+      {/* ── Venue name filter ── */}
+      <div className="flex-shrink-0 px-4 py-2" style={{ background: 'rgba(4,4,13,0.8)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
         <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.35)' }} />
           <input
             type="text"
-            placeholder="Search venues, vibe, type..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter by name, vibe, type..."
+            value={venueSearch}
+            onChange={(e) => setVenueSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
-            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }}
+            style={{ border: '1px solid rgba(0,229,255,0.12)', color: '#e0f2fe' }}
           />
-          {search && (
-            <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setSearch('')}>
+          {venueSearch && (
+            <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setVenueSearch('')}>
               <X size={12} style={{ color: 'rgba(74,96,128,0.6)' }} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Status bar */}
-      <div className="flex-shrink-0 px-4 py-2 flex items-center gap-2" style={{ background: 'rgba(4,4,13,0.6)' }}>
+      {/* ── Status bar ── */}
+      <div className="flex-shrink-0 px-4 py-1.5 flex items-center justify-between" style={{ background: 'rgba(4,4,13,0.6)' }}>
         {venuesLoading ? (
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full border border-t-transparent animate-spin" style={{ borderColor: 'rgba(255,214,0,0.3)', borderTopColor: '#ffd600' }} />
-            <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.5)' }}>SCANNING NEARBY VENUES...</span>
+            <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.5)' }}>SCANNING VENUES...</span>
           </div>
         ) : (
           <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>
             {filtered.length} VENUES
-            {venueCity
-              ? ` · ${venueCity.toUpperCase()}`
-              : hasRealVenues
-                ? ' · NEARBY'
-                : ' · GLASGOW (DEMO)'}
+            {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ' · GLASGOW (DEMO)'}
           </p>
+        )}
+        {hasRealVenues && !venuesLoading && (
+          <button
+            onClick={onWiderSearch}
+            className="text-[9px] font-black tracking-widest px-2 py-1 rounded transition-all"
+            style={{ color: 'rgba(0,229,255,0.5)', border: '1px solid rgba(0,229,255,0.15)' }}
+          >
+            WIDER →
+          </button>
         )}
       </div>
 
-      {/* Scrollable list */}
+      {/* ── Scrollable venue list ── */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-20">
+        {venuesLoading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(255,214,0,0.1)', borderTopColor: '#ffd600' }} />
+            <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>SCANNING NEARBY VENUES...</p>
+          </div>
+        )}
         {!venuesLoading && filtered.map((venue) => (
           <VenueCard key={venue.id} venue={venue} />
         ))}
-        {!venuesLoading && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
-            <span style={{ fontSize: 36 }}>📍</span>
-            <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>NO VENUES FOUND NEARBY</p>
-            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.35)' }}>
-              Allow location access so we can scan pubs, clubs &amp; bars near you — or search by name above.
+        {!venuesLoading && !hasRealVenues && (
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-4">
+            <span style={{ fontSize: 36 }}>🌍</span>
+            <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(255,214,0,0.6)' }}>EXPLORE VENUES WORLDWIDE</p>
+            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.3)', maxWidth: 280 }}>
+              Type any city above — London, Berlin, Tokyo, New York — to discover pubs, clubs and bars nearby.
+              Or allow location access to find venues around you automatically.
             </p>
             <button
               onClick={onWiderSearch}
-              className="px-4 py-2 rounded-lg text-[10px] font-black tracking-widest transition-all"
-              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}
+              className="mt-1 px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all"
+              style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
             >
-              SEARCH WIDER AREA →
+              📍 USE MY LOCATION
             </button>
+          </div>
+        )}
+        {!venuesLoading && hasRealVenues && filtered.length === 0 && (
+          <div className="py-10 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
+            No venues match "{venueSearch}"
           </div>
         )}
       </div>
@@ -703,23 +772,23 @@ export default function DiscoverPage() {
   // ── Venue discovery state (lifted here so it survives tab switches) ──────────
   const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
   const [venueCity, setVenueCity] = useState<string | null>(null)
-  // true once we successfully got GPS coordinates (even if discover returned 0 results)
-  const [venueLocationObtained, setVenueLocationObtained] = useState(false)
+  // mapCenter drives the flyTo in VenuesMiniMap whenever location changes
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
 
   // Silently request geolocation on mount — used to centre the map, narrow the
-  // event feed, AND discover venues. Falls back to no geo-filter (shows all events).
+  // event feed, AND discover venues.
   useEffect(() => {
     if (!navigator.geolocation) { setGeoResolved(true); return }
-    const fallback = setTimeout(() => setGeoResolved(true), 8500) // safety timeout
+    const fallback = setTimeout(() => setGeoResolved(true), 8500)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
         setUserLocation({ lat, lng })
         clearTimeout(fallback)
 
-        // Discover venues for this location (cached for 5 min — safe to call every mount)
+        // Discover venues (cache-aware — skips API if fresh data exists for this area)
         discover(lat, lng, 15000)
-        setVenueLocationObtained(true)
+        setMapCenter({ lat, lng })
 
         // Reverse-geocode city name for display label
         fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
@@ -727,22 +796,27 @@ export default function DiscoverPage() {
           .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
           .catch(() => {})
       },
-      () => {
-        clearTimeout(fallback)
-        setGeoResolved(true)
-        // Location denied — venueLocationObtained stays false → shows Glasgow demo
-      },
+      () => { clearTimeout(fallback); setGeoResolved(true) },
       { timeout: 8000, maximumAge: 300000 },
     )
     return () => clearTimeout(fallback)
   }, [discover])
 
+  // City search: geocoded externally and passed in via onCitySearch
+  function handleCitySearch(cityName: string, lat: number, lng: number) {
+    setVenueCity(cityName)
+    setMapCenter({ lat, lng })
+    discover(lat, lng, 15000)
+  }
+
+  // "Use my location" / "Wider area" button
   function handleVenueWiderSearch() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          discover(pos.coords.latitude, pos.coords.longitude, 25000)
-          setVenueLocationObtained(true)
+          const { latitude: lat, longitude: lng } = pos.coords
+          discover(lat, lng, 25000)
+          setMapCenter({ lat, lng })
         },
         () => {},
         { timeout: 8000 },
@@ -973,9 +1047,9 @@ export default function DiscoverPage() {
         <VenuesList
           liveVenues={liveVenues}
           venuesLoading={venuesLoading}
-          venueSource={venueSource}
           venueCity={venueCity}
-          locationObtained={venueLocationObtained}
+          mapCenter={mapCenter}
+          onCitySearch={handleCitySearch}
           onWiderSearch={handleVenueWiderSearch}
         />
       </div>

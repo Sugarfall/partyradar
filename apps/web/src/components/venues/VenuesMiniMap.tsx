@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Map, { Marker, Popup, NavigationControl } from 'react-map-gl'
+import type { MapRef } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import Link from 'next/link'
 
@@ -40,9 +41,12 @@ interface Props {
   venues: MapVenue[]
   selectedId: string | null
   onSelect: (id: string) => void
+  /** When set, the map flies to this position (e.g. after city search or location update) */
+  flyToCenter?: { lat: number; lng: number } | null
 }
 
-export default function VenuesMiniMap({ venues, selectedId, onSelect }: Props) {
+export default function VenuesMiniMap({ venues, selectedId, onSelect, flyToCenter }: Props) {
+  const mapRef = useRef<MapRef>(null)
   const [popupVenue, setPopupVenue] = useState<MapVenue | null>(null)
 
   const handleMarkerClick = useCallback((venue: MapVenue) => {
@@ -50,20 +54,25 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect }: Props) {
     onSelect(venue.id)
   }, [onSelect])
 
-  // Centre the map on the median of all venues rather than hardcoding Glasgow
-  const initialView = useMemo(() => {
-    if (venues.length === 0) return { longitude: -4.2518, latitude: 55.8642, zoom: 12.5 }
-    const lats = venues.map((v) => v.lat).sort((a, b) => a - b)
-    const lngs = venues.map((v) => v.lng).sort((a, b) => a - b)
-    const midLat = lats[Math.floor(lats.length / 2)]!
-    const midLng = lngs[Math.floor(lngs.length / 2)]!
-    return { longitude: midLng, latitude: midLat, zoom: 12 }
-  }, [venues])  // recalculates when venue set changes
+  // Fly to new center when requested (city search or first real location)
+  useEffect(() => {
+    if (!flyToCenter || !mapRef.current) return
+    mapRef.current.flyTo({
+      center: [flyToCenter.lng, flyToCenter.lat],
+      zoom: 13,
+      duration: 1200,
+    })
+  }, [flyToCenter?.lat, flyToCenter?.lng])
 
   return (
     <Map
+      ref={mapRef}
       mapboxAccessToken={MAPBOX_TOKEN}
-      initialViewState={initialView}
+      initialViewState={{
+        longitude: -4.2518,
+        latitude: 55.8642,
+        zoom: 12,
+      }}
       style={{ width: '100%', height: '100%' }}
       mapStyle="mapbox://styles/mapbox/dark-v11"
       attributionControl={false}
@@ -87,15 +96,14 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect }: Props) {
           >
             <div
               style={{
-                width: isSelected ? 18 : 13,
-                height: isSelected ? 18 : 13,
+                width: isSelected ? 18 : 12,
+                height: isSelected ? 18 : 12,
                 borderRadius: '50%',
                 background: color,
-                border: `2px solid ${isSelected ? '#fff' : color}`,
-                boxShadow: `0 0 ${isSelected ? 14 : 8}px ${color}${isSelected ? 'cc' : '80'}`,
+                border: `2px solid ${isSelected ? '#fff' : 'rgba(4,4,13,0.6)'}`,
+                boxShadow: `0 0 ${isSelected ? 14 : 6}px ${color}${isSelected ? 'cc' : '80'}`,
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-                zIndex: isSelected ? 10 : 1,
               }}
             />
           </Marker>
@@ -131,27 +139,24 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect }: Props) {
             <p style={{ color: TYPE_COLORS[popupVenue.type] ?? '#00e5ff', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', marginBottom: 6 }}>
               {TYPE_LABELS[popupVenue.type] ?? popupVenue.type}
             </p>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <Link
-                href={`/venues/${popupVenue.id}`}
-                style={{
-                  flex: 1,
-                  textAlign: 'center',
-                  padding: '5px 8px',
-                  borderRadius: 6,
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: '0.1em',
-                  color: TYPE_COLORS[popupVenue.type] ?? '#00e5ff',
-                  border: `1px solid ${TYPE_COLORS[popupVenue.type] ?? '#00e5ff'}50`,
-                  background: `${TYPE_COLORS[popupVenue.type] ?? '#00e5ff'}12`,
-                  textDecoration: 'none',
-                  display: 'block',
-                }}
-              >
-                VIEW →
-              </Link>
-            </div>
+            <Link
+              href={`/venues/${popupVenue.id}`}
+              style={{
+                display: 'block',
+                textAlign: 'center',
+                padding: '5px 8px',
+                borderRadius: 6,
+                fontSize: 9,
+                fontWeight: 800,
+                letterSpacing: '0.1em',
+                color: TYPE_COLORS[popupVenue.type] ?? '#00e5ff',
+                border: `1px solid ${TYPE_COLORS[popupVenue.type] ?? '#00e5ff'}50`,
+                background: `${TYPE_COLORS[popupVenue.type] ?? '#00e5ff'}12`,
+                textDecoration: 'none',
+              }}
+            >
+              VIEW →
+            </Link>
           </div>
         </Popup>
       )}
