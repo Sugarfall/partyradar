@@ -41,7 +41,7 @@ const eventSchema = z.object({
 const userSelect = {
   id: true, username: true, displayName: true,
   photoUrl: true, bio: true, ageVerified: true,
-  subscriptionTier: true,
+  alcoholFriendly: true, subscriptionTier: true,
 }
 
 /** GET /api/events — discover events */
@@ -50,29 +50,28 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
 
     const skip = (Number(page) - 1) * Number(limit)
-
-    const now = new Date()
-    // Show events that started up to 6h ago (live/ongoing) or haven't started yet
-    const cutoff = new Date(now.getTime() - 6 * 60 * 60 * 1000)
+    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
 
     const where: Record<string, unknown> = {
       isPublished: true,
       isCancelled: false,
-      OR: [
-        { endsAt: { gte: now } },
-        { endsAt: null, startsAt: { gte: cutoff } },
-      ],
+      startsAt: { gte: new Date() },
     }
 
     if (tonight === 'true') {
+      const now = new Date()
       const midnight = new Date(now)
       midnight.setHours(23, 59, 59, 999)
       where['startsAt'] = { gte: now, lte: midnight }
-      delete where['OR']
     }
 
     if (type) where['type'] = type
     if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
+
+    // Hide alcohol events only for logged-in users who haven't enabled the toggle
+    if (req.user && !showAlcohol) {
+      where['alcoholPolicy'] = 'NONE'
+    }
 
     // Geo filter
     if (lat && lng) {
@@ -86,13 +85,22 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     // Background sync external events if lat/lng provided and we have API keys
     if (lat && lng) {
       const { syncExternalEvents } = await import('../lib/eventSync')
+      const latN = Number(lat), lngN = Number(lng)
+      // Reverse-geocode to get a city name for throttle key, fall back to coord string
+      const getCityName = async (): Promise<string> => {
+        try {
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latN}&lon=${lngN}&format=json`,
+            { headers: { 'User-Agent': 'PartyRadar/1.0' } }
+          )
+          const d = (await r.json()) as { address?: { city?: string; town?: string; village?: string; county?: string } }
+          return d.address?.city ?? d.address?.town ?? d.address?.village ?? d.address?.county ?? `${latN},${lngN}`
+        } catch {
+          return `${latN},${lngN}`
+        }
+      }
       // fire-and-forget — don't await, don't fail request if sync errors
-      syncExternalEvents(
-        'Glasgow',
-        Number(lat),
-        Number(lng),
-        'system'
-      ).catch(() => {})
+      getCityName().then((city) => syncExternalEvents(city, latN, lngN, 'system')).catch(() => {})
     }
 
     const [events, total] = await Promise.all([

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Edit2, Check, X, LogOut, ShieldCheck, Ticket,
   Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare, Bookmark,
-  ToggleLeft, Building2, Plus
+  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
@@ -110,6 +110,114 @@ function ClickableToggle({ icon, label, value, onChange, border }: {
         />
       </div>
     </button>
+  )
+}
+
+// ── Social Inbox ──────────────────────────────────────────────────────────────
+function SocialInbox({ token }: { token: string }) {
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  const [goOutRequests, setGoOutRequests] = useState<Array<{
+    id: string; displayName: string; username: string; photoUrl?: string | null
+    requestId: string; message?: string | null; sentAt: string
+  }>>([])
+  const [nudges, setNudges] = useState<Array<{
+    id: string; displayName: string; username: string; photoUrl?: string | null; nudgedAt: string
+  }>>([])
+  const [responding, setResponding] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!token) return
+    Promise.all([
+      fetch(`${API_BASE}/users/me/go-out-requests`, { headers }).then((r) => r.json()).then((j) => setGoOutRequests(j.data ?? [])),
+      fetch(`${API_BASE}/users/me/nudges`, { headers }).then((r) => r.json()).then((j) => setNudges(j.data ?? [])),
+    ]).catch(() => {})
+  }, [token])
+
+  async function respond(requestId: string, accept: boolean) {
+    setResponding(requestId)
+    try {
+      await fetch(`${API_BASE}/users/go-out-requests/${requestId}/respond`, {
+        method: 'POST', headers, body: JSON.stringify({ accept }),
+      })
+      setGoOutRequests((prev) => prev.filter((r) => r.requestId !== requestId))
+    } catch {}
+    finally { setResponding(null) }
+  }
+
+  if (goOutRequests.length === 0 && nudges.length === 0) return null
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,0,110,0.15)' }}>
+      <div className="px-4 py-2.5 flex items-center gap-2"
+        style={{ background: 'rgba(255,0,110,0.04)', borderBottom: '1px solid rgba(255,0,110,0.1)' }}>
+        <Sparkles size={12} style={{ color: '#ff006e' }} />
+        <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(255,0,110,0.6)' }}>SOCIAL INBOX</p>
+      </div>
+
+      {/* Nudges */}
+      {nudges.length > 0 && (
+        <div className="px-4 py-3" style={{ borderBottom: goOutRequests.length > 0 ? '1px solid rgba(255,0,110,0.08)' : 'none' }}>
+          <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>
+            👋 NUDGES ({nudges.length})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {nudges.slice(0, 6).map((u) => (
+              <Link key={u.id} href={`/profile/${u.username}`}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl"
+                style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.12)' }}>
+                {u.photoUrl
+                  ? <img src={u.photoUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
+                  : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black"
+                      style={{ background: 'rgba(0,229,255,0.12)', color: '#00e5ff' }}>
+                      {u.displayName[0]}
+                    </div>
+                }
+                <span className="text-[11px] font-bold" style={{ color: '#e0f2fe' }}>{u.displayName.split(' ')[0]}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Go-out requests */}
+      {goOutRequests.map((r) => (
+        <div key={r.requestId} className="px-4 py-3"
+          style={{ borderBottom: '1px solid rgba(255,0,110,0.06)' }}>
+          <div className="flex items-center gap-3">
+            <Link href={`/profile/${r.username}`}>
+              {r.photoUrl
+                ? <img src={r.photoUrl} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
+                : <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0"
+                    style={{ background: 'rgba(255,0,110,0.12)', color: '#ff006e' }}>
+                    {r.displayName[0]}
+                  </div>
+              }
+            </Link>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-black" style={{ color: '#e0f2fe' }}>
+                <Link href={`/profile/${r.username}`}>{r.displayName}</Link>
+                <span className="font-normal" style={{ color: 'rgba(224,242,254,0.5)' }}> wants to go out ✨</span>
+              </p>
+              {r.message && (
+                <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.45)' }}>"{r.message}"</p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 mt-2.5">
+            <button onClick={() => respond(r.requestId, true)} disabled={responding === r.requestId}
+              className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-wide disabled:opacity-50"
+              style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88' }}>
+              {responding === r.requestId ? '...' : '🎉 YES, LET\'S GO!'}
+            </button>
+            <button onClick={() => respond(r.requestId, false)} disabled={responding === r.requestId}
+              className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-wide disabled:opacity-50"
+              style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.15)', color: 'rgba(255,0,110,0.5)' }}>
+              NOT NOW
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -434,6 +542,9 @@ export default function ProfilePage() {
             </div>
           ))}
         </div>
+
+        {/* ── Social Inbox ── */}
+        <SocialInbox token={typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''} />
 
         {/* Going Out Tonight toggle */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
