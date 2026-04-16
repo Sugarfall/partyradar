@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Edit2, Check, X, LogOut, ShieldCheck, Wine, Ticket,
   Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare, Bookmark,
-  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye,
+  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye, Camera,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
@@ -312,6 +312,10 @@ export default function ProfilePage() {
   // Follow list modal
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
 
+  // Photo upload
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
   // Account mode — stored in localStorage, no login required
   const [accountMode, setAccountMode] = useState<'ATTENDEE' | 'HOST'>('ATTENDEE')
   const [showBecomeHost, setShowBecomeHost] = useState(false)
@@ -380,6 +384,43 @@ export default function ProfilePage() {
     const next = !goingOut
     setGoingOut(next)
     localStorage.setItem('partyradar_going_out', String(next))
+  }
+
+  async function handlePhotoUpload(file: File) {
+    if (!file || photoUploading) return
+    setPhotoUploading(true)
+    try {
+      const token = localStorage.getItem('partyradar_token') ?? ''
+      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) hdrs['Authorization'] = `Bearer ${token}`
+
+      // Get signed upload credentials
+      const credRes = await fetch(`${API_BASE}/uploads/image`, {
+        method: 'POST', headers: hdrs, body: JSON.stringify({ folder: 'avatars' }),
+      })
+      const credJson = await credRes.json()
+      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('timestamp', String(timestamp))
+      formData.append('signature', signature)
+      formData.append('api_key', apiKey)
+      formData.append('folder', folder)
+      formData.append('transformation', 'c_fill,w_400,h_400,q_auto')
+
+      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST', body: formData,
+      })
+      const upJson = await upRes.json()
+      if (upJson.secure_url) {
+        await fetch(`${API_BASE}/auth/profile`, {
+          method: 'PUT', headers: hdrs, body: JSON.stringify({ photoUrl: upJson.secure_url }),
+        })
+        await refreshUser()
+      }
+    } catch {}
+    finally { setPhotoUploading(false) }
   }
 
   if (authLoading || !dbUser) {
@@ -453,16 +494,36 @@ export default function ProfilePage() {
           style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent)' }} />
 
         <div className="max-w-xl mx-auto flex items-center gap-5">
-          {/* Avatar */}
-          {dbUser.photoUrl ? (
-            <img src={dbUser.photoUrl} alt="" className="w-20 h-20 rounded-2xl object-cover"
-              style={{ border: '1px solid rgba(0,229,255,0.3)', boxShadow: '0 0 20px rgba(0,229,255,0.15)', flexShrink: 0 }} />
-          ) : (
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black shrink-0"
-              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff', boxShadow: '0 0 20px rgba(0,229,255,0.1)' }}>
-              {initials}
-            </div>
-          )}
+          {/* Avatar with upload */}
+          <div className="relative shrink-0" style={{ width: 80, height: 80 }}>
+            {dbUser.photoUrl ? (
+              <img src={dbUser.photoUrl} alt="" className="w-20 h-20 rounded-2xl object-cover"
+                style={{ border: '1px solid rgba(0,229,255,0.3)', boxShadow: '0 0 20px rgba(0,229,255,0.15)' }} />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black"
+                style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff', boxShadow: '0 0 20px rgba(0,229,255,0.1)' }}>
+                {initials}
+              </div>
+            )}
+            {/* Camera overlay */}
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              disabled={photoUploading}
+              className="absolute bottom-0 right-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+              style={{ background: 'rgba(4,4,13,0.9)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}>
+              {photoUploading
+                ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                : <Camera size={12} />
+              }
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f) }}
+            />
+          </div>
 
           {/* Info */}
           <div className="flex-1 min-w-0">
