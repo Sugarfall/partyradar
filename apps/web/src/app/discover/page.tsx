@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Wine, Star, Heart, Lock, Search, X, LayoutList, Layers } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Wine, Star, Lock, LayoutList, Layers } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useEvents, DEMO_EVENTS, GLASGOW_VENUES } from '@/hooks/useEvents'
-import type { DemoVenue } from '@/hooks/useEvents'
+import { useEvents, DEMO_EVENTS } from '@/hooks/useEvents'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
 import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS } from '@partyradar/shared'
@@ -19,14 +18,6 @@ const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) =
   ),
 })
 
-const VenuesMiniMap = dynamic(() => import('@/components/venues/VenuesMiniMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full flex items-center justify-center" style={{ height: 200, background: 'rgba(7,7,26,0.95)' }}>
-      <span style={{ color: 'rgba(255,214,0,0.4)', letterSpacing: '0.15em', fontSize: 11 }}>LOADING MAP...</span>
-    </div>
-  ),
-})
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -38,12 +29,16 @@ const TYPE_COLORS: Record<string, string> = {
   CLUB_NIGHT: '#00e5ff',
   CONCERT: '#3d5afe',
   PUB_NIGHT: '#f59e0b',
+  BEACH_PARTY: '#06b6d4',
+  YACHT_PARTY: '#0ea5e9',
 }
 const TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'HOME PARTY',
   CLUB_NIGHT: 'CLUB NIGHT',
   CONCERT: 'CONCERT',
   PUB_NIGHT: 'PUB NIGHT',
+  BEACH_PARTY: 'BEACH PARTY',
+  YACHT_PARTY: 'YACHT PARTY',
 }
 
 type SlideDir = 'next' | 'prev' | null
@@ -367,7 +362,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
         {/* Primary action */}
         <Link
           href={`/events/${event.id}`}
-          className="block w-full text-center font-black py-3 rounded-xl text-sm transition-all duration-200"
+          className="flex items-center justify-center w-full font-black py-3 rounded-xl text-sm transition-all duration-200"
           style={{
             background: `linear-gradient(135deg, ${color}20, rgba(61,90,254,0.15))`,
             border: `1px solid ${color}50`,
@@ -412,159 +407,17 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
   )
 }
 
-// ── Venue card ────────────────────────────────────────────────────────────────
-const VENUE_TYPE_LABELS: Record<string, string> = {
-  NIGHTCLUB: 'NIGHTCLUB', BAR: 'BAR', PUB: 'PUB',
-  CONCERT_HALL: 'CONCERT HALL', ROOFTOP_BAR: 'ROOFTOP BAR', LOUNGE: 'LOUNGE',
-}
-const VENUE_TYPE_COLORS: Record<string, string> = {
-  NIGHTCLUB: '#00e5ff', BAR: '#a855f7', PUB: '#22c55e',
-  CONCERT_HALL: '#3d5afe', ROOFTOP_BAR: '#f59e0b', LOUNGE: '#ec4899',
-}
-
-function VenueCard({ venue }: { venue: DemoVenue }) {
-  const color = VENUE_TYPE_COLORS[venue.type] ?? '#00e5ff'
-  return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: 'rgba(7,7,26,0.95)', border: `1px solid ${color}25`, boxShadow: `0 0 20px ${color}08` }}
-    >
-      {/* Top color band */}
-      <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${color}60, transparent)` }} />
-
-      <div className="p-4 space-y-3">
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-black text-sm leading-tight truncate" style={{ color: '#e0f2fe', letterSpacing: '0.05em' }}>
-              {venue.name}
-            </h3>
-            <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
-              <MapPin size={9} className="inline mr-0.5" />{venue.address}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <span
-              className="text-[9px] font-bold px-2 py-0.5 rounded"
-              style={{ color, border: `1px solid ${color}50`, background: `${color}12`, letterSpacing: '0.12em' }}
-            >
-              {VENUE_TYPE_LABELS[venue.type]}
-            </span>
-            <span className="text-[10px] font-bold" style={{ color: '#ffd600' }}>
-              ★ {venue.rating.toFixed(1)}
-            </span>
-          </div>
-        </div>
-
-        {/* Vibe tags */}
-        <div className="flex gap-1 flex-wrap">
-          {venue.vibeTags.slice(0, 5).map((tag) => (
-            <span
-              key={tag}
-              className="text-[9px] font-bold px-2 py-0.5 rounded-full"
-              style={{ color: `${color}bb`, border: `1px solid ${color}25`, background: `${color}0a`, letterSpacing: '0.08em' }}
-            >
-              #{tag}
-            </span>
-          ))}
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-1">
-          <Link
-            href={`/events/venue-event-${venue.id}`}
-            className="flex-1 text-center py-2 rounded-lg text-[10px] font-black"
-            style={{ background: `${color}15`, border: `1px solid ${color}40`, color, letterSpacing: '0.1em' }}
-          >
-            VIEW EVENTS →
-          </Link>
-          {!venue.isClaimed && (
-            <button
-              className="flex-1 text-center py-2 rounded-lg text-[10px] font-black"
-              style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600', letterSpacing: '0.08em' }}
-              onClick={() => alert(`Claim flow for ${venue.name} — coming soon!`)}
-            >
-              CLAIM VENUE ★
-            </button>
-          )}
-          {venue.isClaimed && (
-            <span
-              className="flex-1 text-center py-2 rounded-lg text-[10px] font-bold"
-              style={{ border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', letterSpacing: '0.08em' }}
-            >
-              ✓ CLAIMED
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Venues list ───────────────────────────────────────────────────────────────
 function VenuesList() {
-  const [search, setSearch] = useState('')
-  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
-
-  const filtered = search
-    ? GLASGOW_VENUES.filter((v) =>
-        v.name.toLowerCase().includes(search.toLowerCase()) ||
-        v.vibeTags.some((t) => t.toLowerCase().includes(search.toLowerCase())) ||
-        v.type.toLowerCase().includes(search.toLowerCase())
-      )
-    : GLASGOW_VENUES
-
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-
-      {/* ── Mini venues map ── */}
-      <div className="flex-shrink-0" style={{ height: 200, borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
-        <VenuesMiniMap
-          venues={GLASGOW_VENUES}
-          selectedId={selectedVenueId}
-          onSelect={(id) => setSelectedVenueId(id === selectedVenueId ? null : id)}
-        />
-      </div>
-
-      {/* Search */}
-      <div className="flex-shrink-0 px-4 py-2.5" style={{ background: 'rgba(4,4,13,0.8)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
-        <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
-          <input
-            type="text"
-            placeholder="Search venues..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
-            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }}
-          />
-          {search && (
-            <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setSearch('')}>
-              <X size={12} style={{ color: 'rgba(74,96,128,0.6)' }} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Count */}
-      <div className="flex-shrink-0 px-4 py-2" style={{ background: 'rgba(4,4,13,0.6)' }}>
-        <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>
-          {filtered.length} VENUES · GLASGOW
-        </p>
-      </div>
-
-      {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-20">
-        {filtered.map((venue) => (
-          <VenueCard key={venue.id} venue={venue} />
-        ))}
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <span style={{ fontSize: 32 }}>🏢</span>
-            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>NO VENUES FOUND</p>
-          </div>
-        )}
-      </div>
+    <div className="flex-1 flex flex-col items-center justify-center px-4 py-16 gap-4">
+      <span style={{ fontSize: 40 }}>🏢</span>
+      <p className="text-sm font-bold tracking-widest text-center" style={{ color: 'rgba(0,229,255,0.5)' }}>
+        VENUES NEARBY
+      </p>
+      <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 240 }}>
+        No venues found nearby — check back soon
+      </p>
     </div>
   )
 }

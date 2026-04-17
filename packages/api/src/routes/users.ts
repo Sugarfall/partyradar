@@ -18,6 +18,11 @@ const PUBLIC_USER_SELECT = {
   isAdmin: true,
   accountMode: true,
   subscriptionTier: true,
+  profileBg: true,
+  themeColor: true,
+  themeName: true,
+  socialScore: true,
+  phoneVerified: true,
 }
 
 // ── GET /api/users/me/profile-views ────────────────────────────────────────────

@@ -13,7 +13,7 @@ const SYNC_THROTTLE_MS = 30 * 60 * 1000 // 30 minutes
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
 
-type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT'
+type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT' | 'BEACH_PARTY' | 'YACHT_PARTY'
 
 interface SyncResult {
   imported: number
@@ -602,7 +602,7 @@ async function syncPerplexity(
 
   let imported = 0
   let skipped = 0
-  const validTypes: EventTypeName[] = ['CONCERT', 'CLUB_NIGHT', 'HOME_PARTY', 'PUB_NIGHT']
+  const validTypes: EventTypeName[] = ['CONCERT', 'CLUB_NIGHT', 'HOME_PARTY', 'PUB_NIGHT', 'BEACH_PARTY', 'YACHT_PARTY']
 
   for (const ev of events) {
     try {

@@ -1,6 +1,6 @@
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-export type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT'
+export type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT' | 'BEACH_PARTY' | 'YACHT_PARTY'
 export type AlcoholPolicy = 'NONE' | 'PROVIDED' | 'BYOB'
 export type AgeRestriction = 'ALL_AGES' | 'AGE_18' | 'AGE_21'
 export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED'
@@ -34,6 +34,15 @@ export interface User {
   ageVerified: boolean
   alcoholFriendly: boolean
   showAlcoholEvents: boolean
+  phoneNumber?: string | null
+  phoneVerified: boolean
+  profileBg?: string | null
+  themeColor?: string | null
+  themeName?: string | null
+  socialScore: number
+  lastLat?: number | null
+  lastLng?: number | null
+  lastSeenAt?: string | null
   subscriptionTier: SubscriptionTier
   accountMode: AccountMode
   stripeCustomerId?: string | null

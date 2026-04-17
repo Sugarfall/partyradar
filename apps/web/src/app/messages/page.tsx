@@ -24,6 +24,7 @@ interface Conversation {
   updatedAt: string
   other: OtherUser | null
   lastMessage: { text: string; senderId: string; createdAt: string } | null
+  isRequest?: boolean
 }
 
 interface DmMessage {
@@ -62,7 +63,8 @@ interface GroupMessage {
   senderName: string
   senderPhoto?: string | null
   senderUsername?: string | null
-  text: string
+  text: string | null
+  imageUrl?: string | null
   createdAt: string
   isFollowing: boolean
 }
@@ -816,6 +818,8 @@ function GroupChatView({
   const [loading, setLoading] = useState(true)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
   const [userPopup, setUserPopup] = useState<GroupMessage | null>(null)
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
   const [locked, setLocked] = useState(false)
@@ -1031,6 +1035,38 @@ function GroupChatView({
       setText(draft)
     }
     finally { setSending(false) }
+  }
+
+  async function sendPhoto(file: File) {
+    if (!dbUserId || !groupId || photoUploading) return
+    setPhotoUploading(true)
+    try {
+      const hdrs: Record<string, string> = {}
+      if (token) hdrs['Authorization'] = `Bearer ${token}`
+      hdrs['Content-Type'] = 'application/json'
+      const credRes = await fetch(`${API_URL}/uploads/image`, {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ folder: 'group-snaps' }),
+      })
+      const credJson = await credRes.json()
+      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
+      const form = new FormData()
+      form.append('file', file)
+      form.append('timestamp', timestamp)
+      form.append('signature', signature)
+      form.append('api_key', apiKey)
+      form.append('folder', folder)
+      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: form })
+      const upJson = await upRes.json()
+      if (!upJson.secure_url) return
+      const msgRes = await fetch(`${API_URL}/groups/${groupId}/messages`, {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ imageUrl: upJson.secure_url }),
+      })
+      const msgJson = await msgRes.json()
+      if (msgJson.data) setMessages((prev) => [...prev, msgJson.data])
+    } catch {}
+    finally { setPhotoUploading(false) }
   }
 
   async function followUser(senderId: string) {
@@ -1343,11 +1379,16 @@ function GroupChatView({
                     {m.senderName}
                   </p>
                 )}
-                <div className="px-3 py-2 rounded-2xl text-sm"
+                <div className={`rounded-2xl text-sm overflow-hidden ${m.text ? 'px-3 py-2' : ''}`}
                   style={isMe
                     ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
                     : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
-                  {m.text}
+                  {m.imageUrl && (
+                    <img src={m.imageUrl} alt="" className="max-w-[220px] rounded-xl object-cover cursor-pointer"
+                      style={{ maxHeight: 200, display: 'block' }}
+                      onClick={() => window.open(m.imageUrl!, '_blank')} />
+                  )}
+                  {m.text && <span>{m.text}</span>}
                 </div>
                 <p className={`text-[9px] mt-0.5 ${isMe ? 'text-right' : 'text-left'}`}
                   style={{ color: 'rgba(224,242,254,0.2)' }}>{timeAgo(m.createdAt)}</p>
@@ -1363,6 +1404,18 @@ function GroupChatView({
       {activeTab === 'chat' && dbUserId ? (
         <div className="flex-shrink-0 px-4 py-3 flex gap-2"
           style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) sendPhoto(f); e.target.value = '' }}
+          />
+          <button onClick={() => photoInputRef.current?.click()} disabled={photoUploading}
+            className="p-2.5 rounded-xl transition-all"
+            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: photoUploading ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.5)' }}>
+            {photoUploading ? <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: 'rgba(0,229,255,0.5)' }} /> : <Camera size={16} />}
+          </button>
           <input type="text" placeholder={`Message #${group?.name.toLowerCase() ?? 'group'}...`}
             value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
@@ -1741,8 +1794,10 @@ function DmSection({ dbUser, headers }: {
   headers: Record<string, string>
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [requestConvos, setRequestConvos] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [activeConvo, setActiveConvo] = useState<string | null>(null)
+  const [activeConvoIsRequest, setActiveConvoIsRequest] = useState(false)
   const [messages, setMessages] = useState<DmMessage[]>([])
   const [decrypted, setDecrypted] = useState<Record<string, string>>({})
   const [msgsLoading, setMsgsLoading] = useState(false)
@@ -1754,6 +1809,8 @@ function DmSection({ dbUser, headers }: {
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState<OtherUser[]>([])
   const [searching, setSearching] = useState(false)
+  const [dmSubTab, setDmSubTab] = useState<'inbox' | 'requests'>('inbox')
+  const [acceptingRequest, setAcceptingRequest] = useState(false)
   const snapInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const initialLoadRef = useRef(false)
@@ -1769,11 +1826,21 @@ function DmSection({ dbUser, headers }: {
     }).catch(() => {})
   }, [dbUser?.id])
 
-  useEffect(() => {
+  const fetchConversations = useCallback(async () => {
     if (!dbUser) { setLoading(false); return }
-    fetch(`${API_URL}/dm`, { headers })
-      .then((r) => r.json()).then((j) => setConversations(j.data ?? [])).catch(() => {}).finally(() => setLoading(false))
-  }, [dbUser])
+    try {
+      const [inboxRes, reqRes] = await Promise.all([
+        fetch(`${API_URL}/dm`, { headers }),
+        fetch(`${API_URL}/dm?requests=true`, { headers }),
+      ])
+      const [inboxJson, reqJson] = await Promise.all([inboxRes.json(), reqRes.json()])
+      setConversations(inboxJson.data ?? [])
+      setRequestConvos(reqJson.data ?? [])
+    } catch {}
+    setLoading(false)
+  }, [dbUser?.id])
+
+  useEffect(() => { fetchConversations() }, [fetchConversations])
 
   useEffect(() => {
     if (!activeConvo) return
@@ -1785,6 +1852,7 @@ function DmSection({ dbUser, headers }: {
         setMessages(j.data?.messages ?? [])
         setActiveOther(j.data?.other ?? null)
         setOtherPublicKey(j.data?.otherPublicKey ?? null)
+        setActiveConvoIsRequest(j.data?.isRequest ?? false)
       })
       .catch(() => {}).finally(() => setMsgsLoading(false))
   }, [activeConvo])
@@ -1831,8 +1899,21 @@ function DmSection({ dbUser, headers }: {
     if (j.data?.id) {
       setSearch(''); setSearchResults([])
       setActiveConvo(j.data.id)
-      fetch(`${API_URL}/dm`, { headers }).then((r) => r.json()).then((d) => setConversations(d.data ?? [])).catch(() => {})
+      fetchConversations()
     }
+  }
+
+  async function acceptRequest() {
+    if (!activeConvo || acceptingRequest) return
+    setAcceptingRequest(true)
+    try {
+      const res = await fetch(`${API_URL}/dm/${activeConvo}/accept`, { method: 'POST', headers })
+      if (res.ok) {
+        setActiveConvoIsRequest(false)
+        fetchConversations()
+      }
+    } catch {}
+    finally { setAcceptingRequest(false) }
   }
 
   async function sendTextMessage() {
@@ -1942,7 +2023,7 @@ function DmSection({ dbUser, headers }: {
         {/* Header */}
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
           style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
-          <button onClick={() => { setActiveConvo(null); setMessages([]); setDecrypted({}); setOtherPublicKey(null) }}
+          <button onClick={() => { setActiveConvo(null); setMessages([]); setDecrypted({}); setOtherPublicKey(null); setActiveConvoIsRequest(false) }}
             className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
             <ArrowLeft size={18} />
           </button>
@@ -1967,6 +2048,31 @@ function DmSection({ dbUser, headers }: {
           {/* Follow button */}
           {activeOther && dbUser && <FollowButtonDm targetId={activeOther.id} headers={headers} />}
         </div>
+
+        {/* Message request banner */}
+        {activeConvoIsRequest && activeOther && (
+          <div className="flex-shrink-0 flex items-center justify-between gap-3 px-4 py-3"
+            style={{ background: 'rgba(255,214,0,0.06)', borderBottom: '1px solid rgba(255,214,0,0.2)' }}>
+            <p className="text-xs font-bold flex-1 min-w-0 truncate" style={{ color: 'rgba(255,214,0,0.8)' }}>
+              {activeOther.displayName} wants to send you a message
+            </p>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={acceptRequest}
+                disabled={acceptingRequest}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all disabled:opacity-50"
+                style={{ background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.35)', color: '#00ff88' }}>
+                {acceptingRequest ? '...' : 'ACCEPT'}
+              </button>
+              <button
+                onClick={() => { setActiveConvo(null); setMessages([]); setDecrypted({}); setOtherPublicKey(null); setActiveConvoIsRequest(false) }}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
+                style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.25)', color: 'rgba(255,0,110,0.7)' }}>
+                DECLINE
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
@@ -2061,6 +2167,8 @@ function DmSection({ dbUser, headers }: {
     )
   }
 
+  const displayedConvos = dmSubTab === 'requests' ? requestConvos : conversations
+
   return (
     <div className="px-4 max-w-xl mx-auto pb-4">
       <div className="relative mb-3">
@@ -2093,24 +2201,54 @@ function DmSection({ dbUser, headers }: {
           ))}
         </div>
       )}
+
+      {/* Inbox / Requests sub-tabs */}
+      <div className="flex gap-1 mb-3">
+        <button onClick={() => setDmSubTab('inbox')}
+          className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
+          style={{
+            background: dmSubTab === 'inbox' ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.02)',
+            border: `1px solid ${dmSubTab === 'inbox' ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
+            color: dmSubTab === 'inbox' ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+          }}>
+          INBOX
+        </button>
+        <button onClick={() => setDmSubTab('requests')}
+          className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all relative"
+          style={{
+            background: dmSubTab === 'requests' ? 'rgba(255,214,0,0.1)' : 'rgba(255,214,0,0.02)',
+            border: `1px solid ${dmSubTab === 'requests' ? 'rgba(255,214,0,0.35)' : 'rgba(255,214,0,0.07)'}`,
+            color: dmSubTab === 'requests' ? '#ffd600' : 'rgba(74,96,128,0.5)',
+          }}>
+          REQUESTS{requestConvos.length > 0 ? ` (${requestConvos.length})` : ''}
+        </button>
+      </div>
+
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
           ))}
         </div>
-      ) : conversations.length === 0 ? (
+      ) : displayedConvos.length === 0 ? (
         <div className="py-16 flex flex-col items-center gap-3">
           <User size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
-          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>NO MESSAGES YET</p>
-          <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>
-            Search for a user above to start a conversation
+          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>
+            {dmSubTab === 'requests' ? 'NO REQUESTS' : 'NO MESSAGES YET'}
           </p>
+          {dmSubTab === 'inbox' && (
+            <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>
+              Search for a user above to start a conversation
+            </p>
+          )}
         </div>
-      ) : conversations.map((c) => (
+      ) : displayedConvos.map((c) => (
         <button key={c.id} onClick={() => setActiveConvo(c.id)}
           className="w-full flex items-center gap-3 p-3 rounded-2xl text-left mb-2 transition-all"
-          style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{
+            background: c.isRequest ? 'rgba(255,214,0,0.03)' : 'rgba(7,7,26,0.8)',
+            border: `1px solid ${c.isRequest ? 'rgba(255,214,0,0.15)' : 'rgba(0,229,255,0.08)'}`,
+          }}>
           {c.other ? <Avatar user={c.other} size={44} /> : (
             <div className="w-11 h-11 rounded-full flex items-center justify-center"
               style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
@@ -2118,7 +2256,15 @@ function DmSection({ dbUser, headers }: {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{c.other?.displayName ?? 'Unknown User'}</p>
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{c.other?.displayName ?? 'Unknown User'}</p>
+              {c.isRequest && (
+                <span className="text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 tracking-widest"
+                  style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}>
+                  REQUEST
+                </span>
+              )}
+            </div>
             {c.lastMessage ? (
               <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>
                 {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}{c.lastMessage.text}

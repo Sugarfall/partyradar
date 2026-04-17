@@ -24,10 +24,12 @@ import { fetcher } from '@/lib/api'
 import type { EventGuest } from '@partyradar/shared'
 
 const TYPE_CONFIG: Record<string, { color: string; glow: string; label: string }> = {
-  HOME_PARTY: { color: '#ff006e', glow: 'rgba(255,0,110,0.25)', label: 'HOME PARTY' },
-  CLUB_NIGHT:  { color: '#00e5ff', glow: 'rgba(0,229,255,0.25)',  label: 'CLUB NIGHT'  },
-  CONCERT:     { color: '#3d5afe', glow: 'rgba(61,90,254,0.25)',  label: 'CONCERT'     },
-  PUB_NIGHT:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)', label: 'PUB NIGHT'   },
+  HOME_PARTY:  { color: '#ff006e', glow: 'rgba(255,0,110,0.25)',   label: 'HOME PARTY'  },
+  CLUB_NIGHT:  { color: '#00e5ff', glow: 'rgba(0,229,255,0.25)',   label: 'CLUB NIGHT'  },
+  CONCERT:     { color: '#3d5afe', glow: 'rgba(61,90,254,0.25)',   label: 'CONCERT'     },
+  PUB_NIGHT:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)',  label: 'PUB NIGHT'   },
+  BEACH_PARTY: { color: '#06b6d4', glow: 'rgba(6,182,212,0.25)',   label: 'BEACH PARTY' },
+  YACHT_PARTY: { color: '#0ea5e9', glow: 'rgba(14,165,233,0.25)',  label: 'YACHT PARTY' },
 }
 
 function formatDate(d: string) {

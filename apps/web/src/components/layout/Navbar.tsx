@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -13,6 +13,7 @@ import type { Notification } from '@partyradar/shared'
 const NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/radar',    label: 'Radar',    icon: Radio   },
+  { href: '/nearby',   label: 'Nearby',   icon: Users   },
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {

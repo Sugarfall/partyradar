@@ -306,6 +306,7 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
           senderPhoto: m.sender.photoUrl,
           senderUsername: m.sender.username,
           text: m.text,
+          imageUrl: m.imageUrl ?? null,
           createdAt: m.createdAt.toISOString(),
           isFollowing: followedIds.has(m.senderId),
         })),
@@ -474,8 +475,8 @@ router.put('/:id/notifications', requireAuth, async (req: AuthRequest, res, next
 router.post('/:id/messages', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const { text } = req.body as { text: string }
-    if (!text?.trim()) throw new AppError('Message text required', 400)
+    const { text, imageUrl } = req.body as { text?: string; imageUrl?: string }
+    if (!text?.trim() && !imageUrl) throw new AppError('Message required', 400)
 
     const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
     if (!group) throw new AppError('Group not found', 404)
@@ -494,13 +495,14 @@ router.post('/:id/messages', requireAuth, async (req: AuthRequest, res, next) =>
     }
 
     const saved = await prisma.groupMessage.create({
-      data: { groupId: group.id, senderId: userId, text: text.trim().slice(0, 500) },
+      data: { groupId: group.id, senderId: userId, text: text ? text.trim().slice(0, 500) : null, imageUrl: imageUrl ?? null },
       include: { sender: { select: { id: true, displayName: true, photoUrl: true, username: true } } },
     })
 
+    const lastMessagePreview = text?.trim() ? text.trim().slice(0, 100) : '📷 Photo'
     await prisma.groupChat.update({
       where: { id: group.id },
-      data: { lastMessage: text.trim().slice(0, 100), lastAt: saved.createdAt },
+      data: { lastMessage: lastMessagePreview, lastAt: saved.createdAt },
     })
 
     res.status(201).json({
@@ -511,6 +513,7 @@ router.post('/:id/messages', requireAuth, async (req: AuthRequest, res, next) =>
         senderPhoto: saved.sender.photoUrl,
         senderUsername: saved.sender.username,
         text: saved.text,
+        imageUrl: saved.imageUrl ?? null,
         createdAt: saved.createdAt.toISOString(),
         isFollowing: false,
       },
