@@ -2284,11 +2284,149 @@ function DmSection({ dbUser, headers }: {
   )
 }
 
+// ─── People Search ─────────────────────────────────────────────────────────────
+
+interface PersonResult {
+  id: string
+  username: string
+  displayName: string
+  photoUrl?: string | null
+  bio?: string | null
+  subscriptionTier: string
+  isFollowing: boolean
+}
+
+function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; dbUserId: string | null }) {
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<PersonResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [followStates, setFollowStates] = useState<Record<string, boolean>>({})
+  const [followLoading, setFollowLoading] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (!q.trim()) { setResults([]); return }
+    const t = setTimeout(() => {
+      setSearching(true)
+      fetch(`${API_URL}/users/search?q=${encodeURIComponent(q)}`, { headers })
+        .then((r) => r.json())
+        .then((j) => {
+          const data = (j.data ?? []) as PersonResult[]
+          setResults(data)
+          const fs: Record<string, boolean> = {}
+          data.forEach((u) => { fs[u.id] = u.isFollowing })
+          setFollowStates(fs)
+        })
+        .catch(() => {})
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [q])
+
+  async function toggleFollow(userId: string) {
+    if (!dbUserId || followLoading[userId]) return
+    setFollowLoading((p) => ({ ...p, [userId]: true }))
+    const isFollowing = followStates[userId]
+    try {
+      await fetch(`${API_URL}/follow/${userId}`, {
+        method: isFollowing ? 'DELETE' : 'POST',
+        headers,
+      })
+      setFollowStates((p) => ({ ...p, [userId]: !isFollowing }))
+    } catch {}
+    finally { setFollowLoading((p) => ({ ...p, [userId]: false })) }
+  }
+
+  return (
+    <div className="px-4 max-w-xl mx-auto pb-6">
+      {/* Search input */}
+      <div className="relative mb-4">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <input
+          type="text"
+          placeholder="Search by name or @username..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          autoFocus
+          className="w-full pl-8 pr-3 py-3 rounded-xl text-sm bg-transparent outline-none"
+          style={{ border: '1px solid rgba(0,229,255,0.2)', color: '#e0f2fe' }}
+        />
+      </div>
+
+      {/* Empty state */}
+      {!q.trim() && (
+        <div className="py-16 flex flex-col items-center gap-3">
+          <Users size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>FIND PEOPLE TO FOLLOW</p>
+          <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>Search by name or username above</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {searching && (
+        <div className="flex justify-center py-8">
+          <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+        </div>
+      )}
+
+      {/* No results */}
+      {!searching && q.trim() && results.length === 0 && (
+        <div className="py-12 flex flex-col items-center gap-2">
+          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>NO USERS FOUND</p>
+          <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.25)' }}>Try a different name or username</p>
+        </div>
+      )}
+
+      {/* Results */}
+      {!searching && results.map((u) => {
+        const following = followStates[u.id] ?? u.isFollowing
+        const loading = followLoading[u.id] ?? false
+        return (
+          <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl mb-2"
+            style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            <a href={`/profile/${u.username}`} className="shrink-0">
+              <Avatar user={u} size={44} />
+            </a>
+            <div className="flex-1 min-w-0">
+              <a href={`/profile/${u.username}`} className="block">
+                <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                {u.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>}
+                {u.bio && <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>{u.bio}</p>}
+              </a>
+            </div>
+            <div className="flex flex-col gap-1.5 shrink-0">
+              {dbUserId && (
+                <button
+                  onClick={() => toggleFollow(u.id)}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  style={{
+                    background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
+                    border: `1px solid ${following ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.3)'}`,
+                    color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                  }}>
+                  {following ? <UserCheck size={11} /> : <UserPlus size={11} />}
+                  <span className="text-[9px] font-black tracking-wide">{loading ? '...' : following ? 'FOLLOWING' : 'FOLLOW'}</span>
+                </button>
+              )}
+              <a href={`/profile/${u.username}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-center"
+                style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(0,229,255,0.5)' }}>
+                <User size={11} />
+                <span className="text-[9px] font-black tracking-wide">PROFILE</span>
+              </a>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MessagesPage() {
   const { dbUser } = useAuth()
-  const [tab, setTab] = useState<'dms' | 'community'>('dms')
+  const [tab, setTab] = useState<'dms' | 'people' | 'community'>('dms')
   const [groups, setGroups] = useState<GroupChat[]>([])
   const [groupsLoading, setGroupsLoading] = useState(true)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
@@ -2350,7 +2488,7 @@ export default function MessagesPage() {
     <div className="min-h-screen" style={{ background: '#04040d', paddingTop: 56 }}>
       {/* Main tabs */}
       <div className="flex gap-1 px-4 pt-5 pb-3 max-w-xl mx-auto">
-        {(['dms', 'community'] as const).map((t) => (
+        {(['dms', 'people', 'community'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className="flex-1 py-2.5 rounded-xl text-[11px] font-black tracking-widest transition-all"
             style={{
@@ -2358,13 +2496,17 @@ export default function MessagesPage() {
               border: `1px solid ${tab === t ? 'rgba(0,229,255,0.35)' : 'rgba(0,229,255,0.08)'}`,
               color: tab === t ? '#00e5ff' : 'rgba(74,96,128,0.5)',
             }}>
-            {t === 'dms' ? '💬 MESSAGES' : isHost ? '👑 MY GROUPS' : '🌐 COMMUNITY'}
+            {t === 'dms' ? '💬 DMs' : t === 'people' ? '👥 PEOPLE' : isHost ? '👑 GROUPS' : '🌐 COMMUNITY'}
           </button>
         ))}
       </div>
 
       {tab === 'dms' && (
         <DmSection dbUser={dbUser} headers={headers} />
+      )}
+
+      {tab === 'people' && (
+        <PeopleSearch headers={headers} dbUserId={dbUser?.id ?? null} />
       )}
 
       {tab === 'community' && (
