@@ -169,6 +169,8 @@ model User {
   phoneVerifications   PhoneVerification[]
   brandEntitlements    BrandEntitlement[]
   nearbyUpdates        NearbyUpdate[]
+  swipesGiven    SwipeLike[] @relation("SwipesGiven")
+  swipesReceived SwipeLike[] @relation("SwipesReceived")
 }
 
 model Event {
@@ -1025,4 +1027,19 @@ model BrandEntitlement {
   @@unique([brandId, userId])
   @@index([userId])
   @@index([brandId])
+}
+
+model SwipeLike {
+  id         String   @id @default(cuid())
+  fromUserId String
+  toUserId   String
+  liked      Boolean
+  createdAt  DateTime @default(now())
+
+  fromUser User @relation("SwipesGiven",    fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("SwipesReceived", fields: [toUserId],   references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([fromUserId])
+  @@index([toUserId])
 }

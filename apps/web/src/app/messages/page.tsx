@@ -1789,10 +1789,13 @@ function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Reco
 
 // ── DM Section ─────────────────────────────────────────────────────────────────
 
-function DmSection({ dbUser, headers }: {
+function DmSection({ dbUser, token }: {
   dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
-  headers: Record<string, string>
+  token: string
 }) {
+  // Build headers from the live token so all fetches are authenticated
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [requestConvos, setRequestConvos] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -1828,17 +1831,19 @@ function DmSection({ dbUser, headers }: {
 
   const fetchConversations = useCallback(async () => {
     if (!dbUser) { setLoading(false); return }
+    const h: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) h['Authorization'] = `Bearer ${token}`
     try {
       const [inboxRes, reqRes] = await Promise.all([
-        fetch(`${API_URL}/dm`, { headers }),
-        fetch(`${API_URL}/dm?requests=true`, { headers }),
+        fetch(`${API_URL}/dm`, { headers: h }),
+        fetch(`${API_URL}/dm?requests=true`, { headers: h }),
       ])
       const [inboxJson, reqJson] = await Promise.all([inboxRes.json(), reqRes.json()])
       setConversations(inboxJson.data ?? [])
       setRequestConvos(reqJson.data ?? [])
     } catch {}
     setLoading(false)
-  }, [dbUser?.id])
+  }, [dbUser?.id, token])
 
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
@@ -2425,11 +2430,18 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MessagesPage() {
-  const { dbUser } = useAuth()
+  const { dbUser, firebaseUser } = useAuth()
   const [tab, setTab] = useState<'dms' | 'people' | 'community'>('dms')
   const [groups, setGroups] = useState<GroupChat[]>([])
   const [groupsLoading, setGroupsLoading] = useState(true)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
+  const [token, setToken] = useState('')
+
+  // Fetch a live Firebase ID token — replaces the old stale localStorage approach
+  useEffect(() => {
+    if (!firebaseUser) return
+    firebaseUser.getIdToken().then(setToken).catch(() => {})
+  }, [firebaseUser])
 
   // Host/attendee mode (same pattern as Navbar)
   const [isHost, setIsHost] = useState(false)
@@ -2440,7 +2452,6 @@ export default function MessagesPage() {
     return () => window.removeEventListener('partyradar:mode-change', onModeChange)
   }, [])
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
@@ -2502,7 +2513,7 @@ export default function MessagesPage() {
       </div>
 
       {tab === 'dms' && (
-        <DmSection dbUser={dbUser} headers={headers} />
+        <DmSection dbUser={dbUser} token={token} />
       )}
 
       {tab === 'people' && (

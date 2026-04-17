@@ -4,16 +4,23 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
 
-// ── Core nav links (desktop centre + mobile tabs) ────────────────────────────
+// ── Desktop nav links ────────────────────────────────────────────────────────
 const NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/radar',    label: 'Radar',    icon: Radio   },
   { href: '/nearby',   label: 'Nearby',   icon: Users   },
+]
+
+// ── Mobile bottom tabs (Match replaces Nearby — Nearby stays desktop-only) ───
+const MOBILE_NAV = [
+  { href: '/discover', label: 'Discover', icon: Compass },
+  { href: '/radar',    label: 'Radar',    icon: Radio   },
+  { href: '/match',    label: 'Match',    icon: Heart   },
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
@@ -364,14 +371,19 @@ function NavbarInner() {
         }}
       >
         <div className="flex items-stretch h-16">
-          {/* Discover */}
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {MOBILE_NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
+            const isMatch = href === '/match'
             return (
               <Link key={href} href={href}
                 className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
-                style={{ color: active ? '#fff' : 'rgba(255,255,255,0.35)' }}>
-                <Icon size={18} strokeWidth={active ? 2 : 1.5} />
+                style={{ color: active ? (isMatch ? '#ff006e' : '#fff') : 'rgba(255,255,255,0.35)' }}>
+                <Icon
+                  size={18}
+                  strokeWidth={active ? 2 : 1.5}
+                  fill={isMatch && active ? 'rgba(255,0,110,0.3)' : 'none'}
+                  style={isMatch && active ? { filter: 'drop-shadow(0 0 6px rgba(255,0,110,0.6))' } : undefined}
+                />
                 <span className="text-[9px] font-medium tracking-wide">{label}</span>
               </Link>
             )
