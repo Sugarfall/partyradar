@@ -50,6 +50,80 @@ router.delete('/events/:id', requireAdmin, async (req, res, next) => {
   }
 })
 
+/**
+ * POST /api/admin/events/purge-non-nightlife
+ * Scans all externally-synced events and cancels/unpublishes any that contain
+ * non-nightlife keywords — cleaning up previously imported bad events (aquariums,
+ * funfairs, etc.). Safe: marks cancelled rather than hard-deletes.
+ */
+router.post('/events/purge-non-nightlife', requireAdmin, async (_req, res, next) => {
+  try {
+    const REJECT_KEYWORDS = [
+      'aquarium', 'sea life', 'zoo', 'wildlife', 'safari', 'museum', 'gallery',
+      'science centre', 'discovery centre', 'planetarium',
+      'theme park', 'funland', 'funfair', 'fairground', 'amusement',
+      'soft play', 'trampoline park', 'bowling',
+      'for kids', 'for children', "children's", 'family friendly', 'family fun',
+      'kids activity', 'toddler', 'baby', 'school holiday', 'half term',
+      'easter egg hunt', 'easter trail', 'easter funland', 'easter fair',
+      'halloween trail', 'halloween family',
+      'christmas grotto', 'santa grotto', 'nativity', 'pantomime', 'panto',
+      'half marathon', 'fun run', '5k run', '10k run', 'marathon', 'triathlon',
+      'yoga class', 'pilates', 'meditation', 'fitness class', 'bootcamp',
+      'conference', 'seminar', 'workshop', 'webinar', 'networking event',
+      'craft fair', 'artisan market', 'farmers market', 'car boot sale',
+      'art exhibition', 'photo exhibition', 'guided tour', 'heritage tour',
+      'walking tour', 'ghost tour', 'pottery class', 'painting class', 'art class',
+      'cooking class', 'baking class',
+      'church service', 'prayer meeting', 'sermon',
+      'film screening', 'movie screening', 'cinema night',
+      'theatre show', 'theatre performance', 'play performance',
+      'ballet', 'opera',
+      'charity walk', 'sponsored walk', 'ted talk', 'book club', 'author talk',
+      'dog show', 'horse show', 'equestrian', 'agricultural show',
+      'antiques fair', 'collectors fair',
+    ]
+
+    // Fetch all external (synced) events that are currently published
+    const externalEvents = await prisma.event.findMany({
+      where: {
+        externalSource: { not: null },
+        isPublished: true,
+        isCancelled: false,
+      },
+      select: { id: true, name: true, description: true, externalSource: true },
+    })
+
+    const toPurge: string[] = []
+    for (const event of externalEvents) {
+      const combined = `${event.name} ${event.description}`.toLowerCase()
+      if (REJECT_KEYWORDS.some((kw) => combined.includes(kw))) {
+        toPurge.push(event.id)
+      }
+    }
+
+    if (toPurge.length === 0) {
+      res.json({ data: { purged: 0, message: 'No non-nightlife events found — DB is clean.' } })
+      return
+    }
+
+    await prisma.event.updateMany({
+      where: { id: { in: toPurge } },
+      data: { isCancelled: true, isPublished: false },
+    })
+
+    res.json({
+      data: {
+        purged: toPurge.length,
+        message: `Purged ${toPurge.length} non-nightlife external events.`,
+        ids: toPurge,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** GET /api/admin/sightings */
 router.get('/sightings', requireAdmin, async (_req, res, next) => {
   try {

@@ -26,6 +26,65 @@ function truncateDescription(text: string | undefined | null, fallback: string):
   return desc.slice(0, 2000)
 }
 
+// ── Nightlife-only filter ─────────────────────────────────────────────────────
+
+/**
+ * Keyword blocklist — any event whose name OR description contains one of these
+ * is NOT a nightlife event and must be rejected before import.
+ */
+const REJECT_KEYWORDS = [
+  // Attractions & family
+  'aquarium', 'sea life', 'zoo', 'wildlife', 'safari', 'museum', 'gallery',
+  'science centre', 'discovery centre', 'planetarium',
+  'theme park', 'funland', 'funfair', 'fairground', 'amusement',
+  'soft play', 'trampoline park', 'bowling',
+  // Kids/family explicit
+  'for kids', 'for children', "children's", 'family friendly', 'family fun',
+  'kids activity', 'toddler', 'baby', 'school holiday', 'half term',
+  'kids show', 'kids party', "children's party",
+  // Seasonal family events
+  'easter egg hunt', 'easter trail', 'easter funland', 'easter fair',
+  'halloween trail', 'halloween family', 'halloween for kids',
+  'christmas grotto', 'santa grotto', 'santa visit', 'meet santa',
+  'nativity', 'pantomime', 'panto',
+  // Sports & fitness
+  'half marathon', 'fun run', '5k run', '10k run', 'marathon', 'triathlon',
+  'cycling event', 'obstacle course', 'tough mudder', 'colour run',
+  'yoga class', 'pilates', 'meditation', 'wellness retreat',
+  'fitness class', 'bootcamp',
+  // Education & professional
+  'conference', 'seminar', 'workshop', 'webinar', 'networking event',
+  'business breakfast', 'career fair', 'job fair', 'trade show',
+  'craft fair', 'artisan market', 'farmers market', 'car boot sale',
+  'jumble sale', 'flea market',
+  // Arts & culture (non-nightlife)
+  'art exhibition', 'photo exhibition', 'guided tour', 'heritage tour',
+  'walking tour', 'ghost tour', 'history walk', 'architecture walk',
+  'pottery class', 'painting class', 'drawing class', 'art class',
+  'cooking class', 'baking class',
+  // Religion
+  'church service', 'mass ', 'prayer meeting', 'sermon', 'worship',
+  // Cinema & theatre (non-nightlife)
+  'film screening', 'movie screening', 'cinema night',
+  'theatre show', 'theatre performance', 'play performance',
+  'ballet', 'opera',
+  // Talks & charity
+  'charity walk', 'sponsored walk', 'fundraiser walk',
+  'ted talk', 'book club', 'reading group', 'author talk',
+  // Other
+  'dog show', 'horse show', 'equestrian', 'agricultural show',
+  'antiques fair', 'collectors fair',
+]
+
+/**
+ * Returns true if the event looks like a nightlife/music event worth importing.
+ * Returns false if it matches a blocked keyword (family, tourist, fitness, etc.)
+ */
+function isNightlifeEvent(name: string, description: string): boolean {
+  const text = `${name} ${description}`.toLowerCase()
+  return !REJECT_KEYWORDS.some((kw) => text.includes(kw))
+}
+
 function stableHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 32)
 }
@@ -120,6 +179,10 @@ async function syncTicketmaster(
       const neighbourhood = venue?.city?.name ?? address.split(',')[0] ?? 'Unknown'
       const name = ev.name ?? 'Unnamed Event'
       const description = truncateDescription(ev.info ?? ev.pleaseNote, name)
+
+      // Skip non-nightlife events
+      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+
       const startsAt = ev.dates?.start?.dateTime ? new Date(ev.dates.start.dateTime) : new Date()
       const endsAt = ev.dates?.end?.dateTime ? new Date(ev.dates.end.dateTime) : undefined
       const price = ev.priceRanges?.[0]?.min ?? 0
@@ -230,6 +293,8 @@ async function syncSkiddle(
   url.searchParams.set('limit', '50')
   url.searchParams.set('order', 'date')
   url.searchParams.set('description', '1')
+  // Filter to nightlife event types only (CLUB=Club night, LIVE=Live music, FEST=Festival, GRDN=Garden party, PARK=Park event)
+  url.searchParams.set('eventcode', 'CLUB,LIVE,FEST,GRDN,PARK')
 
   const res = await fetch(url.toString())
   if (!res.ok) throw new Error(`Skiddle API error: ${res.status}`)
@@ -247,6 +312,10 @@ async function syncSkiddle(
       const neighbourhood = ev.venue?.town ?? ev.venue?.address?.split(',')[0] ?? 'Unknown'
       const name = ev.eventname ?? 'Unnamed Event'
       const description = truncateDescription(ev.description, name)
+
+      // Skip non-nightlife events
+      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+
       const startsAt = ev.date ? new Date(ev.date) : new Date()
       const endsAt = ev.enddate ? new Date(ev.enddate) : undefined
       const price = parseFloat(String(ev.entryprice ?? '0')) || 0
@@ -355,6 +424,8 @@ async function syncEventbrite(
   url.searchParams.set('expand', 'venue,category,subcategory,ticket_availability,logo')
   url.searchParams.set('sort_by', 'date')
   url.searchParams.set('page', '1')
+  // Filter to Music (103) and Nightlife (105) categories only
+  url.searchParams.set('categories', '103,105')
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
@@ -375,6 +446,16 @@ async function syncEventbrite(
       const neighbourhood = address.split(',')[0] ?? 'Unknown'
       const name = ev.name?.text ?? 'Unnamed Event'
       const description = truncateDescription(ev.description?.text, name)
+
+      // Skip non-nightlife events even within music/nightlife categories
+      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+
+      // Also skip if Eventbrite category is not music/nightlife
+      const catName = (ev.category?.name ?? '').toLowerCase()
+      if (catName && !catName.includes('music') && !catName.includes('nightlife') && !catName.includes('party')) {
+        skipped++; continue
+      }
+
       const startsAt = ev.start?.utc ? new Date(ev.start.utc) : new Date()
       const endsAt = ev.end?.utc ? new Date(ev.end.utc) : undefined
       const price = ev.is_free
@@ -468,12 +549,16 @@ function parseSerpDate(when: string | undefined, startDate: string | undefined):
   return new Date()
 }
 
-function mapSerpEventType(title: string, description: string): EventTypeName {
+function mapSerpEventType(title: string, description: string): EventTypeName | null {
   const text = `${title} ${description}`.toLowerCase()
-  if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes('tour')) return 'CONCERT'
-  if (text.includes('club') || text.includes('nightclub') || text.includes('dj') || text.includes('rave') || text.includes('techno') || text.includes('dance night')) return 'CLUB_NIGHT'
-  if (text.includes('pub') || text.includes('bar night') || text.includes('pub quiz') || text.includes('open mic') || text.includes('brewery') || text.includes('tavern')) return 'PUB_NIGHT'
-  return 'CONCERT'
+  if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes(' tour')) return 'CONCERT'
+  if (text.includes('club night') || text.includes('nightclub') || text.includes(' dj ') || text.includes('rave') || text.includes('techno') || text.includes('dance night') || text.includes('club event')) return 'CLUB_NIGHT'
+  if (text.includes(' pub ') || text.includes('bar night') || text.includes('pub quiz') || text.includes('open mic') || text.includes('tavern') || text.includes('pub crawl')) return 'PUB_NIGHT'
+  if (text.includes('beach party') || text.includes('pool party')) return 'BEACH_PARTY'
+  if (text.includes('yacht') || text.includes('boat party')) return 'YACHT_PARTY'
+  if (text.includes('house party') || text.includes('home party')) return 'HOME_PARTY'
+  // If none of the nightlife keywords match, don't import
+  return null
 }
 
 async function syncSerpApi(
@@ -487,7 +572,8 @@ async function syncSerpApi(
 
   const url = new URL('https://serpapi.com/search.json')
   url.searchParams.set('engine', 'google_events')
-  url.searchParams.set('q', `Events in ${city}`)
+  // Explicit nightlife query — avoids returning aquariums, fairs, family events etc.
+  url.searchParams.set('q', `concerts club nights nightlife parties bars pubs live music ${city}`)
   url.searchParams.set('api_key', apiKey)
   url.searchParams.set('hl', 'en')
 
@@ -505,11 +591,18 @@ async function syncSerpApi(
       const startsAt = parseSerpDate(ev.date?.when, ev.date?.start_date)
       if (startsAt < new Date()) { skipped++; continue }
 
+      const description = truncateDescription(ev.description, name)
+
+      // Skip non-nightlife events — query filters but Google still returns misc results
+      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+
+      // Skip if type can't be determined from keywords (not nightlife enough)
+      const type = mapSerpEventType(name, ev.description ?? '')
+      if (!type) { skipped++; continue }
+
       const serpApiId = stableHash(`${name}|${ev.date?.start_date ?? ''}|${ev.address?.[0] ?? ''}`)
       const address = ev.address?.join(', ') ?? city
       const neighbourhood = ev.venue?.name ?? address.split(',')[0] ?? city
-      const description = truncateDescription(ev.description, name)
-      const type = mapSerpEventType(name, ev.description ?? '')
       const coverImageUrl = ev.thumbnail ?? null
       const socialSourceUrl = ev.ticket_info?.find((t) => t.link)?.link ?? ev.link
       const isPaid = ev.ticket_info?.some((t) => t.is_paid) ?? false
@@ -567,11 +660,13 @@ async function syncPerplexity(
   const twoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   const prompt =
-    `Find upcoming events, concerts, club nights, parties, and nightlife in ${city} between ${today} and ${twoWeeks}. ` +
-    `Search across Facebook Events, venue websites, Resident Advisor, local listings, and any other sources. ` +
+    `Find upcoming NIGHTLIFE events only in ${city} between ${today} and ${twoWeeks}. ` +
+    `Include ONLY: concerts, live music gigs, club nights, DJ nights, raves, pub nights, bar events, open mic nights, pub quizzes, house parties, beach parties, boat parties. ` +
+    `DO NOT include: aquariums, zoos, museums, tourist attractions, family events, kids events, Easter events, Christmas events, funfairs, theme parks, sports events, yoga, fitness classes, conferences, workshops, exhibitions, cinema, theatre, church events, craft fairs, farmers markets, car boot sales, or anything non-nightlife. ` +
+    `Search across Facebook Events, Resident Advisor, Skiddle, venue websites, and local listings. ` +
     `Return ONLY a valid JSON array with no markdown, no explanation, in this exact format:\n` +
     `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"","address":"","price":0,"type":"CONCERT","description":"","url":"","imageUrl":""}]\n` +
-    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY, PUB_NIGHT. price is 0 if free or unknown.`
+    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY, PUB_NIGHT, BEACH_PARTY, YACHT_PARTY. price is 0 if free or unknown. Only include events that are clearly nightlife/music.`
 
   const res = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
@@ -615,6 +710,9 @@ async function syncPerplexity(
       const address = ev.address ?? ev.venue ?? city
       const neighbourhood = ev.venue ?? address.split(',')[0] ?? city
       const description = truncateDescription(ev.description, name)
+
+      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+
       const type: EventTypeName = validTypes.includes(ev.type as EventTypeName) ? (ev.type as EventTypeName) : 'CONCERT'
       const price = typeof ev.price === 'number' ? ev.price : 0
 
