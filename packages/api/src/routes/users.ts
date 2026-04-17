@@ -25,6 +25,55 @@ const PUBLIC_USER_SELECT = {
   phoneVerified: true,
 }
 
+// ── GET /api/users/search?q= ───────────────────────────────────────────────────
+// Search users by displayName or username. Returns isFollowing flag.
+// q is required; returns empty array if blank.
+router.get('/search', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const q = String(req.query['q'] ?? '').trim()
+    if (!q) return res.json({ data: [] })
+
+    const myId = req.user?.dbUser.id
+
+    const users = await prisma.user.findMany({
+      where: {
+        AND: [
+          myId ? { id: { not: myId } } : {},
+          {
+            OR: [
+              { displayName: { contains: q, mode: 'insensitive' } },
+              { username: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+        ],
+      },
+      select: {
+        id: true, username: true, displayName: true,
+        photoUrl: true, bio: true, subscriptionTier: true,
+        ...(myId ? {
+          followers: {
+            where: { followerId: myId },
+            select: { followerId: true },
+          },
+        } : {}),
+      },
+      take: 20,
+    })
+
+    const data = users.map((u: any) => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      photoUrl: u.photoUrl ?? null,
+      bio: u.bio ?? null,
+      subscriptionTier: u.subscriptionTier,
+      isFollowing: myId ? (u.followers?.length ?? 0) > 0 : false,
+    }))
+
+    res.json({ data })
+  } catch (err) { next(err) }
+})
+
 // ── GET /api/users/me/profile-views ────────────────────────────────────────────
 // Returns how many people viewed your profile this week.
 // Premium users (PREMIUM / VIP) also get the viewer list.
