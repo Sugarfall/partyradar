@@ -187,10 +187,8 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
-    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
-    if (req.user && !showAlcohol && event.alcoholPolicy !== 'NONE' && req.user?.dbUser.id !== event.hostId) {
-      throw new AppError('Enable alcohol events in settings to view this event', 403)
-    }
+    // Note: alcohol filter applies to *discovery listings*, not direct event links.
+    // Removing it here so authenticated users can always view a specific event.
 
     res.json({ data: { ...event, guestCount: event._count.guests } })
   } catch (err) {
