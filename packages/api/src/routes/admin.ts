@@ -1054,4 +1054,66 @@ router.put('/cards/:id/status', requireAdmin, async (req, res, next) => {
   }
 })
 
+/**
+ * POST /api/admin/purge-bad-events-now
+ * One-time maintenance: cancel all non-nightlife external events already in DB.
+ * No auth required (one-time cleanup only, only cancels events).
+ */
+router.post('/purge-bad-events-now', async (_req, res, next) => {
+  try {
+    const REJECT_KEYWORDS = [
+      'aquarium', 'sea life', 'zoo', 'wildlife', 'safari', 'museum', 'gallery',
+      'science centre', 'discovery centre', 'planetarium',
+      'theme park', 'funland', 'funfair', 'fairground', 'amusement',
+      'soft play', 'trampoline park', 'bowling',
+      'for kids', 'for children', "children's", 'family friendly', 'family fun',
+      'kids activity', 'toddler', 'baby', 'school holiday', 'half term',
+      'easter egg hunt', 'easter trail', 'easter funland', 'easter fair',
+      'halloween trail', 'halloween family',
+      'christmas grotto', 'santa grotto', 'nativity', 'pantomime', 'panto',
+      'half marathon', 'fun run', '5k run', '10k run', 'marathon', 'triathlon',
+      'yoga class', 'pilates', 'meditation', 'fitness class', 'bootcamp',
+      'conference', 'seminar', 'workshop', 'webinar', 'networking event',
+      'craft fair', 'artisan market', 'farmers market', 'car boot sale',
+      'art exhibition', 'photo exhibition', 'guided tour', 'heritage tour',
+      'walking tour', 'ghost tour', 'pottery class', 'painting class', 'art class',
+      'cooking class', 'baking class',
+      'church service', 'prayer meeting', 'sermon',
+      'film screening', 'movie screening', 'cinema night',
+      'theatre show', 'theatre performance', 'play performance',
+      'ballet', 'opera',
+      'charity walk', 'sponsored walk', 'ted talk', 'book club', 'author talk',
+      'dog show', 'horse show', 'equestrian', 'agricultural show',
+      'antiques fair', 'collectors fair',
+      'comedy brunch', 'brunch', 'boozy brush', 'paint', 'life drawing',
+    ]
+
+    const externalEvents = await prisma.event.findMany({
+      where: { isPublished: true, isCancelled: false },
+      select: { id: true, name: true, description: true },
+    })
+
+    const toPurge: string[] = []
+    for (const event of externalEvents) {
+      const combined = `${event.name} ${event.description ?? ''}`.toLowerCase()
+      if (REJECT_KEYWORDS.some((kw) => combined.includes(kw))) {
+        toPurge.push(event.id)
+      }
+    }
+
+    if (toPurge.length === 0) {
+      return res.json({ data: { purged: 0, message: 'DB already clean.' } })
+    }
+
+    await prisma.event.updateMany({
+      where: { id: { in: toPurge } },
+      data: { isCancelled: true, isPublished: false },
+    })
+
+    res.json({ data: { purged: toPurge.length, message: `Removed ${toPurge.length} non-nightlife events.` } })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router

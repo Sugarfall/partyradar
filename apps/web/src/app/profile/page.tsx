@@ -513,8 +513,8 @@ export default function ProfilePage() {
             <button
               onClick={() => photoInputRef.current?.click()}
               disabled={photoUploading}
-              className="absolute bottom-0 right-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-              style={{ background: 'rgba(4,4,13,0.9)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}>
+              className="absolute bottom-0 right-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+              style={{ background: 'rgba(0,229,255,0.15)', border: '2px solid rgba(0,229,255,0.5)', color: '#00e5ff', boxShadow: '0 0 10px rgba(0,229,255,0.3)' }}>
               {photoUploading
                 ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
                 : <Camera size={12} />
@@ -553,9 +553,10 @@ export default function ProfilePage() {
           </div>
 
           <button onClick={() => setEditing((v) => !v)}
-            className="p-2 rounded-lg transition-all duration-200 shrink-0"
-            style={{ border: editing ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.15)', color: editing ? '#00e5ff' : 'rgba(0,229,255,0.5)', background: editing ? 'rgba(0,229,255,0.08)' : 'transparent' }}>
-            <Edit2 size={14} />
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-200 shrink-0"
+            style={{ border: editing ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.2)', color: editing ? '#00e5ff' : 'rgba(0,229,255,0.6)', background: editing ? 'rgba(0,229,255,0.08)' : 'rgba(0,229,255,0.04)' }}>
+            <Edit2 size={13} />
+            <span className="text-[10px] font-black tracking-wide">{editing ? 'CLOSE' : 'EDIT'}</span>
           </button>
         </div>
       </div>
@@ -605,7 +606,10 @@ export default function ProfilePage() {
         {editing && (
           <div className="p-4 rounded-2xl space-y-4 animate-fade-up"
             style={{ background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.15)' }}>
-            <p className="text-[9px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.4)' }}>EDIT PROFILE</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.4)' }}>EDIT PROFILE</p>
+              <p className="text-[9px]" style={{ color: 'rgba(0,229,255,0.3)' }}>Tap 📷 on avatar to change photo</p>
+            </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>DISPLAY NAME</label>
