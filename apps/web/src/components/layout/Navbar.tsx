@@ -16,10 +16,11 @@ const NAV = [
   { href: '/nearby',   label: 'Nearby',   icon: Users   },
 ]
 
-// ── Mobile bottom tabs (Match replaces Nearby — Nearby stays desktop-only) ───
+// ── Mobile bottom tabs ───────────────────────────────────────────────────────
 const MOBILE_NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/radar',    label: 'Radar',    icon: Radio   },
+  { href: '/nearby',   label: 'Nearby',   icon: Users   },
   { href: '/match',    label: 'Match',    icon: Heart   },
 ]
 
@@ -376,15 +377,15 @@ function NavbarInner() {
             const isMatch = href === '/match'
             return (
               <Link key={href} href={href}
-                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
                 style={{ color: active ? (isMatch ? '#ff006e' : '#fff') : 'rgba(255,255,255,0.35)' }}>
                 <Icon
-                  size={18}
+                  size={16}
                   strokeWidth={active ? 2 : 1.5}
                   fill={isMatch && active ? 'rgba(255,0,110,0.3)' : 'none'}
                   style={isMatch && active ? { filter: 'drop-shadow(0 0 6px rgba(255,0,110,0.6))' } : undefined}
                 />
-                <span className="text-[9px] font-medium tracking-wide">{label}</span>
+                <span className="text-[8px] font-medium tracking-tight leading-none">{label}</span>
               </Link>
             )
           })}
@@ -406,37 +407,37 @@ function NavbarInner() {
             ) : (
               /* ATTENDEE: my tickets */
               <Link href={dbUser ? '/tickets' : '/login'}
-                className="flex flex-col items-center justify-center gap-1 transition-all"
+                className="flex flex-col items-center justify-center gap-0.5 transition-all"
                 style={{ color: pathname.startsWith('/tickets') ? '#fff' : 'rgba(255,255,255,0.35)' }}
               >
-                <Ticket size={18} strokeWidth={pathname.startsWith('/tickets') ? 2 : 1.5} />
-                <span className="text-[9px] font-medium tracking-wide">Tickets</span>
+                <Ticket size={16} strokeWidth={pathname.startsWith('/tickets') ? 2 : 1.5} />
+                <span className="text-[8px] font-medium tracking-tight leading-none">Tickets</span>
               </Link>
             )}
           </div>
 
           {/* Messages */}
           <Link href="/messages"
-            className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
             style={{ color: pathname.startsWith('/messages') ? '#00e5ff' : 'rgba(255,255,255,0.35)' }}>
-            <MessageCircle size={18} strokeWidth={pathname.startsWith('/messages') ? 2 : 1.5} />
-            <span className="text-[9px] font-medium tracking-wide">Chats</span>
+            <MessageCircle size={16} strokeWidth={pathname.startsWith('/messages') ? 2 : 1.5} />
+            <span className="text-[8px] font-medium tracking-tight leading-none">Chats</span>
           </Link>
 
           {/* Profile */}
           <Link href={dbUser ? '/profile' : '/login'}
-            className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
             style={{ color: pathname.startsWith('/profile') ? '#fff' : 'rgba(255,255,255,0.35)' }}>
             <div className="relative">
               {dbUser?.photoUrl
-                ? <img src={dbUser.photoUrl} alt="" className="w-5 h-5 rounded-full object-cover" />
-                : <User size={18} strokeWidth={pathname.startsWith('/profile') ? 2 : 1.5} />}
+                ? <img src={dbUser.photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+                : <User size={16} strokeWidth={pathname.startsWith('/profile') ? 2 : 1.5} />}
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
                   style={{ background: '#00ff88' }} />
               )}
             </div>
-            <span className="text-[9px] font-medium tracking-wide">
+            <span className="text-[8px] font-medium tracking-tight leading-none">
               {dbUser ? 'Profile' : 'Sign in'}
             </span>
           </Link>
