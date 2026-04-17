@@ -4,8 +4,9 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { sendEmailVerification } from '@/lib/firebase'
 import { api } from '@/lib/api'
-import { Zap, Check, ChevronRight, Eye, EyeOff } from 'lucide-react'
+import { Zap, Check, ChevronRight, Eye, EyeOff, Mail } from 'lucide-react'
 import type { Gender } from '@partyradar/shared'
 
 const GENDER_OPTIONS: { id: Gender; label: string; emoji: string; color: string; glow: string }[] = [
@@ -21,9 +22,9 @@ function saveGenderLocally(gender: Gender) {
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { signUp, signInWithGoogle, signInWithApple } = useAuth()
+  const { signUp, signInWithGoogle, signInWithApple, firebaseUser } = useAuth()
 
-  const [phase, setPhase] = useState<'credentials' | 'gender'>('credentials')
+  const [phase, setPhase] = useState<'credentials' | 'verify' | 'gender'>('credentials')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -32,6 +33,9 @@ export default function RegisterPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [appleLoading, setAppleLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
+  const [checkingVerify, setCheckingVerify] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   /* ── Phase 1: credentials ── */
   async function handleCredentials(e: React.FormEvent) {
@@ -41,11 +45,47 @@ export default function RegisterPage() {
     setError(null)
     try {
       await signUp(email, password)
-      setPhase('gender')
+      setPhase('verify')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message.replace('Firebase: ', '').replace(/\(.*\)\.?/, '') : 'Registration failed')
     } finally {
       setLoading(false)
+    }
+  }
+
+  /* ── Phase 2: verify email ── */
+  async function handleVerifyCheck() {
+    if (!firebaseUser) return
+    setCheckingVerify(true)
+    setVerifyError(null)
+    try {
+      await firebaseUser.reload()
+      if (firebaseUser.emailVerified) {
+        setPhase('gender')
+      } else {
+        setVerifyError('Email not verified yet — click the link in your inbox then try again')
+      }
+    } catch {
+      setVerifyError('Could not check verification — please try again')
+    } finally {
+      setCheckingVerify(false)
+    }
+  }
+
+  async function handleResend() {
+    if (!firebaseUser || resendCooldown > 0) return
+    try {
+      await sendEmailVerification(firebaseUser)
+      setResendCooldown(60)
+      const interval = setInterval(() => {
+        setResendCooldown(v => {
+          if (v <= 1) { clearInterval(interval); return 0 }
+          return v - 1
+        })
+      }, 1000)
+      setVerifyError(null)
+    } catch {
+      setVerifyError('Could not resend — please try again shortly')
     }
   }
 
@@ -68,7 +108,7 @@ export default function RegisterPage() {
     setError(null)
     try {
       await signInWithGoogle()
-      setPhase('gender')
+      setPhase('gender') // Google accounts are always verified
     } catch (err: any) {
       const msg = parseAuthError(err)
       if (msg) setError(msg)
@@ -100,6 +140,79 @@ export default function RegisterPage() {
       }
     }
     router.push('/discover')
+  }
+
+  /* ═══ PHASE: VERIFY EMAIL ════════════════════════════════════════════════ */
+  if (phase === 'verify') {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
+        style={{ background: '#04040d' }}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-2 mb-8">
+          <Zap size={20} fill="rgba(0,229,255,0.2)"
+            style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 8px rgba(0,229,255,0.8))' }} />
+          <span className="font-black text-sm tracking-[0.2em]"
+            style={{ color: '#00e5ff', textShadow: '0 0 16px rgba(0,229,255,0.6)' }}>
+            PARTYRADAR
+          </span>
+        </div>
+
+        <div className="w-full max-w-sm animate-fade-up text-center space-y-5">
+          {/* Icon */}
+          <div className="flex items-center justify-center mx-auto w-16 h-16 rounded-2xl"
+            style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)' }}>
+            <Mail size={28} style={{ color: '#00e5ff' }} />
+          </div>
+
+          {/* Header */}
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              ALMOST THERE
+            </p>
+            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe', letterSpacing: '0.04em' }}>
+              CHECK YOUR INBOX
+            </h1>
+            <p className="text-sm mt-3" style={{ color: 'rgba(224,242,254,0.5)', lineHeight: 1.6 }}>
+              We sent a verification link to{' '}
+              <span style={{ color: '#00e5ff', fontWeight: 700 }}>{email}</span>.
+              <br />Click the link, then come back here.
+            </p>
+          </div>
+
+          {verifyError && (
+            <p className="text-xs px-4 py-2.5 rounded-xl font-bold"
+              style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+              {verifyError}
+            </p>
+          )}
+
+          {/* Verified button */}
+          <button
+            onClick={handleVerifyCheck}
+            disabled={checkingVerify}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black tracking-widest disabled:opacity-50"
+            style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}
+          >
+            {checkingVerify
+              ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CHECKING...</>
+              : <><Check size={14} /> I&apos;VE VERIFIED MY EMAIL</>
+            }
+          </button>
+
+          {/* Resend */}
+          <button
+            onClick={handleResend}
+            disabled={resendCooldown > 0}
+            className="text-xs font-bold"
+            style={{ color: resendCooldown > 0 ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.5)', letterSpacing: '0.1em' }}
+          >
+            {resendCooldown > 0 ? `RESEND IN ${resendCooldown}s` : 'RESEND VERIFICATION EMAIL'}
+          </button>
+        </div>
+      </div>
+    )
   }
 
   /* ═══ PHASE: GENDER SELECTION ═══════════════════════════════════════════ */

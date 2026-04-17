@@ -63,7 +63,7 @@ function saveMockUsers(users: Record<string, MockUser>) {
 }
 
 function makeMockUserRecord(email: string): User {
-  return { uid: `mock_${email}`, email, displayName: null, photoURL: null, getIdToken: async () => 'mock-token' } as unknown as User
+  return { uid: `mock_${email}`, email, displayName: null, photoURL: null, emailVerified: true, getIdToken: async () => 'mock-token' } as unknown as User
 }
 
 export const DEV_MODE = !firebaseConfig.apiKey
@@ -155,6 +155,12 @@ export async function signInWithApple(
   if (DEV_MODE) throw new Error('Apple sign-in not available in dev mode')
   const { signInWithPopup: _fn } = await import('firebase/auth')
   return _fn(authInstance, appleProvider)
+}
+
+export async function sendEmailVerification(user: User): Promise<void> {
+  if (DEV_MODE) return
+  const { sendEmailVerification: _fn } = await import('firebase/auth')
+  return _fn(user)
 }
 
 export async function signOut(authInstance: ReturnType<typeof getAuth>): Promise<void> {
