@@ -99,6 +99,9 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
     photoUrl: z.string().url().optional().nullable(),
     username: z.string().min(3).max(30).regex(/^[a-z0-9_]+$/).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY']).optional().nullable(),
+    profileBg: z.string().max(200).optional().nullable(),
+    themeColor: z.string().max(50).optional().nullable(),
+    themeName: z.string().max(50).optional().nullable(),
   })
 
   try {

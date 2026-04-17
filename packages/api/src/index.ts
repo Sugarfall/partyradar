@@ -39,6 +39,12 @@ import leaderboardRouter from './routes/leaderboard'
 import venueDiscoverRouter from './routes/venue-discover'
 import walletRouter from './routes/wallet'
 import usersRouter from './routes/users'
+import nearbyRouter from './routes/nearby'
+import socialScoreRouter from './routes/social-score'
+import djRequestsRouter from './routes/dj-requests'
+import phoneRouter from './routes/phone-verify'
+import brandsRouter from './routes/partner-brands'
+import referralCardsRouter from './routes/referral-cards'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -311,6 +317,12 @@ app.use('/api/wallet', walletRouter)
 app.use('/api/dashboard', dashboardRouter)
 app.use('/api/leaderboard', leaderboardRouter)
 app.use('/api/users', usersRouter)
+app.use('/api/nearby', nearbyRouter)
+app.use('/api/social-score', socialScoreRouter)
+app.use('/api/dj-requests', djRequestsRouter)
+app.use('/api/phone', phoneRouter)
+app.use('/api/brands', brandsRouter)
+app.use('/api/referral-cards', referralCardsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

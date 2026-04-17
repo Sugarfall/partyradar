@@ -17,13 +17,15 @@ interface EventFiltersProps {
   onChange: (f: Filters) => void
 }
 
-const eventTypes: EventType[] = ['HOME_PARTY', 'CLUB_NIGHT', 'CONCERT', 'PUB_NIGHT']
+const eventTypes: EventType[] = ['HOME_PARTY', 'CLUB_NIGHT', 'CONCERT', 'PUB_NIGHT', 'BEACH_PARTY', 'YACHT_PARTY']
 
 const typeColors: Record<EventType, string> = {
   HOME_PARTY: 'border-pink-500 text-pink-400 bg-pink-500/10',
   CLUB_NIGHT: 'border-purple-500 text-purple-400 bg-purple-500/10',
   CONCERT: 'border-blue-500 text-blue-400 bg-blue-500/10',
   PUB_NIGHT: 'border-amber-500 text-amber-400 bg-amber-500/10',
+  BEACH_PARTY: 'border-cyan-500 text-cyan-400 bg-cyan-500/10',
+  YACHT_PARTY: 'border-sky-500 text-sky-400 bg-sky-500/10',
 }
 
 export function EventFilters({ filters, onChange }: EventFiltersProps) {

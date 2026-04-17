@@ -101,7 +101,7 @@ function ReportForm({ onClose, onSubmit, userLat, userLng }: {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[9px] font-bold tracking-[0.3em]" style={{ color: 'rgba(255,214,0,0.5)' }}>NEW SIGHTING</p>
-          <h3 className="text-base font-black" style={{ color: '#ffd600', textShadow: '0 0 12px rgba(255,214,0,0.4)' }}>REPORT CELEBRITY</h3>
+          <h3 className="text-base font-black" style={{ color: '#ffd600', textShadow: '0 0 12px rgba(255,214,0,0.4)' }}>REPORT SIGHTING</h3>
         </div>
         <button onClick={onClose} className="p-1.5 rounded-lg"
           style={{ border: '1px solid rgba(255,214,0,0.2)', color: 'rgba(255,214,0,0.5)' }}>
@@ -111,7 +111,7 @@ function ReportForm({ onClose, onSubmit, userLat, userLng }: {
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(255,214,0,0.55)' }}>CELEBRITY NAME *</label>
+          <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(255,214,0,0.55)' }}>WHO DID YOU SEE? *</label>
           <input
             value={celebrity}
             onChange={(e) => setCelebrity(e.target.value)}
@@ -300,7 +300,7 @@ export default function RadarPage() {
         <div>
           <h1 className="text-sm font-black tracking-[0.2em]"
             style={{ color: '#ffd600', textShadow: '0 0 16px rgba(255,214,0,0.5)' }}>
-            ★ CELEBRITY RADAR
+            ★ RADAR
           </h1>
           <p className="text-[9px] font-bold tracking-[0.15em]" style={{ color: 'rgba(255,214,0,0.4)' }}>
             {filtered.length} ACTIVE SIGHTINGS
@@ -356,7 +356,7 @@ export default function RadarPage() {
               onChange={(e) => setSearch(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
-              placeholder="Search celebrity..."
+              placeholder="Search sightings..."
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs font-medium focus:outline-none transition-all duration-200"
               style={{
                 background: 'rgba(255,214,0,0.04)',
@@ -370,7 +370,7 @@ export default function RadarPage() {
             <div className="flex flex-col items-center justify-center py-12 gap-3">
               <p className="text-3xl">⭐</p>
               <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.5)' }}>NO SIGHTINGS</p>
-              <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.6)' }}>Be the first to report a celebrity nearby</p>
+              <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.6)' }}>No sightings reported yet — be the first!</p>
             </div>
           ) : (
             filtered.map((s) => (

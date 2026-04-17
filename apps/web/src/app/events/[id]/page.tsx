@@ -17,7 +17,6 @@ import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
-import FollowButton from '@/components/social/FollowButton'
 import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS } from '@partyradar/shared'
 import type { PushBlastTier } from '@partyradar/shared'
 import useSWR from 'swr'
@@ -25,10 +24,12 @@ import { fetcher } from '@/lib/api'
 import type { EventGuest } from '@partyradar/shared'
 
 const TYPE_CONFIG: Record<string, { color: string; glow: string; label: string }> = {
-  HOME_PARTY: { color: '#ff006e', glow: 'rgba(255,0,110,0.25)', label: 'HOUSE PARTY' },
-  CLUB_NIGHT:  { color: '#00e5ff', glow: 'rgba(0,229,255,0.25)',  label: 'CLUB NIGHT'  },
-  CONCERT:     { color: '#3d5afe', glow: 'rgba(61,90,254,0.25)',  label: 'CONCERT'     },
-  PUB_NIGHT:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)', label: 'PUB NIGHT'   },
+  HOME_PARTY:  { color: '#ff006e', glow: 'rgba(255,0,110,0.25)',   label: 'HOME PARTY'  },
+  CLUB_NIGHT:  { color: '#00e5ff', glow: 'rgba(0,229,255,0.25)',   label: 'CLUB NIGHT'  },
+  CONCERT:     { color: '#3d5afe', glow: 'rgba(61,90,254,0.25)',   label: 'CONCERT'     },
+  PUB_NIGHT:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)',  label: 'PUB NIGHT'   },
+  BEACH_PARTY: { color: '#06b6d4', glow: 'rgba(6,182,212,0.25)',   label: 'BEACH PARTY' },
+  YACHT_PARTY: { color: '#0ea5e9', glow: 'rgba(14,165,233,0.25)',  label: 'YACHT PARTY' },
 }
 
 function formatDate(d: string) {
@@ -204,7 +205,7 @@ function EventHighlights({ event, color }: { event: any; color: string }) {
   // Duration
   if (event.endsAt) {
     const durationHrs = Math.round((new Date(event.endsAt).getTime() - new Date(event.startsAt).getTime()) / 3600000)
-    if (durationHrs > 0) highlights.push({ icon: Clock, text: `${durationHrs} hour${durationHrs > 1 ? 's' : ''} of ${event.type === 'CONCERT' ? 'live music' : event.type === 'HOME_PARTY' ? 'partying' : event.type === 'PUB_NIGHT' ? 'pub fun' : 'nightlife'}` })
+    if (durationHrs > 0) highlights.push({ icon: Clock, text: `${durationHrs} hour${durationHrs > 1 ? 's' : ''} of ${event.type === 'CONCERT' ? 'live music' : event.type === 'HOME_PARTY' ? 'partying' : 'nightlife'}` })
   }
 
   // Tickets
@@ -608,11 +609,6 @@ export default function EventDetailPage() {
     isHostView && guestListOpen ? `/events/${params['id']}/guests` : null,
     fetcher
   )
-  // Also fetch a small attendee preview for the guest-view "Who's going" section
-  const { data: attendeePreview } = useSWR<{ data: EventGuest[] }>(
-    event && dbUser && !isHostView ? `/events/${params['id']}/guests?limit=8` : null,
-    fetcher
-  )
 
   if (isLoading) {
     return (
@@ -691,7 +687,8 @@ export default function EventDetailPage() {
     setCancelLoading(true)
     try {
       await cancelEvent(event!.id)
-      await mutate()
+      if (!DEV_MODE) await mutate()
+      else router.push('/host')
       setCancelConfirm(false)
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Cancel failed')
@@ -704,7 +701,8 @@ export default function EventDetailPage() {
     setPublishLoading(true)
     try {
       await updateEvent(event!.id, { isPublished: !event!.isPublished } as any)
-      await mutate()
+      if (!DEV_MODE) await mutate()
+      else router.refresh()
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed')
     } finally {
@@ -1006,46 +1004,6 @@ export default function EventDetailPage() {
               </span>
               {friendsGoing.count === 1 ? ' is' : ' are'} going
             </p>
-          </div>
-        )}
-
-        {/* ── Who's going (attendee preview with follow buttons) ── */}
-        {!isHost && attendeePreview && attendeePreview.data.length > 0 && (
-          <div className="mb-5 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
-            <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: 'rgba(0,229,255,0.03)' }}>
-              <div className="flex items-center gap-2">
-                <Users size={11} style={{ color: 'rgba(0,229,255,0.5)' }} />
-                <span className="text-[10px] font-black tracking-widest" style={{ color: '#00e5ff' }}>WHO'S GOING</span>
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.7)' }}>
-                  {event.guestCount}
-                </span>
-              </div>
-            </div>
-            <div className="divide-y" style={{ borderColor: 'rgba(0,229,255,0.05)' }}>
-              {attendeePreview.data.slice(0, 6).map((guest) => {
-                const u = (guest as any).user
-                if (!u) return null
-                return (
-                  <div key={guest.id} className="flex items-center gap-3 px-4 py-2.5">
-                    {u.photoUrl ? (
-                      <img src={u.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0"
-                        style={{ border: '1px solid rgba(0,229,255,0.2)' }} />
-                    ) : (
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                        style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.15)', color: '#00e5ff' }}>
-                        {u.displayName?.[0] ?? '?'}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                      {u.username && <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.5)' }}>@{u.username}</p>}
-                    </div>
-                    <FollowButton userId={u.id} size="sm" />
-                  </div>
-                )
-              })}
-            </div>
           </div>
         )}
 
@@ -1364,38 +1322,30 @@ export default function EventDetailPage() {
                   {/* Tier selector */}
                   <div>
                     <p className="text-[9px] font-bold tracking-[0.18em] mb-2" style={{ color: 'rgba(255,0,110,0.5)' }}>
-                      BLAST RADIUS — AREA COVERED
+                      BLAST RADIUS
                     </p>
                     <div className="grid grid-cols-2 gap-2">
-                      {PUSH_BLAST_TIERS.map((t) => {
-                        const active = blastTier.id === t.id
-                        const areaSqKm = t.km > 0 ? (Math.PI * t.km * t.km).toFixed(0) : null
-                        return (
-                          <button
-                            key={t.id}
-                            onClick={() => setBlastTier(t)}
-                            className="p-3 rounded-xl text-left transition-all"
-                            style={{
-                              background: active ? 'rgba(255,0,110,0.12)' : 'rgba(4,4,13,0.6)',
-                              border: `1px solid ${active ? 'rgba(255,0,110,0.5)' : 'rgba(255,0,110,0.1)'}`,
-                              boxShadow: active ? '0 0 12px rgba(255,0,110,0.15)' : 'none',
-                            }}>
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className="text-[10px] font-black" style={{ color: active ? '#ff006e' : 'rgba(224,242,254,0.7)' }}>
-                                {t.label}
-                              </span>
-                              <span className="text-[11px] font-black" style={{ color: active ? '#ff006e' : 'rgba(224,242,254,0.5)' }}>
-                                £{t.price.toFixed(2)}
-                              </span>
-                            </div>
-                            <p className="text-[9px] mb-1" style={{ color: active ? 'rgba(255,0,110,0.7)' : 'rgba(74,96,128,0.6)' }}>{t.sublabel}</p>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.5)' }}>{areaSqKm ? `~${areaSqKm} km²` : 'whole city'}</span>
-                              <span className="text-[9px] font-bold" style={{ color: active ? 'rgba(255,0,110,0.8)' : 'rgba(74,96,128,0.5)' }}>{t.reach}</span>
-                            </div>
-                          </button>
-                        )
-                      })}
+                      {PUSH_BLAST_TIERS.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => setBlastTier(t)}
+                          className="p-3 rounded-xl text-left transition-all"
+                          style={{
+                            background: blastTier.id === t.id ? 'rgba(255,0,110,0.12)' : 'rgba(4,4,13,0.6)',
+                            border: `1px solid ${blastTier.id === t.id ? 'rgba(255,0,110,0.5)' : 'rgba(255,0,110,0.1)'}`,
+                            boxShadow: blastTier.id === t.id ? '0 0 12px rgba(255,0,110,0.15)' : 'none',
+                          }}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-black" style={{ color: blastTier.id === t.id ? '#ff006e' : 'rgba(224,242,254,0.6)' }}>
+                              {t.label}
+                            </span>
+                            <span className="text-[11px] font-black" style={{ color: blastTier.id === t.id ? '#ff006e' : 'rgba(224,242,254,0.5)' }}>
+                              £{t.price.toFixed(2)}
+                            </span>
+                          </div>
+                          <p className="text-[9px]" style={{ color: 'rgba(74,96,128,0.7)' }}>{t.reach}</p>
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -1422,26 +1372,12 @@ export default function EventDetailPage() {
                     </p>
                   </div>
 
-                  {/* Estimated reach + area summary */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                      style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
-                      <Radio size={10} style={{ color: 'rgba(255,0,110,0.5)' }} />
-                      <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>AREA</span>
-                      <span className="ml-auto text-[10px] font-black" style={{ color: '#ff006e' }}>{blastTier.sublabel}</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                      style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
-                      <Radio size={10} style={{ color: 'rgba(255,0,110,0.5)' }} />
-                      <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>PEOPLE REACHED</span>
-                      <span className="ml-auto text-[10px] font-black" style={{ color: '#ff006e' }}>{blastTier.reach}</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                      style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
-                      <Radio size={10} style={{ color: 'rgba(255,0,110,0.5)' }} />
-                      <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>AMOUNT PAID</span>
-                      <span className="ml-auto text-[10px] font-black" style={{ color: '#ff006e' }}>£{blastTier.price.toFixed(2)}</span>
-                    </div>
+                  {/* Estimated reach */}
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                    style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.1)' }}>
+                    <Radio size={11} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                    <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>ESTIMATED REACH</span>
+                    <span className="ml-auto text-[11px] font-black" style={{ color: '#ff006e' }}>{blastTier.reach}</span>
                   </div>
 
                   {/* Pay & blast CTA */}
@@ -1521,19 +1457,14 @@ export default function EventDetailPage() {
                               @{(guest as any).user?.username ?? '—'}
                             </p>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {(guest as any).user?.id && (
-                              <FollowButton userId={(guest as any).user.id} size="sm" />
-                            )}
-                            <span className="text-[9px] font-black px-2 py-0.5 rounded tracking-wide"
-                              style={{
-                                color: guest.status === 'CONFIRMED' ? '#00ff88' : guest.status === 'CANCELLED' ? '#ff006e' : 'rgba(255,214,0,0.8)',
-                                background: guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.08)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.08)' : 'rgba(255,214,0,0.08)',
-                                border: `1px solid ${guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.2)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.2)' : 'rgba(255,214,0,0.2)'}`,
-                              }}>
-                              {guest.status}
-                            </span>
-                          </div>
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded tracking-wide"
+                            style={{
+                              color: guest.status === 'CONFIRMED' ? '#00ff88' : guest.status === 'CANCELLED' ? '#ff006e' : 'rgba(255,214,0,0.8)',
+                              background: guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.08)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.08)' : 'rgba(255,214,0,0.08)',
+                              border: `1px solid ${guest.status === 'CONFIRMED' ? 'rgba(0,255,136,0.2)' : guest.status === 'CANCELLED' ? 'rgba(255,0,110,0.2)' : 'rgba(255,214,0,0.2)'}`,
+                            }}>
+                            {guest.status}
+                          </span>
                         </div>
                       ))}
                     </div>

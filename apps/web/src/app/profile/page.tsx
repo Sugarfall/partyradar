@@ -287,6 +287,8 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
+  const [profileBg, setProfileBg] = useState<string | null>(null)
+  const [themeColor, setThemeColor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedOk, setSavedOk] = useState(false)
@@ -337,6 +339,8 @@ export default function ProfilePage() {
     if (dbUser) {
       setDisplayName(dbUser.displayName)
       setBio(dbUser.bio ?? '')
+      setProfileBg(dbUser.profileBg ?? null)
+      setThemeColor(dbUser.themeColor ?? null)
     }
   }, [dbUser])
 
@@ -439,7 +443,7 @@ export default function ProfilePage() {
     setSaving(true)
     setSaveError(null)
     try {
-      await api.put('/auth/profile', { displayName, bio })
+      await api.put('/auth/profile', { displayName, bio, profileBg, themeColor })
       await refreshUser()
       setSavedOk(true)
       setTimeout(() => { setSavedOk(false); setEditing(false) }, 1200)
@@ -488,7 +492,7 @@ export default function ProfilePage() {
       {/* ── Header ── */}
       <div
         className="relative px-4 pt-6 pb-8"
-        style={{ background: 'linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 100%)' }}
+        style={{ background: dbUser.profileBg ? `${dbUser.profileBg}` : 'linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 100%)' }}
       >
         <div className="absolute top-0 inset-x-0 h-px"
           style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent)' }} />
@@ -621,12 +625,64 @@ export default function ProfilePage() {
                 style={{ background: 'rgba(0,229,255,0.04)', border: focused === 'bio' ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
             </div>
 
+            {/* Profile Background */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>PROFILE BACKGROUND</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: '#07071a', label: 'Dark' },
+                  { value: '#0f172a', label: 'Slate' },
+                  { value: '#1a0533', label: 'Purple' },
+                  { value: '#0f2318', label: 'Green' },
+                  { value: '#1a1200', label: 'Amber' },
+                  { value: 'linear-gradient(135deg, #07071a 0%, #1a0533 100%)', label: 'Fade' },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    title={label}
+                    onClick={() => setProfileBg(value)}
+                    className="rounded-lg transition-all"
+                    style={{
+                      width: 28, height: 28,
+                      background: value,
+                      border: profileBg === value ? '2px solid #00e5ff' : '2px solid rgba(0,229,255,0.15)',
+                      boxShadow: profileBg === value ? '0 0 8px rgba(0,229,255,0.4)' : 'none',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Accent Colour */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>ACCENT COLOUR</label>
+              <div className="flex flex-wrap gap-2">
+                {['#00e5ff', '#a855f7', '#f59e0b', '#ec4899', '#10b981', '#ffd600'].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setThemeColor(color)}
+                    className="rounded-full transition-all"
+                    style={{
+                      width: 24, height: 24,
+                      background: color,
+                      border: themeColor === color ? '2px solid #fff' : '2px solid transparent',
+                      boxShadow: themeColor === color ? `0 0 8px ${color}80` : 'none',
+                      outline: themeColor === color ? `2px solid ${color}` : 'none',
+                      outlineOffset: 2,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
             {saveError && (
               <p className="text-[11px] font-bold px-3 py-2 rounded" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>⚠ {saveError}</p>
             )}
 
             <div className="flex gap-2">
-              <button onClick={() => { setEditing(false); setDisplayName(dbUser.displayName); setBio(dbUser.bio ?? '') }}
+              <button onClick={() => { setEditing(false); setDisplayName(dbUser.displayName); setBio(dbUser.bio ?? ''); setProfileBg(dbUser.profileBg ?? null); setThemeColor(dbUser.themeColor ?? null) }}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold"
                 style={{ border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.5)' }}>
                 <X size={12} /> CANCEL
@@ -642,8 +698,8 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Stats row — now 5 cols: Hosted, Tickets, Events, Followers, Following */}
-        <div className="grid grid-cols-5 gap-2">
+        {/* Stats row */}
+        <div className="grid grid-cols-6 gap-1.5">
           {(accountMode === 'HOST' ? [
             { label: 'EVENTS',    value: '—', icon: Calendar },
             { label: 'GUESTS',    value: '—', icon: Users    },
@@ -675,6 +731,13 @@ export default function ProfilePage() {
               </button>
             )
           })}
+          {/* Social Score */}
+          <div className="p-2 rounded-xl text-center"
+            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            <Zap size={12} style={{ color: 'rgba(0,229,255,0.35)', margin: '0 auto 3px' }} />
+            <p className="text-base font-black" style={{ color: dbUser.themeColor ?? '#00e5ff' }}>{dbUser.socialScore ?? 0}</p>
+            <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(0,229,255,0.35)' }}>SCORE</p>
+          </div>
         </div>
 
         {/* ── Social Inbox ── */}
@@ -807,10 +870,18 @@ export default function ProfilePage() {
               <ShieldCheck size={13} style={{ color: dbUser.ageVerified ? '#00ff88' : 'rgba(0,229,255,0.35)' }} />
               <span className="text-sm" style={{ color: 'rgba(224,242,254,0.7)' }}>Age Verified</span>
             </div>
-            {dbUser.ageVerified
-              ? <span className="text-[10px] font-bold" style={{ color: '#00ff88' }}>✓ VERIFIED</span>
-              : <button className="text-[10px] font-bold px-2.5 py-1 rounded-lg" style={{ color: '#ffd600', border: '1px solid rgba(255,214,0,0.3)', background: 'rgba(255,214,0,0.06)' }}>VERIFY →</button>
-            }
+            <div className="flex items-center gap-2">
+              {dbUser.phoneVerified && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(0,255,136,0.1)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
+                  📱 VERIFIED
+                </span>
+              )}
+              {dbUser.ageVerified
+                ? <span className="text-[10px] font-bold" style={{ color: '#00ff88' }}>✓ VERIFIED</span>
+                : <button className="text-[10px] font-bold px-2.5 py-1 rounded-lg" style={{ color: '#ffd600', border: '1px solid rgba(255,214,0,0.3)', background: 'rgba(255,214,0,0.06)' }}>VERIFY →</button>
+              }
+            </div>
           </div>
         </div>
 

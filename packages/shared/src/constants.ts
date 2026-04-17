@@ -80,7 +80,7 @@ export const TIERS: Record<SubscriptionTier, TierConfig> = {
 // ─── Event Types ──────────────────────────────────────────────────────────────
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {
-  HOME_PARTY: 'House Party',
+  HOME_PARTY: 'Home Party',
   CLUB_NIGHT: 'Club Night',
   CONCERT: 'Concert',
   PUB_NIGHT: 'Pub Night',
@@ -101,7 +101,6 @@ export const EVENT_TYPE_BG: Record<string, string> = {
   HOME_PARTY: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
   CLUB_NIGHT: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   CONCERT: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  PUB_NIGHT: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   BEACH_PARTY: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   YACHT_PARTY: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
 }
@@ -135,18 +134,16 @@ export const VIBE_TAGS = [
 export interface PushBlastTier {
   id: string
   label: string
-  sublabel: string   // e.g. "0.8 km · ~2 sq km"
-  radius: number     // miles; 0 = city-wide (no geo filter)
-  km: number         // radius in km (0 = city-wide)
-  price: number      // GBP
+  radius: number    // miles; 0 = city-wide (no geo filter)
+  price: number     // GBP
   reach: string
 }
 
 export const PUSH_BLAST_TIERS: PushBlastTier[] = [
-  { id: 'LOCAL',    label: 'Street',       sublabel: '0.5 mi · 0.8 km',  radius: 0.5,  km: 0.8,  price: 1.99,  reach: '~150 people'    },
-  { id: 'NEARBY',   label: 'Neighbourhood',sublabel: '2 mi · 3.2 km',    radius: 2,    km: 3.2,  price: 4.99,  reach: '~700 people'    },
-  { id: 'DISTRICT', label: 'District',     sublabel: '5 mi · 8 km',      radius: 5,    km: 8,    price: 9.99,  reach: '~2,500 people'  },
-  { id: 'CITY',     label: 'City-wide',    sublabel: '15 mi · 24 km',    radius: 15,   km: 24,   price: 19.99, reach: '~10,000 people' },
+  { id: 'LOCAL',    label: '0.5 mile radius', radius: 0.5,  price: 1.99,  reach: '~50 people'    },
+  { id: 'NEARBY',   label: '2 mile radius',   radius: 2,    price: 4.99,  reach: '~200 people'   },
+  { id: 'DISTRICT', label: '5 mile radius',   radius: 5,    price: 9.99,  reach: '~500 people'   },
+  { id: 'CITY',     label: 'City-wide',       radius: 0,    price: 19.99, reach: '~2,000 people' },
 ]
 
 // ─── Paid Group Tiers ────────────────────────────────────────────────────────
@@ -163,7 +160,6 @@ export const GROUP_PRICE_TIERS: GroupPriceTier[] = [
   { id: 'STANDARD', label: 'Standard',  price: 2.99,  description: 'Premium content & priority entry' },
   { id: 'VIP',      label: 'VIP',       price: 4.99,  description: 'Inner circle — direct access to host' },
   { id: 'ELITE',    label: 'Elite',     price: 9.99,  description: 'Full backstage — guestlist & perks' },
-  { id: 'CUSTOM',   label: 'Custom',    price: 0,     description: 'Set your own monthly price' },
 ]
 
 // ─── Referral Program ────────────────────────────────────────────────────────

@@ -77,13 +77,20 @@ router.put('/public-key', requireAuth, async (req: AuthRequest, res, next) => {
   } catch (err) { next(err) }
 })
 
-/** GET /api/dm — list all conversations for current user */
+/** GET /api/dm — list all conversations for current user
+ *  ?requests=true → return only request conversations
+ *  (omitted / false) → return only non-request conversations
+ */
 router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
+    const onlyRequests = req.query['requests'] === 'true'
 
     const conversations = await prisma.conversation.findMany({
-      where: { participants: { some: { userId } } },
+      where: {
+        participants: { some: { userId } },
+        isRequest: onlyRequests ? true : false,
+      },
       orderBy: { lastAt: { sort: 'desc', nulls: 'last' } },
       include: {
         participants: { include: participantSelect },
@@ -102,6 +109,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         updatedAt: c.lastAt ?? c.createdAt,
         other: other ?? null,
         lastMessage: last ? { text: lastText, senderId: last.senderId, createdAt: last.createdAt } : null,
+        isRequest: c.isRequest,
       }
     })
 
@@ -130,17 +138,48 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       include: { participants: { include: participantSelect } },
     })
 
-    if (existing) return res.json({ data: { id: existing.id } })
+    if (existing) return res.json({ data: { id: existing.id, isRequest: existing.isRequest } })
+
+    // Determine if this is a message request: sender must follow recipient OR recipient must follow sender
+    const followExists = await prisma.follow.findFirst({
+      where: {
+        OR: [
+          { followerId: myId, followingId: recipientId },
+          { followerId: recipientId, followingId: myId },
+        ],
+      },
+    })
+    const isRequest = !followExists
 
     const convo = await prisma.conversation.create({
       data: {
+        isRequest,
         participants: {
           create: [{ userId: myId }, { userId: recipientId }],
         },
       },
     })
 
-    res.status(201).json({ data: { id: convo.id } })
+    res.status(201).json({ data: { id: convo.id, isRequest: convo.isRequest } })
+  } catch (err) { next(err) }
+})
+
+/** POST /api/dm/:id/accept — accept a message request */
+router.post('/:id/accept', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { id } = req.params as { id: string }
+
+    const convo = await prisma.conversation.findUnique({
+      where: { id },
+      include: { participants: { select: { userId: true } } },
+    })
+    if (!convo) throw new AppError('Conversation not found', 404)
+    if (!convo.participants.some((p) => p.userId === userId)) throw new AppError('Forbidden', 403)
+
+    await prisma.conversation.update({ where: { id }, data: { isRequest: false } })
+
+    res.json({ data: { ok: true } })
   } catch (err) { next(err) }
 })
 
@@ -178,6 +217,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         id: convo.id,
         other,
         otherPublicKey,
+        isRequest: convo.isRequest,
         messages: convo.messages.map((m) => {
           // For snaps: only the sender or pre-view recipient sees the URL
           // Once viewed (snapViewedAt set), all parties see [SNAP_VIEWED]

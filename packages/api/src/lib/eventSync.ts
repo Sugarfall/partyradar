@@ -13,7 +13,7 @@ const SYNC_THROTTLE_MS = 30 * 60 * 1000 // 30 minutes
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
 
-type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT'
+type EventTypeName = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT' | 'BEACH_PARTY' | 'YACHT_PARTY'
 
 interface SyncResult {
   imported: number
@@ -82,6 +82,7 @@ function mapTMEventType(classifications: TMClassification[] | undefined): EventT
     .join(' ')
     .toLowerCase()
   if (names.includes('nightlife') || names.includes('club') || names.includes('dj')) return 'CLUB_NIGHT'
+  if (names.includes('pub') || names.includes('bar') || names.includes('tavern')) return 'PUB_NIGHT'
   return 'CONCERT'
 }
 
@@ -209,6 +210,7 @@ function mapSkiddleEventType(genres: Array<{ name?: string }> | undefined): Even
   if (!genres) return 'CLUB_NIGHT'
   const names = genres.map((g) => g.name ?? '').join(' ').toLowerCase()
   if (names.includes('live') || names.includes('acoustic') || names.includes('singer')) return 'CONCERT'
+  if (names.includes('pub') || names.includes('bar') || names.includes('quiz')) return 'PUB_NIGHT'
   return 'CLUB_NIGHT'
 }
 
@@ -334,6 +336,7 @@ function mapEBEventType(categories: string[]): EventTypeName {
   const cat = categories.join(' ').toLowerCase()
   if (cat.includes('music') || cat.includes('concert') || cat.includes('festival')) return 'CONCERT'
   if (cat.includes('nightlife') || cat.includes('club') || cat.includes('party')) return 'CLUB_NIGHT'
+  if (cat.includes('pub') || cat.includes('bar') || cat.includes('tavern') || cat.includes('brewery')) return 'PUB_NIGHT'
   return 'HOME_PARTY'
 }
 
@@ -465,39 +468,11 @@ function parseSerpDate(when: string | undefined, startDate: string | undefined):
   return new Date()
 }
 
-// Keywords that confirm an event is nightlife/music relevant
-const NIGHTLIFE_KEYWORDS = [
-  'concert', 'gig', 'live music', 'live band', 'festival', 'tour', 'headline',
-  'club night', 'club', 'nightclub', 'dj', 'dj set', 'rave', 'techno', 'house music',
-  'dance night', 'disco', 'drum and bass', 'dnb', 'garage', 'jungle', 'trance',
-  'hip hop night', 'r&b night', 'open mic', 'open-mic', 'band night', 'music night',
-  'pub night', 'pub quiz', 'karaoke', 'comedy night', 'drag night', 'drag show',
-  'nightlife', 'bar night', 'after party', 'afterparty', 'warehouse', 'rave',
-  'music festival', 'outdoor stage', 'headline act', 'support act', 'residency',
-]
-
-// Keywords that indicate this is NOT a nightlife event — reject these
-const REJECT_KEYWORDS = [
-  'safari', 'zoo', 'museum', 'exhibition', 'art gallery', 'craft fair', 'farmers market',
-  'antiques market', 'car boot', 'marathon', '5k run', '10k run', 'half marathon', 'charity walk',
-  'sports day', 'football match', 'rugby match', 'cricket match', 'swimming gala', 'cycling event',
-  'yoga class', 'meditation class', 'fitness class', 'boot camp',
-  'business workshop', 'seminar', 'conference', 'networking event',
-  'wedding fair', 'baby shower', 'kids party', "children's", 'family fun day',
-  'school fete', 'garden party', 'afternoon tea',
-  'casino night', 'casino event', 'poker night', 'poker tournament',
-]
-
-function isNightlifeEvent(title: string, description: string): boolean {
-  const text = `${title} ${description}`.toLowerCase()
-  if (REJECT_KEYWORDS.some((kw) => text.includes(kw))) return false
-  return NIGHTLIFE_KEYWORDS.some((kw) => text.includes(kw))
-}
-
 function mapSerpEventType(title: string, description: string): EventTypeName {
   const text = `${title} ${description}`.toLowerCase()
-  if (text.includes('concert') || text.includes('live music') || text.includes('live band') || text.includes('festival') || text.includes('gig') || text.includes('tour') || text.includes('open mic')) return 'CONCERT'
-  if (text.includes('club') || text.includes('nightclub') || text.includes('dj') || text.includes('rave') || text.includes('techno') || text.includes('dance night') || text.includes('disco')) return 'CLUB_NIGHT'
+  if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes('tour')) return 'CONCERT'
+  if (text.includes('club') || text.includes('nightclub') || text.includes('dj') || text.includes('rave') || text.includes('techno') || text.includes('dance night')) return 'CLUB_NIGHT'
+  if (text.includes('pub') || text.includes('bar night') || text.includes('pub quiz') || text.includes('open mic') || text.includes('brewery') || text.includes('tavern')) return 'PUB_NIGHT'
   return 'CONCERT'
 }
 
@@ -512,7 +487,7 @@ async function syncSerpApi(
 
   const url = new URL('https://serpapi.com/search.json')
   url.searchParams.set('engine', 'google_events')
-  url.searchParams.set('q', `clubs concerts live music nightlife events in ${city}`)
+  url.searchParams.set('q', `Events in ${city}`)
   url.searchParams.set('api_key', apiKey)
   url.searchParams.set('hl', 'en')
 
@@ -529,9 +504,6 @@ async function syncSerpApi(
       const name = ev.title ?? 'Unnamed Event'
       const startsAt = parseSerpDate(ev.date?.when, ev.date?.start_date)
       if (startsAt < new Date()) { skipped++; continue }
-
-      // Skip non-nightlife events (safari parks, markets, sports etc.)
-      if (!isNightlifeEvent(name, ev.description ?? '')) { skipped++; continue }
 
       const serpApiId = stableHash(`${name}|${ev.date?.start_date ?? ''}|${ev.address?.[0] ?? ''}`)
       const address = ev.address?.join(', ') ?? city
@@ -595,13 +567,11 @@ async function syncPerplexity(
   const twoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   const prompt =
-    `Find upcoming NIGHTLIFE events only in ${city} between ${today} and ${twoWeeks}. ` +
-    `ONLY include: concerts, live music gigs, club nights, DJ sets, raves, music festivals, pub live music, karaoke nights, open mic nights, drag shows, comedy nights. ` +
-    `DO NOT include: sports events, family events, markets, fairs, exhibitions, museums, safari parks, yoga, fitness, conferences, seminars, weddings, or any non-nightlife activity. ` +
-    `Search across Facebook Events, Resident Advisor, venue websites, Skiddle, Dice, and local nightlife listings. ` +
-    `Return ONLY a valid JSON array with no markdown, no explanation:\n` +
+    `Find upcoming events, concerts, club nights, parties, and nightlife in ${city} between ${today} and ${twoWeeks}. ` +
+    `Search across Facebook Events, venue websites, Resident Advisor, local listings, and any other sources. ` +
+    `Return ONLY a valid JSON array with no markdown, no explanation, in this exact format:\n` +
     `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"","address":"","price":0,"type":"CONCERT","description":"","url":"","imageUrl":""}]\n` +
-    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY. price is 0 if free or unknown.`
+    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY, PUB_NIGHT. price is 0 if free or unknown.`
 
   const res = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
@@ -632,16 +602,13 @@ async function syncPerplexity(
 
   let imported = 0
   let skipped = 0
-  const validTypes: EventTypeName[] = ['CONCERT', 'CLUB_NIGHT', 'HOME_PARTY']
+  const validTypes: EventTypeName[] = ['CONCERT', 'CLUB_NIGHT', 'HOME_PARTY', 'PUB_NIGHT', 'BEACH_PARTY', 'YACHT_PARTY']
 
   for (const ev of events) {
     try {
       const name = ev.name ?? 'Unnamed Event'
       const startsAt = new Date(ev.date ?? '')
       if (isNaN(startsAt.getTime()) || startsAt < new Date()) { skipped++; continue }
-
-      // Double-check relevance in case Perplexity still returns off-topic events
-      if (!isNightlifeEvent(name, ev.description ?? '')) { skipped++; continue }
 
       const endsAt = ev.endDate ? new Date(ev.endDate) : undefined
       const aiEventId = stableHash(`perplexity|${name}|${ev.date ?? ''}|${city}`)
@@ -697,11 +664,10 @@ export async function syncExternalEvents(
   }
   lastSyncTime.set(key, Date.now())
 
-  // Resolve hostId — prefer admin, fall back to any user
-  const hostUser = (await prisma.user.findFirst({ where: { isAdmin: true } }))
-    ?? (await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } }))
-  if (!hostUser) return { imported: 0, skipped: 0, sources: [] }
-  const hostId = hostUser.id
+  // Resolve admin hostId from DB
+  const adminUser = await prisma.user.findFirst({ where: { isAdmin: true } })
+  if (!adminUser) return { imported: 0, skipped: 0, sources: [] }
+  const hostId = adminUser.id
 
   let totalImported = 0
   let totalSkipped = 0

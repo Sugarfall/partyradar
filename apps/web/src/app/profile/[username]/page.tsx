@@ -50,6 +50,11 @@ interface PublicProfile {
   profileViewCount: number
   events: ProfileEvent[]
   recentCheckIns: CheckIn[]
+  profileBg?: string | null
+  themeColor?: string | null
+  themeName?: string | null
+  socialScore?: number
+  phoneVerified?: boolean
 }
 
 interface ProfileViewer {
@@ -416,6 +421,7 @@ export default function PublicProfilePage() {
   const initials = profile.displayName.slice(0, 2).toUpperCase()
   const isPremium = profile.subscriptionTier === 'PREMIUM' || profile.subscriptionTier === 'VIP'
   const isHost = profile.accountMode === 'HOST'
+  const accent = profile.themeColor ?? '#00e5ff'
 
   return (
     <div className="min-h-screen" style={{ background: '#04040d', paddingTop: 56, paddingBottom: 96 }}>
@@ -424,9 +430,11 @@ export default function PublicProfilePage() {
       <div className="relative" style={{ height: 130 }}>
         <div className="absolute inset-0"
           style={{
-            background: `linear-gradient(135deg,
-              ${profile.isAdmin ? 'rgba(255,214,0,0.3)' : isHost ? 'rgba(168,85,247,0.3)' : 'rgba(0,229,255,0.18)'} 0%,
-              rgba(4,4,13,0.6) 100%)`,
+            background: profile.profileBg
+              ? profile.profileBg
+              : `linear-gradient(135deg,
+                  ${profile.isAdmin ? 'rgba(255,214,0,0.3)' : isHost ? 'rgba(168,85,247,0.3)' : `${accent}30`} 0%,
+                  rgba(4,4,13,0.6) 100%)`,
           }} />
         <div className="absolute inset-0"
           style={{ background: 'linear-gradient(to bottom, transparent 40%, #04040d 100%)' }} />
@@ -504,7 +512,22 @@ export default function PublicProfilePage() {
               <p className="text-[8px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.35)' }}>{s.label}</p>
             </button>
           ))}
+          {/* Social score */}
+          <div className="flex-1 text-center py-2.5 rounded-xl"
+            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.06)' }}>
+            <p className="text-base font-black" style={{ color: accent }}>{profile.socialScore ?? 0}</p>
+            <p className="text-[8px] font-bold tracking-widest" style={{ color: 'rgba(224,242,254,0.4)' }}>SCORE</p>
+          </div>
         </div>
+
+        {/* ── Leave Feedback button ── */}
+        {!profile.isMe && (
+          <Link href={`/social-score/${profile.username}`}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest mb-4"
+            style={{ background: `${accent}0d`, border: `1px solid ${accent}25`, color: accent }}>
+            ⭐ LEAVE FEEDBACK
+          </Link>
+        )}
 
         {/* ── Profile views (own profile) ── */}
         {profile.isMe && profile.profileViewCount > 0 && (
@@ -535,16 +558,16 @@ export default function PublicProfilePage() {
                 <button onClick={toggleFollow} disabled={followLoading}
                   className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-60"
                   style={{
-                    background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.14)',
-                    border: `1px solid ${following ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.45)'}`,
-                    color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                    background: following ? `${accent}0f` : `${accent}24`,
+                    border: `1px solid ${following ? `${accent}33` : `${accent}73`}`,
+                    color: following ? `${accent}80` : accent,
                   }}>
                   {following ? <UserCheck size={14} /> : <UserPlus size={14} />}
                   {followLoading ? '...' : following ? 'FOLLOWING' : 'FOLLOW'}
                 </button>
               ) : (
                 <Link href="/login" className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest"
-                  style={{ background: 'rgba(0,229,255,0.14)', border: '1px solid rgba(0,229,255,0.45)', color: '#00e5ff' }}>
+                  style={{ background: `${accent}24`, border: `1px solid ${accent}73`, color: accent }}>
                   <UserPlus size={14} /> FOLLOW
                 </Link>
               )}

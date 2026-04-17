@@ -11,10 +11,12 @@ import { VIBE_TAGS } from '@partyradar/shared'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 const EVENT_TYPES: { id: EventType; label: string; emoji: string; desc: string; sub: string; color: string; glow: string }[] = [
-  { id: 'HOME_PARTY', label: 'Home Party',  emoji: '🏠', desc: 'Private space, intimate crowd, your rules',        sub: 'Unlisted address · RSVP gating · Party signals', color: '#ff006e', glow: 'rgba(255,0,110,0.3)' },
-  { id: 'CLUB_NIGHT', label: 'Club Night',  emoji: '🎵', desc: 'Licensed venue, ticketed entry, professional setup', sub: 'Ticket tiers · Lineup · Promoter profile',          color: '#00e5ff', glow: 'rgba(0,229,255,0.3)' },
-  { id: 'CONCERT',   label: 'Concert',     emoji: '🎤', desc: 'Live performance or touring act',                  sub: 'General admission · Artist info · Stage times',     color: '#3d5afe', glow: 'rgba(61,90,254,0.3)' },
-  { id: 'PUB_NIGHT', label: 'Pub Night',   emoji: '🍺', desc: 'Pub crawl, quiz night, bar event or open mic',     sub: 'Casual entry · Pub venue · Drinks social',          color: '#f59e0b', glow: 'rgba(245,158,11,0.3)' },
+  { id: 'HOME_PARTY',  label: 'Home Party',  emoji: '🏠', desc: 'Private space, intimate crowd, your rules',        sub: 'Unlisted address · RSVP gating · Party signals', color: '#ff006e', glow: 'rgba(255,0,110,0.3)' },
+  { id: 'CLUB_NIGHT',  label: 'Club Night',  emoji: '🎵', desc: 'Licensed venue, ticketed entry, professional setup', sub: 'Ticket tiers · Lineup · Promoter profile',          color: '#00e5ff', glow: 'rgba(0,229,255,0.3)' },
+  { id: 'CONCERT',     label: 'Concert',     emoji: '🎤', desc: 'Live performance or touring act',                  sub: 'General admission · Artist info · Stage times',     color: '#3d5afe', glow: 'rgba(61,90,254,0.3)' },
+  { id: 'PUB_NIGHT',   label: 'Pub Night',   emoji: '🍺', desc: 'Pub crawl, quiz night, bar event or open mic',     sub: 'Casual entry · Pub venue · Drinks social',          color: '#f59e0b', glow: 'rgba(245,158,11,0.3)' },
+  { id: 'BEACH_PARTY', label: 'Beach Party', emoji: '🏖️', desc: 'Beach, pool, or waterfront...',                   sub: 'Outdoor venue · Waterfront · Casual vibes',         color: '#06b6d4', glow: 'rgba(6,182,212,0.3)'  },
+  { id: 'YACHT_PARTY', label: 'Yacht Party', emoji: '⛵', desc: 'On the water — marina, dock, yacht...',            sub: 'Private vessel · Marina · Exclusive experience',    color: '#0ea5e9', glow: 'rgba(14,165,233,0.3)' },
 ]
 
 // ── Party signals (HOME_PARTY only) ──────────────────────────────────────────

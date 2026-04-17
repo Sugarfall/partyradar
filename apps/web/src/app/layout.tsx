@@ -5,6 +5,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import '@/styles/globals.css'
 import { AuthProvider } from '@/hooks/useAuth'
 import Navbar from '@/components/layout/Navbar'
+import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${inter.className} bg-bg-primary text-white min-h-screen`}>
         <AuthProvider>
+          <ThemeProvider />
           <Navbar />
           <main className="pt-14 min-h-screen">{children}</main>
           <PWAInstallPrompt />

@@ -1,5 +1,6 @@
 'use client'
 
+<<<<<<< HEAD
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart, Wine } from 'lucide-react'
 import Link from 'next/link'
@@ -8,6 +9,13 @@ import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
 import type { DemoVenue } from '@/hooks/useEvents'
 import { useVenueDiscover } from '@/hooks/useVenues'
 import type { LiveVenue } from '@/hooks/useVenues'
+=======
+import { useState, useEffect, useCallback } from 'react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Wine, Star, Lock, LayoutList, Layers } from 'lucide-react'
+import Link from 'next/link'
+import dynamic from 'next/dynamic'
+import { useEvents, DEMO_EVENTS } from '@/hooks/useEvents'
+>>>>>>> claude/priceless-hypatia
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
 import { AGE_RESTRICTION_LABELS, ALCOHOL_POLICY_LABELS } from '@partyradar/shared'
@@ -21,14 +29,6 @@ const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) =
   ),
 })
 
-const VenuesMiniMap = dynamic(() => import('@/components/venues/VenuesMiniMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full flex items-center justify-center" style={{ height: 200, background: 'rgba(7,7,26,0.95)' }}>
-      <span style={{ color: 'rgba(255,214,0,0.4)', letterSpacing: '0.15em', fontSize: 11 }}>LOADING MAP...</span>
-    </div>
-  ),
-})
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -40,12 +40,16 @@ const TYPE_COLORS: Record<string, string> = {
   CLUB_NIGHT: '#00e5ff',
   CONCERT: '#3d5afe',
   PUB_NIGHT: '#f59e0b',
+  BEACH_PARTY: '#06b6d4',
+  YACHT_PARTY: '#0ea5e9',
 }
 const TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'HOUSE PARTY',
   CLUB_NIGHT: 'CLUB NIGHT',
   CONCERT: 'CONCERT',
   PUB_NIGHT: 'PUB NIGHT',
+  BEACH_PARTY: 'BEACH PARTY',
+  YACHT_PARTY: 'YACHT PARTY',
 }
 
 type SlideDir = 'next' | 'prev' | null
@@ -369,7 +373,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
         {/* Primary action */}
         <Link
           href={`/events/${event.id}`}
-          className="block w-full text-center font-black py-3 rounded-xl text-sm transition-all duration-200"
+          className="flex items-center justify-center w-full font-black py-3 rounded-xl text-sm transition-all duration-200"
           style={{
             background: `linear-gradient(135deg, ${color}20, rgba(61,90,254,0.15))`,
             border: `1px solid ${color}50`,
@@ -414,6 +418,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
   )
 }
 
+<<<<<<< HEAD
 // ── Venue card ────────────────────────────────────────────────────────────────
 const VENUE_TYPE_LABELS: Record<string, string> = {
   NIGHTCLUB: 'NIGHTCLUB', BAR: 'BAR', PUB: 'PUB',
@@ -751,6 +756,19 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
           </div>
         )}
       </div>
+=======
+// ── Venues list ───────────────────────────────────────────────────────────────
+function VenuesList() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center px-4 py-16 gap-4">
+      <span style={{ fontSize: 40 }}>🏢</span>
+      <p className="text-sm font-bold tracking-widest text-center" style={{ color: 'rgba(0,229,255,0.5)' }}>
+        VENUES NEARBY
+      </p>
+      <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 240 }}>
+        No venues found nearby — check back soon
+      </p>
+>>>>>>> claude/priceless-hypatia
     </div>
   )
 }

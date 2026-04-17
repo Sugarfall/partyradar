@@ -14,6 +14,8 @@ enum EventType {
   CLUB_NIGHT
   CONCERT
   PUB_NIGHT
+  BEACH_PARTY
+  YACHT_PARTY
 }
 
 enum AlcoholPolicy {
@@ -102,12 +104,21 @@ model User {
   alcoholFriendly   Boolean          @default(false)
   interests         String[]
   showAlcoholEvents Boolean          @default(false)
+  phoneNumber    String?   @unique
+  phoneVerified  Boolean   @default(false)
+  profileBg      String?   // hex colour or gradient string
+  themeColor     String?   // hex accent colour
+  themeName      String?   // e.g. "neon", "gold", "sunset"
+  socialScore    Int       @default(0)
   subscriptionTier  SubscriptionTier @default(FREE)
   accountMode      AccountMode      @default(ATTENDEE)
   stripeCustomerId  String?
   fcmToken          String?
   lastKnownLat      Float?
   lastKnownLng      Float?
+  lastLat           Float?
+  lastLng           Float?
+  lastSeenAt        DateTime?
   isBanned          Boolean          @default(false)
   isAdmin           Boolean          @default(false)
   referralCode      String?          @unique
@@ -150,6 +161,14 @@ model User {
   goOutReceived        GoOutRequest[] @relation("GoOutReceiver")
   pubCrawlsCreated     PubCrawl[]     @relation("PubCrawlCreator")
   pubCrawlCheckIns     PubCrawlCheckIn[] @relation("PubCrawlCheckIns")
+
+  referralCards        ReferralCard[]
+  socialFeedbackGiven  AnonymousFeedback[] @relation("FeedbackGiven")
+  socialFeedbackReceived AnonymousFeedback[] @relation("FeedbackReceived")
+  djRequests           DjRequest[]
+  phoneVerifications   PhoneVerification[]
+  brandEntitlements    BrandEntitlement[]
+  nearbyUpdates        NearbyUpdate[]
 }
 
 model Event {
@@ -203,10 +222,11 @@ model Event {
   tickets  Ticket[]
   messages Message[]
 
-  checkIns CheckIn[]
-  posts    Post[]
-  reviews  EventReview[]
-  savedBy  SavedEvent[]
+  checkIns   CheckIn[]
+  posts      Post[]
+  reviews    EventReview[]
+  savedBy    SavedEvent[]
+  djRequests DjRequest[]
 
   @@index([hostId, createdAt])
   @@index([isPublished, isCancelled, startsAt])
@@ -350,6 +370,7 @@ model Conversation {
   updatedAt    DateTime                  @updatedAt
   lastMessage  String?
   lastAt       DateTime?
+  isRequest    Boolean                   @default(false)
   participants ConversationParticipant[]
   messages     DirectMessage[]
 }
@@ -628,7 +649,8 @@ model GroupMessage {
   id        String    @id @default(cuid())
   groupId   String
   senderId  String
-  text      String    @db.Text
+  text      String?   @db.Text
+  imageUrl  String?   @db.Text
   createdAt DateTime  @default(now())
   group     GroupChat @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender    User      @relation("SentGroupMessages", fields: [senderId], references: [id])
@@ -854,4 +876,153 @@ model GoOutRequest {
 
   @@unique([fromId, toId])
   @@index([toId, status])
+}
+
+// ─── Nearby / Location ───────────────────────────────────────────────────────
+
+model NearbyUpdate {
+  id        String   @id @default(cuid())
+  userId    String
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([lat, lng])
+}
+
+// ─── Referral Cards ──────────────────────────────────────────────────────────
+
+model ReferralCard {
+  id           String   @id @default(cuid())
+  userId       String
+  code         String   @unique
+  displayName  String
+  totalUses    Int      @default(0)
+  totalEarned  Float    @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  conversions  ReferralConversion[]
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([code])
+}
+
+model ReferralConversion {
+  id               String       @id @default(cuid())
+  cardId           String
+  referredId       String
+  revenueAmount    Float
+  commissionAmount Float
+  isPaidOut        Boolean      @default(false)
+  source           String?      // "ticket", "subscription", "group_sub"
+  createdAt        DateTime     @default(now())
+  card             ReferralCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+}
+
+// ─── Social Score & Anonymous Feedback ──────────────────────────────────────
+
+model AnonymousFeedback {
+  id          String   @id @default(cuid())
+  fromUserId  String
+  toUserId    String
+  category    String   // "vibe", "punctuality", "friendliness", "host_quality"
+  score       Int      // 1–5
+  comment     String?  @db.Text
+  isHidden    Boolean  @default(false)
+  reportCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  fromUser    User     @relation("FeedbackGiven", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User     @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId, createdAt]) // rate limit: one per interaction per day enforced at API
+  @@index([toUserId])
+  @@index([fromUserId])
+}
+
+// ─── Phone Verification ──────────────────────────────────────────────────────
+
+model PhoneVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  phone     String
+  code      String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([phone])
+}
+
+// ─── DJ Song Requests ────────────────────────────────────────────────────────
+
+enum DjRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PLAYED
+}
+
+model DjRequest {
+  id         String          @id @default(cuid())
+  userId     String
+  eventId    String?
+  venueId    String?
+  song       String
+  artist     String?
+  message    String?         @db.Text
+  creditCost Int             @default(1)
+  status     DjRequestStatus @default(PENDING)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event      Event?          @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([venueId])
+}
+
+// ─── Partner Brands (e.g. Saintsinners) ─────────────────────────────────────
+
+enum BrandTier {
+  STANDARD
+  PREMIUM
+  ELITE
+}
+
+model PartnerBrand {
+  id           String             @id @default(cuid())
+  slug         String             @unique
+  name         String
+  description  String?            @db.Text
+  logoUrl      String?
+  accentColor  String?
+  isActive     Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  entitlements BrandEntitlement[]
+}
+
+model BrandEntitlement {
+  id        String       @id @default(cuid())
+  brandId   String
+  userId    String
+  tier      BrandTier    @default(STANDARD)
+  note      String?
+  grantedAt DateTime     @default(now())
+  expiresAt DateTime?
+  revokedAt DateTime?
+  brand     PartnerBrand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, userId])
+  @@index([userId])
+  @@index([brandId])
 }
