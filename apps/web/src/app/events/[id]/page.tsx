@@ -18,6 +18,7 @@ import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
 import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS } from '@partyradar/shared'
+import { formatPrice } from '@/lib/currency'
 import type { PushBlastTier } from '@partyradar/shared'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
@@ -893,7 +894,7 @@ export default function EventDetailPage() {
           <div className="text-right">
             <p className="text-xl font-black"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}>
-              {isFree ? 'FREE' : `£${event.price.toFixed(2)}`}
+              {formatPrice(event.price)}
             </p>
             {!isFree && <p className="text-[10px] font-bold" style={{ color: 'rgba(74,96,128,0.6)' }}>PER TICKET</p>}
           </div>
@@ -1586,7 +1587,7 @@ export default function EventDetailPage() {
                         }}>
                         {ticketLoading
                           ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /></>
-                          : <><QrCode size={14} /> BUY TICKET — £{(event.price * ticketQty).toFixed(2)}</>
+                          : <><QrCode size={14} /> BUY TICKET — {formatPrice(event.price * ticketQty)}</>
                         }
                       </button>
                       <button

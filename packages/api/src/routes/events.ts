@@ -65,7 +65,16 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['startsAt'] = { gte: now, lte: midnight }
     }
 
-    if (type) where['type'] = type
+    if (type) {
+      where['type'] = type
+    } else {
+      const excludeTypes = req.query['excludeTypes']
+        ? String(req.query['excludeTypes']).split(',')
+        : []
+      if (excludeTypes.length > 0) {
+        where['type'] = { notIn: excludeTypes }
+      }
+    }
     if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
 
     // Hide alcohol events only for logged-in users who haven't enabled the toggle

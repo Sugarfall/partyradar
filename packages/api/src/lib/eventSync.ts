@@ -74,6 +74,10 @@ const REJECT_KEYWORDS = [
   // Other
   'dog show', 'horse show', 'equestrian', 'agricultural show',
   'antiques fair', 'collectors fair',
+  // Casino, gambling & irrelevant social events
+  'casino', 'gambling', 'poker night', 'bingo', 'quiz night', 'trivia night',
+  'karaoke night only', 'afternoon tea', 'baby shower', 'wedding', 'funeral',
+  'corporate event',
 ]
 
 /**

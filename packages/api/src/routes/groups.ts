@@ -451,6 +451,82 @@ router.delete('/:id/leave', requireAuth, async (req: AuthRequest, res, next) => 
   }
 })
 
+// ── Moderation: assign/remove mod role ───────────────────────────────────────
+router.put('/:id/members/:userId/role', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const groupId = req.params['id'] as string
+    const targetUserId = req.params['userId'] as string
+    const { role } = req.body as { role: 'MOD' | 'MEMBER' }
+    if (!['MOD', 'MEMBER'].includes(role)) {
+      return res.status(400).json({ error: { message: 'Role must be MOD or MEMBER' } })
+    }
+    // Only group owner can change roles
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { createdById: true } })
+    if (!group) return res.status(404).json({ error: { message: 'Group not found' } })
+    if (group.createdById !== req.user!.dbUser.id) {
+      return res.status(403).json({ error: { message: 'Only the group owner can assign roles' } })
+    }
+    // Can't change owner's own role
+    if (targetUserId === group.createdById) {
+      return res.status(400).json({ error: { message: 'Cannot change owner role' } })
+    }
+    await (prisma.groupMembership as any).update({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+      data: { role },
+    })
+    res.json({ data: { userId: targetUserId, role } })
+  } catch (err) { next(err) }
+})
+
+// ── Moderation: kick member ──────────────────────────────────────────────────
+router.delete('/:id/members/:userId', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const groupId = req.params['id'] as string
+    const targetUserId = req.params['userId'] as string
+    const callerId = req.user!.dbUser.id
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { createdById: true } })
+    if (!group) return res.status(404).json({ error: { message: 'Group not found' } })
+    // Owner can kick anyone; MODs can kick MEMBERs only
+    const callerMembership = await (prisma.groupMembership as any).findUnique({
+      where: { groupId_userId: { groupId, userId: callerId } },
+      select: { role: true },
+    })
+    const targetMembership = await (prisma.groupMembership as any).findUnique({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+      select: { role: true },
+    })
+    const isOwner = group.createdById === callerId
+    const isMod = callerMembership?.role === 'MOD'
+    const targetIsMod = targetMembership?.role === 'MOD'
+    const targetIsOwner = targetUserId === group.createdById
+    if (!isOwner && !isMod) return res.status(403).json({ error: { message: 'Insufficient permissions' } })
+    if (!isOwner && (targetIsMod || targetIsOwner)) return res.status(403).json({ error: { message: 'MODs cannot kick other MODs or the owner' } })
+    if (targetIsOwner) return res.status(400).json({ error: { message: 'Cannot kick the group owner' } })
+    await prisma.groupMembership.delete({ where: { groupId_userId: { groupId, userId: targetUserId } } })
+    await prisma.groupChat.update({ where: { id: groupId }, data: { memberCount: { decrement: 1 } } })
+    res.json({ data: { kicked: true } })
+  } catch (err) { next(err) }
+})
+
+// ── Members list (for moderation panel) ──────────────────────────────────────
+router.get('/:id/members', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const groupId = req.params['id'] as string
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { createdById: true } })
+    if (!group) return res.status(404).json({ error: { message: 'Group not found' } })
+    const memberships = await (prisma.groupMembership as any).findMany({
+      where: { groupId },
+      include: { user: { select: { id: true, displayName: true, username: true, photoUrl: true } } },
+      orderBy: { joinedAt: 'asc' },
+    })
+    const enriched = (memberships as any[]).map(m => ({
+      ...m,
+      role: m.userId === group.createdById ? 'OWNER' : (m.role ?? 'MEMBER'),
+    }))
+    res.json({ data: enriched })
+  } catch (err) { next(err) }
+})
+
 /** PUT /api/groups/:id/notifications */
 router.put('/:id/notifications', requireAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -573,10 +649,97 @@ router.get('/:groupId/pub-crawl', optionalAuth, async (req: AuthRequest, res, ne
       checkers: s.checkIns.map((c) => ({ id: c.user.id, displayName: c.user.displayName, photoUrl: c.user.photoUrl })),
     }))
 
-    res.json({ data: { ...crawl, stops: stopsFormatted, leaderboard } })
+    // All-time leaderboard across all crawls for this group
+    const allTimeCheckins = await (prisma.pubCrawlCheckIn as any).groupBy({
+      by: ['userId'],
+      where: { stop: { crawl: { groupId } } },
+      _sum: { score: true },
+      _count: { id: true },
+      orderBy: { _sum: { score: 'desc' } },
+      take: 10,
+    }) as Array<{ userId: string; _sum: { score: number | null }; _count: { id: number } }>
+    const leaderboardUsers = await prisma.user.findMany({
+      where: { id: { in: allTimeCheckins.map(c => c.userId) } },
+      select: { id: true, displayName: true, username: true, photoUrl: true },
+    })
+    const allTimeBest = allTimeCheckins.map(c => ({
+      ...leaderboardUsers.find(u => u.id === c.userId),
+      totalScore: c._sum?.score ?? 0,
+      totalCheckIns: c._count?.id ?? 0,
+    })).sort((a, b) => b.totalScore - a.totalScore)
+
+    res.json({ data: { ...crawl, stops: stopsFormatted, leaderboard, allTimeBest } })
   } catch (err) {
     next(err)
   }
+})
+
+// POST /api/groups/:groupId/pub-crawl/plan — AI plans optimal route from nearby venues
+router.post('/:groupId/pub-crawl/plan', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { groupId } = req.params
+    const { lat, lng, radiusKm = 2, count = 5 } = req.body as { lat: number; lng: number; radiusKm?: number; count?: number }
+
+    if (!lat || !lng) return res.status(400).json({ error: { message: 'lat and lng required' } })
+
+    // Haversine distance
+    function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+      const R = 6371
+      const dLat = (lat2 - lat1) * Math.PI / 180
+      const dLng = (lng2 - lng1) * Math.PI / 180
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    }
+
+    // Fetch nearby venues (pubs/bars/nightclubs)
+    const venues = await prisma.venue.findMany({
+      where: {
+        lat: { gte: lat - 0.05, lte: lat + 0.05 },
+        lng: { gte: lng - 0.05, lte: lng + 0.05 },
+        type: { in: ['PUB', 'BAR', 'NIGHTCLUB', 'LOUNGE'] as any },
+      },
+      select: { id: true, name: true, address: true, lat: true, lng: true, type: true, rating: true },
+    })
+
+    if (venues.length === 0) {
+      return res.json({ data: { stops: [], message: 'No venues found nearby. Add venues to the area first.' } })
+    }
+
+    // Sort by distance, then greedily build route (nearest-neighbour)
+    const withDist = venues.map(v => ({
+      ...v,
+      distKm: haversine(lat, lng, v.lat, v.lng),
+    })).filter(v => v.distKm <= radiusKm).sort((a, b) => a.distKm - b.distKm)
+
+    // Nearest-neighbour TSP approximation
+    const stops: typeof withDist = []
+    const remaining = [...withDist]
+    let current = { lat, lng }
+    const take = Math.min(count, remaining.length)
+
+    for (let i = 0; i < take; i++) {
+      remaining.sort((a, b) =>
+        haversine(current.lat, current.lng, a.lat, a.lng) -
+        haversine(current.lat, current.lng, b.lat, b.lng)
+      )
+      const next = remaining.shift()!
+      stops.push(next)
+      current = { lat: next.lat, lng: next.lng }
+    }
+
+    const result = stops.map((v, i) => ({
+      order: i + 1,
+      name: v.name,
+      address: v.address,
+      lat: v.lat,
+      lng: v.lng,
+      type: v.type,
+      rating: v.rating,
+      distanceKm: Math.round(v.distKm * 10) / 10,
+    }))
+
+    res.json({ data: { stops: result, totalStops: result.length, radiusKm } })
+  } catch (err) { next(err) }
 })
 
 /** POST /api/groups/:groupId/pub-crawl — create a pub crawl */

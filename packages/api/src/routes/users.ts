@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth, optionalAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth, requireTier } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 
@@ -76,24 +76,12 @@ router.get('/search', optionalAuth, async (req: AuthRequest, res, next) => {
 
 // ── GET /api/users/me/profile-views ────────────────────────────────────────────
 // Returns how many people viewed your profile this week.
-// Premium users (PREMIUM / VIP) also get the viewer list.
-router.get('/me/profile-views', requireAuth, async (req: AuthRequest, res, next) => {
+// PRO+ users get the full viewer list.
+router.get('/me/profile-views', requireAuth, requireTier('PRO', 'Profile View History'), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const me = await prisma.user.findUnique({ where: { id: userId }, select: { subscriptionTier: true } })
-    const isPremium = me?.subscriptionTier === 'PREMIUM' || me?.subscriptionTier === 'VIP'
-
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // last 7 days
 
-    const count = await prisma.profileView.count({
-      where: { profileId: userId, viewerId: { not: userId }, updatedAt: { gte: since } },
-    })
-
-    if (!isPremium) {
-      return res.json({ data: { count, viewers: null, isPremium: false } })
-    }
-
-    // Premium: return viewer details
     const views = await prisma.profileView.findMany({
       where: { profileId: userId, viewerId: { not: userId }, updatedAt: { gte: since } },
       orderBy: { updatedAt: 'desc' },
@@ -103,7 +91,7 @@ router.get('/me/profile-views', requireAuth, async (req: AuthRequest, res, next)
 
     res.json({
       data: {
-        count,
+        count: views.length,
         isPremium: true,
         viewers: views.map((v) => ({ ...v.viewer, viewedAt: v.updatedAt })),
       },

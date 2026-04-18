@@ -109,6 +109,8 @@ model User {
   profileBg      String?   // hex colour or gradient string
   themeColor     String?   // hex accent colour
   themeName      String?   // e.g. "neon", "gold", "sunset"
+  profileBgImage String?   // URL to uploaded background image
+  currency       String    @default("GBP") // ISO 4217 currency code
   socialScore    Int       @default(0)
   subscriptionTier  SubscriptionTier @default(FREE)
   accountMode      AccountMode      @default(ATTENDEE)
@@ -572,6 +574,7 @@ model PubCrawl {
   name        String
   status      String         @default("ACTIVE")
   createdAt   DateTime       @default(now())
+  completedAt DateTime?
   group       GroupChat      @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdBy   User           @relation("PubCrawlCreator", fields: [createdById], references: [id])
   stops       PubCrawlStop[]
@@ -584,6 +587,8 @@ model PubCrawlStop {
   crawlId   String
   name      String
   address   String?
+  lat          Float?
+  lng          Float?
   order     Int              @default(0)
   createdAt DateTime         @default(now())
   crawl     PubCrawl         @relation(fields: [crawlId], references: [id], onDelete: Cascade)
@@ -597,6 +602,7 @@ model PubCrawlCheckIn {
   stopId    String
   userId    String
   createdAt DateTime     @default(now())
+  score     Int          @default(1)
   stop      PubCrawlStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
   user      User         @relation("PubCrawlCheckIns", fields: [userId], references: [id])
 
@@ -638,6 +644,7 @@ model GroupMembership {
   groupId              String
   userId               String
   notificationsEnabled Boolean   @default(true)
+  role                 String    @default("MEMBER") // OWNER | MOD | MEMBER
   joinedAt             DateTime  @default(now())
   group                GroupChat @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)

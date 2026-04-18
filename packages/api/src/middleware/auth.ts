@@ -68,22 +68,42 @@ export async function requireAdmin(req: AuthRequest, res: Response, next: NextFu
   })
 }
 
-export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction) {
+export function requireTier(minTier: 'BASIC' | 'PRO' | 'PREMIUM', featureName: string) {
+  const order: Record<string, number> = { FREE: 0, BASIC: 1, PRO: 2, PREMIUM: 3 }
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const authReq = req as AuthRequest
+    if (!authReq.user) return res.status(401).json({ error: { message: 'Authentication required' } })
+    const userTier = authReq.user.dbUser.subscriptionTier ?? 'FREE'
+    if ((order[userTier] ?? 0) < (order[minTier] ?? 0)) {
+      return res.status(403).json({
+        error: {
+          message: `${featureName} requires ${minTier} subscription or higher`,
+          code: 'TIER_REQUIRED',
+          requiredTier: minTier,
+        },
+      })
+    }
+    next()
+  }
+}
+
+export async function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction) {
   const token = req.headers.authorization?.split('Bearer ')[1]
   if (!token) { next(); return }
 
-  auth.verifyIdToken(token)
-    .then(async (decoded) => {
-      const dbUser = await prisma.user.findUnique({
-        where: { firebaseUid: decoded.uid },
-        select: {
-          id: true, email: true, username: true, displayName: true,
-          subscriptionTier: true, ageVerified: true,
-          isAdmin: true, isBanned: true,
-        },
-      })
-      if (dbUser && !dbUser.isBanned) req.user = { firebaseUid: decoded.uid, dbUser }
-      next()
+  try {
+    const decoded = await auth.verifyIdToken(token)
+    const dbUser = await prisma.user.findUnique({
+      where: { firebaseUid: decoded.uid },
+      select: {
+        id: true, email: true, username: true, displayName: true,
+        subscriptionTier: true, ageVerified: true,
+        isAdmin: true, isBanned: true,
+      },
     })
-    .catch(() => next())
+    if (dbUser && !dbUser.isBanned) req.user = { firebaseUid: decoded.uid, dbUser }
+  } catch {
+    // token invalid or expired — proceed unauthenticated
+  }
+  next()
 }

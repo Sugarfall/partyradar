@@ -8,10 +8,11 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import {
   ArrowLeft, MapPin, Phone, Globe, Tag, Calendar, Ticket,
   CheckCircle, Building2, Loader2, AlertTriangle, X,
-  ImageIcon, Send, Heart
+  ImageIcon, Send, Heart, Clock
 } from 'lucide-react'
 
 import { API_URL as API_BASE } from '@/lib/api'
+import { formatPrice } from '@/lib/currency'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -95,8 +96,58 @@ function formatDate(d: string) {
   })
 }
 
-function formatPrice(price: number) {
-  return price === 0 ? 'Free' : `£${price.toFixed(2)}`
+// ─── Opening Hours component ──────────────────────────────────────────────────
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function OpeningHours({ hours }: { hours: unknown }) {
+  if (!hours) return null
+  const todayIdx = new Date().getDay()
+
+  // Normalise: accept object like { monday: "11:00-23:00" } or { 1: {...} } or array
+  let entries: { day: string; times: string }[] = []
+  if (typeof hours === 'object' && !Array.isArray(hours)) {
+    entries = Object.entries(hours as Record<string, unknown>).map(([k, v]) => ({
+      day: k.charAt(0).toUpperCase() + k.slice(1).toLowerCase(),
+      times: typeof v === 'string' ? v : typeof v === 'object' && v ? JSON.stringify(v) : 'Closed',
+    }))
+  } else if (Array.isArray(hours)) {
+    entries = hours.map((h: any) => ({
+      day: typeof h.day === 'number' ? DAY_NAMES[h.day] ?? String(h.day) : String(h.day),
+      times: h.open && h.close ? `${h.open} – ${h.close}` : h.times ?? 'Closed',
+    }))
+  }
+
+  if (entries.length === 0) return null
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <Clock size={14} style={{ color: 'rgba(0,229,255,0.5)' }} />
+        <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>OPENING HOURS</p>
+      </div>
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.08)' }}>
+        {entries.map((e, i) => {
+          const isToday = e.day.toLowerCase() === DAY_NAMES[todayIdx]?.toLowerCase()
+          const isClosed = e.times.toLowerCase() === 'closed' || e.times === ''
+          return (
+            <div key={i} className="flex items-center justify-between px-4 py-2.5"
+              style={{
+                background: isToday ? 'rgba(0,229,255,0.06)' : i % 2 === 0 ? 'rgba(0,0,0,0)' : 'rgba(0,229,255,0.02)',
+                borderBottom: i < entries.length - 1 ? '1px solid rgba(0,229,255,0.06)' : 'none',
+              }}>
+              <span className="text-sm font-bold" style={{ color: isToday ? '#00e5ff' : 'rgba(224,242,254,0.6)' }}>
+                {isToday ? `${e.day} (Today)` : e.day}
+              </span>
+              <span className="text-sm font-bold" style={{ color: isClosed ? 'rgba(255,0,110,0.6)' : isToday ? '#00e5ff' : 'rgba(224,242,254,0.8)' }}>
+                {isClosed ? 'Closed' : e.times}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ─── Claim Modal ──────────────────────────────────────────────────────────────
@@ -320,6 +371,9 @@ export default function VenueDetailPage() {
             </div>
           </div>
         )}
+
+        {/* ─── Opening hours ─── */}
+        {venue.openingHours != null ? <OpeningHours hours={venue.openingHours} /> : null}
 
         {/* ─── Tab switcher ─── */}
         <div className="flex gap-1 p-1 rounded-2xl" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.08)' }}>

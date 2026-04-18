@@ -151,6 +151,7 @@ export interface CreateEventInput {
 
 export interface EventDiscoverQuery {
   type?: EventType
+  excludeTypes?: string
   lat?: number
   lng?: number
   radius?: number

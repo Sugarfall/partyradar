@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, requireTier } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 
@@ -8,7 +8,7 @@ const router = Router()
 const CREDIT_COST = 50 // wallet points per DJ request
 
 /** POST /api/dj-requests — submit a song request */
-router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
+router.post('/', requireAuth, requireTier('BASIC', 'DJ Song Requests'), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
     const { eventId, venueId, song, artist, message } = req.body as {

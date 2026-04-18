@@ -10,7 +10,8 @@ import { useVenueDiscover } from '@/hooks/useVenues'
 import type { LiveVenue } from '@/hooks/useVenues'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
-import { AGE_RESTRICTION_LABELS, ALCOHOL_POLICY_LABELS } from '@partyradar/shared'
+import { AGE_RESTRICTION_LABELS, ALCOHOL_POLICY_LABELS, getTier } from '@partyradar/shared'
+import { useAuth } from '@/hooks/useAuth'
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
@@ -51,8 +52,59 @@ const TYPE_LABELS: Record<string, string> = {
 
 type SlideDir = 'next' | 'prev' | null
 
+// ── Locked card shown to FREE users for YACHT_PARTY events ───────────────────
+function LockedEventListCard({ event }: { event: Event }) {
+  const color = '#0ea5e9' // YACHT_PARTY color
+  return (
+    <Link href="/pricing"
+      className="flex gap-3 p-3 rounded-2xl relative overflow-hidden transition-all"
+      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid rgba(14,165,233,0.2)` }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(14,165,233,0.45)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(14,165,233,0.2)')}
+    >
+      {/* Blurred thumbnail */}
+      <div className="shrink-0 relative" style={{ width: 64, height: 64 }}>
+        <div className="w-full h-full rounded-xl flex items-center justify-center"
+          style={{ background: `${color}12`, border: `1px solid ${color}30` }}>
+          <Calendar size={22} style={{ color, opacity: 0.3 }} />
+        </div>
+      </div>
+
+      {/* Blurred info */}
+      <div className="flex-1 min-w-0 select-none" style={{ filter: 'blur(4px)', pointerEvents: 'none' }}>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-sm font-bold truncate leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
+          <span className="shrink-0 text-sm font-bold" style={{ color: '#e0f2fe' }}>£??</span>
+        </div>
+        <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
+          <MapPin size={9} className="inline mr-0.5" />Hidden location
+        </p>
+        <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+          style={{ color, background: `${color}12`, border: `1px solid ${color}30`, letterSpacing: '0.1em' }}>
+          YACHT PARTY
+        </span>
+      </div>
+
+      {/* Lock badge overlay */}
+      <div className="absolute inset-0 flex items-center justify-center rounded-2xl"
+        style={{ background: 'rgba(7,7,26,0.55)', backdropFilter: 'blur(2px)' }}>
+        <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl"
+          style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.35)' }}>
+          <Lock size={13} style={{ color: '#0ea5e9' }} />
+          <span className="text-[9px] font-black tracking-widest" style={{ color: '#0ea5e9' }}>BASIC+ TO UNLOCK</span>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 // ── Compact list card for list view ──────────────────────────────────────────
-function EventListCard({ event, live }: { event: Event; live?: boolean }) {
+function EventListCard({ event, live, userTier }: { event: Event; live?: boolean; userTier?: string }) {
+  // Gate YACHT_PARTY for FREE users
+  if (event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties) {
+    return <LockedEventListCard event={event} />
+  }
+
   const color = TYPE_COLORS[event.type] ?? '#00e5ff'
   const isFree = event.price === 0
 
@@ -126,19 +178,47 @@ function EventListCard({ event, live }: { event: Event; live?: boolean }) {
 }
 
 // ── Full-screen sequential event card ────────────────────────────────────────
-function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
+function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; userTier?: string }) {
   const color = TYPE_COLORS[event.type] ?? '#00e5ff'
   const isFree = event.price === 0
   const [interested, setInterested] = useState(false)
   const [requested, setRequested] = useState(false)
 
+  const isYachtLocked = event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties
+
   return (
     <div
       className={dir === 'next' ? 'animate-slide-next' : dir === 'prev' ? 'animate-slide-prev' : ''}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}
     >
+      {/* Yacht Party lock overlay for FREE users */}
+      {isYachtLocked && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4"
+          style={{ background: 'rgba(7,7,26,0.85)', backdropFilter: 'blur(12px)' }}>
+          <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl text-center"
+            style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.3)', maxWidth: 280 }}>
+            <span style={{ fontSize: 40 }}>⛵</span>
+            <div>
+              <p className="text-sm font-black tracking-widest mb-1" style={{ color: '#0ea5e9', letterSpacing: '0.12em' }}>
+                YACHT PARTY
+              </p>
+              <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.55)' }}>
+                Exclusive yacht parties are available to <strong style={{ color: '#00e5ff' }}>Basic</strong> subscribers and above.
+              </p>
+            </div>
+            <Link
+              href="/pricing"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
+              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.5)', color: '#0ea5e9' }}
+            >
+              <Lock size={11} /> UPGRADE TO BASIC — £4.99/mo
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Cover image / colour header */}
-      <div className="relative flex-shrink-0" style={{ height: 220 }}>
+      <div className="relative flex-shrink-0" style={{ height: 220, filter: isYachtLocked ? 'blur(6px)' : 'none' }}>
         {event.coverImageUrl ? (
           <img
             src={event.coverImageUrl}
@@ -217,7 +297,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ filter: isYachtLocked ? 'blur(6px)' : 'none', pointerEvents: isYachtLocked ? 'none' : undefined }}>
         {/* Host row */}
         <div className="flex items-center gap-3">
           {event.host.photoUrl ? (
@@ -366,7 +446,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
       </div>
 
       {/* CTA */}
-      <div className="px-5 pb-6 pt-3 flex-shrink-0 space-y-2">
+      <div className="px-5 pb-6 pt-3 flex-shrink-0 space-y-2" style={{ filter: isYachtLocked ? 'blur(6px)' : 'none', pointerEvents: isYachtLocked ? 'none' : undefined }}>
         {/* Primary action */}
         <Link
           href={`/events/${event.id}`}
@@ -804,6 +884,9 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function DiscoverPage() {
+  const { dbUser } = useAuth()
+  const userTier = dbUser?.subscriptionTier ?? 'FREE'
+
   const [tab, setTab] = useState<'events' | 'venues'>('events')
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
   const [now, setNow] = useState(() => Date.now())
@@ -907,6 +990,7 @@ export default function DiscoverPage() {
 
   const { events, isLoading, mutate, forceRetry } = useEvents({
     ...filters,
+    ...(filters.type === undefined ? { excludeTypes: 'CONCERT' } : {}),
     ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
     limit: 100,
   })
@@ -1172,9 +1256,9 @@ export default function DiscoverPage() {
         className="flex-shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar"
         style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}
       >
-        {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'CONCERT', 'PUB_NIGHT'] as (EventType | undefined)[]).map((type) => {
+        {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'PUB_NIGHT', 'CONCERT'] as (EventType | undefined)[]).map((type) => {
           const isActive = filters.type === type
-          const label = type ? TYPE_LABELS[type] : 'ALL'
+          const label = type === 'CONCERT' ? '🎭 CONCERTS' : type ? TYPE_LABELS[type] : 'ALL'
           const color = type ? TYPE_COLORS[type] : '#00e5ff'
           return (
             <button
@@ -1273,7 +1357,7 @@ export default function DiscoverPage() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live />)}
+                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live userTier={userTier} />)}
                     </div>
                   </div>
                 )}
@@ -1290,7 +1374,7 @@ export default function DiscoverPage() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} />)}
+                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} userTier={userTier} />)}
                     </div>
                   </div>
                 )}
@@ -1335,7 +1419,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} />}
+            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} userTier={userTier} />}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"

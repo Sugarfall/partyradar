@@ -9,6 +9,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
 import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
+import { formatPrice } from '@/lib/currency'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -214,7 +215,7 @@ function HostGroupDashboard({
                   {g.isPaid && (
                     <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0"
                       style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}>
-                      <Crown size={7} /> £{g.priceMonthly?.toFixed(2)}/mo
+                      <Crown size={7} /> {formatPrice(g.priceMonthly ?? 0)}/mo
                     </span>
                   )}
                   {g.isPrivate && !g.isPaid && (
@@ -527,7 +528,7 @@ function GroupBrowser({
                 {g.isPaid && (
                   <span className="text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"
                     style={{ background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600' }}>
-                    <Crown size={7} /> £{g.priceMonthly?.toFixed(2)}/mo
+                    <Crown size={7} /> {formatPrice(g.priceMonthly ?? 0)}/mo
                   </span>
                 )}
                 {g.isPrivate && !g.isPaid && (
@@ -1140,7 +1141,7 @@ function GroupChatView({
               }}>
               {group.isJoined
                 ? (group.isPaid ? 'SUBSCRIBED' : 'JOINED')
-                : group.isPaid ? `£${group.priceMonthly?.toFixed(2)}` : group.isPrivate ? 'LOCKED' : 'JOIN'}
+                : group.isPaid ? formatPrice(group.priceMonthly ?? 0) : group.isPrivate ? 'LOCKED' : 'JOIN'}
             </button>
           </div>
         )}
@@ -1331,7 +1332,7 @@ function GroupChatView({
                 </div>
                 <p className="text-sm font-black tracking-wide" style={{ color: '#ffd600' }}>PAID GROUP</p>
                 <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)', maxWidth: 260 }}>
-                  Subscribe for £{group.priceMonthly?.toFixed(2)}/mo to access messages and join the community
+                  Subscribe for {formatPrice(group.priceMonthly ?? 0)}/mo to access messages and join the community
                 </p>
                 <button onClick={() => setShowSubModal(true)}
                   className="mt-1 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest"
@@ -1522,7 +1523,7 @@ function GroupChatView({
             </div>
             <div className="text-center py-2">
               <p className="text-2xl font-black" style={{ color: '#ffd600' }}>
-                £{group.priceMonthly?.toFixed(2)}<span className="text-sm font-normal text-[rgba(255,214,0,0.5)]">/month</span>
+                {formatPrice(group.priceMonthly ?? 0)}<span className="text-sm font-normal text-[rgba(255,214,0,0.5)]">/month</span>
               </p>
               <p className="text-[10px] mt-1" style={{ color: 'rgba(224,242,254,0.35)' }}>
                 Cancel anytime. Full access to group chat and content.

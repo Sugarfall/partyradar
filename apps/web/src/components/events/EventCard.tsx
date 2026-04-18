@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Calendar, MapPin, Users, Star, Lock, ExternalLink } from 'lucide-react'
 import type { Event } from '@partyradar/shared'
+import { formatPrice } from '@/lib/currency'
 
 const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   skiddle:      { label: 'Skiddle',      color: '#e91e63' },
@@ -196,7 +197,7 @@ export function EventCard({ event, compact = false }: EventCardProps) {
                 textShadow: isFree ? '0 0 8px rgba(0,255,136,0.5)' : 'none',
               }}
             >
-              {isFree ? 'FREE' : `£${event.price.toFixed(2)}`}
+              {formatPrice(event.price)}
             </span>
             <span className="text-[10px] flex items-center gap-0.5" style={{ color: 'rgba(74,96,128,0.7)' }}>
               <Users size={9} />

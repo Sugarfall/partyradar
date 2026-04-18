@@ -288,6 +288,9 @@ export default function ProfilePage() {
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [profileBg, setProfileBg] = useState<string | null>(null)
+  const [profileBgImage, setProfileBgImage] = useState<string | null>(null)
+  const [bgImageUploading, setBgImageUploading] = useState(false)
+  const bgImageInputRef = useRef<HTMLInputElement>(null)
   const [themeColor, setThemeColor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -340,6 +343,7 @@ export default function ProfilePage() {
       setDisplayName(dbUser.displayName)
       setBio(dbUser.bio ?? '')
       setProfileBg(dbUser.profileBg ?? null)
+      setProfileBgImage((dbUser as any).profileBgImage ?? null)
       setThemeColor(dbUser.themeColor ?? null)
     }
   }, [dbUser])
@@ -427,6 +431,55 @@ export default function ProfilePage() {
     finally { setPhotoUploading(false) }
   }
 
+  async function handleBgImageUpload(file: File) {
+    if (!file || bgImageUploading) return
+    setBgImageUploading(true)
+    try {
+      const token = localStorage.getItem('partyradar_token') ?? ''
+      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) hdrs['Authorization'] = `Bearer ${token}`
+
+      // Get signed upload credentials
+      const credRes = await fetch(`${API_BASE}/uploads/image`, {
+        method: 'POST', headers: hdrs, body: JSON.stringify({ folder: 'profile-backgrounds' }),
+      })
+      const credJson = await credRes.json()
+      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('timestamp', String(timestamp))
+      formData.append('signature', signature)
+      formData.append('api_key', apiKey)
+      formData.append('folder', folder)
+      formData.append('transformation', 'c_fill,w_1200,h_400,q_auto')
+
+      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST', body: formData,
+      })
+      const upJson = await upRes.json()
+      if (upJson.secure_url) {
+        await fetch(`${API_BASE}/auth/profile`, {
+          method: 'PUT', headers: hdrs, body: JSON.stringify({ profileBgImage: upJson.secure_url }),
+        })
+        setProfileBgImage(upJson.secure_url)
+        await refreshUser()
+      }
+    } catch {}
+    finally { setBgImageUploading(false) }
+  }
+
+  async function handleClearBgImage() {
+    const token = localStorage.getItem('partyradar_token') ?? ''
+    const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) hdrs['Authorization'] = `Bearer ${token}`
+    await fetch(`${API_BASE}/auth/profile`, {
+      method: 'PUT', headers: hdrs, body: JSON.stringify({ profileBgImage: null }),
+    })
+    setProfileBgImage(null)
+    await refreshUser()
+  }
+
   if (authLoading || !dbUser) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -492,41 +545,59 @@ export default function ProfilePage() {
       {/* ── Header ── */}
       <div
         className="relative px-4 pt-6 pb-8"
-        style={{ background: dbUser.profileBg ? `${dbUser.profileBg}` : 'linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 100%)' }}
+        style={{
+          background: (dbUser as any).profileBgImage
+            ? `url(${(dbUser as any).profileBgImage}) center/cover no-repeat`
+            : (dbUser.profileBg || 'linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 100%)'),
+        }}
       >
         <div className="absolute top-0 inset-x-0 h-px"
           style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent)' }} />
 
         <div className="max-w-xl mx-auto flex items-center gap-5">
           {/* Avatar with upload */}
-          <div className="relative shrink-0" style={{ width: 80, height: 80 }}>
-            {dbUser.photoUrl ? (
-              <img src={dbUser.photoUrl} alt="" className="w-20 h-20 rounded-2xl object-cover"
-                style={{ border: '1px solid rgba(0,229,255,0.3)', boxShadow: '0 0 20px rgba(0,229,255,0.15)' }} />
-            ) : (
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black"
-                style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff', boxShadow: '0 0 20px rgba(0,229,255,0.1)' }}>
-                {initials}
-              </div>
+          <div className="flex flex-col items-center shrink-0">
+            <div className="relative" style={{ width: 80, height: 80 }}>
+              {dbUser.photoUrl ? (
+                <img src={dbUser.photoUrl} alt="" className="w-20 h-20 rounded-2xl object-cover"
+                  style={{ border: '1px solid rgba(0,229,255,0.3)', boxShadow: '0 0 20px rgba(0,229,255,0.15)' }} />
+              ) : (
+                <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black"
+                  style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff', boxShadow: '0 0 20px rgba(0,229,255,0.1)' }}>
+                  {initials}
+                </div>
+              )}
+              {/* Camera overlay */}
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoUploading}
+                className="absolute bottom-0 right-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                style={{
+                  background: 'rgba(0,229,255,0.2)',
+                  border: '2px solid rgba(0,229,255,0.6)',
+                  color: '#00e5ff',
+                  boxShadow: '0 0 12px rgba(0,229,255,0.4)',
+                  zIndex: 10,
+                }}>
+                {photoUploading
+                  ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  : <Camera size={12} />
+                }
+              </button>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f) }}
+              />
+            </div>
+            {/* "Change photo" label shown in edit mode */}
+            {editing && (
+              <p className="text-[9px] font-bold text-center mt-1 tracking-wide" style={{ color: 'rgba(0,229,255,0.6)' }}>
+                📷 Change
+              </p>
             )}
-            {/* Camera overlay */}
-            <button
-              onClick={() => photoInputRef.current?.click()}
-              disabled={photoUploading}
-              className="absolute bottom-0 right-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-              style={{ background: 'rgba(0,229,255,0.15)', border: '2px solid rgba(0,229,255,0.5)', color: '#00e5ff', boxShadow: '0 0 10px rgba(0,229,255,0.3)' }}>
-              {photoUploading
-                ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                : <Camera size={12} />
-              }
-            </button>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f) }}
-            />
           </div>
 
           {/* Info */}
@@ -632,7 +703,7 @@ export default function ProfilePage() {
             {/* Profile Background */}
             <div className="flex flex-col gap-2">
               <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>PROFILE BACKGROUND</label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {[
                   { value: '#07071a', label: 'Dark' },
                   { value: '#0f172a', label: 'Slate' },
@@ -655,7 +726,43 @@ export default function ProfilePage() {
                     }}
                   />
                 ))}
+                {/* Upload background image */}
+                <button
+                  type="button"
+                  onClick={() => bgImageInputRef.current?.click()}
+                  disabled={bgImageUploading}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50"
+                  style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.25)', color: 'rgba(0,229,255,0.7)' }}
+                >
+                  {bgImageUploading
+                    ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    : '🖼'
+                  }
+                  {bgImageUploading ? 'Uploading...' : 'Upload Image'}
+                </button>
+                {profileBgImage && (
+                  <button
+                    type="button"
+                    onClick={handleClearBgImage}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                    style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.2)', color: 'rgba(255,0,110,0.6)' }}
+                  >
+                    × Clear Image
+                  </button>
+                )}
+                <input
+                  ref={bgImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleBgImageUpload(f) }}
+                />
               </div>
+              {profileBgImage && (
+                <p className="text-[9px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+                  Background image active — colour swatches are fallback
+                </p>
+              )}
             </div>
 
             {/* Accent Colour */}
