@@ -49,9 +49,11 @@ const SEARCH_TYPES = [
 
 // Venue names containing these keywords are rejected regardless of type
 const REJECT_VENUE_KEYWORDS = [
-  'casino', 'casinos', 'betting', 'bookmaker', 'ladbrokes', 'william hill',
-  'bet365', 'paddy power', 'coral', 'betfair', 'skybet', 'sky bet',
-  'gambling', 'bingo hall', 'amusement arcade', 'slot machines',
+  'casino', 'casinos', 'betting', 'bookmaker', 'bookmakers',
+  'ladbrokes', 'william hill', 'bet365', 'paddy power', 'coral',
+  'betfair', 'skybet', 'sky bet', 'betfred', 'betvictor', 'unibet',
+  '888sport', 'boyle sports', 'boylesports', 'stan james', 'grosvenor',
+  'gambling', 'bingo hall', 'amusement arcade', 'slot machines', 'amusements',
 ]
 
 function isRejectedVenue(name: string): boolean {

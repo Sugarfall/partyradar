@@ -404,7 +404,7 @@ export default function ProfilePage() {
     return hdrs
   }
 
-  async function cloudinaryUpload(file: File, folder: string, transformation: string): Promise<string | null> {
+  async function cloudinaryUpload(file: File, folder: string): Promise<string | null> {
     const hdrs = await getUploadHeaders()
     const credRes = await fetch(`${API_BASE}/uploads/image`, {
       method: 'POST', headers: hdrs, body: JSON.stringify({ folder }),
@@ -414,7 +414,7 @@ export default function ProfilePage() {
       throw new Error(err.error ?? `Upload auth failed (${credRes.status})`)
     }
     const { data: creds } = await credRes.json()
-    const { timestamp, signature, cloudName, apiKey, folder: credFolder } = creds
+    const { timestamp, signature, cloudName, apiKey, folder: credFolder, transformation } = creds
 
     const formData = new FormData()
     formData.append('file', file)
@@ -422,7 +422,8 @@ export default function ProfilePage() {
     formData.append('signature', signature)
     formData.append('api_key', apiKey)
     formData.append('folder', credFolder)
-    formData.append('transformation', transformation)
+    // Only append transformation if it was included in the signature
+    if (transformation) formData.append('transformation', transformation)
 
     const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
       method: 'POST', body: formData,
@@ -439,7 +440,7 @@ export default function ProfilePage() {
     setPhotoUploading(true)
     setPhotoError(null)
     try {
-      const url = await cloudinaryUpload(file, 'avatars', 'c_fill,w_400,h_400,q_auto')
+      const url = await cloudinaryUpload(file, 'avatars')
       if (url) {
         const hdrs = await getUploadHeaders()
         await fetch(`${API_BASE}/auth/profile`, {
@@ -458,7 +459,7 @@ export default function ProfilePage() {
     if (!file || bgImageUploading) return
     setBgImageUploading(true)
     try {
-      const url = await cloudinaryUpload(file, 'profile-backgrounds', 'c_fill,w_1200,h_400,q_auto')
+      const url = await cloudinaryUpload(file, 'profile-backgrounds')
       if (url) {
         const hdrs = await getUploadHeaders()
         await fetch(`${API_BASE}/auth/profile`, {
