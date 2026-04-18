@@ -53,14 +53,14 @@ export default function FollowButton({ userId, initialFollowing = false, size = 
         fontSize: fs,
         letterSpacing: '0.1em',
         background: following
-          ? hover ? 'rgba(255,0,110,0.1)' : 'rgba(0,229,255,0.08)'
+          ? hover ? 'rgba(255,0,110,0.1)' : 'rgba(var(--accent-rgb),0.08)'
           : 'transparent',
         border: following
-          ? hover ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(0,229,255,0.35)'
-          : '1px solid rgba(0,229,255,0.25)',
+          ? hover ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(var(--accent-rgb),0.35)'
+          : '1px solid rgba(var(--accent-rgb),0.25)',
         color: following
-          ? hover ? '#ff006e' : '#00e5ff'
-          : 'rgba(0,229,255,0.6)',
+          ? hover ? '#ff006e' : 'var(--accent)'
+          : 'rgba(var(--accent-rgb),0.6)',
       }}
     >
       {loading ? (

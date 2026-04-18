@@ -12,7 +12,7 @@ import type { Gender } from '@partyradar/shared'
 const GENDER_OPTIONS: { id: Gender; label: string; emoji: string; color: string; glow: string }[] = [
   { id: 'MALE',              label: 'MAN',             emoji: '♂',  color: '#3d5afe', glow: 'rgba(61,90,254,0.35)'  },
   { id: 'FEMALE',            label: 'WOMAN',           emoji: '♀',  color: '#ff006e', glow: 'rgba(255,0,110,0.35)' },
-  { id: 'NON_BINARY',        label: 'NON-BINARY',      emoji: '⚧',  color: '#00e5ff', glow: 'rgba(0,229,255,0.35)' },
+  { id: 'NON_BINARY',        label: 'NON-BINARY',      emoji: '⚧',  color: 'var(--accent)', glow: 'rgba(var(--accent-rgb),0.35)' },
   { id: 'PREFER_NOT_TO_SAY', label: 'PREFER NOT TO SAY', emoji: '🔒', color: 'rgba(74,96,128,0.9)', glow: 'rgba(74,96,128,0.2)' },
 ]
 
@@ -151,10 +151,10 @@ export default function RegisterPage() {
       >
         {/* Logo */}
         <div className="flex items-center gap-2 mb-8">
-          <Zap size={20} fill="rgba(0,229,255,0.2)"
-            style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 8px rgba(0,229,255,0.8))' }} />
+          <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
+            style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
           <span className="font-black text-sm tracking-[0.2em]"
-            style={{ color: '#00e5ff', textShadow: '0 0 16px rgba(0,229,255,0.6)' }}>
+            style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
             PARTYRADAR
           </span>
         </div>
@@ -162,13 +162,13 @@ export default function RegisterPage() {
         <div className="w-full max-w-sm animate-fade-up text-center space-y-5">
           {/* Icon */}
           <div className="flex items-center justify-center mx-auto w-16 h-16 rounded-2xl"
-            style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)' }}>
-            <Mail size={28} style={{ color: '#00e5ff' }} />
+            style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+            <Mail size={28} style={{ color: 'var(--accent)' }} />
           </div>
 
           {/* Header */}
           <div>
-            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(0,229,255,0.5)' }}>
+            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
               ALMOST THERE
             </p>
             <h1 className="text-2xl font-black" style={{ color: '#e0f2fe', letterSpacing: '0.04em' }}>
@@ -176,7 +176,7 @@ export default function RegisterPage() {
             </h1>
             <p className="text-sm mt-3" style={{ color: 'rgba(224,242,254,0.5)', lineHeight: 1.6 }}>
               We sent a verification link to{' '}
-              <span style={{ color: '#00e5ff', fontWeight: 700 }}>{email}</span>.
+              <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{email}</span>.
               <br />Click the link, then come back here.
             </p>
           </div>
@@ -193,7 +193,7 @@ export default function RegisterPage() {
             onClick={handleVerifyCheck}
             disabled={checkingVerify}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black tracking-widest disabled:opacity-50"
-            style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}
           >
             {checkingVerify
               ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CHECKING...</>
@@ -206,7 +206,7 @@ export default function RegisterPage() {
             onClick={handleResend}
             disabled={resendCooldown > 0}
             className="text-xs font-bold"
-            style={{ color: resendCooldown > 0 ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.5)', letterSpacing: '0.1em' }}
+            style={{ color: resendCooldown > 0 ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.1em' }}
           >
             {resendCooldown > 0 ? `RESEND IN ${resendCooldown}s` : 'RESEND VERIFICATION EMAIL'}
           </button>
@@ -224,10 +224,10 @@ export default function RegisterPage() {
       >
         {/* Logo */}
         <div className="flex items-center gap-2 mb-8">
-          <Zap size={20} fill="rgba(0,229,255,0.2)"
-            style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 8px rgba(0,229,255,0.8))' }} />
+          <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
+            style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
           <span className="font-black text-sm tracking-[0.2em]"
-            style={{ color: '#00e5ff', textShadow: '0 0 16px rgba(0,229,255,0.6)' }}>
+            style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
             PARTYRADAR
           </span>
         </div>
@@ -257,7 +257,7 @@ export default function RegisterPage() {
                   className="relative flex flex-col items-center gap-3 py-6 rounded-2xl transition-all duration-200"
                   style={{
                     background: selected ? `${opt.color}12` : 'rgba(7,7,26,0.8)',
-                    border: selected ? `1px solid ${opt.color}55` : '1px solid rgba(0,229,255,0.1)',
+                    border: selected ? `1px solid ${opt.color}55` : '1px solid rgba(var(--accent-rgb),0.1)',
                     boxShadow: selected ? `0 0 28px ${opt.glow}` : 'none',
                     transform: selected ? 'scale(1.03)' : 'scale(1)',
                   }}
@@ -309,11 +309,11 @@ export default function RegisterPage() {
             className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all duration-200"
             style={{
               background: gender
-                ? 'linear-gradient(135deg, rgba(0,229,255,0.15), rgba(61,90,254,0.12))'
-                : 'rgba(0,229,255,0.04)',
-              border: `1px solid ${gender ? 'rgba(0,229,255,0.5)' : 'rgba(0,229,255,0.12)'}`,
-              color: gender ? '#00e5ff' : 'rgba(0,229,255,0.3)',
-              boxShadow: gender ? '0 0 20px rgba(0,229,255,0.2)' : 'none',
+                ? 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(61,90,254,0.12))'
+                : 'rgba(var(--accent-rgb),0.04)',
+              border: `1px solid ${gender ? 'rgba(var(--accent-rgb),0.5)' : 'rgba(var(--accent-rgb),0.12)'}`,
+              color: gender ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)',
+              boxShadow: gender ? '0 0 20px rgba(var(--accent-rgb),0.2)' : 'none',
               letterSpacing: '0.12em',
             }}
           >
@@ -341,10 +341,10 @@ export default function RegisterPage() {
     >
       {/* Logo */}
       <div className="flex items-center gap-2 mb-8">
-        <Zap size={20} fill="rgba(0,229,255,0.2)"
-          style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 8px rgba(0,229,255,0.8))' }} />
+        <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
+          style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
         <span className="font-black text-sm tracking-[0.2em]"
-          style={{ color: '#00e5ff', textShadow: '0 0 16px rgba(0,229,255,0.6)' }}>
+          style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
           PARTYRADAR
         </span>
       </div>
@@ -353,22 +353,22 @@ export default function RegisterPage() {
         className="w-full max-w-sm relative"
         style={{
           background: 'rgba(4,4,13,0.85)',
-          border: '1px solid rgba(0,229,255,0.15)',
+          border: '1px solid rgba(var(--accent-rgb),0.15)',
           borderRadius: 20,
           padding: '32px 28px',
-          boxShadow: '0 0 60px rgba(0,229,255,0.08)',
+          boxShadow: '0 0 60px rgba(var(--accent-rgb),0.08)',
           backdropFilter: 'blur(20px)',
         }}
       >
         {/* Corner brackets */}
-        <div className="absolute top-3 left-3 w-4 h-4" style={{ borderTop: '2px solid rgba(0,229,255,0.4)', borderLeft: '2px solid rgba(0,229,255,0.4)' }} />
-        <div className="absolute top-3 right-3 w-4 h-4" style={{ borderTop: '2px solid rgba(0,229,255,0.4)', borderRight: '2px solid rgba(0,229,255,0.4)' }} />
-        <div className="absolute bottom-3 left-3 w-4 h-4" style={{ borderBottom: '2px solid rgba(0,229,255,0.4)', borderLeft: '2px solid rgba(0,229,255,0.4)' }} />
-        <div className="absolute bottom-3 right-3 w-4 h-4" style={{ borderBottom: '2px solid rgba(0,229,255,0.4)', borderRight: '2px solid rgba(0,229,255,0.4)' }} />
+        <div className="absolute top-3 left-3 w-4 h-4" style={{ borderTop: '2px solid rgba(var(--accent-rgb),0.4)', borderLeft: '2px solid rgba(var(--accent-rgb),0.4)' }} />
+        <div className="absolute top-3 right-3 w-4 h-4" style={{ borderTop: '2px solid rgba(var(--accent-rgb),0.4)', borderRight: '2px solid rgba(var(--accent-rgb),0.4)' }} />
+        <div className="absolute bottom-3 left-3 w-4 h-4" style={{ borderBottom: '2px solid rgba(var(--accent-rgb),0.4)', borderLeft: '2px solid rgba(var(--accent-rgb),0.4)' }} />
+        <div className="absolute bottom-3 right-3 w-4 h-4" style={{ borderBottom: '2px solid rgba(var(--accent-rgb),0.4)', borderRight: '2px solid rgba(var(--accent-rgb),0.4)' }} />
 
         <div className="text-center mb-6">
-          <p className="text-[10px] font-bold tracking-[0.25em] mb-1" style={{ color: 'rgba(0,229,255,0.5)' }}>CREATE ACCOUNT</p>
-          <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent)' }} />
+          <p className="text-[10px] font-bold tracking-[0.25em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CREATE ACCOUNT</p>
+          <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.3), transparent)' }} />
         </div>
 
         {/* Google */}
@@ -377,8 +377,8 @@ export default function RegisterPage() {
           disabled={googleLoading}
           className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg font-bold text-xs mb-4 transition-all duration-200"
           style={{
-            background: 'rgba(0,229,255,0.04)',
-            border: '1px solid rgba(0,229,255,0.15)',
+            background: 'rgba(var(--accent-rgb),0.04)',
+            border: '1px solid rgba(var(--accent-rgb),0.15)',
             color: 'rgba(224,242,254,0.7)',
             letterSpacing: '0.08em',
           }}
@@ -402,8 +402,8 @@ export default function RegisterPage() {
           disabled={appleLoading}
           className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg font-bold text-xs mb-4 transition-all duration-200"
           style={{
-            background: 'rgba(0,229,255,0.04)',
-            border: '1px solid rgba(0,229,255,0.15)',
+            background: 'rgba(var(--accent-rgb),0.04)',
+            border: '1px solid rgba(var(--accent-rgb),0.15)',
             color: 'rgba(224,242,254,0.7)',
             letterSpacing: '0.08em',
           }}
@@ -419,15 +419,15 @@ export default function RegisterPage() {
         </button>
 
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.1)' }} />
+          <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.1)' }} />
           <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.6)' }}>OR</span>
-          <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.1)' }} />
+          <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.1)' }} />
         </div>
 
         <form onSubmit={handleCredentials} className="space-y-3">
           {/* Email */}
           <div>
-            <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>EMAIL</label>
+            <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>EMAIL</label>
             <input
               type="email"
               value={email}
@@ -436,15 +436,15 @@ export default function RegisterPage() {
               required
               autoComplete="email"
               className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
-              style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.18)', color: '#e0f2fe' }}
-              onFocus={(e) => { e.target.style.borderColor = 'rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.1)' }}
-              onBlur={(e) => { e.target.style.borderColor = 'rgba(0,229,255,0.18)'; e.target.style.boxShadow = 'none' }}
+              style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.18)', color: '#e0f2fe' }}
+              onFocus={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
+              onBlur={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
             />
           </div>
 
           {/* Password */}
           <div>
-            <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>PASSWORD</label>
+            <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>PASSWORD</label>
             <div className="relative">
               <input
                 type={showPw ? 'text' : 'password'}
@@ -455,13 +455,13 @@ export default function RegisterPage() {
                 minLength={6}
                 autoComplete="new-password"
                 className="w-full px-3 py-2.5 pr-10 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
-                style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.18)', color: '#e0f2fe' }}
-                onFocus={(e) => { e.target.style.borderColor = 'rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.1)' }}
-                onBlur={(e) => { e.target.style.borderColor = 'rgba(0,229,255,0.18)'; e.target.style.boxShadow = 'none' }}
+                style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.18)', color: '#e0f2fe' }}
+                onFocus={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
+                onBlur={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
               />
               <button type="button" onClick={() => setShowPw((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'rgba(0,229,255,0.4)' }}>
+                style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                 {showPw ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>
             </div>
@@ -478,10 +478,10 @@ export default function RegisterPage() {
             disabled={loading}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm transition-all duration-200 mt-1"
             style={{
-              background: 'linear-gradient(135deg, rgba(0,229,255,0.15), rgba(61,90,254,0.12))',
-              border: '1px solid rgba(0,229,255,0.45)',
-              color: '#00e5ff',
-              boxShadow: '0 0 18px rgba(0,229,255,0.18)',
+              background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(61,90,254,0.12))',
+              border: '1px solid rgba(var(--accent-rgb),0.45)',
+              color: 'var(--accent)',
+              boxShadow: '0 0 18px rgba(var(--accent-rgb),0.18)',
               letterSpacing: '0.1em',
               opacity: loading ? 0.7 : 1,
             }}
@@ -495,7 +495,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-[11px] mt-5" style={{ color: 'rgba(74,96,128,0.6)' }}>
           Already have an account?{' '}
-          <Link href="/login" className="font-bold" style={{ color: 'rgba(0,229,255,0.6)' }}>LOG IN</Link>
+          <Link href="/login" className="font-bold" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>LOG IN</Link>
         </p>
       </div>
     </div>

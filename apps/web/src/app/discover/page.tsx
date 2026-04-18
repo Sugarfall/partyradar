@@ -17,7 +17,7 @@ const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) =
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center" style={{ background: '#07071a' }}>
-      <span style={{ color: 'rgba(0,229,255,0.5)', letterSpacing: '0.15em', fontSize: 12 }}>LOADING MAP...</span>
+      <span style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.15em', fontSize: 12 }}>LOADING MAP...</span>
     </div>
   ),
 })
@@ -35,7 +35,7 @@ function formatDate(dateStr: string) {
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
-  CLUB_NIGHT: '#00e5ff',
+  CLUB_NIGHT: 'var(--accent)',
   CONCERT: '#3d5afe',
   PUB_NIGHT: '#f59e0b',
   BEACH_PARTY: '#06b6d4',
@@ -105,7 +105,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
     return <LockedEventListCard event={event} />
   }
 
-  const color = TYPE_COLORS[event.type] ?? '#00e5ff'
+  const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
   const isFree = event.price === 0
 
   function timeUntil(dateStr: string) {
@@ -122,9 +122,9 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
   return (
     <Link href={`/events/${event.id}`}
       className="flex gap-3 p-3 rounded-2xl transition-all"
-      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid ${live ? 'rgba(255,0,110,0.2)' : 'rgba(0,229,255,0.08)'}` }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.4)' : 'rgba(0,229,255,0.2)')}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.2)' : 'rgba(0,229,255,0.08)')}>
+      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid ${live ? 'rgba(255,0,110,0.2)' : 'rgba(var(--accent-rgb),0.08)'}` }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.4)' : 'rgba(var(--accent-rgb),0.2)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.2)' : 'rgba(var(--accent-rgb),0.08)')}>
 
       {/* Cover / color swatch */}
       <div className="shrink-0 relative" style={{ width: 64, height: 64 }}>
@@ -164,12 +164,12 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
               ● LIVE
             </span>
           ) : (
-            <span className="text-[9px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+            <span className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
               {timeUntil(event.startsAt)}
             </span>
           )}
           {event.vibeTags.slice(0, 2).map(t => (
-            <span key={t} className="text-[9px]" style={{ color: 'rgba(0,229,255,0.35)' }}>#{t}</span>
+            <span key={t} className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>#{t}</span>
           ))}
         </div>
       </div>
@@ -179,7 +179,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
 
 // ── Full-screen sequential event card ────────────────────────────────────────
 function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; userTier?: string }) {
-  const color = TYPE_COLORS[event.type] ?? '#00e5ff'
+  const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
   const isFree = event.price === 0
   const [interested, setInterested] = useState(false)
   const [requested, setRequested] = useState(false)
@@ -203,7 +203,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
                 YACHT PARTY
               </p>
               <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.55)' }}>
-                Exclusive yacht parties are available to <strong style={{ color: '#00e5ff' }}>Basic</strong> subscribers and above.
+                Exclusive yacht parties are available to <strong style={{ color: 'var(--accent)' }}>Basic</strong> subscribers and above.
               </p>
             </div>
             <Link
@@ -336,38 +336,38 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
         </div>
 
         {/* Horizontal divider */}
-        <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.2), transparent)' }} />
+        <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.2), transparent)' }} />
 
         {/* Meta grid */}
         <div className="grid grid-cols-2 gap-3">
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>DATE &amp; TIME</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>DATE &amp; TIME</p>
             <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>{formatDate(event.startsAt)}</p>
           </div>
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>LOCATION</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>LOCATION</p>
             <p className="text-xs font-medium truncate" style={{ color: '#e0f2fe' }}>{event.neighbourhood}</p>
           </div>
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>CAPACITY</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CAPACITY</p>
             <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>
               {event.guestCount ?? 0} / {event.capacity}
             </p>
           </div>
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>AGE POLICY</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>AGE POLICY</p>
             <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>
               {AGE_RESTRICTION_LABELS[event.ageRestriction] ?? 'All Ages'}
             </p>
@@ -382,9 +382,9 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
                 key={tag}
                 className="text-[10px] font-bold px-2.5 py-1 rounded-full"
                 style={{
-                  color: 'rgba(0,229,255,0.7)',
-                  border: '1px solid rgba(0,229,255,0.2)',
-                  background: 'rgba(0,229,255,0.05)',
+                  color: 'rgba(var(--accent-rgb),0.7)',
+                  border: '1px solid rgba(var(--accent-rgb),0.2)',
+                  background: 'rgba(var(--accent-rgb),0.05)',
                   letterSpacing: '0.08em',
                 }}
               >
@@ -401,20 +401,20 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
           const femPct  = Math.round((female / total) * 100)
           const nbPct   = Math.max(0, 100 - malePct - femPct)
           return (
-            <div className="rounded-lg px-3 py-2.5" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}>
+            <div className="rounded-lg px-3 py-2.5" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>CROWD MIX</p>
+                <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CROWD MIX</p>
                 <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{total} attending</span>
               </div>
               <div className="flex h-1.5 rounded-full overflow-hidden gap-px mb-1.5">
                 {malePct > 0 && <div style={{ width: `${malePct}%`, background: '#3b82f6' }} />}
                 {femPct  > 0 && <div style={{ width: `${femPct}%`,  background: '#ec4899' }} />}
-                {nbPct   > 0 && <div style={{ width: `${nbPct}%`,   background: '#00e5ff' }} />}
+                {nbPct   > 0 && <div style={{ width: `${nbPct}%`,   background: 'var(--accent)' }} />}
               </div>
               <div className="flex gap-3">
                 <span className="text-[9px] font-bold" style={{ color: 'rgba(59,130,246,0.7)' }}>♂ {malePct}%</span>
                 <span className="text-[9px] font-bold" style={{ color: 'rgba(236,72,153,0.7)' }}>♀ {femPct}%</span>
-                {nbPct > 0 && <span className="text-[9px] font-bold" style={{ color: 'rgba(0,229,255,0.6)' }}>⚧ {nbPct}%</span>}
+                {nbPct > 0 && <span className="text-[9px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>⚧ {nbPct}%</span>}
               </div>
             </div>
           )
@@ -439,7 +439,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
 
         {/* Lineup (club/concert) */}
         {(event as any).lineup && (
-          <p className="text-[11px] font-medium truncate" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          <p className="text-[11px] font-medium truncate" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             🎧 {(event as any).lineup}
           </p>
         )}
@@ -468,8 +468,8 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
             onClick={() => setInterested((v) => !v)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200"
             style={{
-              background: interested ? 'rgba(255,214,0,0.1)' : 'rgba(0,229,255,0.03)',
-              border: interested ? '1px solid rgba(255,214,0,0.4)' : '1px solid rgba(0,229,255,0.12)',
+              background: interested ? 'rgba(255,214,0,0.1)' : 'rgba(var(--accent-rgb),0.03)',
+              border: interested ? '1px solid rgba(255,214,0,0.4)' : '1px solid rgba(var(--accent-rgb),0.12)',
               color: interested ? '#ffd600' : 'rgba(74,96,128,0.7)',
               letterSpacing: '0.08em',
             }}
@@ -481,8 +481,8 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
             href={`/events/${event.id}`}
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200"
             style={{
-              background: 'rgba(0,229,255,0.03)',
-              border: '1px solid rgba(0,229,255,0.12)',
+              background: 'rgba(var(--accent-rgb),0.03)',
+              border: '1px solid rgba(var(--accent-rgb),0.12)',
               color: 'rgba(74,96,128,0.7)',
               letterSpacing: '0.08em',
             }}
@@ -501,12 +501,12 @@ const VENUE_TYPE_LABELS: Record<string, string> = {
   CONCERT_HALL: 'CONCERT HALL', ROOFTOP_BAR: 'ROOFTOP BAR', LOUNGE: 'LOUNGE',
 }
 const VENUE_TYPE_COLORS: Record<string, string> = {
-  NIGHTCLUB: '#00e5ff', BAR: '#a855f7', PUB: '#22c55e',
+  NIGHTCLUB: 'var(--accent)', BAR: '#a855f7', PUB: '#22c55e',
   CONCERT_HALL: '#3d5afe', ROOFTOP_BAR: '#f59e0b', LOUNGE: '#ec4899',
 }
 
 function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
-  const color = VENUE_TYPE_COLORS[venue.type] ?? '#00e5ff'
+  const color = VENUE_TYPE_COLORS[venue.type] ?? 'var(--accent)'
   const typeLabel = VENUE_TYPE_LABELS[venue.type] ?? venue.type
   const rating = typeof venue.rating === 'number' ? venue.rating : null
   const website = 'website' in venue ? venue.website : null
@@ -573,12 +573,12 @@ function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
         {(phone || website) && (
           <div className="flex gap-3">
             {phone && (
-              <a href={`tel:${phone}`} className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              <a href={`tel:${phone}`} className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                 <Phone size={9} /> {phone}
               </a>
             )}
             {website && (
-              <a href={website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              <a href={website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                 <Globe size={9} /> Website <ExternalLink size={8} />
               </a>
             )}
@@ -752,16 +752,16 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
       </div>
 
       {/* ── Venue name filter ── */}
-      <div className="flex-shrink-0 px-4 py-2" style={{ background: 'rgba(4,4,13,0.8)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+      <div className="flex-shrink-0 px-4 py-2" style={{ background: 'rgba(4,4,13,0.8)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
         <div className="relative">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.35)' }} />
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />
           <input
             type="text"
             placeholder="Filter by name, vibe, type..."
             value={venueSearch}
             onChange={(e) => setVenueSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
-            style={{ border: '1px solid rgba(0,229,255,0.12)', color: '#e0f2fe' }}
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.12)', color: '#e0f2fe' }}
           />
           {venueSearch && (
             <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setVenueSearch('')}>
@@ -779,7 +779,7 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
             <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.5)' }}>SCANNING VENUES...</span>
           </div>
         ) : (
-          <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>
+          <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
             {filtered.length} VENUES
             {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ' · GLASGOW (DEMO)'}
           </p>
@@ -788,7 +788,7 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
           <button
             onClick={onWiderSearch}
             className="text-[9px] font-black tracking-widest px-2 py-1 rounded transition-all"
-            style={{ color: 'rgba(0,229,255,0.5)', border: '1px solid rgba(0,229,255,0.15)' }}
+            style={{ color: 'rgba(var(--accent-rgb),0.5)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}
           >
             WIDER →
           </button>
@@ -854,16 +854,16 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
         <>
           <div
             className="w-12 h-12 rounded-full border-2 animate-spin"
-            style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }}
+            style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }}
           />
-          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             {retrying ? 'RETRYING...' : 'FINDING EVENTS NEAR YOU...'}
           </p>
         </>
       ) : (
         <>
           <div style={{ fontSize: 40 }}>📡</div>
-          <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             NO EVENTS NEAR YOU YET
           </p>
           <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
@@ -872,7 +872,7 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
           {onRetry && (
             <button onClick={handleRetry}
               className="mt-2 px-5 py-2 rounded-xl text-xs font-black tracking-widest transition-all"
-              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
               RETRY
             </button>
           )}
@@ -1139,21 +1139,21 @@ export default function DiscoverPage() {
         className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 gap-3"
         style={{
           background: 'rgba(4,4,13,0.9)',
-          borderBottom: '1px solid rgba(0,229,255,0.1)',
+          borderBottom: '1px solid rgba(var(--accent-rgb),0.1)',
           backdropFilter: 'blur(12px)',
         }}
       >
         {/* Tab switcher + live tracking badge */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
+          <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
             <button
               onClick={() => setTab('events')}
               className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
               style={{
-                background: tab === 'events' ? 'rgba(0,229,255,0.15)' : 'transparent',
-                color: tab === 'events' ? '#00e5ff' : 'rgba(74,96,128,0.6)',
+                background: tab === 'events' ? 'rgba(var(--accent-rgb),0.15)' : 'transparent',
+                color: tab === 'events' ? 'var(--accent)' : 'rgba(74,96,128,0.6)',
                 letterSpacing: '0.12em',
-                boxShadow: tab === 'events' ? '0 0 8px rgba(0,229,255,0.2)' : 'none',
+                boxShadow: tab === 'events' ? '0 0 8px rgba(var(--accent-rgb),0.2)' : 'none',
               }}
             >
               EVENTS
@@ -1186,7 +1186,7 @@ export default function DiscoverPage() {
           {tab === 'events' && !isLoading && !locationLoading && events.length > 0 && (
             <span
               className="text-[10px] font-bold px-2 py-0.5 rounded"
-              style={{ color: 'rgba(0,229,255,0.6)', border: '1px solid rgba(0,229,255,0.15)', background: 'rgba(0,229,255,0.05)', letterSpacing: '0.08em' }}
+              style={{ color: 'rgba(var(--accent-rgb),0.6)', border: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(var(--accent-rgb),0.05)', letterSpacing: '0.08em' }}
             >
               {index + 1} / {events.length}
             </span>
@@ -1198,8 +1198,8 @@ export default function DiscoverPage() {
                 className="p-1.5 rounded transition-all duration-200"
                 title={viewMode === 'list' ? 'Card view' : 'List view'}
                 style={{
-                  border: '1px solid rgba(0,229,255,0.12)',
-                  color: 'rgba(0,229,255,0.7)',
+                  border: '1px solid rgba(var(--accent-rgb),0.12)',
+                  color: 'rgba(var(--accent-rgb),0.7)',
                   background: 'transparent',
                 }}
               >
@@ -1209,23 +1209,23 @@ export default function DiscoverPage() {
                 onClick={() => setShowFilters((v) => !v)}
                 className="p-1.5 rounded transition-all duration-200 relative"
                 style={{
-                  border: showFilters ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.12)',
-                  color: showFilters ? '#00e5ff' : 'rgba(74,96,128,0.7)',
-                  background: showFilters ? 'rgba(0,229,255,0.08)' : 'transparent',
+                  border: showFilters ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.12)',
+                  color: showFilters ? 'var(--accent)' : 'rgba(74,96,128,0.7)',
+                  background: showFilters ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                 }}
               >
                 <SlidersHorizontal size={14} />
                 {(filters.type || filters.showFree || filters.tonight || filters.search) && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: '#00e5ff', boxShadow: '0 0 6px #00e5ff' }} />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
                 )}
               </button>
               <button
                 onClick={() => setShowMap((v) => !v)}
                 className="p-1.5 rounded transition-all duration-200"
                 style={{
-                  border: showMap ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.12)',
-                  color: showMap ? '#00e5ff' : 'rgba(74,96,128,0.7)',
-                  background: showMap ? 'rgba(0,229,255,0.08)' : 'transparent',
+                  border: showMap ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.12)',
+                  color: showMap ? 'var(--accent)' : 'rgba(74,96,128,0.7)',
+                  background: showMap ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                 }}
               >
                 <Map size={14} />
@@ -1254,12 +1254,12 @@ export default function DiscoverPage() {
       {/* ── Event type filter pills (always visible) ── */}
       <div
         className="flex-shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar"
-        style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}
+        style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}
       >
         {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'PUB_NIGHT', 'CONCERT'] as (EventType | undefined)[]).map((type) => {
           const isActive = filters.type === type
           const label = type === 'CONCERT' ? '🎭 CONCERTS' : type ? TYPE_LABELS[type] : 'ALL'
-          const color = type ? TYPE_COLORS[type] : '#00e5ff'
+          const color = type ? TYPE_COLORS[type] : 'var(--accent)'
           return (
             <button
               key={type ?? 'all'}
@@ -1267,7 +1267,7 @@ export default function DiscoverPage() {
               className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
               style={{
                 background: isActive ? `${color}18` : 'transparent',
-                border: `1px solid ${isActive ? `${color}60` : 'rgba(0,229,255,0.1)'}`,
+                border: `1px solid ${isActive ? `${color}60` : 'rgba(var(--accent-rgb),0.1)'}`,
                 color: isActive ? color : 'rgba(74,96,128,0.6)',
                 boxShadow: isActive ? `0 0 10px ${color}20` : 'none',
                 letterSpacing: '0.12em',
@@ -1282,7 +1282,7 @@ export default function DiscoverPage() {
           className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
           style={{
             background: filters.tonight ? 'rgba(255,214,0,0.12)' : 'transparent',
-            border: `1px solid ${filters.tonight ? 'rgba(255,214,0,0.5)' : 'rgba(0,229,255,0.1)'}`,
+            border: `1px solid ${filters.tonight ? 'rgba(255,214,0,0.5)' : 'rgba(var(--accent-rgb),0.1)'}`,
             color: filters.tonight ? '#ffd600' : 'rgba(74,96,128,0.6)',
             letterSpacing: '0.12em',
           }}
@@ -1294,7 +1294,7 @@ export default function DiscoverPage() {
           className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
           style={{
             background: filters.showFree ? 'rgba(0,255,136,0.1)' : 'transparent',
-            border: `1px solid ${filters.showFree ? 'rgba(0,255,136,0.4)' : 'rgba(0,229,255,0.1)'}`,
+            border: `1px solid ${filters.showFree ? 'rgba(0,255,136,0.4)' : 'rgba(var(--accent-rgb),0.1)'}`,
             color: filters.showFree ? '#00ff88' : 'rgba(74,96,128,0.6)',
             letterSpacing: '0.12em',
           }}
@@ -1307,7 +1307,7 @@ export default function DiscoverPage() {
       {showFilters && (
         <div
           className="flex-shrink-0 px-4 py-3 animate-fade-up"
-          style={{ background: 'rgba(7,7,26,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)' }}
+          style={{ background: 'rgba(7,7,26,0.95)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)' }}
         >
           <EventFilters filters={filters} onChange={setFilters} />
         </div>
@@ -1318,10 +1318,10 @@ export default function DiscoverPage() {
         <div className="flex-1 overflow-y-auto pb-20">
           {/* Map overlay */}
           {showMap && (
-            <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+            <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(var(--accent-rgb),0.1)' }}>
               <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
-                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
+                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
                 {(isLoading || locationLoading) ? 'SCANNING...' : `${events.length} EVENTS`}
               </div>
             </div>
@@ -1330,8 +1330,8 @@ export default function DiscoverPage() {
           {(isLoading || locationLoading) ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <div className="w-10 h-10 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
-              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>SCANNING AREA...</p>
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SCANNING AREA...</p>
             </div>
           ) : events.length === 0 ? (
             <EmptyState loading={syncing} onRetry={forceRetry} />
@@ -1366,10 +1366,10 @@ export default function DiscoverPage() {
                 {upcomingEvents.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <Calendar size={12} style={{ color: '#00e5ff' }} />
-                      <span className="text-[11px] font-black tracking-widest" style={{ color: '#00e5ff' }}>UPCOMING</span>
+                      <Calendar size={12} style={{ color: 'var(--accent)' }} />
+                      <span className="text-[11px] font-black tracking-widest" style={{ color: 'var(--accent)' }}>UPCOMING</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded font-bold"
-                        style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+                        style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
                         {upcomingEvents.length}
                       </span>
                     </div>
@@ -1400,8 +1400,8 @@ export default function DiscoverPage() {
               className="flex-1 rounded-full transition-all duration-300"
               style={{
                 height: 2,
-                background: i === index ? '#00e5ff' : i < index ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.08)',
-                boxShadow: i === index ? '0 0 6px rgba(0,229,255,0.7)' : 'none',
+                background: i === index ? 'var(--accent)' : i < index ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(var(--accent-rgb),0.08)',
+                boxShadow: i === index ? '0 0 6px rgba(var(--accent-rgb),0.7)' : 'none',
               }} />
           ))}
         </div>
@@ -1410,10 +1410,10 @@ export default function DiscoverPage() {
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 flex flex-col relative overflow-hidden">
           {showMap && (
-            <div className="absolute inset-0 z-10" style={{ background: '#07071a', border: '1px solid rgba(0,229,255,0.1)' }}>
+            <div className="absolute inset-0 z-10" style={{ background: '#07071a', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
               <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
-                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
+                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
                 {isLoading ? 'SCANNING...' : `${events.length} EVENTS NEARBY`}
               </div>
             </div>
@@ -1423,10 +1423,10 @@ export default function DiscoverPage() {
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
-              style={{ background: 'rgba(4,4,13,0.85)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+              style={{ background: 'rgba(4,4,13,0.85)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
               <button onClick={goPrev} disabled={index === 0}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-xs transition-all duration-200 disabled:opacity-25"
-                style={{ background: index === 0 ? 'transparent' : 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                style={{ background: index === 0 ? 'transparent' : 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
                 <ChevronLeft size={14} /> PREV
               </button>
               <div className="flex items-center gap-1.5">
@@ -1434,13 +1434,13 @@ export default function DiscoverPage() {
                   const absI = Math.max(0, index - 2) + relI
                   return (
                     <div key={absI} className="rounded-full transition-all duration-300"
-                      style={{ width: absI === index ? 18 : 5, height: 5, background: absI === index ? '#00e5ff' : 'rgba(0,229,255,0.2)', boxShadow: absI === index ? '0 0 8px rgba(0,229,255,0.7)' : 'none' }} />
+                      style={{ width: absI === index ? 18 : 5, height: 5, background: absI === index ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.2)', boxShadow: absI === index ? '0 0 8px rgba(var(--accent-rgb),0.7)' : 'none' }} />
                   )
                 })}
               </div>
               <button onClick={goNext} disabled={index === events.length - 1}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-xs transition-all duration-200 disabled:opacity-25"
-                style={{ background: index === events.length - 1 ? 'transparent' : 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                style={{ background: index === events.length - 1 ? 'transparent' : 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
                 NEXT <ChevronRight size={14} />
               </button>
             </div>

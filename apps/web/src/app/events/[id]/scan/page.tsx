@@ -15,10 +15,10 @@ const QRScanner = dynamic(
     ssr: false,
     loading: () => (
       <div className="w-full h-64 rounded-2xl flex items-center justify-center gap-3"
-        style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.1)' }}>
+        style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
         <div className="w-5 h-5 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
-        <span className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>LOADING CAMERA...</span>
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+        <span className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>LOADING CAMERA...</span>
       </div>
     ),
   }
@@ -87,15 +87,15 @@ export default function ScanPage() {
       <div className="flex items-center justify-between mb-6">
         <Link href={`/events/${params['id']}`}
           className="inline-flex items-center gap-1.5 text-xs font-bold"
-          style={{ color: 'rgba(0,229,255,0.5)' }}>
+          style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
           <ArrowLeft size={13} /> BACK
         </Link>
 
         {/* Scan counter */}
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full"
-          style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
-          <Hash size={10} style={{ color: 'rgba(0,229,255,0.5)' }} />
-          <span className="text-[10px] font-black tracking-widest" style={{ color: '#00e5ff' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+          <Hash size={10} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+          <span className="text-[10px] font-black tracking-widest" style={{ color: 'var(--accent)' }}>
             {scanCount} SCANNED
           </span>
         </div>
@@ -104,27 +104,27 @@ export default function ScanPage() {
       {/* Title */}
       <div className="mb-6">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-3"
-          style={{ border: '1px solid rgba(0,229,255,0.2)', background: 'rgba(0,229,255,0.05)' }}>
-          <ScanLine size={10} style={{ color: '#00e5ff' }} />
-          <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.7)' }}>TICKET SCANNER</span>
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', background: 'rgba(var(--accent-rgb),0.05)' }}>
+          <ScanLine size={10} style={{ color: 'var(--accent)' }} />
+          <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.7)' }}>TICKET SCANNER</span>
         </div>
         <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>SCAN TICKETS</h1>
         {event && (
-          <p className="text-xs mt-1 font-bold tracking-wide" style={{ color: 'rgba(0,229,255,0.4)' }}>
+          <p className="text-xs mt-1 font-bold tracking-wide" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
             {event.name.toUpperCase()}
           </p>
         )}
       </div>
 
       {/* Mode toggle */}
-      <div className="flex gap-2 mb-5 p-1 rounded-xl" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.1)' }}>
+      <div className="flex gap-2 mb-5 p-1 rounded-xl" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
         <button
           onClick={() => { setUseCameraMode(true); handleReset() }}
           className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-black transition-all"
           style={{
-            background: useCameraMode ? 'rgba(0,229,255,0.1)' : 'transparent',
-            border: useCameraMode ? '1px solid rgba(0,229,255,0.3)' : '1px solid transparent',
-            color: useCameraMode ? '#00e5ff' : 'rgba(74,96,128,0.6)',
+            background: useCameraMode ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+            border: useCameraMode ? '1px solid rgba(var(--accent-rgb),0.3)' : '1px solid transparent',
+            color: useCameraMode ? 'var(--accent)' : 'rgba(74,96,128,0.6)',
             letterSpacing: '0.1em',
           }}>
           <ScanLine size={12} /> CAMERA
@@ -133,9 +133,9 @@ export default function ScanPage() {
           onClick={() => { setUseCameraMode(false); handleReset() }}
           className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-black transition-all"
           style={{
-            background: !useCameraMode ? 'rgba(0,229,255,0.1)' : 'transparent',
-            border: !useCameraMode ? '1px solid rgba(0,229,255,0.3)' : '1px solid transparent',
-            color: !useCameraMode ? '#00e5ff' : 'rgba(74,96,128,0.6)',
+            background: !useCameraMode ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+            border: !useCameraMode ? '1px solid rgba(var(--accent-rgb),0.3)' : '1px solid transparent',
+            color: !useCameraMode ? 'var(--accent)' : 'rgba(74,96,128,0.6)',
             letterSpacing: '0.1em',
           }}>
           <Keyboard size={12} /> MANUAL
@@ -146,22 +146,22 @@ export default function ScanPage() {
       {useCameraMode && (
         <div className="mb-5">
           <div className="relative rounded-2xl overflow-hidden"
-            style={{ border: '1px solid rgba(0,229,255,0.15)', boxShadow: '0 0 30px rgba(0,229,255,0.05)' }}>
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', boxShadow: '0 0 30px rgba(var(--accent-rgb),0.05)' }}>
             {/* Corner brackets overlay */}
             <div className="absolute inset-0 pointer-events-none z-10">
-              <div className="absolute top-4 left-4 w-6 h-6" style={{ borderTop: '2px solid #00e5ff', borderLeft: '2px solid #00e5ff', opacity: 0.8 }} />
-              <div className="absolute top-4 right-4 w-6 h-6" style={{ borderTop: '2px solid #00e5ff', borderRight: '2px solid #00e5ff', opacity: 0.8 }} />
-              <div className="absolute bottom-4 left-4 w-6 h-6" style={{ borderBottom: '2px solid #00e5ff', borderLeft: '2px solid #00e5ff', opacity: 0.8 }} />
-              <div className="absolute bottom-4 right-4 w-6 h-6" style={{ borderBottom: '2px solid #00e5ff', borderRight: '2px solid #00e5ff', opacity: 0.8 }} />
+              <div className="absolute top-4 left-4 w-6 h-6" style={{ borderTop: '2px solid var(--accent)', borderLeft: '2px solid var(--accent)', opacity: 0.8 }} />
+              <div className="absolute top-4 right-4 w-6 h-6" style={{ borderTop: '2px solid var(--accent)', borderRight: '2px solid var(--accent)', opacity: 0.8 }} />
+              <div className="absolute bottom-4 left-4 w-6 h-6" style={{ borderBottom: '2px solid var(--accent)', borderLeft: '2px solid var(--accent)', opacity: 0.8 }} />
+              <div className="absolute bottom-4 right-4 w-6 h-6" style={{ borderBottom: '2px solid var(--accent)', borderRight: '2px solid var(--accent)', opacity: 0.8 }} />
             </div>
             <QRScanner onScan={handleScan} />
           </div>
 
           {scanning ? (
             <div className="mt-3 flex items-center justify-center gap-2 py-2.5 rounded-xl"
-              style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)' }}>
-              <Loader2 size={13} className="animate-spin" style={{ color: '#00e5ff' }} />
-              <span className="text-[10px] font-black tracking-widest" style={{ color: '#00e5ff' }}>VALIDATING...</span>
+              style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+              <Loader2 size={13} className="animate-spin" style={{ color: 'var(--accent)' }} />
+              <span className="text-[10px] font-black tracking-widest" style={{ color: 'var(--accent)' }}>VALIDATING...</span>
             </div>
           ) : (
             <p className="text-center text-[10px] mt-3 font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>
@@ -183,8 +183,8 @@ export default function ScanPage() {
               placeholder="PASTE TICKET UUID..."
               className="w-full px-4 py-3.5 rounded-xl font-mono text-sm outline-none transition-all"
               style={{
-                background: 'rgba(0,229,255,0.04)',
-                border: '1px solid rgba(0,229,255,0.2)',
+                background: 'rgba(var(--accent-rgb),0.04)',
+                border: '1px solid rgba(var(--accent-rgb),0.2)',
                 color: '#e0f2fe',
                 letterSpacing: '0.05em',
               }}
@@ -195,11 +195,11 @@ export default function ScanPage() {
             disabled={!manualCode || scanning}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all disabled:opacity-40"
             style={{
-              background: 'linear-gradient(135deg, rgba(0,229,255,0.15), rgba(0,229,255,0.08))',
-              border: '1px solid rgba(0,229,255,0.4)',
-              color: '#00e5ff',
+              background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(var(--accent-rgb),0.08))',
+              border: '1px solid rgba(var(--accent-rgb),0.4)',
+              color: 'var(--accent)',
               letterSpacing: '0.1em',
-              boxShadow: '0 0 20px rgba(0,229,255,0.1)',
+              boxShadow: '0 0 20px rgba(var(--accent-rgb),0.1)',
             }}>
             {scanning
               ? <><Loader2 size={14} className="animate-spin" /> VALIDATING...</>

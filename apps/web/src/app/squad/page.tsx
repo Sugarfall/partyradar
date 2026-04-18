@@ -62,17 +62,17 @@ function CreateSquadModal({ onClose, onCreate }: {
         className="w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-4"
         style={{
           background: 'rgba(7,7,26,0.98)',
-          border: '1px solid rgba(0,229,255,0.15)',
+          border: '1px solid rgba(var(--accent-rgb),0.15)',
           boxShadow: '0 0 60px rgba(0,0,0,0.8)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle */}
-        <div className="w-10 h-1 rounded-full mx-auto sm:hidden" style={{ background: 'rgba(0,229,255,0.2)' }} />
+        <div className="w-10 h-1 rounded-full mx-auto sm:hidden" style={{ background: 'rgba(var(--accent-rgb),0.2)' }} />
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <p className="text-sm font-black tracking-widest" style={{ color: '#00e5ff' }}>CREATE SQUAD</p>
+          <p className="text-sm font-black tracking-widest" style={{ color: 'var(--accent)' }}>CREATE SQUAD</p>
           <button onClick={onClose} style={{ color: 'rgba(74,96,128,0.6)' }}>
             <X size={16} />
           </button>
@@ -80,7 +80,7 @@ function CreateSquadModal({ onClose, onCreate }: {
 
         {/* Emoji picker */}
         <div>
-          <p className="text-[10px] font-bold tracking-[0.15em] mb-2" style={{ color: 'rgba(0,229,255,0.5)' }}>SQUAD EMOJI</p>
+          <p className="text-[10px] font-bold tracking-[0.15em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SQUAD EMOJI</p>
           <div className="flex flex-wrap gap-2">
             {EMOJI_OPTIONS.map((e) => (
               <button
@@ -88,9 +88,9 @@ function CreateSquadModal({ onClose, onCreate }: {
                 onClick={() => setEmoji(e)}
                 className="w-9 h-9 text-xl rounded-xl transition-all duration-150 flex items-center justify-center"
                 style={{
-                  background: emoji === e ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.04)',
-                  border: emoji === e ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-                  boxShadow: emoji === e ? '0 0 10px rgba(0,229,255,0.2)' : 'none',
+                  background: emoji === e ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--accent-rgb),0.04)',
+                  border: emoji === e ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                  boxShadow: emoji === e ? '0 0 10px rgba(var(--accent-rgb),0.2)' : 'none',
                 }}
               >
                 {e}
@@ -101,7 +101,7 @@ function CreateSquadModal({ onClose, onCreate }: {
 
         {/* Name input */}
         <div>
-          <label className="text-[10px] font-bold tracking-[0.15em] block mb-2" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          <label className="text-[10px] font-bold tracking-[0.15em] block mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             SQUAD NAME
           </label>
           <input
@@ -113,8 +113,8 @@ function CreateSquadModal({ onClose, onCreate }: {
             placeholder="Name your crew..."
             className="w-full px-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all duration-200"
             style={{
-              background: 'rgba(0,229,255,0.04)',
-              border: focused ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)',
+              background: 'rgba(var(--accent-rgb),0.04)',
+              border: focused ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
               color: '#e0f2fe',
             }}
           />
@@ -124,12 +124,12 @@ function CreateSquadModal({ onClose, onCreate }: {
         {name.trim() && (
           <div
             className="flex items-center gap-3 p-3 rounded-xl"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}
           >
             <span className="text-2xl">{emoji}</span>
             <div>
               <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{name.trim()}</p>
-              <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>1 member</p>
+              <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>1 member</p>
             </div>
           </div>
         )}
@@ -140,9 +140,9 @@ function CreateSquadModal({ onClose, onCreate }: {
           disabled={!name.trim()}
           className="w-full py-3 rounded-xl text-sm font-black transition-all duration-200 disabled:opacity-40"
           style={{
-            background: name.trim() ? 'rgba(0,229,255,0.1)' : 'transparent',
-            border: name.trim() ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-            color: name.trim() ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+            background: name.trim() ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+            border: name.trim() ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+            color: name.trim() ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             letterSpacing: '0.1em',
           }}
         >
@@ -267,14 +267,14 @@ function SquadCard({ squad, onPlan, onDelete }: {
       className="rounded-2xl p-4 flex items-center gap-4"
       style={{
         background: 'rgba(24,24,27,0.95)',
-        border: '1px solid rgba(0,229,255,0.1)',
+        border: '1px solid rgba(var(--accent-rgb),0.1)',
         boxShadow: '0 2px 20px rgba(0,0,0,0.3)',
       }}
     >
       {/* Emoji */}
       <div
         className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
-        style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.12)' }}
+        style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}
       >
         {squad.emoji}
       </div>
@@ -420,14 +420,14 @@ export default function SquadPage() {
             href="/discover"
             className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
             style={{
-              background: 'rgba(0,229,255,0.03)',
-              border: '1px solid rgba(0,229,255,0.08)',
-              color: 'rgba(0,229,255,0.5)',
+              background: 'rgba(var(--accent-rgb),0.03)',
+              border: '1px solid rgba(var(--accent-rgb),0.08)',
+              color: 'rgba(var(--accent-rgb),0.5)',
             }}
           >
-            <Zap size={13} style={{ color: 'rgba(0,229,255,0.4)' }} />
+            <Zap size={13} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
             <span className="text-xs font-bold flex-1">Find events for tonight</span>
-            <ChevronRight size={13} style={{ color: 'rgba(0,229,255,0.3)' }} />
+            <ChevronRight size={13} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
           </Link>
         )}
       </div>

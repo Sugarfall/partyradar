@@ -200,8 +200,8 @@ function SightingCard({ sighting, onVote }: { sighting: Sighting; onVote: (id: s
               onClick={() => onVote(sighting.id, 'up')}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200"
               style={{
-                background: sighting.userVote === 'up' ? 'rgba(0,255,136,0.12)' : 'rgba(0,229,255,0.04)',
-                border: sighting.userVote === 'up' ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(0,229,255,0.1)',
+                background: sighting.userVote === 'up' ? 'rgba(0,255,136,0.12)' : 'rgba(var(--accent-rgb),0.04)',
+                border: sighting.userVote === 'up' ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
                 color: sighting.userVote === 'up' ? '#00ff88' : 'rgba(224,242,254,0.5)',
               }}
             >
@@ -211,8 +211,8 @@ function SightingCard({ sighting, onVote }: { sighting: Sighting; onVote: (id: s
               onClick={() => onVote(sighting.id, 'down')}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200"
               style={{
-                background: sighting.userVote === 'down' ? 'rgba(255,0,110,0.12)' : 'rgba(0,229,255,0.04)',
-                border: sighting.userVote === 'down' ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(0,229,255,0.1)',
+                background: sighting.userVote === 'down' ? 'rgba(255,0,110,0.12)' : 'rgba(var(--accent-rgb),0.04)',
+                border: sighting.userVote === 'down' ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
                 color: sighting.userVote === 'down' ? '#ff006e' : 'rgba(224,242,254,0.5)',
               }}
             >

@@ -49,9 +49,9 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
         width: 'calc(100vw - 32px)',
         maxWidth: 420,
         background: '#04040d',
-        border: '1px solid rgba(0,229,255,0.4)',
+        border: '1px solid rgba(var(--accent-rgb),0.4)',
         borderRadius: 14,
-        boxShadow: '0 0 30px rgba(0,229,255,0.15), 0 8px 32px rgba(0,0,0,0.6)',
+        boxShadow: '0 0 30px rgba(var(--accent-rgb),0.15), 0 8px 32px rgba(0,0,0,0.6)',
         overflow: 'hidden',
         animation: 'interestMatchSlideIn 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
       }}
@@ -64,7 +64,7 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
           left: 0,
           right: 0,
           height: 2,
-          background: 'linear-gradient(90deg, transparent, #00e5ff, rgba(255,0,110,0.8), #00e5ff, transparent)',
+          background: 'linear-gradient(90deg, transparent, var(--accent), rgba(255,0,110,0.8), var(--accent), transparent)',
         }}
       />
 
@@ -77,15 +77,15 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
                 width: 32,
                 height: 32,
                 borderRadius: 8,
-                background: 'rgba(0,229,255,0.1)',
-                border: '1px solid rgba(0,229,255,0.3)',
+                background: 'rgba(var(--accent-rgb),0.1)',
+                border: '1px solid rgba(var(--accent-rgb),0.3)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <Zap size={16} style={{ color: '#00e5ff' }} />
+              <Zap size={16} style={{ color: 'var(--accent)' }} />
             </div>
             <div>
               <p
@@ -93,7 +93,7 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
                   fontSize: 10,
                   fontWeight: 900,
                   letterSpacing: '0.2em',
-                  color: '#00e5ff',
+                  color: 'var(--accent)',
                   marginBottom: 1,
                 }}
               >
@@ -102,7 +102,7 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
               <p
                 style={{
                   fontSize: 9,
-                  color: 'rgba(0,229,255,0.4)',
+                  color: 'rgba(var(--accent-rgb),0.4)',
                   letterSpacing: '0.06em',
                 }}
               >
@@ -117,7 +117,7 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: 'rgba(0,229,255,0.3)',
+              color: 'rgba(var(--accent-rgb),0.3)',
               padding: 2,
               display: 'flex',
               alignItems: 'center',
@@ -137,8 +137,8 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
             gap: 10,
             padding: '10px 12px',
             borderRadius: 10,
-            background: 'rgba(0,229,255,0.04)',
-            border: '1px solid rgba(0,229,255,0.1)',
+            background: 'rgba(var(--accent-rgb),0.04)',
+            border: '1px solid rgba(var(--accent-rgb),0.1)',
             marginBottom: 12,
           }}
         >
@@ -159,8 +159,8 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
           </div>
           <p style={{ fontSize: 13, color: '#e0f2fe', lineHeight: 1.4 }}>
             Someone at this event also loves{' '}
-            <span style={{ color: '#00e5ff', fontWeight: 700 }}>techno</span> &amp;{' '}
-            <span style={{ color: '#00e5ff', fontWeight: 700 }}>underground raves</span>
+            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>techno</span> &amp;{' '}
+            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>underground raves</span>
           </p>
         </div>
 
@@ -172,9 +172,9 @@ export default function InterestMatch({ eventId: _eventId, devDelay = 10000 }: I
               flex: 1,
               padding: '9px 0',
               borderRadius: 9,
-              background: 'linear-gradient(135deg, rgba(0,229,255,0.15), rgba(0,229,255,0.08))',
-              border: '1px solid rgba(0,229,255,0.4)',
-              color: '#00e5ff',
+              background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(var(--accent-rgb),0.08))',
+              border: '1px solid rgba(var(--accent-rgb),0.4)',
+              color: 'var(--accent)',
               fontSize: 11,
               fontWeight: 900,
               letterSpacing: '0.12em',

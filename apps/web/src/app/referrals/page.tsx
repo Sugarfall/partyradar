@@ -50,7 +50,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: string;
 function EarnCard({ emoji, title, percent, desc }: { emoji: string; title: string; percent: string; desc: string }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl"
-      style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+      style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
       <span className="text-xl mt-0.5">{emoji}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
@@ -129,10 +129,10 @@ export default function ReferralsPage() {
   if (!dbUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4" style={{ background: '#04040d', paddingTop: 56 }}>
-        <Gift size={40} style={{ color: 'rgba(0,229,255,0.2)' }} />
+        <Gift size={40} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
         <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOG IN TO EARN</p>
         <a href="/auth/login" className="px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
-          style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
           LOG IN
         </a>
       </div>
@@ -143,7 +143,7 @@ export default function ReferralsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d', paddingTop: 56 }}>
         <div className="w-10 h-10 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
       </div>
     )
   }
@@ -170,7 +170,7 @@ export default function ReferralsPage() {
       {data && (
         <div className="rounded-2xl p-5 mb-5"
           style={{
-            background: 'linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,229,255,0.05))',
+            background: 'linear-gradient(135deg, rgba(0,255,136,0.08), rgba(var(--accent-rgb),0.05))',
             border: '1px solid rgba(0,255,136,0.2)',
           }}>
           <p className="text-[9px] font-black tracking-[0.2em] mb-2" style={{ color: 'rgba(0,255,136,0.5)' }}>
@@ -192,7 +192,7 @@ export default function ReferralsPage() {
             </button>
             <button onClick={shareCode}
               className="p-3 rounded-xl transition-all"
-              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
               <Share2 size={18} />
             </button>
           </div>
@@ -208,7 +208,7 @@ export default function ReferralsPage() {
           <StatCard label="BALANCE" value={`£${data.balance.toFixed(2)}`}
             icon={<Wallet size={14} style={{ color: '#00ff88' }} />} color="#00ff88" />
           <StatCard label="TOTAL EARNED" value={`£${data.totalEarned.toFixed(2)}`}
-            icon={<TrendingUp size={14} style={{ color: '#00e5ff' }} />} color="#00e5ff" />
+            icon={<TrendingUp size={14} style={{ color: 'var(--accent)' }} />} color="var(--accent)" />
         </div>
       )}
       {data && (
@@ -240,9 +240,9 @@ export default function ReferralsPage() {
           <button key={t} onClick={() => setTab(t)}
             className="flex-1 py-2.5 rounded-xl text-[11px] font-black tracking-widest transition-all"
             style={{
-              background: tab === t ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.03)',
-              border: `1px solid ${tab === t ? 'rgba(0,229,255,0.35)' : 'rgba(0,229,255,0.08)'}`,
-              color: tab === t ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: tab === t ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--accent-rgb),0.03)',
+              border: `1px solid ${tab === t ? 'rgba(var(--accent-rgb),0.35)' : 'rgba(var(--accent-rgb),0.08)'}`,
+              color: tab === t ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             }}>
             {t === 'earn' ? 'HOW TO EARN' : 'LEADERBOARD'}
           </button>
@@ -276,12 +276,12 @@ export default function ReferralsPage() {
           {/* Recent referrals */}
           {data && data.referrals.length > 0 && (
             <div className="mt-4">
-              <p className="text-[9px] font-black tracking-[0.15em] mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>
+              <p className="text-[9px] font-black tracking-[0.15em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                 RECENT EARNINGS
               </p>
               {data.referrals.slice(0, 10).map((r) => (
                 <div key={r.id} className="flex items-center justify-between py-2"
-                  style={{ borderBottom: '1px solid rgba(0,229,255,0.05)' }}>
+                  style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.05)' }}>
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full flex items-center justify-center"
                       style={{ background: 'rgba(0,255,136,0.1)' }}>
@@ -306,7 +306,7 @@ export default function ReferralsPage() {
         <div className="space-y-2">
           {leaderboard.length === 0 ? (
             <div className="py-16 flex flex-col items-center gap-3">
-              <TrendingUp size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+              <TrendingUp size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
               <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No referrers yet — be the first!</p>
             </div>
           ) : leaderboard.map((u, i) => {
@@ -314,10 +314,10 @@ export default function ReferralsPage() {
             const medal = medals[i]
             return (
               <div key={u.id} className="flex items-center gap-3 p-3 rounded-xl"
-                style={{ background: 'rgba(7,7,26,0.8)', border: `1px solid ${i < 3 ? (medal + '30') : 'rgba(0,229,255,0.06)'}` }}>
+                style={{ background: 'rgba(7,7,26,0.8)', border: `1px solid ${i < 3 ? (medal + '30') : 'rgba(var(--accent-rgb),0.06)'}` }}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black shrink-0"
                   style={{
-                    background: medal ? `${medal}18` : 'rgba(0,229,255,0.06)',
+                    background: medal ? `${medal}18` : 'rgba(var(--accent-rgb),0.06)',
                     color: medal ?? 'rgba(224,242,254,0.4)',
                   }}>
                   {i + 1}
@@ -326,13 +326,13 @@ export default function ReferralsPage() {
                   <img src={u.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
                 ) : (
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                    style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff' }}>
+                    style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
                     {u.displayName[0]}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                  <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+                  <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                     {u.referralCount} referral{u.referralCount !== 1 ? 's' : ''}
                   </p>
                 </div>

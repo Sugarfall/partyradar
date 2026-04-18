@@ -87,7 +87,7 @@ function Avatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: s
     <img src={user.photoUrl} alt="" className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />
   ) : (
     <div className="rounded-full flex items-center justify-center shrink-0 font-bold text-sm"
-      style={{ width: size, height: size, background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.3)', color: '#00e5ff' }}>
+      style={{ width: size, height: size, background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>
       {user.displayName[0]?.toUpperCase()}
     </div>
   )
@@ -176,7 +176,7 @@ function HostGroupDashboard({
           <button onClick={() => setShowCreate(true)}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-black tracking-widest transition-all"
             style={{
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(0,229,255,0.08) 100%)',
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(var(--accent-rgb),0.08) 100%)',
               border: '1px solid rgba(168,85,247,0.35)',
               color: '#a855f7',
             }}>
@@ -487,13 +487,13 @@ function GroupBrowser({
     <div className="pb-28">
       {/* Group search */}
       <div className="px-4 pb-3 relative">
-        <Search size={12} className="absolute left-7 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <Search size={12} className="absolute left-7 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
         <input
           value={groupSearch}
           onChange={(e) => setGroupSearch(e.target.value)}
           placeholder="Search groups..."
           className="w-full pl-8 pr-3 py-2 rounded-xl text-xs font-medium focus:outline-none"
-          style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: '#e0f2fe' }}
+          style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)', color: '#e0f2fe' }}
         />
       </div>
 
@@ -508,9 +508,9 @@ function GroupBrowser({
           <button key={key} onClick={() => setSub(key)}
             className="shrink-0 py-2 px-3 rounded-xl text-[11px] font-black tracking-widest transition-all"
             style={{
-              background: sub === key ? 'rgba(0,229,255,0.1)' : 'transparent',
-              border: `1px solid ${sub === key ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
-              color: sub === key ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: sub === key ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+              border: `1px solid ${sub === key ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.07)'}`,
+              color: sub === key ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             }}>
             {label}
           </button>
@@ -577,9 +577,9 @@ function GroupBrowser({
             ) : list.map((g) => (
               <button key={g.id} onClick={() => onOpen(g)}
                 className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all"
-                style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(0,229,255,0.07)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.07)')}>
+                style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(var(--accent-rgb),0.2)')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(var(--accent-rgb),0.07)')}>
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
                   style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}30` }}>
                   {g.emoji}
@@ -597,7 +597,7 @@ function GroupBrowser({
                       {g.lastMessage.senderName}: {g.lastMessage.text}
                     </p>
                   ) : (
-                    <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.25)' }}>No messages yet — be first!</p>
+                    <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.25)' }}>No messages yet — be first!</p>
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
@@ -621,7 +621,7 @@ function GroupBrowser({
         <div className="px-4 mt-4">
           <button onClick={() => setShowCreate(true)}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest transition-all"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px dashed rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.5)' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px dashed rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.5)' }}>
             + CREATE GROUP
           </button>
         </div>
@@ -633,12 +633,12 @@ function GroupBrowser({
           style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
           onClick={() => setShowCreate(false)}>
           <div className="w-full max-w-sm rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}
-            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)' }}>
-            <p className="text-xs font-black tracking-widest" style={{ color: '#00e5ff' }}>CREATE GROUP</p>
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+            <p className="text-xs font-black tracking-widest" style={{ color: 'var(--accent)' }}>CREATE GROUP</p>
 
             {/* Group type */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>TYPE</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>TYPE</p>
               <div className="grid grid-cols-3 gap-2">
                 {([
                   { id: 'GENRE', label: '🎵 Music', color: '#a855f7' },
@@ -648,8 +648,8 @@ function GroupBrowser({
                   <button key={t.id} onClick={() => setNewGroupType(t.id)}
                     className="py-2 rounded-xl text-center text-[10px] font-black transition-all"
                     style={{
-                      background: newGroupType === t.id ? `${t.color}18` : 'rgba(0,229,255,0.03)',
-                      border: `1px solid ${newGroupType === t.id ? `${t.color}50` : 'rgba(0,229,255,0.08)'}`,
+                      background: newGroupType === t.id ? `${t.color}18` : 'rgba(var(--accent-rgb),0.03)',
+                      border: `1px solid ${newGroupType === t.id ? `${t.color}50` : 'rgba(var(--accent-rgb),0.08)'}`,
                       color: newGroupType === t.id ? t.color : 'rgba(224,242,254,0.4)',
                     }}>
                     {t.label}
@@ -661,23 +661,23 @@ function GroupBrowser({
             <input type="text" placeholder="Group name" value={newName}
               onChange={(e) => setNewName(e.target.value.slice(0, 40))}
               className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-              style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
 
             <input type="text" placeholder="Description (optional)" value={newDesc}
               onChange={(e) => setNewDesc(e.target.value.slice(0, 200))}
               className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-              style={{ border: '1px solid rgba(0,229,255,0.1)', color: '#e0f2fe' }} />
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.1)', color: '#e0f2fe' }} />
 
             {/* Emoji picker */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>EMOJI</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>EMOJI</p>
               <div className="flex flex-wrap gap-2">
                 {EMOJIS.map((e) => (
                   <button key={e} onClick={() => setNewEmoji(e)}
                     className="w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all"
                     style={{
-                      background: newEmoji === e ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.03)',
-                      border: `1px solid ${newEmoji === e ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                      background: newEmoji === e ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.03)',
+                      border: `1px solid ${newEmoji === e ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.08)'}`,
                     }}>{e}</button>
                 ))}
               </div>
@@ -685,7 +685,7 @@ function GroupBrowser({
 
             {/* Color picker */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>COLOR</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>COLOR</p>
               <div className="flex flex-wrap gap-2">
                 {COLORS.map((c) => (
                   <button key={c} onClick={() => setNewColor(c)}
@@ -701,7 +701,7 @@ function GroupBrowser({
 
             {/* Access type */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>ACCESS</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>ACCESS</p>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: 'public', label: 'Public', icon: <Users size={14} />, active: !newPrivate && !newPaid },
@@ -715,9 +715,9 @@ function GroupBrowser({
                   }}
                     className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition-all"
                     style={{
-                      background: opt.active ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.03)',
-                      border: `1px solid ${opt.active ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.08)'}`,
-                      color: opt.active ? '#00e5ff' : 'rgba(224,242,254,0.35)',
+                      background: opt.active ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--accent-rgb),0.03)',
+                      border: `1px solid ${opt.active ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.08)'}`,
+                      color: opt.active ? 'var(--accent)' : 'rgba(224,242,254,0.35)',
                     }}>
                     {opt.icon}
                     <span className="text-[9px] font-bold tracking-wide">{opt.label}</span>
@@ -757,8 +757,8 @@ function GroupBrowser({
                       <button key={t.id} onClick={() => setNewPriceTier(t.id)}
                         className="py-2 rounded-xl text-center transition-all"
                         style={{
-                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.03)',
-                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.03)',
+                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(var(--accent-rgb),0.08)'}`,
                         }}>
                         <p className="text-sm font-black" style={{ color: active ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>{t.price}<span className="text-[9px] font-normal">/mo</span></p>
                         <p className="text-[9px]" style={{ color: active ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>{t.label}</p>
@@ -789,9 +789,9 @@ function GroupBrowser({
               disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
-                background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.12)',
-                border: `1px solid ${newPaid ? 'rgba(255,214,0,0.35)' : 'rgba(0,229,255,0.35)'}`,
-                color: newPaid ? '#ffd600' : '#00e5ff',
+                background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.12)',
+                border: `1px solid ${newPaid ? 'rgba(255,214,0,0.35)' : 'rgba(var(--accent-rgb),0.35)'}`,
+                color: newPaid ? '#ffd600' : 'var(--accent)',
               }}>
               {creating ? 'CREATING...' : newPaid ? 'CREATE PAID GROUP' : 'CREATE GROUP'}
             </button>
@@ -1089,7 +1089,7 @@ function GroupChatView({
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 rounded-full border-2 animate-spin"
-        style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+        style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
     </div>
   )
 
@@ -1097,8 +1097,8 @@ function GroupChatView({
     <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem)', background: '#04040d' }}>
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
-        style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
-        <button onClick={onBack} className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
+        style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)', backdropFilter: 'blur(12px)' }}>
+        <button onClick={onBack} className="p-1 rounded-lg" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
           <ArrowLeft size={18} />
         </button>
         {group && (
@@ -1109,7 +1109,7 @@ function GroupChatView({
         )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black truncate" style={{ color: '#e0f2fe' }}>{group?.name ?? '...'}</p>
-          <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+          <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
             {group?.memberCount ?? 0} members
           </p>
         </div>
@@ -1119,9 +1119,9 @@ function GroupChatView({
               <button onClick={toggleNotifications}
                 className="p-2 rounded-xl transition-all"
                 style={{
-                  background: group.notificationsEnabled ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.03)',
-                  border: `1px solid ${group.notificationsEnabled ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.1)'}`,
-                  color: group.notificationsEnabled ? '#00e5ff' : 'rgba(0,229,255,0.3)',
+                  background: group.notificationsEnabled ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.03)',
+                  border: `1px solid ${group.notificationsEnabled ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.1)'}`,
+                  color: group.notificationsEnabled ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)',
                 }}>
                 {group.notificationsEnabled ? <Bell size={13} /> : <BellOff size={13} />}
               </button>
@@ -1130,13 +1130,13 @@ function GroupChatView({
               className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
               style={{
                 background: group.isJoined
-                  ? 'rgba(0,229,255,0.06)'
+                  ? 'rgba(var(--accent-rgb),0.06)'
                   : group.isPaid ? 'rgba(255,214,0,0.12)' : `${group.coverColor}22`,
                 border: `1px solid ${group.isJoined
-                  ? 'rgba(0,229,255,0.2)'
+                  ? 'rgba(var(--accent-rgb),0.2)'
                   : group.isPaid ? 'rgba(255,214,0,0.4)' : group.coverColor + '60'}`,
                 color: group.isJoined
-                  ? 'rgba(0,229,255,0.6)'
+                  ? 'rgba(var(--accent-rgb),0.6)'
                   : group.isPaid ? '#ffd600' : group.coverColor,
               }}>
               {group.isJoined
@@ -1149,7 +1149,7 @@ function GroupChatView({
 
       {/* Chat / Pub Crawl tab bar */}
       <div className="flex-shrink-0 flex gap-1 px-4 py-2"
-        style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(0,229,255,0.07)' }}>
+        style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(var(--accent-rgb),0.07)' }}>
         {([
           { key: 'chat', label: '💬 Chat' },
           { key: 'crawl', label: '🍺 Pub Crawl' },
@@ -1157,9 +1157,9 @@ function GroupChatView({
           <button key={key} onClick={() => setActiveTab(key)}
             className="flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-wide transition-all"
             style={{
-              background: activeTab === key ? 'rgba(0,229,255,0.1)' : 'transparent',
-              border: `1px solid ${activeTab === key ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.06)'}`,
-              color: activeTab === key ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: activeTab === key ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+              border: `1px solid ${activeTab === key ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(var(--accent-rgb),0.06)'}`,
+              color: activeTab === key ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             }}>
             {label}
           </button>
@@ -1360,7 +1360,7 @@ function GroupChatView({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-2">
-            <Hash size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+            <Hash size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
             <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
               {group ? `Be the first to post in #${group.name.toLowerCase()}` : 'No messages yet'}
             </p>
@@ -1376,14 +1376,14 @@ function GroupChatView({
               )}
               <div className="max-w-[72%]">
                 {!isMe && (
-                  <p className="text-[10px] mb-0.5 ml-1 font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                  <p className="text-[10px] mb-0.5 ml-1 font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                     {m.senderName}
                   </p>
                 )}
                 <div className={`rounded-2xl text-sm overflow-hidden ${m.text ? 'px-3 py-2' : ''}`}
                   style={isMe
-                    ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
-                    : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
+                    ? { background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
+                    : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(var(--accent-rgb),0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
                   {m.imageUrl && (
                     <img src={m.imageUrl} alt="" className="max-w-[220px] rounded-xl object-cover cursor-pointer"
                       style={{ maxHeight: 200, display: 'block' }}
@@ -1404,7 +1404,7 @@ function GroupChatView({
       {/* Input — only shown in chat tab */}
       {activeTab === 'chat' && dbUserId ? (
         <div className="flex-shrink-0 px-4 py-3 flex gap-2"
-          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           <input
             ref={photoInputRef}
             type="file"
@@ -1414,28 +1414,28 @@ function GroupChatView({
           />
           <button onClick={() => photoInputRef.current?.click()} disabled={photoUploading}
             className="p-2.5 rounded-xl transition-all"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: photoUploading ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.5)' }}>
-            {photoUploading ? <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: 'rgba(0,229,255,0.5)' }} /> : <Camera size={16} />}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', color: photoUploading ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.5)' }}>
+            {photoUploading ? <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'rgba(var(--accent-rgb),0.5)' }} /> : <Camera size={16} />}
           </button>
           <input type="text" placeholder={`Message #${group?.name.toLowerCase() ?? 'group'}...`}
             value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
           <button onClick={sendMessage} disabled={!text.trim() || sending}
             className="p-2.5 rounded-xl transition-all"
             style={{
-              background: text.trim() ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.04)',
-              border: `1px solid ${text.trim() ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.1)'}`,
-              color: text.trim() ? '#00e5ff' : 'rgba(0,229,255,0.2)',
+              background: text.trim() ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+              border: `1px solid ${text.trim() ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.1)'}`,
+              color: text.trim() ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.2)',
             }}>
             <Send size={16} />
           </button>
         </div>
       ) : (
         <div className="flex-shrink-0 px-4 py-3 text-center"
-          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
-          <a href="/login" className="text-xs font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+          <a href="/login" className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             Log in to join the conversation
           </a>
         </div>
@@ -1447,13 +1447,13 @@ function GroupChatView({
           style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
           onClick={() => setUserPopup(null)}>
           <div className="w-full max-w-sm rounded-2xl p-5" onClick={(e) => e.stopPropagation()}
-            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)' }}>
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
             <div className="flex items-center gap-3 mb-4">
               <Avatar user={{ displayName: userPopup.senderName, photoUrl: userPopup.senderPhoto }} size={44} />
               <div>
                 <p className="font-black text-sm" style={{ color: '#e0f2fe' }}>{userPopup.senderName}</p>
                 {userPopup.senderUsername && (
-                  <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{userPopup.senderUsername}</p>
+                  <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{userPopup.senderUsername}</p>
                 )}
               </div>
             </div>
@@ -1461,9 +1461,9 @@ function GroupChatView({
               <button onClick={() => followUser(userPopup.senderId)}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
                 style={{
-                  background: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-                  border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.35)'}`,
-                  color: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                  background: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+                  border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.2)' : 'rgba(var(--accent-rgb),0.35)'}`,
+                  color: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
                 }}>
                 {followingSet.has(userPopup.senderId)
                   ? <><UserCheck size={13} /> FOLLOWING</>
@@ -1566,20 +1566,20 @@ function VoiceMessagePlayer({ url }: { url: string }) {
   return (
     <button onClick={toggle}
       className="flex items-center gap-2 px-3 py-2 rounded-2xl"
-      style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', minWidth: 120 }}>
-      {playing ? <Square size={12} style={{ color: '#00e5ff' }} /> : <Play size={12} style={{ color: '#00e5ff' }} />}
+      style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)', minWidth: 120 }}>
+      {playing ? <Square size={12} style={{ color: 'var(--accent)' }} /> : <Play size={12} style={{ color: 'var(--accent)' }} />}
       <div className="flex items-end gap-0.5">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="rounded-full"
             style={{
-              width: 3, background: '#00e5ff',
+              width: 3, background: 'var(--accent)',
               height: playing ? `${6 + Math.sin(i * 1.3) * 5}px` : '4px',
               opacity: 0.6 + i * 0.04,
               transition: 'height 0.2s',
             }} />
         ))}
       </div>
-      <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.6)' }}>VOICE</span>
+      <span className="text-[10px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>VOICE</span>
     </button>
   )
 }
@@ -1649,9 +1649,9 @@ function WalkieTalkieButton({
       disabled={uploading}
       className="p-2.5 rounded-xl transition-all select-none"
       style={{
-        background: recording ? 'rgba(255,0,110,0.2)' : uploading ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.06)',
-        border: `1px solid ${recording ? 'rgba(255,0,110,0.5)' : uploading ? 'rgba(255,214,0,0.3)' : 'rgba(0,229,255,0.12)'}`,
-        color: recording ? '#ff006e' : uploading ? '#ffd600' : 'rgba(0,229,255,0.5)',
+        background: recording ? 'rgba(255,0,110,0.2)' : uploading ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.06)',
+        border: `1px solid ${recording ? 'rgba(255,0,110,0.5)' : uploading ? 'rgba(255,214,0,0.3)' : 'rgba(var(--accent-rgb),0.12)'}`,
+        color: recording ? '#ff006e' : uploading ? '#ffd600' : 'rgba(var(--accent-rgb),0.5)',
       }}>
       {uploading ? <Radio size={16} className="animate-pulse" /> : <Mic size={16} />}
     </button>
@@ -1778,9 +1778,9 @@ function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Reco
     <button onClick={toggle} disabled={loading}
       className="flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all"
       style={{
-        background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-        border: `1px solid ${following ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.3)'}`,
-        color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+        background: following ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+        border: `1px solid ${following ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.3)'}`,
+        color: following ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
       }}>
       {following ? <UserCheck size={11} /> : <UserPlus size={11} />}
       <span className="text-[9px] font-black tracking-wide">{following ? 'FOLLOWING' : 'FOLLOW'}</span>
@@ -2028,9 +2028,9 @@ function DmSection({ dbUser, token }: {
       <div style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 64, background: '#04040d', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
-          style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)', backdropFilter: 'blur(12px)' }}>
           <button onClick={() => { setActiveConvo(null); setMessages([]); setDecrypted({}); setOtherPublicKey(null); setActiveConvoIsRequest(false) }}
-            className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
+            className="p-1 rounded-lg" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
             <ArrowLeft size={18} />
           </button>
           {activeOther && (
@@ -2041,7 +2041,7 @@ function DmSection({ dbUser, token }: {
           <div className="flex-1 min-w-0">
             <a href={activeOther?.username ? `/profile/${activeOther.username}` : '#'} className="block">
               <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{activeOther?.displayName ?? '...'}</p>
-              {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{activeOther.username}</p>}
+              {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{activeOther.username}</p>}
             </a>
           </div>
           {/* E2E badge */}
@@ -2085,11 +2085,11 @@ function DmSection({ dbUser, token }: {
           {msgsLoading ? (
             <div className="flex items-center justify-center h-32">
               <div className="w-6 h-6 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-2">
-              <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+              <MessageCircle size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
               <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Start the conversation</p>
             </div>
           ) : messages.map((m) => {
@@ -2110,8 +2110,8 @@ function DmSection({ dbUser, token }: {
                   ) : (
                     <div className="px-3 py-2 rounded-2xl text-sm break-words"
                       style={isMe
-                        ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
-                        : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
+                        ? { background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
+                        : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(var(--accent-rgb),0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
                       {displayText(m)}
                     </div>
                   )}
@@ -2126,7 +2126,7 @@ function DmSection({ dbUser, token }: {
 
         {/* Input bar */}
         <div className="flex-shrink-0 px-4 py-3 flex gap-2 items-center"
-          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           {/* Snap camera button */}
           <button onClick={() => snapInputRef.current?.click()}
             className="p-2.5 rounded-xl"
@@ -2140,7 +2140,7 @@ function DmSection({ dbUser, token }: {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTextMessage() } }}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
 
           {/* Walkie talkie */}
           <WalkieTalkieButton headers={headers} onSend={sendVoiceMessage} />
@@ -2149,9 +2149,9 @@ function DmSection({ dbUser, token }: {
           <button onClick={sendTextMessage} disabled={!text.trim() || sending}
             className="p-2.5 rounded-xl transition-all"
             style={{
-              background: text.trim() ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.04)',
-              border: `1px solid ${text.trim() ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.1)'}`,
-              color: text.trim() ? '#00e5ff' : 'rgba(0,229,255,0.2)',
+              background: text.trim() ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+              border: `1px solid ${text.trim() ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.1)'}`,
+              color: text.trim() ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.2)',
             }}>
             <Send size={16} />
           </button>
@@ -2163,10 +2163,10 @@ function DmSection({ dbUser, token }: {
   if (!dbUser) {
     return (
       <div className="py-16 flex flex-col items-center gap-3">
-        <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+        <MessageCircle size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
         <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOG IN TO MESSAGE PEOPLE</p>
         <a href="/login" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
-          style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
           <LogIn size={11} /> LOG IN
         </a>
       </div>
@@ -2178,30 +2178,30 @@ function DmSection({ dbUser, token }: {
   return (
     <div className="px-4 max-w-xl mx-auto pb-4">
       <div className="relative mb-3">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
         <input type="text" placeholder="Search users to message..." value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-8 pr-3 py-2.5 rounded-xl text-xs bg-transparent outline-none"
-          style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
       </div>
       {search.trim() && (
         <div className="mb-3 rounded-xl overflow-hidden"
-          style={{ border: '1px solid rgba(0,229,255,0.12)', background: 'rgba(7,7,26,0.95)' }}>
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.12)', background: 'rgba(7,7,26,0.95)' }}>
           {searching ? (
             <div className="py-4 flex justify-center">
               <div className="w-4 h-4 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : searchResults.length === 0 ? (
             <div className="py-4 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No users found</div>
           ) : searchResults.map((u) => (
             <button key={u.id} onClick={() => openOrCreateConvo(u.id)}
               className="w-full flex items-center gap-3 px-4 py-3 text-left"
-              style={{ borderBottom: '1px solid rgba(0,229,255,0.06)' }}>
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
               <Avatar user={u} size={36} />
               <div>
                 <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                {u.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>}
+                {u.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>}
               </div>
             </button>
           ))}
@@ -2213,9 +2213,9 @@ function DmSection({ dbUser, token }: {
         <button onClick={() => setDmSubTab('inbox')}
           className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
           style={{
-            background: dmSubTab === 'inbox' ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.02)',
-            border: `1px solid ${dmSubTab === 'inbox' ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
-            color: dmSubTab === 'inbox' ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+            background: dmSubTab === 'inbox' ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.02)',
+            border: `1px solid ${dmSubTab === 'inbox' ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.07)'}`,
+            color: dmSubTab === 'inbox' ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
           }}>
           INBOX
         </button>
@@ -2233,12 +2233,12 @@ function DmSection({ dbUser, token }: {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
+            <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(var(--accent-rgb),0.04)' }} />
           ))}
         </div>
       ) : displayedConvos.length === 0 ? (
         <div className="py-16 flex flex-col items-center gap-3">
-          <User size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+          <User size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
           <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>
             {dmSubTab === 'requests' ? 'NO REQUESTS' : 'NO MESSAGES YET'}
           </p>
@@ -2253,12 +2253,12 @@ function DmSection({ dbUser, token }: {
           className="w-full flex items-center gap-3 p-3 rounded-2xl text-left mb-2 transition-all"
           style={{
             background: c.isRequest ? 'rgba(255,214,0,0.03)' : 'rgba(7,7,26,0.8)',
-            border: `1px solid ${c.isRequest ? 'rgba(255,214,0,0.15)' : 'rgba(0,229,255,0.08)'}`,
+            border: `1px solid ${c.isRequest ? 'rgba(255,214,0,0.15)' : 'rgba(var(--accent-rgb),0.08)'}`,
           }}>
           {c.other ? <Avatar user={c.other} size={44} /> : (
             <div className="w-11 h-11 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
-              <User size={18} style={{ color: 'rgba(0,229,255,0.3)' }} />
+              style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+              <User size={18} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
             </div>
           )}
           <div className="flex-1 min-w-0">
@@ -2276,7 +2276,7 @@ function DmSection({ dbUser, token }: {
                 {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}{c.lastMessage.text}
               </p>
             ) : (
-              <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.3)' }}>No messages yet</p>
+              <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>No messages yet</p>
             )}
           </div>
           {c.lastMessage && (
@@ -2346,7 +2346,7 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
     <div className="px-4 max-w-xl mx-auto pb-6">
       {/* Search input */}
       <div className="relative mb-4">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
         <input
           type="text"
           placeholder="Search by name or @username..."
@@ -2354,14 +2354,14 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
           onChange={(e) => setQ(e.target.value)}
           autoFocus
           className="w-full pl-8 pr-3 py-3 rounded-xl text-sm bg-transparent outline-none"
-          style={{ border: '1px solid rgba(0,229,255,0.2)', color: '#e0f2fe' }}
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: '#e0f2fe' }}
         />
       </div>
 
       {/* Empty state */}
       {!q.trim() && (
         <div className="py-16 flex flex-col items-center gap-3">
-          <Users size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+          <Users size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
           <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>FIND PEOPLE TO FOLLOW</p>
           <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>Search by name or username above</p>
         </div>
@@ -2370,7 +2370,7 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
       {/* Loading */}
       {searching && (
         <div className="flex justify-center py-8">
-          <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+          <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
         </div>
       )}
 
@@ -2388,14 +2388,14 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
         const loading = followLoading[u.id] ?? false
         return (
           <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl mb-2"
-            style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             <a href={`/profile/${u.username}`} className="shrink-0">
               <Avatar user={u} size={44} />
             </a>
             <div className="flex-1 min-w-0">
               <a href={`/profile/${u.username}`} className="block">
                 <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                {u.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>}
+                {u.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>}
                 {u.bio && <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>{u.bio}</p>}
               </a>
             </div>
@@ -2406,9 +2406,9 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
                   disabled={loading}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
                   style={{
-                    background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-                    border: `1px solid ${following ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.3)'}`,
-                    color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                    background: following ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+                    border: `1px solid ${following ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.3)'}`,
+                    color: following ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
                   }}>
                   {following ? <UserCheck size={11} /> : <UserPlus size={11} />}
                   <span className="text-[9px] font-black tracking-wide">{loading ? '...' : following ? 'FOLLOWING' : 'FOLLOW'}</span>
@@ -2416,7 +2416,7 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
               )}
               <a href={`/profile/${u.username}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-center"
-                style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(0,229,255,0.5)' }}>
+                style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', color: 'rgba(var(--accent-rgb),0.5)' }}>
                 <User size={11} />
                 <span className="text-[9px] font-black tracking-wide">PROFILE</span>
               </a>
@@ -2504,9 +2504,9 @@ export default function MessagesPage() {
           <button key={t} onClick={() => setTab(t)}
             className="flex-1 py-2.5 rounded-xl text-[11px] font-black tracking-widest transition-all"
             style={{
-              background: tab === t ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.03)',
-              border: `1px solid ${tab === t ? 'rgba(0,229,255,0.35)' : 'rgba(0,229,255,0.08)'}`,
-              color: tab === t ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: tab === t ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--accent-rgb),0.03)',
+              border: `1px solid ${tab === t ? 'rgba(var(--accent-rgb),0.35)' : 'rgba(var(--accent-rgb),0.08)'}`,
+              color: tab === t ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             }}>
             {t === 'dms' ? '💬 DMs' : t === 'people' ? '👥 PEOPLE' : isHost ? '👑 GROUPS' : '🌐 COMMUNITY'}
           </button>
@@ -2526,7 +2526,7 @@ export default function MessagesPage() {
           {groupsLoading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-8 h-8 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : isHost ? (
             <HostGroupDashboard groups={groups} dbUserId={dbUser?.id ?? null}

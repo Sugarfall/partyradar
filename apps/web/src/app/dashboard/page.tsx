@@ -111,7 +111,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 const BLAST_STATUS_STYLE: Record<string, { bg: string; border: string; color: string; label: string }> = {
   QUEUED: { bg: 'rgba(255,214,0,0.08)', border: 'rgba(255,214,0,0.25)', color: '#ffd600', label: 'QUEUED' },
-  SENDING: { bg: 'rgba(0,229,255,0.08)', border: 'rgba(0,229,255,0.25)', color: '#00e5ff', label: 'SENDING' },
+  SENDING: { bg: 'rgba(var(--accent-rgb),0.08)', border: 'rgba(var(--accent-rgb),0.25)', color: 'var(--accent)', label: 'SENDING' },
   SENT: { bg: 'rgba(0,255,136,0.08)', border: 'rgba(0,255,136,0.25)', color: '#00ff88', label: 'SENT' },
   FAILED: { bg: 'rgba(255,0,110,0.08)', border: 'rgba(255,0,110,0.25)', color: '#ff006e', label: 'FAILED' },
 }
@@ -273,8 +273,8 @@ function AttendeesModal({ eventId, eventName, onClose }: {
                       </div>
                       <span className="text-[8px] font-black px-2 py-0.5 rounded-full shrink-0"
                         style={{
-                          background: t.scannedAt ? 'rgba(0,255,136,0.1)' : 'rgba(0,229,255,0.1)',
-                          color: t.scannedAt ? '#00ff88' : '#00e5ff',
+                          background: t.scannedAt ? 'rgba(0,255,136,0.1)' : 'rgba(var(--accent-rgb),0.1)',
+                          color: t.scannedAt ? '#00ff88' : 'var(--accent)',
                         }}>
                         {t.scannedAt ? 'SCANNED' : 'VALID'}
                       </span>
@@ -533,7 +533,7 @@ export default function DashboardPage() {
           <button onClick={() => setBlastModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all"
             style={{
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.08) 100%)',
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(var(--accent-rgb),0.08) 100%)',
               border: '1px solid rgba(168,85,247,0.35)',
               color: '#a855f7',
             }}>
@@ -567,7 +567,7 @@ export default function DashboardPage() {
             {/* Revenue banner */}
             <div className="rounded-2xl p-5 relative overflow-hidden"
               style={{
-                background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(0,229,255,0.04) 100%)',
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(var(--accent-rgb),0.04) 100%)',
                 border: '1px solid rgba(168,85,247,0.2)',
               }}>
               <p className="text-[9px] font-black tracking-widest mb-1" style={{ color: 'rgba(168,85,247,0.5)' }}>TOTAL NET REVENUE</p>
@@ -581,7 +581,7 @@ export default function DashboardPage() {
                 <span className="text-[10px]" style={{ color: 'rgba(255,214,0,0.5)' }}>
                   Groups: £{stats.groupRevenue.toFixed(2)}
                 </span>
-                <span className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+                <span className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                   Referrals: £{stats.referralBalance.toFixed(2)}
                 </span>
               </div>
@@ -590,7 +590,7 @@ export default function DashboardPage() {
             {/* Stat grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <StatCard label="EVENTS" value={stats.totalEvents} icon={Calendar} color="#a855f7" />
-              <StatCard label="UPCOMING" value={stats.upcomingEvents} icon={Clock} color="#00e5ff" />
+              <StatCard label="UPCOMING" value={stats.upcomingEvents} icon={Clock} color="var(--accent)" />
               <StatCard label="TICKETS SOLD" value={stats.totalTicketsSold} icon={Ticket} color="#00ff88" />
               <StatCard label="SUBSCRIBERS" value={stats.totalSubscribers} icon={Crown} color="#ffd600" />
             </div>
@@ -609,7 +609,7 @@ export default function DashboardPage() {
                         <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{fmtDate(e.startsAt)}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] flex items-center gap-0.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                        <span className="text-[10px] flex items-center gap-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                           <Users size={9} /> {e.guestCount}
                         </span>
                         <button onClick={() => setAttendeeModal({ id: e.id, name: e.name })}
@@ -617,7 +617,7 @@ export default function DashboardPage() {
                           <Eye size={12} />
                         </button>
                         <Link href={`/events/${e.id}/edit`}
-                          className="p-1.5 rounded-lg" style={{ color: 'rgba(0,229,255,0.4)' }}>
+                          className="p-1.5 rounded-lg" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                           <Edit3 size={12} />
                         </Link>
                       </div>
@@ -705,7 +705,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mt-1.5">
-                        <span className="text-[10px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                        <span className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                           {e.guestCount} guests
                         </span>
                         <span className="text-[10px]" style={{ color: 'rgba(0,255,136,0.5)' }}>
@@ -729,7 +729,7 @@ export default function DashboardPage() {
                       </button>
                       <Link href={`/events/${e.id}/edit`}
                         className="p-2 rounded-lg transition-all"
-                        style={{ background: 'rgba(0,229,255,0.06)', color: 'rgba(0,229,255,0.5)' }}>
+                        style={{ background: 'rgba(var(--accent-rgb),0.06)', color: 'rgba(var(--accent-rgb),0.5)' }}>
                         <Edit3 size={13} />
                       </Link>
                     </div>

@@ -269,7 +269,7 @@ function NavbarInner() {
                     <Link href="/events/create"
                       className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.1) 100%)',
+                        background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(var(--accent-rgb),0.1) 100%)',
                         border: '1px solid rgba(168,85,247,0.35)',
                         color: '#a855f7',
                       }}
@@ -393,7 +393,7 @@ function NavbarInner() {
               <Link href={dbUser ? '/events/create' : '/login'}
                 className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(0,229,255,0.2) 100%)',
+                  background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(var(--accent-rgb),0.2) 100%)',
                   border: '1px solid rgba(168,85,247,0.5)',
                   boxShadow: '0 0 20px rgba(168,85,247,0.2)',
                 }}
@@ -415,7 +415,7 @@ function NavbarInner() {
           {/* Messages */}
           <Link href="/messages"
             className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
-            style={{ color: pathname.startsWith('/messages') ? '#00e5ff' : 'rgba(255,255,255,0.35)' }}>
+            style={{ color: pathname.startsWith('/messages') ? 'var(--accent)' : 'rgba(255,255,255,0.35)' }}>
             <MessageCircle size={16} strokeWidth={pathname.startsWith('/messages') ? 2 : 1.5} />
             <span className="text-[8px] font-medium tracking-tight leading-none">Chats</span>
           </Link>

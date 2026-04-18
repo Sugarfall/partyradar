@@ -36,33 +36,33 @@ function FollowListModal({ username, mode, onClose, token }: {
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
       onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}
-        style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.12)', maxHeight: '70vh' }}>
+        style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.12)', maxHeight: '70vh' }}>
         <div className="px-5 py-4 flex items-center justify-between"
-          style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{mode === 'followers' ? 'Followers' : 'Following'}</p>
           <button onClick={onClose} style={{ color: 'rgba(224,242,254,0.3)' }}>✕</button>
         </div>
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(70vh - 56px)' }}>
           {loading ? (
             <div className="flex justify-center py-10">
-              <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+              <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : users.length === 0 ? (
             <p className="text-center text-xs py-8" style={{ color: 'rgba(224,242,254,0.3)' }}>Nobody here yet</p>
           ) : users.map((u) => (
             <Link key={u.id} href={`/profile/${u.username}`} onClick={onClose}
               className="flex items-center gap-3 px-4 py-3"
-              style={{ borderBottom: '1px solid rgba(0,229,255,0.05)' }}>
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.05)' }}>
               {u.photoUrl
-                ? <img src={u.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover" style={{ border: '1.5px solid rgba(0,229,255,0.2)' }} />
+                ? <img src={u.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover" style={{ border: '1.5px solid rgba(var(--accent-rgb),0.2)' }} />
                 : <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black"
-                    style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff' }}>
+                    style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
                     {u.displayName[0]?.toUpperCase()}
                   </div>
               }
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>
+                <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>
               </div>
             </Link>
           ))}
@@ -75,7 +75,7 @@ function FollowListModal({ username, mode, onClose, token }: {
 const TIER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   FREE:    { label: 'FREE',    color: '#4b5563', icon: '⚡' },
   BASIC:   { label: 'BASIC',   color: '#3b82f6', icon: '🔵' },
-  PRO:     { label: 'PRO',     color: '#00e5ff', icon: '💎' },
+  PRO:     { label: 'PRO',     color: 'var(--accent)', icon: '💎' },
   PREMIUM: { label: 'PREMIUM', color: '#ffd600', icon: '👑' },
 }
 
@@ -102,24 +102,24 @@ function ToggleRow({ icon, label, value, border }: { icon: React.ReactNode; labe
   return (
     <div
       className="px-4 py-3 flex items-center justify-between"
-      style={{ background: 'rgba(7,7,26,0.5)', borderTop: border ? '1px solid rgba(0,229,255,0.06)' : 'none' }}
+      style={{ background: 'rgba(7,7,26,0.5)', borderTop: border ? '1px solid rgba(var(--accent-rgb),0.06)' : 'none' }}
     >
       <div className="flex items-center gap-2.5">
-        <span style={{ color: 'rgba(0,229,255,0.35)' }}>{icon}</span>
+        <span style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>{icon}</span>
         <span className="text-sm" style={{ color: 'rgba(224,242,254,0.7)' }}>{label}</span>
       </div>
       <div
         className="w-10 h-5 rounded-full relative transition-all duration-300"
         style={{
-          background: value ? 'rgba(0,255,136,0.2)' : 'rgba(0,229,255,0.08)',
-          border: value ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(0,229,255,0.15)',
+          background: value ? 'rgba(0,255,136,0.2)' : 'rgba(var(--accent-rgb),0.08)',
+          border: value ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(var(--accent-rgb),0.15)',
           boxShadow: value ? '0 0 8px rgba(0,255,136,0.2)' : 'none',
         }}
       >
         <div
           className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300"
           style={{
-            background: value ? '#00ff88' : 'rgba(0,229,255,0.3)',
+            background: value ? '#00ff88' : 'rgba(var(--accent-rgb),0.3)',
             left: value ? 'calc(100% - 18px)' : '2px',
             boxShadow: value ? '0 0 6px rgba(0,255,136,0.5)' : 'none',
           }}
@@ -137,10 +137,10 @@ function ClickableToggle({ icon, label, value, onChange, border }: {
     <button
       onClick={onChange}
       className="w-full px-4 py-3 flex items-center justify-between transition-all duration-200"
-      style={{ background: 'rgba(7,7,26,0.5)', borderTop: border ? '1px solid rgba(0,229,255,0.06)' : 'none' }}
+      style={{ background: 'rgba(7,7,26,0.5)', borderTop: border ? '1px solid rgba(var(--accent-rgb),0.06)' : 'none' }}
     >
       <div className="flex items-center gap-2.5">
-        <span style={{ color: value ? 'rgba(0,255,136,0.6)' : 'rgba(0,229,255,0.35)' }}>{icon}</span>
+        <span style={{ color: value ? 'rgba(0,255,136,0.6)' : 'rgba(var(--accent-rgb),0.35)' }}>{icon}</span>
         <span className="text-sm" style={{ color: value ? 'rgba(224,242,254,0.85)' : 'rgba(224,242,254,0.7)' }}>{label}</span>
         {value && (
           <span
@@ -154,15 +154,15 @@ function ClickableToggle({ icon, label, value, onChange, border }: {
       <div
         className="w-10 h-5 rounded-full relative transition-all duration-300"
         style={{
-          background: value ? 'rgba(0,255,136,0.2)' : 'rgba(0,229,255,0.08)',
-          border: value ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(0,229,255,0.15)',
+          background: value ? 'rgba(0,255,136,0.2)' : 'rgba(var(--accent-rgb),0.08)',
+          border: value ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(var(--accent-rgb),0.15)',
           boxShadow: value ? '0 0 8px rgba(0,255,136,0.2)' : 'none',
         }}
       >
         <div
           className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300"
           style={{
-            background: value ? '#00ff88' : 'rgba(0,229,255,0.3)',
+            background: value ? '#00ff88' : 'rgba(var(--accent-rgb),0.3)',
             left: value ? 'calc(100% - 18px)' : '2px',
             boxShadow: value ? '0 0 6px rgba(0,255,136,0.5)' : 'none',
           }}
@@ -216,18 +216,18 @@ function SocialInbox({ token }: { token: string }) {
       {/* Nudges */}
       {nudges.length > 0 && (
         <div className="px-4 py-3" style={{ borderBottom: goOutRequests.length > 0 ? '1px solid rgba(255,0,110,0.08)' : 'none' }}>
-          <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>
+          <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
             👋 NUDGES ({nudges.length})
           </p>
           <div className="flex flex-wrap gap-2">
             {nudges.slice(0, 6).map((u) => (
               <Link key={u.id} href={`/profile/${u.username}`}
                 className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl"
-                style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.12)' }}>
+                style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}>
                 {u.photoUrl
                   ? <img src={u.photoUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
                   : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black"
-                      style={{ background: 'rgba(0,229,255,0.12)', color: '#00e5ff' }}>
+                      style={{ background: 'rgba(var(--accent-rgb),0.12)', color: 'var(--accent)' }}>
                       {u.displayName[0]}
                     </div>
                 }
@@ -484,7 +484,7 @@ export default function ProfilePage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 rounded-full border-2 animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
       </div>
     )
   }
@@ -548,11 +548,11 @@ export default function ProfilePage() {
         style={{
           background: (dbUser as any).profileBgImage
             ? `url(${(dbUser as any).profileBgImage}) center/cover no-repeat`
-            : (dbUser.profileBg || 'linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 100%)'),
+            : (dbUser.profileBg || 'linear-gradient(180deg, rgba(var(--accent-rgb),0.04) 0%, transparent 100%)'),
         }}
       >
         <div className="absolute top-0 inset-x-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent)' }} />
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.3), transparent)' }} />
 
         <div className="max-w-xl mx-auto flex items-center gap-5">
           {/* Avatar with upload */}
@@ -560,10 +560,10 @@ export default function ProfilePage() {
             <div className="relative" style={{ width: 80, height: 80 }}>
               {dbUser.photoUrl ? (
                 <img src={dbUser.photoUrl} alt="" className="w-20 h-20 rounded-2xl object-cover"
-                  style={{ border: '1px solid rgba(0,229,255,0.3)', boxShadow: '0 0 20px rgba(0,229,255,0.15)' }} />
+                  style={{ border: '1px solid rgba(var(--accent-rgb),0.3)', boxShadow: '0 0 20px rgba(var(--accent-rgb),0.15)' }} />
               ) : (
                 <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black"
-                  style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff', boxShadow: '0 0 20px rgba(0,229,255,0.1)' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)', boxShadow: '0 0 20px rgba(var(--accent-rgb),0.1)' }}>
                   {initials}
                 </div>
               )}
@@ -573,10 +573,10 @@ export default function ProfilePage() {
                 disabled={photoUploading}
                 className="absolute bottom-0 right-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                 style={{
-                  background: 'rgba(0,229,255,0.2)',
-                  border: '2px solid rgba(0,229,255,0.6)',
-                  color: '#00e5ff',
-                  boxShadow: '0 0 12px rgba(0,229,255,0.4)',
+                  background: 'rgba(var(--accent-rgb),0.2)',
+                  border: '2px solid rgba(var(--accent-rgb),0.6)',
+                  color: 'var(--accent)',
+                  boxShadow: '0 0 12px rgba(var(--accent-rgb),0.4)',
                   zIndex: 10,
                 }}>
                 {photoUploading
@@ -594,7 +594,7 @@ export default function ProfilePage() {
             </div>
             {/* "Change photo" label shown in edit mode */}
             {editing && (
-              <p className="text-[9px] font-bold text-center mt-1 tracking-wide" style={{ color: 'rgba(0,229,255,0.6)' }}>
+              <p className="text-[9px] font-bold text-center mt-1 tracking-wide" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
                 📷 Change
               </p>
             )}
@@ -609,7 +609,7 @@ export default function ProfilePage() {
                 {tier.icon} {tier.label}
               </span>
             </div>
-            <p className="text-xs mb-1" style={{ color: 'rgba(0,229,255,0.5)' }}>@{dbUser.username}</p>
+            <p className="text-xs mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>@{dbUser.username}</p>
             {dbUser.bio && (
               <p className="text-xs leading-relaxed line-clamp-2" style={{ color: 'rgba(224,242,254,0.5)' }}>{dbUser.bio}</p>
             )}
@@ -625,7 +625,7 @@ export default function ProfilePage() {
 
           <button onClick={() => setEditing((v) => !v)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-200 shrink-0"
-            style={{ border: editing ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.2)', color: editing ? '#00e5ff' : 'rgba(0,229,255,0.6)', background: editing ? 'rgba(0,229,255,0.08)' : 'rgba(0,229,255,0.04)' }}>
+            style={{ border: editing ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.2)', color: editing ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.6)', background: editing ? 'rgba(var(--accent-rgb),0.08)' : 'rgba(var(--accent-rgb),0.04)' }}>
             <Edit2 size={13} />
             <span className="text-[10px] font-black tracking-wide">{editing ? 'CLOSE' : 'EDIT'}</span>
           </button>
@@ -635,7 +635,7 @@ export default function ProfilePage() {
       {/* ── Mode Switcher ── */}
       <div className="px-4 max-w-xl mx-auto mb-3 mt-1">
         <div className="flex p-1 rounded-2xl gap-1"
-          style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           {(['ATTENDEE', 'HOST'] as const).map((mode) => {
             const active = accountMode === mode
             return (
@@ -647,18 +647,18 @@ export default function ProfilePage() {
                 style={{
                   background: active
                     ? mode === 'HOST'
-                      ? 'linear-gradient(135deg, rgba(168,85,247,0.2) 0%, rgba(0,229,255,0.15) 100%)'
-                      : 'rgba(0,229,255,0.12)'
+                      ? 'linear-gradient(135deg, rgba(168,85,247,0.2) 0%, rgba(var(--accent-rgb),0.15) 100%)'
+                      : 'rgba(var(--accent-rgb),0.12)'
                     : 'transparent',
                   border: active
                     ? mode === 'HOST'
                       ? '1px solid rgba(168,85,247,0.4)'
-                      : '1px solid rgba(0,229,255,0.3)'
+                      : '1px solid rgba(var(--accent-rgb),0.3)'
                     : '1px solid transparent',
                   color: active
-                    ? mode === 'HOST' ? '#a855f7' : '#00e5ff'
+                    ? mode === 'HOST' ? '#a855f7' : 'var(--accent)'
                     : 'rgba(255,255,255,0.25)',
-                  boxShadow: active ? `0 0 12px ${mode === 'HOST' ? 'rgba(168,85,247,0.15)' : 'rgba(0,229,255,0.1)'}` : 'none',
+                  boxShadow: active ? `0 0 12px ${mode === 'HOST' ? 'rgba(168,85,247,0.15)' : 'rgba(var(--accent-rgb),0.1)'}` : 'none',
                 }}
               >
                 {mode === 'ATTENDEE' ? <Ticket size={12} /> : <Building2 size={12} />}
@@ -676,33 +676,33 @@ export default function ProfilePage() {
         {/* Edit panel */}
         {editing && (
           <div className="p-4 rounded-2xl space-y-4 animate-fade-up"
-            style={{ background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.15)' }}>
+            style={{ background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
             <div className="flex items-center justify-between">
-              <p className="text-[9px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.4)' }}>EDIT PROFILE</p>
-              <p className="text-[9px]" style={{ color: 'rgba(0,229,255,0.3)' }}>Tap 📷 on avatar to change photo</p>
+              <p className="text-[9px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>EDIT PROFILE</p>
+              <p className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>Tap 📷 on avatar to change photo</p>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>DISPLAY NAME</label>
+              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>DISPLAY NAME</label>
               <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                 onFocus={() => setFocused('name')} onBlur={() => setFocused(null)}
                 maxLength={50}
                 className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
-                style={{ background: 'rgba(0,229,255,0.04)', border: focused === 'name' ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+                style={{ background: 'rgba(var(--accent-rgb),0.04)', border: focused === 'name' ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>BIO</label>
+              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>BIO</label>
               <textarea value={bio} onChange={(e) => setBio(e.target.value)}
                 onFocus={() => setFocused('bio')} onBlur={() => setFocused(null)}
                 rows={3} maxLength={200} placeholder="Tell the radar who you are..."
                 className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200 resize-none"
-                style={{ background: 'rgba(0,229,255,0.04)', border: focused === 'bio' ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+                style={{ background: 'rgba(var(--accent-rgb),0.04)', border: focused === 'bio' ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
             </div>
 
             {/* Profile Background */}
             <div className="flex flex-col gap-2">
-              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>PROFILE BACKGROUND</label>
+              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>PROFILE BACKGROUND</label>
               <div className="flex flex-wrap items-center gap-2">
                 {[
                   { value: '#07071a', label: 'Dark' },
@@ -721,8 +721,8 @@ export default function ProfilePage() {
                     style={{
                       width: 28, height: 28,
                       background: value,
-                      border: profileBg === value ? '2px solid #00e5ff' : '2px solid rgba(0,229,255,0.15)',
-                      boxShadow: profileBg === value ? '0 0 8px rgba(0,229,255,0.4)' : 'none',
+                      border: profileBg === value ? '2px solid var(--accent)' : '2px solid rgba(var(--accent-rgb),0.15)',
+                      boxShadow: profileBg === value ? '0 0 8px rgba(var(--accent-rgb),0.4)' : 'none',
                     }}
                   />
                 ))}
@@ -732,7 +732,7 @@ export default function ProfilePage() {
                   onClick={() => bgImageInputRef.current?.click()}
                   disabled={bgImageUploading}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50"
-                  style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.25)', color: 'rgba(0,229,255,0.7)' }}
+                  style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'rgba(var(--accent-rgb),0.7)' }}
                 >
                   {bgImageUploading
                     ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
@@ -759,7 +759,7 @@ export default function ProfilePage() {
                 />
               </div>
               {profileBgImage && (
-                <p className="text-[9px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+                <p className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                   Background image active — colour swatches are fallback
                 </p>
               )}
@@ -767,9 +767,9 @@ export default function ProfilePage() {
 
             {/* Accent Colour */}
             <div className="flex flex-col gap-2">
-              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.55)' }}>ACCENT COLOUR</label>
+              <label className="text-[10px] font-bold tracking-[0.15em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>ACCENT COLOUR</label>
               <div className="flex flex-wrap gap-2">
-                {['#00e5ff', '#a855f7', '#f59e0b', '#ec4899', '#10b981', '#ffd600'].map((color) => (
+                {['var(--accent)', '#a855f7', '#f59e0b', '#ec4899', '#10b981', '#ffd600'].map((color) => (
                   <button
                     key={color}
                     type="button"
@@ -795,12 +795,12 @@ export default function ProfilePage() {
             <div className="flex gap-2">
               <button onClick={() => { setEditing(false); setDisplayName(dbUser.displayName); setBio(dbUser.bio ?? ''); setProfileBg(dbUser.profileBg ?? null); setThemeColor(dbUser.themeColor ?? null) }}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold"
-                style={{ border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.5)' }}>
+                style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.5)' }}>
                 <X size={12} /> CANCEL
               </button>
               <button onClick={handleSave} disabled={saving}
                 className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50"
-                style={{ background: savedOk ? 'rgba(0,255,136,0.12)' : 'rgba(0,229,255,0.1)', border: savedOk ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(0,229,255,0.4)', color: savedOk ? '#00ff88' : '#00e5ff', letterSpacing: '0.1em' }}>
+                style={{ background: savedOk ? 'rgba(0,255,136,0.12)' : 'rgba(var(--accent-rgb),0.1)', border: savedOk ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(var(--accent-rgb),0.4)', color: savedOk ? '#00ff88' : 'var(--accent)', letterSpacing: '0.1em' }}>
                 {saving ? <><div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> SAVING...</>
                  : savedOk ? <><Check size={12} /> SAVED</>
                  : <><Check size={12} /> SAVE CHANGES</>}
@@ -832,22 +832,22 @@ export default function ProfilePage() {
               <button key={label} onClick={action}
                 className="p-2 rounded-xl text-center transition-all"
                 style={{
-                  background: isFollowStat ? 'rgba(0,229,255,0.05)' : 'rgba(0,229,255,0.03)',
-                  border: isFollowStat ? '1px solid rgba(0,229,255,0.15)' : '1px solid rgba(0,229,255,0.08)',
+                  background: isFollowStat ? 'rgba(var(--accent-rgb),0.05)' : 'rgba(var(--accent-rgb),0.03)',
+                  border: isFollowStat ? '1px solid rgba(var(--accent-rgb),0.15)' : '1px solid rgba(var(--accent-rgb),0.08)',
                   cursor: isFollowStat ? 'pointer' : 'default',
                 }}>
-                <Icon size={12} style={{ color: 'rgba(0,229,255,0.35)', margin: '0 auto 3px' }} />
+                <Icon size={12} style={{ color: 'rgba(var(--accent-rgb),0.35)', margin: '0 auto 3px' }} />
                 <p className="text-base font-black" style={{ color: '#e0f2fe' }}>{value}</p>
-                <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(0,229,255,0.35)' }}>{label}</p>
+                <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>{label}</p>
               </button>
             )
           })}
           {/* Social Score */}
           <div className="p-2 rounded-xl text-center"
-            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-            <Zap size={12} style={{ color: 'rgba(0,229,255,0.35)', margin: '0 auto 3px' }} />
-            <p className="text-base font-black" style={{ color: dbUser.themeColor ?? '#00e5ff' }}>{dbUser.socialScore ?? 0}</p>
-            <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(0,229,255,0.35)' }}>SCORE</p>
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+            <Zap size={12} style={{ color: 'rgba(var(--accent-rgb),0.35)', margin: '0 auto 3px' }} />
+            <p className="text-base font-black" style={{ color: dbUser.themeColor ?? 'var(--accent)' }}>{dbUser.socialScore ?? 0}</p>
+            <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>SCORE</p>
           </div>
         </div>
 
@@ -855,9 +855,9 @@ export default function ProfilePage() {
         <SocialInbox token={typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''} />
 
         {/* Going Out Tonight toggle */}
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
-          <div className="px-4 py-2.5" style={{ background: 'rgba(0,229,255,0.04)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
-            <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.5)' }}>STATUS</p>
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+          <div className="px-4 py-2.5" style={{ background: 'rgba(var(--accent-rgb),0.04)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+            <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>STATUS</p>
           </div>
           <ClickableToggle
             icon={<Zap size={13} />}
@@ -868,24 +868,24 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Activity / Reviews Tabs ── */}
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           {/* Tab headers */}
-          <div className="flex" style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+          <div className="flex" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             {([['activity', 'ACTIVITY'] as [ProfileTab, string], ['reviews', 'REVIEWS'] as [ProfileTab, string]]).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setProfileTab(key)}
                 className="flex-1 py-2.5 text-[10px] font-black tracking-widest relative transition-all duration-200"
                 style={{
-                  background: profileTab === key ? 'rgba(0,229,255,0.05)' : 'rgba(0,229,255,0.02)',
-                  color: profileTab === key ? '#00e5ff' : 'rgba(74,96,128,0.6)',
-                  textShadow: profileTab === key ? '0 0 10px rgba(0,229,255,0.5)' : 'none',
+                  background: profileTab === key ? 'rgba(var(--accent-rgb),0.05)' : 'rgba(var(--accent-rgb),0.02)',
+                  color: profileTab === key ? 'var(--accent)' : 'rgba(74,96,128,0.6)',
+                  textShadow: profileTab === key ? '0 0 10px rgba(var(--accent-rgb),0.5)' : 'none',
                 }}
               >
                 {label}
                 {profileTab === key && (
                   <span className="absolute bottom-0 left-4 right-4 h-px"
-                    style={{ background: 'linear-gradient(90deg, transparent, #00e5ff, transparent)' }} />
+                    style={{ background: 'linear-gradient(90deg, transparent, var(--accent), transparent)' }} />
                 )}
               </button>
             ))}
@@ -893,7 +893,7 @@ export default function ProfilePage() {
 
           {/* Activity tab */}
           {profileTab === 'activity' && (
-            <div className="divide-y" style={{ borderColor: 'rgba(0,229,255,0.06)' }}>
+            <div className="divide-y" style={{ borderColor: 'rgba(var(--accent-rgb),0.06)' }}>
               {activity.length === 0 ? (
                 <div className="py-10 text-center">
                   <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO ACTIVITY YET</p>
@@ -902,19 +902,19 @@ export default function ProfilePage() {
                 <div key={i} className="flex items-start gap-3 px-4 py-3" style={{ background: 'rgba(7,7,26,0.4)' }}>
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                    style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.1)' }}
+                    style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
                   >
-                    {item.type === 'CHECKIN' && <MapPin size={12} style={{ color: '#00e5ff' }} />}
+                    {item.type === 'CHECKIN' && <MapPin size={12} style={{ color: 'var(--accent)' }} />}
                     {item.type === 'RSVP'    && <Calendar size={12} style={{ color: '#a855f7' }} />}
                     {item.type === 'POST'    && <MessageSquare size={12} style={{ color: '#ec4899' }} />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold leading-tight" style={{ color: 'rgba(224,242,254,0.75)' }}>
                       {item.type === 'CHECKIN' && (
-                        <>Checked in at <span style={{ color: '#00e5ff' }}>{(item as any).venue}</span>
+                        <>Checked in at <span style={{ color: 'var(--accent)' }}>{(item as any).venue}</span>
                           {(item as any).crowdLevel && (
                             <span className="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded"
-                              style={{ color: CROWD_COLORS[(item as any).crowdLevel] ?? '#00e5ff', border: `1px solid ${CROWD_COLORS[(item as any).crowdLevel] ?? '#00e5ff'}40`, background: `${CROWD_COLORS[(item as any).crowdLevel] ?? '#00e5ff'}10` }}>
+                              style={{ color: CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)', border: `1px solid ${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}40`, background: `${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}10` }}>
                               {(item as any).crowdLevel}
                             </span>
                           )}
@@ -932,7 +932,7 @@ export default function ProfilePage() {
 
           {/* Reviews tab */}
           {profileTab === 'reviews' && (
-            <div className="divide-y" style={{ borderColor: 'rgba(0,229,255,0.06)' }}>
+            <div className="divide-y" style={{ borderColor: 'rgba(var(--accent-rgb),0.06)' }}>
               {reviews.length === 0 ? (
                 <div className="py-10 text-center">
                   <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO REVIEWS YET</p>
@@ -957,28 +957,28 @@ export default function ProfilePage() {
         </div>
 
         {/* Identity section */}
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
-          <div className="px-4 py-2.5" style={{ background: 'rgba(0,229,255,0.04)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
-            <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.5)' }}>IDENTITY</p>
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+          <div className="px-4 py-2.5" style={{ background: 'rgba(var(--accent-rgb),0.04)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+            <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>IDENTITY</p>
           </div>
           <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)' }}>
             <div className="flex items-center gap-2.5">
-              <User size={13} style={{ color: 'rgba(0,229,255,0.35)' }} />
+              <User size={13} style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />
               <span className="text-sm truncate" style={{ color: 'rgba(224,242,254,0.7)' }}>{dbUser.email}</span>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0" style={{ color: 'rgba(0,229,255,0.45)', border: '1px solid rgba(0,229,255,0.15)', background: 'rgba(0,229,255,0.05)' }}>VERIFIED</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0" style={{ color: 'rgba(var(--accent-rgb),0.45)', border: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(var(--accent-rgb),0.05)' }}>VERIFIED</span>
           </div>
-          <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)', borderTop: '1px solid rgba(0,229,255,0.06)' }}>
+          <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)', borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}>
             <div className="flex items-center gap-2.5">
-              <span className="text-sm" style={{ color: 'rgba(0,229,255,0.35)' }}>⚧</span>
+              <span className="text-sm" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>⚧</span>
               <span className="text-sm" style={{ color: 'rgba(224,242,254,0.7)' }}>
                 {localGender ? GENDER_LABELS[localGender as Gender] ?? localGender : 'Not set'}
               </span>
             </div>
           </div>
-          <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)', borderTop: '1px solid rgba(0,229,255,0.06)' }}>
+          <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)', borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}>
             <div className="flex items-center gap-2.5">
-              <ShieldCheck size={13} style={{ color: dbUser.ageVerified ? '#00ff88' : 'rgba(0,229,255,0.35)' }} />
+              <ShieldCheck size={13} style={{ color: dbUser.ageVerified ? '#00ff88' : 'rgba(var(--accent-rgb),0.35)' }} />
               <span className="text-sm" style={{ color: 'rgba(224,242,254,0.7)' }}>Age Verified</span>
             </div>
             <div className="flex items-center gap-2">
@@ -1014,12 +1014,12 @@ export default function ProfilePage() {
         </div>
 
         {/* Quick links */}
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.1)' }}>
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           {accountMode === 'HOST' ? (
             <>
               <Link href="/events/create"
                 className="flex items-center gap-3 px-4 py-4 transition-all duration-200"
-                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(0,229,255,0.06) 100%)', borderBottom: '1px solid rgba(0,229,255,0.08)', color: '#a855f7' }}>
+                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(var(--accent-rgb),0.06) 100%)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)', color: '#a855f7' }}>
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)' }}>
                   <Plus size={14} style={{ color: '#a855f7' }} />
                 </div>
@@ -1036,10 +1036,10 @@ export default function ProfilePage() {
               ].map(({ label, href, icon: Icon }, i) => (
                 <Link key={href} href={href}
                   className="flex items-center gap-3 px-4 py-3.5 transition-all duration-200"
-                  style={{ background: 'rgba(7,7,26,0.5)', borderTop: i > 0 ? '1px solid rgba(0,229,255,0.06)' : 'none', color: 'rgba(224,242,254,0.7)' }}>
-                  <Icon size={13} style={{ color: 'rgba(0,229,255,0.4)' }} />
+                  style={{ background: 'rgba(7,7,26,0.5)', borderTop: i > 0 ? '1px solid rgba(var(--accent-rgb),0.06)' : 'none', color: 'rgba(224,242,254,0.7)' }}>
+                  <Icon size={13} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
                   <span className="text-sm flex-1">{label}</span>
-                  <ChevronRight size={13} style={{ color: 'rgba(0,229,255,0.3)' }} />
+                  <ChevronRight size={13} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
                 </Link>
               ))}
             </>
@@ -1055,12 +1055,12 @@ export default function ProfilePage() {
               ].map(({ label, href, icon: Icon }, i) => (
                 <Link key={href} href={href}
                   className="flex items-center gap-3 px-4 py-3.5 transition-all duration-200"
-                  style={{ background: 'rgba(7,7,26,0.5)', borderTop: i > 0 ? '1px solid rgba(0,229,255,0.06)' : 'none', color: 'rgba(224,242,254,0.7)' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(0,229,255,0.04)' }}
+                  style={{ background: 'rgba(7,7,26,0.5)', borderTop: i > 0 ? '1px solid rgba(var(--accent-rgb),0.06)' : 'none', color: 'rgba(224,242,254,0.7)' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(var(--accent-rgb),0.04)' }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(7,7,26,0.5)' }}>
-                  <Icon size={13} style={{ color: 'rgba(0,229,255,0.4)' }} />
+                  <Icon size={13} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
                   <span className="text-sm flex-1">{label}</span>
-                  <ChevronRight size={13} style={{ color: 'rgba(0,229,255,0.3)' }} />
+                  <ChevronRight size={13} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
                 </Link>
               ))}
             </>
@@ -1089,7 +1089,7 @@ export default function ProfilePage() {
           >
             <div className="text-center space-y-2">
               <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-3"
-                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.2) 0%, rgba(0,229,255,0.15) 100%)', border: '1px solid rgba(168,85,247,0.4)' }}>
+                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.2) 0%, rgba(var(--accent-rgb),0.15) 100%)', border: '1px solid rgba(168,85,247,0.4)' }}>
                 <Building2 size={24} style={{ color: '#a855f7' }} />
               </div>
               <h2 className="text-xl font-black" style={{ color: '#e0f2fe' }}>Become a Host</h2>
@@ -1118,7 +1118,7 @@ export default function ProfilePage() {
               </button>
               <button onClick={confirmBecomeHost}
                 className="flex-1 py-2.5 rounded-xl text-xs font-black transition-all"
-                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(0,229,255,0.2) 100%)', border: '1px solid rgba(168,85,247,0.5)', color: '#a855f7', letterSpacing: '0.08em' }}>
+                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(var(--accent-rgb),0.2) 100%)', border: '1px solid rgba(168,85,247,0.5)', color: '#a855f7', letterSpacing: '0.08em' }}>
                 START HOSTING →
               </button>
             </div>

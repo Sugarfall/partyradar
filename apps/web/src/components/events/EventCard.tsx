@@ -14,7 +14,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
-  CLUB_NIGHT: '#00e5ff',
+  CLUB_NIGHT: 'var(--accent)',
   CONCERT: '#3d5afe',
   PUB_NIGHT: '#f59e0b',
 }
@@ -56,7 +56,7 @@ interface EventCardProps {
 
 export function EventCard({ event, compact = false }: EventCardProps) {
   const isFree = event.price === 0
-  const color = TYPE_COLORS[event.type] ?? '#00e5ff'
+  const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
   const countdown = useCountdown(event.startsAt)
   const showCountdown = countdown && (event as any).host?.subscriptionTier !== 'FREE'
 
@@ -66,7 +66,7 @@ export function EventCard({ event, compact = false }: EventCardProps) {
         className="relative overflow-hidden rounded-xl transition-all duration-200 group cursor-pointer"
         style={{
           background: '#07071a',
-          border: `1px solid rgba(0,229,255,0.1)`,
+          border: `1px solid rgba(var(--accent-rgb),0.1)`,
           boxShadow: '0 0 20px rgba(0,0,0,0.5)',
         }}
         onMouseEnter={(e) => {
@@ -76,7 +76,7 @@ export function EventCard({ event, compact = false }: EventCardProps) {
         }}
         onMouseLeave={(e) => {
           const el = e.currentTarget as HTMLDivElement
-          el.style.border = '1px solid rgba(0,229,255,0.1)'
+          el.style.border = '1px solid rgba(var(--accent-rgb),0.1)'
           el.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)'
         }}
       >
@@ -170,17 +170,17 @@ export function EventCard({ event, compact = false }: EventCardProps) {
           {/* Meta */}
           <div className="space-y-1 text-[11px]" style={{ color: 'rgba(74,96,128,0.8)' }}>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Calendar size={10} style={{ color: 'rgba(0,229,255,0.4)' }} />
+              <Calendar size={10} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
               <span>{formatDate(event.startsAt)}</span>
               {showCountdown && (
                 <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded"
-                  style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff', border: '1px solid rgba(0,229,255,0.2)' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
                   {countdown === 'Now' ? '🔴 LIVE' : `⏱ ${countdown}`}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-1.5">
-              <MapPin size={10} style={{ color: 'rgba(0,229,255,0.4)' }} />
+              <MapPin size={10} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
               <span className="truncate">{event.neighbourhood}</span>
             </div>
           </div>
@@ -188,7 +188,7 @@ export function EventCard({ event, compact = false }: EventCardProps) {
           {/* Footer */}
           <div
             className="flex items-center justify-between mt-3 pt-2"
-            style={{ borderTop: '1px solid rgba(0,229,255,0.07)' }}
+            style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.07)' }}
           >
             <span
               className="text-xs font-bold"
@@ -207,7 +207,7 @@ export function EventCard({ event, compact = false }: EventCardProps) {
 
           {/* External source attribution (required by Skiddle/Ticketmaster ToS) */}
           {event.externalSource && SOURCE_LABELS[event.externalSource] && (
-            <div className="mt-2 pt-1.5" style={{ borderTop: '1px solid rgba(0,229,255,0.05)' }}>
+            <div className="mt-2 pt-1.5" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.05)' }}>
               {event.socialSourceUrl ? (
                 <a
                   href={event.socialSourceUrl}
@@ -236,9 +236,9 @@ export function EventCard({ event, compact = false }: EventCardProps) {
                   key={tag}
                   className="text-[9px] font-bold px-2 py-0.5 rounded-full"
                   style={{
-                    color: 'rgba(0,229,255,0.5)',
-                    border: '1px solid rgba(0,229,255,0.12)',
-                    background: 'rgba(0,229,255,0.04)',
+                    color: 'rgba(var(--accent-rgb),0.5)',
+                    border: '1px solid rgba(var(--accent-rgb),0.12)',
+                    background: 'rgba(var(--accent-rgb),0.04)',
                     letterSpacing: '0.06em',
                   }}
                 >

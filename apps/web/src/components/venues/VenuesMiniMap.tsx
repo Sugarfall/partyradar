@@ -9,7 +9,7 @@ import Link from 'next/link'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
 const TYPE_COLORS: Record<string, string> = {
-  NIGHTCLUB:    '#00e5ff',
+  NIGHTCLUB:    'var(--accent)',
   BAR:          '#a855f7',
   PUB:          '#22c55e',
   CONCERT_HALL: '#3d5afe',
@@ -80,7 +80,7 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect, flyToCente
       <NavigationControl position="top-right" showCompass={false} />
 
       {venues.map((venue) => {
-        const color = TYPE_COLORS[venue.type] ?? '#00e5ff'
+        const color = TYPE_COLORS[venue.type] ?? 'var(--accent)'
         const isSelected = venue.id === selectedId
 
         return (
@@ -126,7 +126,7 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect, flyToCente
           <div
             style={{
               background: 'rgba(7,7,26,0.97)',
-              border: `1px solid ${TYPE_COLORS[popupVenue.type] ?? '#00e5ff'}50`,
+              border: `1px solid ${TYPE_COLORS[popupVenue.type] ?? 'var(--accent)'}50`,
               borderRadius: 10,
               padding: '10px 12px',
               minWidth: 160,
@@ -136,7 +136,7 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect, flyToCente
             <p style={{ color: '#e0f2fe', fontWeight: 800, fontSize: 12, letterSpacing: '0.04em', marginBottom: 2 }}>
               {popupVenue.name}
             </p>
-            <p style={{ color: TYPE_COLORS[popupVenue.type] ?? '#00e5ff', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', marginBottom: 6 }}>
+            <p style={{ color: TYPE_COLORS[popupVenue.type] ?? 'var(--accent)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', marginBottom: 6 }}>
               {TYPE_LABELS[popupVenue.type] ?? popupVenue.type}
             </p>
             <Link
@@ -149,9 +149,9 @@ export default function VenuesMiniMap({ venues, selectedId, onSelect, flyToCente
                 fontSize: 9,
                 fontWeight: 800,
                 letterSpacing: '0.1em',
-                color: TYPE_COLORS[popupVenue.type] ?? '#00e5ff',
-                border: `1px solid ${TYPE_COLORS[popupVenue.type] ?? '#00e5ff'}50`,
-                background: `${TYPE_COLORS[popupVenue.type] ?? '#00e5ff'}12`,
+                color: TYPE_COLORS[popupVenue.type] ?? 'var(--accent)',
+                border: `1px solid ${TYPE_COLORS[popupVenue.type] ?? 'var(--accent)'}50`,
+                background: `${TYPE_COLORS[popupVenue.type] ?? 'var(--accent)'}12`,
                 textDecoration: 'none',
               }}
             >

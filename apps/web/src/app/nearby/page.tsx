@@ -101,13 +101,13 @@ function SwipeCard({ profile, onLike, onPass, isTop }: {
       <div className="w-full h-full rounded-3xl overflow-hidden relative"
         style={{
           background: '#0a0a1a',
-          border: '1px solid rgba(0,229,255,0.12)',
+          border: '1px solid rgba(var(--accent-rgb),0.12)',
           boxShadow: isTop ? '0 20px 60px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.4)',
         }}>
         {profile.photoUrl
           ? <img src={profile.photoUrl} alt={profile.displayName} className="w-full h-full object-cover" draggable={false} />
           : <div className="w-full h-full flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, rgba(0,229,255,0.06), rgba(255,0,110,0.06))' }}>
+              style={{ background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.06), rgba(255,0,110,0.06))' }}>
               <div className="text-7xl opacity-20">👤</div>
             </div>
         }
@@ -131,12 +131,12 @@ function SwipeCard({ profile, onLike, onPass, isTop }: {
         <div className="absolute bottom-0 left-0 right-0 px-5 pb-5">
           <h2 className="text-2xl font-black truncate" style={{ color: '#e0f2fe' }}>{profile.displayName}</h2>
           {profile.username && (
-            <p className="text-xs font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>@{profile.username}</p>
+            <p className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>@{profile.username}</p>
           )}
           {profile.distance !== null && (
             <div className="flex items-center gap-1 mt-1">
-              <MapPin size={11} style={{ color: 'rgba(0,229,255,0.5)' }} />
-              <span className="text-[11px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              <MapPin size={11} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+              <span className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                 {profile.distance < 1 ? '< 1 km away' : `${profile.distance} km away`}
               </span>
             </div>
@@ -148,7 +148,7 @@ function SwipeCard({ profile, onLike, onPass, isTop }: {
             <div className="flex flex-wrap gap-1.5 mt-2">
               {profile.interests.slice(0, 4).map((tag) => (
                 <span key={tag} className="px-2 py-0.5 rounded-lg text-[10px] font-bold"
-                  style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
                   {tag}
                 </span>
               ))}
@@ -202,7 +202,7 @@ function MatchModal({ profile, conversationId, onClose }: {
           )}
           <button onClick={onClose}
             className="flex-1 py-3.5 rounded-xl text-sm font-black tracking-widest"
-            style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
             KEEP SWIPING
           </button>
         </div>
@@ -350,15 +350,15 @@ export default function NearbyPage() {
     <div className="min-h-screen pb-24" style={{ background: '#07071a', paddingTop: 56 }}>
       {/* Header + tab switcher */}
       <div className="sticky top-14 z-10 px-4 pt-4 pb-3"
-        style={{ background: 'rgba(7,7,26,0.97)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+        style={{ background: 'rgba(7,7,26,0.97)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
         <div className="max-w-lg mx-auto">
           <div className="flex gap-2">
             <button onClick={() => setTab('nearby')}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-black tracking-widest transition-all"
               style={{
-                background: tab === 'nearby' ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.03)',
-                border: `1px solid ${tab === 'nearby' ? 'rgba(0,229,255,0.35)' : 'rgba(0,229,255,0.08)'}`,
-                color: tab === 'nearby' ? '#00e5ff' : 'rgba(0,229,255,0.3)',
+                background: tab === 'nearby' ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.03)',
+                border: `1px solid ${tab === 'nearby' ? 'rgba(var(--accent-rgb),0.35)' : 'rgba(var(--accent-rgb),0.08)'}`,
+                color: tab === 'nearby' ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)',
               }}>
               <MapPin size={12} /> NEARBY
             </button>
@@ -379,50 +379,50 @@ export default function NearbyPage() {
       {tab === 'nearby' && (
         <div className="max-w-lg mx-auto px-4 py-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold" style={{ color: 'rgba(0,229,255,0.4)' }}>
+            <p className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
               {coords ? 'People within 2km · live' : locationDenied ? 'Location access denied' : 'Getting your location…'}
             </p>
             <button onClick={() => coords && fetchPeople(coords.lat, coords.lng)} disabled={nearbyLoading || !coords}
-              className="p-2 rounded-xl" style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.12)', color: nearbyLoading ? 'rgba(0,229,255,0.2)' : '#00e5ff' }}>
+              className="p-2 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.12)', color: nearbyLoading ? 'rgba(var(--accent-rgb),0.2)' : 'var(--accent)' }}>
               <RefreshCw size={14} className={nearbyLoading ? 'animate-spin' : ''} />
             </button>
           </div>
 
           {locationDenied && (
             <div className="py-16 text-center space-y-3">
-              <MapPin size={36} style={{ color: 'rgba(0,229,255,0.2)', margin: '0 auto' }} />
+              <MapPin size={36} style={{ color: 'rgba(var(--accent-rgb),0.2)', margin: '0 auto' }} />
               <p className="text-sm font-black" style={{ color: 'rgba(224,242,254,0.5)' }}>Location needed</p>
               <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Enable location access to see who&apos;s nearby</p>
             </div>
           )}
           {!locationDenied && nearbyLoading && people.length === 0 && (
             <div className="py-16 flex justify-center">
-              <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+              <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           )}
           {!locationDenied && !nearbyLoading && people.length === 0 && coords && (
             <div className="py-16 text-center space-y-3">
-              <Users size={36} style={{ color: 'rgba(0,229,255,0.15)', margin: '0 auto' }} />
+              <Users size={36} style={{ color: 'rgba(var(--accent-rgb),0.15)', margin: '0 auto' }} />
               <p className="text-sm font-black" style={{ color: 'rgba(224,242,254,0.4)' }}>No one nearby yet</p>
               <p className="text-xs" style={{ color: 'rgba(224,242,254,0.25)' }}>Check back when more people are out</p>
             </div>
           )}
           {!dbUser && people.length > 0 && (
             <div className="px-4 py-3 rounded-xl text-center text-xs"
-              style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(224,242,254,0.4)' }}>
-              <Link href="/login" className="font-black" style={{ color: '#00e5ff' }}>Log in</Link> to follow people
+              style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', color: 'rgba(224,242,254,0.4)' }}>
+              <Link href="/login" className="font-black" style={{ color: 'var(--accent)' }}>Log in</Link> to follow people
             </div>
           )}
           {people.map((person) => {
             const isFollowing = following.has(person.id) ? !person.isFollowing : person.isFollowing
             return (
               <div key={person.id} className="p-4 rounded-2xl flex items-center gap-3"
-                style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}>
+                style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
                 <Link href={`/profile/${person.username}`} className="shrink-0">
                   {person.photoUrl
                     ? <img src={person.photoUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
                     : <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-lg"
-                        style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+                        style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
                         {person.displayName[0]?.toUpperCase()}
                       </div>
                   }
@@ -430,7 +430,7 @@ export default function NearbyPage() {
                 <div className="flex-1 min-w-0">
                   <Link href={`/profile/${person.username}`}>
                     <p className="font-black text-sm truncate" style={{ color: '#e0f2fe' }}>{person.displayName}</p>
-                    <p className="text-[11px] truncate" style={{ color: 'rgba(0,229,255,0.4)' }}>@{person.username}</p>
+                    <p className="text-[11px] truncate" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{person.username}</p>
                   </Link>
                   {person.bio && <p className="text-xs mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>{person.bio}</p>}
                 </div>
@@ -443,8 +443,8 @@ export default function NearbyPage() {
                     <button onClick={() => toggleFollow(person.id, isFollowing)}
                       className="px-3 py-1 rounded-lg text-[10px] font-black"
                       style={isFollowing
-                        ? { background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.4)' }
-                        : { background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}>
+                        ? { background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.4)' }
+                        : { background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}>
                       {isFollowing ? 'FOLLOWING' : '+ FOLLOW'}
                     </button>
                   )}

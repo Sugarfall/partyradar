@@ -36,15 +36,15 @@ function Tag({
       style={{
         padding: '5px 12px',
         borderRadius: 999,
-        border: active ? '1px solid rgba(0,229,255,0.55)' : '1px solid rgba(74,96,128,0.25)',
-        background: active ? 'rgba(0,229,255,0.12)' : 'rgba(4,4,13,0.5)',
-        color: active ? '#00e5ff' : 'rgba(74,96,128,0.6)',
+        border: active ? '1px solid rgba(var(--accent-rgb),0.55)' : '1px solid rgba(74,96,128,0.25)',
+        background: active ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(4,4,13,0.5)',
+        color: active ? 'var(--accent)' : 'rgba(74,96,128,0.6)',
         fontSize: 11,
         fontWeight: active ? 700 : 500,
         letterSpacing: '0.06em',
         cursor: 'pointer',
         transition: 'all 0.15s',
-        boxShadow: active ? '0 0 10px rgba(0,229,255,0.1)' : 'none',
+        boxShadow: active ? '0 0 10px rgba(var(--accent-rgb),0.1)' : 'none',
         whiteSpace: 'nowrap',
       }}
     >
@@ -60,7 +60,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
         fontSize: 9,
         fontWeight: 900,
         letterSpacing: '0.2em',
-        color: 'rgba(0,229,255,0.4)',
+        color: 'rgba(var(--accent-rgb),0.4)',
         marginBottom: 8,
       }}
     >
@@ -128,7 +128,7 @@ export default function InterestTagSelector({
 
       {/* Selection summary */}
       {selected.length > 0 && (
-        <p style={{ fontSize: 10, color: 'rgba(0,229,255,0.4)', letterSpacing: '0.08em' }}>
+        <p style={{ fontSize: 10, color: 'rgba(var(--accent-rgb),0.4)', letterSpacing: '0.08em' }}>
           {selected.length} selected{maxSelect !== undefined ? ` / ${maxSelect} max` : ''}
         </p>
       )}

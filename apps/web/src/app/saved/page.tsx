@@ -64,7 +64,7 @@ export default function SavedEventsPage() {
         {isLoading && (
           <div className="flex justify-center py-20">
             <div className="w-8 h-8 rounded-full border-2 animate-spin"
-              style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+              style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
           </div>
         )}
 
@@ -75,7 +75,7 @@ export default function SavedEventsPage() {
             <p className="text-xs mb-6" style={{ color: 'rgba(255,255,255,0.2)' }}>Tap the bookmark icon on any event to save it</p>
             <Link href="/discover"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-              style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+              style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
               Explore Events
             </Link>
           </div>
@@ -83,7 +83,7 @@ export default function SavedEventsPage() {
 
         <div className="space-y-3">
           {events.map((event: any) => {
-            const color = TYPE_COLORS[event.type] ?? '#00e5ff'
+            const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
             const isFree = event.price === 0
             return (
               <Link key={event.id} href={`/events/${event.id}`}

@@ -30,7 +30,7 @@ const PARTY_SIGNALS = [
 ]
 
 const ACCENT_COLORS = [
-  { hex: '#00e5ff', label: 'Cyan' },
+  { hex: 'var(--accent)', label: 'Cyan' },
   { hex: '#ff006e', label: 'Pink' },
   { hex: '#3d5afe', label: 'Indigo' },
   { hex: '#00ff88', label: 'Green' },
@@ -56,7 +56,7 @@ const AGE_OPTIONS = [
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
-  CLUB_NIGHT: '#00e5ff',
+  CLUB_NIGHT: 'var(--accent)',
   CONCERT:    '#3d5afe',
   PUB_NIGHT:  '#f59e0b',
 }
@@ -65,7 +65,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return (
     <div>
       <label className="text-[10px] font-black tracking-[0.15em] block mb-1.5"
-        style={{ color: 'rgba(0,229,255,0.5)' }}>{label}</label>
+        style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>{label}</label>
       {children}
     </div>
   )
@@ -75,17 +75,17 @@ function SectionHeader({ title, icon }: { title: string; icon?: React.ReactNode 
   return (
     <div className="flex items-center gap-2 mt-3 mb-2">
       {icon}
-      <span className="text-[10px] font-black tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.35)' }}>
+      <span className="text-[10px] font-black tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>
         {title}
       </span>
-      <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.08)' }} />
+      <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.08)' }} />
     </div>
   )
 }
 
 const inputStyle = {
-  background: 'rgba(0,229,255,0.04)',
-  border: '1px solid rgba(0,229,255,0.18)',
+  background: 'rgba(var(--accent-rgb),0.04)',
+  border: '1px solid rgba(var(--accent-rgb),0.18)',
   color: '#e0f2fe',
 } as const
 
@@ -155,12 +155,12 @@ export default function EditEventPage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d' }}>
         <div className="w-10 h-10 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
       </div>
     )
   }
 
-  const accent = form.accentColor || TYPE_COLORS[event.type] || '#00e5ff'
+  const accent = form.accentColor || TYPE_COLORS[event.type] || 'var(--accent)'
 
   function set<K extends keyof typeof form>(key: K, value: typeof form[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -343,7 +343,7 @@ export default function EditEventPage() {
         </div>
 
         {/* ─── Look & Feel ────────────────────────────────────── */}
-        <SectionHeader title="LOOK & FEEL" icon={<Palette size={11} style={{ color: 'rgba(0,229,255,0.35)' }} />} />
+        <SectionHeader title="LOOK & FEEL" icon={<Palette size={11} style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />} />
 
         <Field label="ACCENT COLOR">
           <div className="flex gap-2 flex-wrap">
@@ -380,8 +380,8 @@ export default function EditEventPage() {
                 <button key={tag} type="button" onClick={() => toggleVibe(tag)}
                   className="text-[10px] font-bold px-2.5 py-1 rounded-full transition-all"
                   style={{
-                    background: active ? `${accent}18` : 'rgba(0,229,255,0.03)',
-                    border: active ? `1px solid ${accent}50` : '1px solid rgba(0,229,255,0.1)',
+                    background: active ? `${accent}18` : 'rgba(var(--accent-rgb),0.03)',
+                    border: active ? `1px solid ${accent}50` : '1px solid rgba(var(--accent-rgb),0.1)',
                     color: active ? accent : 'rgba(224,242,254,0.4)',
                   }}>
                   #{tag}
@@ -400,8 +400,8 @@ export default function EditEventPage() {
                   onClick={() => set('alcoholPolicy', opt.value)}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl transition-all text-center"
                   style={{
-                    background: active ? `${accent}12` : 'rgba(0,229,255,0.03)',
-                    border: active ? `1px solid ${accent}50` : '1px solid rgba(0,229,255,0.1)',
+                    background: active ? `${accent}12` : 'rgba(var(--accent-rgb),0.03)',
+                    border: active ? `1px solid ${accent}50` : '1px solid rgba(var(--accent-rgb),0.1)',
                   }}>
                   <span className="text-lg">{opt.emoji}</span>
                   <span className="text-[9px] font-bold" style={{ color: active ? accent : 'rgba(224,242,254,0.4)' }}>
@@ -422,8 +422,8 @@ export default function EditEventPage() {
                   onClick={() => set('ageRestriction', opt.value)}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl transition-all text-center"
                   style={{
-                    background: active ? `${accent}12` : 'rgba(0,229,255,0.03)',
-                    border: active ? `1px solid ${accent}50` : '1px solid rgba(0,229,255,0.1)',
+                    background: active ? `${accent}12` : 'rgba(var(--accent-rgb),0.03)',
+                    border: active ? `1px solid ${accent}50` : '1px solid rgba(var(--accent-rgb),0.1)',
                   }}>
                   <span className="text-lg">{opt.emoji}</span>
                   <span className="text-[9px] font-bold" style={{ color: active ? accent : 'rgba(224,242,254,0.4)' }}>
@@ -437,7 +437,7 @@ export default function EditEventPage() {
 
         {/* Invite Only toggle */}
         <div className="flex items-center justify-between py-3 px-4 rounded-xl"
-          style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.1)' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           <div>
             <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>Invite Only</p>
             <p className="text-[9px]" style={{ color: 'rgba(74,96,128,0.6)' }}>Only people with the link can RSVP</p>
@@ -484,7 +484,7 @@ export default function EditEventPage() {
         {isHomeparty && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-black tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              <span className="text-[10px] font-black tracking-[0.15em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                 PARTY SIGNALS
               </span>
               <span className="text-[9px] font-bold" style={{ color: 'rgba(255,0,110,0.5)' }}>
@@ -498,8 +498,8 @@ export default function EditEventPage() {
                   <button key={code} type="button" onClick={() => toggleSign(code)}
                     className="flex flex-col items-center gap-0.5 py-2 rounded-xl transition-all"
                     style={{
-                      background: active ? 'rgba(255,0,110,0.12)' : 'rgba(0,229,255,0.03)',
-                      border: active ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(0,229,255,0.1)',
+                      background: active ? 'rgba(255,0,110,0.12)' : 'rgba(var(--accent-rgb),0.03)',
+                      border: active ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
                       filter: active ? 'drop-shadow(0 0 6px rgba(255,0,110,0.4))' : 'none',
                     }}>
                     <span className="text-xl">{emoji}</span>
@@ -514,7 +514,7 @@ export default function EditEventPage() {
         )}
 
         {/* ─── Live Preview ───────────────────────────────────── */}
-        <SectionHeader title="PREVIEW" icon={<Eye size={11} style={{ color: 'rgba(0,229,255,0.35)' }} />} />
+        <SectionHeader title="PREVIEW" icon={<Eye size={11} style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />} />
 
         <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${accent}20` }}>
           <div className="relative" style={{ height: 80 }}>

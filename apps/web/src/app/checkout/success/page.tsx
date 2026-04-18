@@ -47,13 +47,13 @@ function SuccessContent() {
         </p>
 
         {/* Divider */}
-        <div className="h-px mb-8" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.2), transparent)' }} />
+        <div className="h-px mb-8" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.2), transparent)' }} />
 
         <div className="space-y-3">
           <Link href="/profile"
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm"
             style={{
-              background: 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,229,255,0.1))',
+              background: 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(var(--accent-rgb),0.1))',
               border: '1px solid rgba(0,255,136,0.45)',
               color: '#00ff88',
               boxShadow: '0 0 24px rgba(0,255,136,0.15)',
@@ -65,7 +65,7 @@ function SuccessContent() {
           {eventId && (
             <Link href={`/events/${eventId}`}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm"
-              style={{ border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', letterSpacing: '0.1em' }}>
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', letterSpacing: '0.1em' }}>
               <Zap size={14} /> BACK TO EVENT
             </Link>
           )}

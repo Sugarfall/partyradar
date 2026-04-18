@@ -15,7 +15,7 @@ export function ThemeProvider() {
   const { dbUser } = useAuth()
 
   useEffect(() => {
-    const accent = dbUser?.themeColor ?? '#00e5ff'
+    const accent = dbUser?.themeColor ?? 'var(--accent)'
     document.documentElement.style.setProperty('--accent', accent)
     // Provide RGB version for rgba() usage
     if (accent.startsWith('#') && accent.length >= 7) {

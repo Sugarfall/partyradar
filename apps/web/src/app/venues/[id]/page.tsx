@@ -82,7 +82,7 @@ const TYPE_LABELS: Record<VenueType, string> = {
 
 const EVENT_TYPE_COLORS: Record<EventType, string> = {
   HOME_PARTY: '#ff006e',
-  CLUB_NIGHT:  '#00e5ff',
+  CLUB_NIGHT:  'var(--accent)',
   CONCERT:     '#3d5afe',
   PUB_NIGHT:   '#f59e0b',
 }
@@ -123,23 +123,23 @@ function OpeningHours({ hours }: { hours: unknown }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
-        <Clock size={14} style={{ color: 'rgba(0,229,255,0.5)' }} />
-        <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>OPENING HOURS</p>
+        <Clock size={14} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+        <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>OPENING HOURS</p>
       </div>
-      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.08)' }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
         {entries.map((e, i) => {
           const isToday = e.day.toLowerCase() === DAY_NAMES[todayIdx]?.toLowerCase()
           const isClosed = e.times.toLowerCase() === 'closed' || e.times === ''
           return (
             <div key={i} className="flex items-center justify-between px-4 py-2.5"
               style={{
-                background: isToday ? 'rgba(0,229,255,0.06)' : i % 2 === 0 ? 'rgba(0,0,0,0)' : 'rgba(0,229,255,0.02)',
-                borderBottom: i < entries.length - 1 ? '1px solid rgba(0,229,255,0.06)' : 'none',
+                background: isToday ? 'rgba(var(--accent-rgb),0.06)' : i % 2 === 0 ? 'rgba(0,0,0,0)' : 'rgba(var(--accent-rgb),0.02)',
+                borderBottom: i < entries.length - 1 ? '1px solid rgba(var(--accent-rgb),0.06)' : 'none',
               }}>
-              <span className="text-sm font-bold" style={{ color: isToday ? '#00e5ff' : 'rgba(224,242,254,0.6)' }}>
+              <span className="text-sm font-bold" style={{ color: isToday ? 'var(--accent)' : 'rgba(224,242,254,0.6)' }}>
                 {isToday ? `${e.day} (Today)` : e.day}
               </span>
-              <span className="text-sm font-bold" style={{ color: isClosed ? 'rgba(255,0,110,0.6)' : isToday ? '#00e5ff' : 'rgba(224,242,254,0.8)' }}>
+              <span className="text-sm font-bold" style={{ color: isClosed ? 'rgba(255,0,110,0.6)' : isToday ? 'var(--accent)' : 'rgba(224,242,254,0.8)' }}>
                 {isClosed ? 'Closed' : e.times}
               </span>
             </div>
@@ -156,12 +156,12 @@ function ClaimModal({ venueName, onClose }: { venueName: string; onClose: () => 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}
       onClick={onClose}>
-      <div className="rounded-2xl p-6 max-w-sm w-full" style={{ background: '#111118', border: '1px solid rgba(0,229,255,0.2)' }}
+      <div className="rounded-2xl p-6 max-w-sm w-full" style={{ background: '#111118', border: '1px solid rgba(var(--accent-rgb),0.2)' }}
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Building2 size={16} style={{ color: '#00e5ff' }} />
-            <span className="text-xs font-black tracking-widest" style={{ color: '#00e5ff' }}>CLAIM VENUE</span>
+            <Building2 size={16} style={{ color: 'var(--accent)' }} />
+            <span className="text-xs font-black tracking-widest" style={{ color: 'var(--accent)' }}>CLAIM VENUE</span>
           </div>
           <button onClick={onClose}><X size={16} style={{ color: 'rgba(74,96,128,0.6)' }} /></button>
         </div>
@@ -172,7 +172,7 @@ function ClaimModal({ venueName, onClose }: { venueName: string; onClose: () => 
         <a
           href="mailto:hello@partyradar.app?subject=Venue Claim Request"
           className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold transition-all"
-          style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff', border: '1px solid rgba(0,229,255,0.25)' }}
+          style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}
         >
           CONTACT US →
         </a>
@@ -231,7 +231,7 @@ export default function VenueDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#0d0d0f' }}>
-        <Loader2 size={24} className="animate-spin" style={{ color: '#00e5ff' }} />
+        <Loader2 size={24} className="animate-spin" style={{ color: 'var(--accent)' }} />
       </div>
     )
   }
@@ -240,9 +240,9 @@ export default function VenueDetailPage() {
   if (notFound || !venue) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#0d0d0f' }}>
-        <AlertTriangle size={32} style={{ color: 'rgba(0,229,255,0.3)' }} />
+        <AlertTriangle size={32} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
         <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.6)' }}>VENUE NOT FOUND</p>
-        <Link href="/venues" className="text-xs font-bold" style={{ color: '#00e5ff' }}>← Back to Venues</Link>
+        <Link href="/venues" className="text-xs font-bold" style={{ color: 'var(--accent)' }}>← Back to Venues</Link>
       </div>
     )
   }
@@ -286,7 +286,7 @@ export default function VenueDetailPage() {
         <button
           onClick={() => router.push('/venues')}
           className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
-          style={{ background: 'rgba(4,4,13,0.6)', border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe', backdropFilter: 'blur(8px)' }}
+          style={{ background: 'rgba(4,4,13,0.6)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe', backdropFilter: 'blur(8px)' }}
         >
           <ArrowLeft size={12} /> VENUES
         </button>
@@ -300,7 +300,7 @@ export default function VenueDetailPage() {
             </span>
             {venue.isClaimed && (
               <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded"
-                style={{ color: '#00e5ff', background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)' }}>
+                style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
                 <CheckCircle size={8} /> VERIFIED
               </span>
             )}
@@ -317,40 +317,40 @@ export default function VenueDetailPage() {
         {/* ─── Info grid ─── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {venue.phone && (
-            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-              <Phone size={14} style={{ color: 'rgba(0,229,255,0.5)' }} />
+            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <Phone size={14} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
               <div>
-                <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>PHONE</p>
+                <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>PHONE</p>
                 <a href={`tel:${venue.phone}`} className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{venue.phone}</a>
               </div>
             </div>
           )}
 
           {venue.website && (
-            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-              <Globe size={14} style={{ color: 'rgba(0,229,255,0.5)' }} />
+            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <Globe size={14} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
               <div>
-                <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>WEBSITE</p>
-                <a href={venue.website} target="_blank" rel="noopener noreferrer" className="text-sm font-bold hover:underline" style={{ color: '#00e5ff' }}>
+                <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>WEBSITE</p>
+                <a href={venue.website} target="_blank" rel="noopener noreferrer" className="text-sm font-bold hover:underline" style={{ color: 'var(--accent)' }}>
                   {venue.website.replace(/^https?:\/\//, '')}
                 </a>
               </div>
             </div>
           )}
 
-          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-            <MapPin size={14} style={{ color: 'rgba(0,229,255,0.5)' }} />
+          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+            <MapPin size={14} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>LOCATION</p>
+              <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>LOCATION</p>
               <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{venue.city}</p>
             </div>
           </div>
 
           {venue.rating && (
-            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-              <Tag size={14} style={{ color: 'rgba(0,229,255,0.5)' }} />
+            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <Tag size={14} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
               <div>
-                <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>RATING</p>
+                <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>RATING</p>
                 <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>★ {venue.rating.toFixed(1)}</p>
               </div>
             </div>
@@ -360,11 +360,11 @@ export default function VenueDetailPage() {
         {/* ─── Vibe tags ─── */}
         {venue.vibeTags.length > 0 && (
           <div>
-            <p className="text-[10px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>VIBE</p>
+            <p className="text-[10px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>VIBE</p>
             <div className="flex flex-wrap gap-2">
               {venue.vibeTags.map((tag) => (
                 <span key={tag} className="text-xs px-3 py-1 rounded-full"
-                  style={{ color: 'rgba(0,229,255,0.7)', background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.15)' }}>
+                  style={{ color: 'rgba(var(--accent-rgb),0.7)', background: 'rgba(var(--accent-rgb),0.07)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
                   {tag}
                 </span>
               ))}
@@ -376,14 +376,14 @@ export default function VenueDetailPage() {
         {venue.openingHours != null ? <OpeningHours hours={venue.openingHours} /> : null}
 
         {/* ─── Tab switcher ─── */}
-        <div className="flex gap-1 p-1 rounded-2xl" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.08)' }}>
+        <div className="flex gap-1 p-1 rounded-2xl" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           {(['events', 'feed'] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
               style={{
-                background: activeTab === tab ? 'rgba(0,229,255,0.1)' : 'transparent',
-                border: activeTab === tab ? '1px solid rgba(0,229,255,0.25)' : '1px solid transparent',
-                color: activeTab === tab ? '#00e5ff' : 'rgba(255,255,255,0.3)',
+                background: activeTab === tab ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+                border: activeTab === tab ? '1px solid rgba(var(--accent-rgb),0.25)' : '1px solid transparent',
+                color: activeTab === tab ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
               }}>
               {tab === 'events' ? '📅 EVENTS' : '📸 FEED'}
             </button>
@@ -393,13 +393,13 @@ export default function VenueDetailPage() {
         {/* ─── Upcoming Events ─── */}
         {activeTab === 'events' && (
         <div>
-          <p className="text-[10px] font-bold tracking-widest mb-3" style={{ color: 'rgba(0,229,255,0.4)' }}>
+          <p className="text-[10px] font-bold tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
             UPCOMING EVENTS {venue.events.length > 0 ? `— ${venue.events.length}` : ''}
           </p>
 
           {venue.events.length === 0 ? (
-            <div className="py-8 rounded-xl flex flex-col items-center" style={{ background: 'rgba(0,229,255,0.02)', border: '1px solid rgba(0,229,255,0.06)' }}>
-              <Calendar size={24} className="mb-2" style={{ color: 'rgba(0,229,255,0.2)' }} />
+            <div className="py-8 rounded-xl flex flex-col items-center" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+              <Calendar size={24} className="mb-2" style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
               <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO UPCOMING EVENTS</p>
             </div>
           ) : (
@@ -409,9 +409,9 @@ export default function VenueDetailPage() {
                 return (
                   <Link key={event.id} href={`/events/${event.id}`}
                     className="flex items-center gap-3 p-3 rounded-xl transition-all"
-                    style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,229,255,0.2)' }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,229,255,0.08)' }}
+                    style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.2)' }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.08)' }}
                   >
                     {event.coverImageUrl && (
                       <img src={event.coverImageUrl} alt={event.name} className="w-12 h-12 rounded-lg object-cover shrink-0" />
@@ -441,7 +441,7 @@ export default function VenueDetailPage() {
         {activeTab === 'feed' && (
           <div className="space-y-3">
             {/* Post composer */}
-            <div className="p-3 rounded-2xl space-y-3" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.1)' }}>
+            <div className="p-3 rounded-2xl space-y-3" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
               <textarea
                 value={postText}
                 onChange={(e) => setPostText(e.target.value)}
@@ -455,7 +455,7 @@ export default function VenueDetailPage() {
                 <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.25)' }}>{postText.length}/300</span>
                 <button onClick={submitPost} disabled={posting || !postText.trim()}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all disabled:opacity-40"
-                  style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
                   <Send size={11} /> {posting ? 'POSTING...' : 'POST'}
                 </button>
               </div>
@@ -464,21 +464,21 @@ export default function VenueDetailPage() {
             {/* Posts list */}
             {postsLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-20 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
+                <div key={i} className="h-20 rounded-2xl animate-pulse" style={{ background: 'rgba(var(--accent-rgb),0.04)' }} />
               ))
             ) : posts.length === 0 ? (
               <div className="py-12 flex flex-col items-center gap-2">
-                <ImageIcon size={24} style={{ color: 'rgba(0,229,255,0.2)' }} />
+                <ImageIcon size={24} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
                 <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO POSTS YET</p>
                 <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.25)' }}>Be the first to share what's going on</p>
               </div>
             ) : posts.map((post) => (
-              <div key={post.id} className="p-3 rounded-2xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(0,229,255,0.07)' }}>
+              <div key={post.id} className="p-3 rounded-2xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
                 <div className="flex items-center gap-2 mb-2">
                   {post.user.photoUrl
                     ? <img src={post.user.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
                     : <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black"
-                        style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff' }}>
+                        style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
                         {post.user.displayName[0]?.toUpperCase()}
                       </div>}
                   <div>
@@ -505,8 +505,8 @@ export default function VenueDetailPage() {
 
         {/* ─── Map ─── */}
         <div>
-          <p className="text-[10px] font-bold tracking-widest mb-3" style={{ color: 'rgba(0,229,255,0.4)' }}>LOCATION</p>
-          <div className="rounded-xl overflow-hidden" style={{ height: 220, border: '1px solid rgba(0,229,255,0.1)' }}>
+          <p className="text-[10px] font-bold tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>LOCATION</p>
+          <div className="rounded-xl overflow-hidden" style={{ height: 220, border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
             <Map
               initialViewState={{ latitude: venue.lat, longitude: venue.lng, zoom: 15 }}
               mapStyle="mapbox://styles/mapbox/dark-v11"
@@ -528,7 +528,7 @@ export default function VenueDetailPage() {
         {/* ─── Claim button ─── */}
         {!venue.isClaimed && (
           <div className="rounded-xl p-4 flex items-center justify-between gap-4"
-            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             <div>
               <p className="text-xs font-bold mb-0.5" style={{ color: '#e0f2fe' }}>Is this your venue?</p>
               <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>Claim it to manage events and details.</p>
@@ -536,7 +536,7 @@ export default function VenueDetailPage() {
             <button
               onClick={() => setClaimOpen(true)}
               className="shrink-0 text-[10px] font-bold px-4 py-2 rounded-lg"
-              style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff', border: '1px solid rgba(0,229,255,0.25)' }}
+              style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}
             >
               CLAIM
             </button>
@@ -546,15 +546,15 @@ export default function VenueDetailPage() {
         {/* ─── Claimed by ─── */}
         {venue.isClaimed && venue.claimedBy && (
           <div className="flex items-center gap-3 p-3 rounded-xl"
-            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             {venue.claimedBy.photoUrl
               ? <img src={venue.claimedBy.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
-              : <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,229,255,0.1)' }}><Building2 size={14} style={{ color: '#00e5ff' }} /></div>}
+              : <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(var(--accent-rgb),0.1)' }}><Building2 size={14} style={{ color: 'var(--accent)' }} /></div>}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>MANAGED BY</p>
+              <p className="text-[9px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>MANAGED BY</p>
               <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>{venue.claimedBy.displayName}</p>
             </div>
-            <CheckCircle size={14} className="ml-auto" style={{ color: '#00e5ff' }} />
+            <CheckCircle size={14} className="ml-auto" style={{ color: 'var(--accent)' }} />
           </div>
         )}
       </div>

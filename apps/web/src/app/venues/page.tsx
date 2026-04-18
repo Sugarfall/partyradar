@@ -89,8 +89,8 @@ function VenueCard({ venue, onClick, distanceKm }: { venue: Venue; onClick: () =
     <button
       onClick={onClick}
       className="w-full text-left px-4 py-4 transition-all duration-200 border-b"
-      style={{ borderColor: 'rgba(0,229,255,0.06)', background: 'transparent' }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,229,255,0.04)' }}
+      style={{ borderColor: 'rgba(var(--accent-rgb),0.06)', background: 'transparent' }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(var(--accent-rgb),0.04)' }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <div className="flex items-start gap-3">
@@ -118,7 +118,7 @@ function VenueCard({ venue, onClick, distanceKm }: { venue: Venue; onClick: () =
             )}
             {venue.isClaimed && (
               <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded"
-                style={{ color: '#00e5ff', background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)' }}>
+                style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
                 <CheckCircle size={8} /> CLAIMED
               </span>
             )}
@@ -135,7 +135,7 @@ function VenueCard({ venue, onClick, distanceKm }: { venue: Venue; onClick: () =
               </span>
             )}
             {distanceKm != null && (
-              <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              <span className="text-[10px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                 {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
               </span>
             )}
@@ -154,7 +154,7 @@ function VenueCard({ venue, onClick, distanceKm }: { venue: Venue; onClick: () =
             <div className="flex flex-wrap gap-1 mt-1.5">
               {venue.vibeTags.slice(0, 4).map((tag) => (
                 <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded"
-                  style={{ color: 'rgba(0,229,255,0.5)', background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.1)' }}>
+                  style={{ color: 'rgba(var(--accent-rgb),0.5)', background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
                   {tag}
                 </span>
               ))}
@@ -172,12 +172,12 @@ function VenueSkeleton() {
   return (
     <div className="flex flex-col gap-0">
       {[...Array(6)].map((_, i) => (
-        <div key={i} className="px-4 py-4 border-b animate-pulse" style={{ borderColor: 'rgba(0,229,255,0.06)' }}>
+        <div key={i} className="px-4 py-4 border-b animate-pulse" style={{ borderColor: 'rgba(var(--accent-rgb),0.06)' }}>
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg" style={{ background: 'rgba(0,229,255,0.06)' }} />
+            <div className="w-10 h-10 rounded-lg" style={{ background: 'rgba(var(--accent-rgb),0.06)' }} />
             <div className="flex-1">
-              <div className="h-3.5 rounded mb-2 w-2/3" style={{ background: 'rgba(0,229,255,0.08)' }} />
-              <div className="h-2.5 rounded w-1/3" style={{ background: 'rgba(0,229,255,0.05)' }} />
+              <div className="h-3.5 rounded mb-2 w-2/3" style={{ background: 'rgba(var(--accent-rgb),0.08)' }} />
+              <div className="h-2.5 rounded w-1/3" style={{ background: 'rgba(var(--accent-rgb),0.05)' }} />
             </div>
           </div>
         </div>
@@ -343,20 +343,20 @@ export default function VenuesPage() {
     <div className="min-h-screen flex flex-col" style={{ background: '#0d0d0f', paddingTop: 56 }}>
 
       {/* ─── Header ─── */}
-      <div className="px-4 pt-6 pb-4" style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+      <div className="px-4 pt-6 pb-4" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <MapPin size={16} style={{ color: '#00e5ff' }} />
-              <h1 className="text-base font-black tracking-[0.2em]" style={{ color: '#00e5ff' }}>VENUES</h1>
-              <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.35)' }}>
+              <MapPin size={16} style={{ color: 'var(--accent)' }} />
+              <h1 className="text-base font-black tracking-[0.2em]" style={{ color: 'var(--accent)' }}>VENUES</h1>
+              <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>
                 — {cityLabel}
               </span>
             </div>
             {discovering && (
               <div className="flex items-center gap-1.5">
-                <Loader2 size={11} className="animate-spin" style={{ color: 'rgba(0,229,255,0.4)' }} />
-                <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.35)' }}>
+                <Loader2 size={11} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>
                   DISCOVERING...
                 </span>
               </div>
@@ -370,21 +370,21 @@ export default function VenuesPage() {
 
           {/* Search */}
           <div className="relative mb-3">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search venues anywhere..."
               className="w-full pl-8 pr-4 py-2 rounded-lg text-sm outline-none"
               style={{
-                background: 'rgba(0,229,255,0.04)',
-                border: '1px solid rgba(0,229,255,0.15)',
+                background: 'rgba(var(--accent-rgb),0.04)',
+                border: '1px solid rgba(var(--accent-rgb),0.15)',
                 color: '#e0f2fe',
               }}
             />
             {search && (
               <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
-                <X size={12} style={{ color: 'rgba(0,229,255,0.4)' }} />
+                <X size={12} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
               </button>
             )}
           </div>
@@ -393,14 +393,14 @@ export default function VenuesPage() {
           <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
             {FILTER_TABS.map(({ label, value }) => {
               const active = typeFilter === value
-              const color = value === 'ALL' ? '#00e5ff' : TYPE_COLORS[value as VenueType]
+              const color = value === 'ALL' ? 'var(--accent)' : TYPE_COLORS[value as VenueType]
               return (
                 <button
                   key={value}
                   onClick={() => setTypeFilter(value)}
                   className="shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-full transition-all"
                   style={{
-                    color: active ? (value === 'ALL' ? '#00e5ff' : color) : 'rgba(74,96,128,0.7)',
+                    color: active ? (value === 'ALL' ? 'var(--accent)' : color) : 'rgba(74,96,128,0.7)',
                     background: active ? `${color}18` : 'transparent',
                     border: active ? `1px solid ${color}40` : '1px solid rgba(74,96,128,0.2)',
                     letterSpacing: '0.08em',
@@ -464,7 +464,7 @@ export default function VenuesPage() {
                 closeButton={false}
                 offset={10}
               >
-                <div style={{ background: 'rgba(7,7,26,0.97)', border: '1px solid rgba(0,229,255,0.2)', borderRadius: 10, padding: '10px 12px', minWidth: 160 }}>
+                <div style={{ background: 'rgba(7,7,26,0.97)', border: '1px solid rgba(var(--accent-rgb),0.2)', borderRadius: 10, padding: '10px 12px', minWidth: 160 }}>
                   <p className="text-xs font-bold mb-0.5" style={{ color: '#e0f2fe' }}>{popupVenue.name}</p>
                   <div className="flex items-center gap-2 mb-2">
                     <p className="text-[10px]" style={{ color: TYPE_COLORS[popupVenue.type] }}>
@@ -480,7 +480,7 @@ export default function VenuesPage() {
                   <button
                     onClick={() => router.push(`/venues/${popupVenue.id}`)}
                     className="text-[10px] font-bold px-3 py-1 rounded w-full"
-                    style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff', border: '1px solid rgba(0,229,255,0.25)' }}
+                    style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}
                   >
                     VIEW VENUE →
                   </button>
@@ -492,9 +492,9 @@ export default function VenuesPage() {
           {/* Discover hint overlay */}
           {discovering && (
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full"
-              style={{ background: 'rgba(4,4,13,0.9)', border: '1px solid rgba(0,229,255,0.2)', backdropFilter: 'blur(8px)' }}>
-              <Loader2 size={10} className="animate-spin" style={{ color: '#00e5ff' }} />
-              <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.6)' }}>
+              style={{ background: 'rgba(4,4,13,0.9)', border: '1px solid rgba(var(--accent-rgb),0.2)', backdropFilter: 'blur(8px)' }}>
+              <Loader2 size={10} className="animate-spin" style={{ color: 'var(--accent)' }} />
+              <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
                 SCANNING FOR VENUES
               </span>
             </div>
@@ -502,12 +502,12 @@ export default function VenuesPage() {
         </div>
 
         {/* Venue list (bottom on mobile, left on desktop) */}
-        <div className="w-full md:w-[40%] order-2 md:order-1 overflow-y-auto" style={{ borderRight: '1px solid rgba(0,229,255,0.06)' }}>
+        <div className="w-full md:w-[40%] order-2 md:order-1 overflow-y-auto" style={{ borderRight: '1px solid rgba(var(--accent-rgb),0.06)' }}>
           {loading ? (
             <VenueSkeleton />
           ) : displayVenues.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <MapPin size={32} className="mb-1" style={{ color: 'rgba(0,229,255,0.2)' }} />
+              <MapPin size={32} className="mb-1" style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
               <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>NO VENUES FOUND</p>
               <p className="text-[10px] text-center px-8" style={{ color: 'rgba(224,242,254,0.3)' }}>
                 Pan the map to a new area to discover venues via Google Places
@@ -515,12 +515,12 @@ export default function VenuesPage() {
             </div>
           ) : (
             <div>
-              <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(0,229,255,0.06)' }}>
-                <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>
+              <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                   {displayVenues.length} VENUE{displayVenues.length !== 1 ? 'S' : ''}
                 </span>
                 {discovering && (
-                  <Loader2 size={10} className="animate-spin" style={{ color: 'rgba(0,229,255,0.3)' }} />
+                  <Loader2 size={10} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
                 )}
               </div>
               {displayVenues.map((venue) => (

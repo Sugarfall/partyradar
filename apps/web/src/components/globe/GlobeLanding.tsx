@@ -11,25 +11,25 @@ const Globe = dynamic(() => import('react-globe.gl'), { ssr: false, loading: () 
 
 // ── Event hotspot data (major party cities worldwide) ────────────────────────
 const HOT_SPOTS = [
-  { id: 1,  lat: 51.505, lng: -0.09,    label: 'London',      events: 47, color: '#00e5ff' },
+  { id: 1,  lat: 51.505, lng: -0.09,    label: 'London',      events: 47, color: 'var(--accent)' },
   { id: 2,  lat: 40.712, lng: -74.006,  label: 'New York',    events: 63, color: '#00ff88' },
-  { id: 3,  lat: 35.689, lng: 139.692,  label: 'Tokyo',       events: 31, color: '#00e5ff' },
+  { id: 3,  lat: 35.689, lng: 139.692,  label: 'Tokyo',       events: 31, color: 'var(--accent)' },
   { id: 4,  lat: 48.856, lng: 2.352,    label: 'Paris',       events: 28, color: '#00ff88' },
-  { id: 5,  lat: -33.868,lng: 151.209,  label: 'Sydney',      events: 22, color: '#00e5ff' },
+  { id: 5,  lat: -33.868,lng: 151.209,  label: 'Sydney',      events: 22, color: 'var(--accent)' },
   { id: 6,  lat: 52.520, lng: 13.405,   label: 'Berlin',      events: 55, color: '#00ff88' },
-  { id: 7,  lat: 25.204, lng: 55.270,   label: 'Dubai',       events: 19, color: '#00e5ff' },
+  { id: 7,  lat: 25.204, lng: 55.270,   label: 'Dubai',       events: 19, color: 'var(--accent)' },
   { id: 8,  lat: 19.432, lng: -99.133,  label: 'Mexico City', events: 24, color: '#00ff88' },
-  { id: 9,  lat: -23.55, lng: -46.633,  label: 'São Paulo',   events: 38, color: '#00e5ff' },
+  { id: 9,  lat: -23.55, lng: -46.633,  label: 'São Paulo',   events: 38, color: 'var(--accent)' },
   { id: 10, lat: 1.352,  lng: 103.819,  label: 'Singapore',   events: 17, color: '#00ff88' },
-  { id: 11, lat: 55.751, lng: 37.618,   label: 'Moscow',      events: 29, color: '#00e5ff' },
+  { id: 11, lat: 55.751, lng: 37.618,   label: 'Moscow',      events: 29, color: 'var(--accent)' },
   { id: 12, lat: 28.614, lng: 77.209,   label: 'Delhi',       events: 33, color: '#00ff88' },
-  { id: 13, lat: 43.652, lng: -79.381,  label: 'Toronto',     events: 21, color: '#00e5ff' },
+  { id: 13, lat: 43.652, lng: -79.381,  label: 'Toronto',     events: 21, color: 'var(--accent)' },
   { id: 14, lat: 34.052, lng: -118.244, label: 'LA',          events: 58, color: '#00ff88' },
-  { id: 15, lat: 41.385, lng: 2.173,    label: 'Barcelona',   events: 42, color: '#00e5ff' },
+  { id: 15, lat: 41.385, lng: 2.173,    label: 'Barcelona',   events: 42, color: 'var(--accent)' },
   { id: 16, lat: 53.480, lng: -2.242,   label: 'Manchester',  events: 16, color: '#00ff88' },
-  { id: 17, lat: 55.861, lng: -4.251,   label: 'Glasgow',     events: 14, color: '#00e5ff' },
+  { id: 17, lat: 55.861, lng: -4.251,   label: 'Glasgow',     events: 14, color: 'var(--accent)' },
   { id: 18, lat: 37.566, lng: 126.978,  label: 'Seoul',       events: 26, color: '#00ff88' },
-  { id: 19, lat: 52.370, lng: 4.895,    label: 'Amsterdam',   events: 34, color: '#00e5ff' },
+  { id: 19, lat: 52.370, lng: 4.895,    label: 'Amsterdam',   events: 34, color: 'var(--accent)' },
   { id: 20, lat: 37.774, lng: -122.419, label: 'San Francisco',events: 45, color: '#00ff88' },
 ]
 
@@ -200,7 +200,7 @@ export default function GlobeLanding() {
     backgroundImageUrl: 'https://unpkg.com/three-globe/example/img/night-sky.png',
 
     // Atmosphere glow — cyan tint
-    atmosphereColor: '#00e5ff',
+    atmosphereColor: 'var(--accent)',
     atmosphereAltitude: 0.18,
     showAtmosphere: true,
 
@@ -212,7 +212,7 @@ export default function GlobeLanding() {
     pointAltitude: 0.015,
     pointRadius: (d: any) => Math.max(0.3, d.events / 60),
     pointsMerge: false,
-    pointLabel: (d: any) => `<div style="color:#00e5ff;font-size:11px;font-weight:700;letter-spacing:0.1em;padding:4px 8px;background:rgba(4,4,13,0.9);border:1px solid rgba(0,229,255,0.3);border-radius:4px;">${d.label} · ${d.events} events</div>`,
+    pointLabel: (d: any) => `<div style="color:var(--accent);font-size:11px;font-weight:700;letter-spacing:0.1em;padding:4px 8px;background:rgba(4,4,13,0.9);border:1px solid rgba(var(--accent-rgb),0.3);border-radius:4px;">${d.label} · ${d.events} events</div>`,
 
     // Radar rings pulsing outward
     ringsData: HOT_SPOTS,
@@ -230,7 +230,7 @@ export default function GlobeLanding() {
     arcStartLng: 'startLng',
     arcEndLat: 'endLat',
     arcEndLng: 'endLng',
-    arcColor: () => ['rgba(0,229,255,0)', 'rgba(0,229,255,0.6)', 'rgba(0,229,255,0)'],
+    arcColor: () => ['rgba(var(--accent-rgb),0)', 'rgba(var(--accent-rgb),0.6)', 'rgba(var(--accent-rgb),0)'],
     arcAltitude: 0.3,
     arcStroke: 0.4,
     arcDashLength: 0.4,
@@ -256,12 +256,12 @@ export default function GlobeLanding() {
       <div className="absolute top-0 inset-x-0 flex justify-center pt-8 pointer-events-none">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Zap size={28} fill="rgba(0,229,255,0.2)"
-              style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 12px rgba(0,229,255,0.9))' }} />
+            <Zap size={28} fill="rgba(var(--accent-rgb),0.2)"
+              style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 12px rgba(var(--accent-rgb),0.9))' }} />
           </div>
           <span
             className="font-black text-2xl tracking-[0.25em]"
-            style={{ color: '#00e5ff', textShadow: '0 0 30px rgba(0,229,255,0.8), 0 0 60px rgba(0,229,255,0.4)' }}
+            style={{ color: 'var(--accent)', textShadow: '0 0 30px rgba(var(--accent-rgb),0.8), 0 0 60px rgba(var(--accent-rgb),0.4)' }}
           >
             PARTYRADAR
           </span>
@@ -270,7 +270,7 @@ export default function GlobeLanding() {
 
       {/* ── Thin neon top line ── */}
       <div className="absolute top-0 inset-x-0 h-px pointer-events-none"
-        style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.6), transparent)' }} />
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.6), transparent)' }} />
 
       {/* ═══════════════════════════════════════════════════════ */}
       {/* PHASE: LANDING — tagline + auth buttons                 */}
@@ -279,7 +279,7 @@ export default function GlobeLanding() {
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-16 px-6 pointer-events-none">
           {/* Tagline */}
           <div className="mb-8 text-center pointer-events-none">
-            <p className="text-xs font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(0,229,255,0.55)' }}>
+            <p className="text-xs font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
               WORLDWIDE PARTY INTELLIGENCE
             </p>
             <p className="text-base font-medium" style={{ color: 'rgba(224,242,254,0.45)', maxWidth: 340 }}>
@@ -293,10 +293,10 @@ export default function GlobeLanding() {
               onClick={() => { setMode('login'); setPhase('signin') }}
               className="px-8 py-3 rounded-lg font-bold text-sm transition-all duration-200"
               style={{
-                background: 'linear-gradient(135deg, rgba(0,229,255,0.15), rgba(61,90,254,0.15))',
-                border: '1px solid rgba(0,229,255,0.45)',
-                color: '#00e5ff',
-                boxShadow: '0 0 20px rgba(0,229,255,0.25)',
+                background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(61,90,254,0.15))',
+                border: '1px solid rgba(var(--accent-rgb),0.45)',
+                color: 'var(--accent)',
+                boxShadow: '0 0 20px rgba(var(--accent-rgb),0.25)',
                 letterSpacing: '0.12em',
               }}
             >
@@ -306,7 +306,7 @@ export default function GlobeLanding() {
               onClick={() => { setMode('register'); setPhase('signin') }}
               className="px-8 py-3 rounded-lg font-bold text-sm transition-all duration-200"
               style={{
-                background: 'linear-gradient(135deg, rgba(0,255,136,0.12), rgba(0,229,255,0.12))',
+                background: 'linear-gradient(135deg, rgba(0,255,136,0.12), rgba(var(--accent-rgb),0.12))',
                 border: '1px solid rgba(0,255,136,0.45)',
                 color: '#00ff88',
                 boxShadow: '0 0 20px rgba(0,255,136,0.2)',
@@ -327,11 +327,11 @@ export default function GlobeLanding() {
           style={{ background: 'rgba(4,4,13,0.82)', backdropFilter: 'blur(6px)' }}>
           {/* Logo */}
           <div className="flex items-center gap-3 mb-10">
-            <Zap size={26} fill="rgba(0,229,255,0.2)"
-              style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 10px rgba(0,229,255,0.9))' }} />
+            <Zap size={26} fill="rgba(var(--accent-rgb),0.2)"
+              style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 10px rgba(var(--accent-rgb),0.9))' }} />
             <span
               className="font-black text-xl tracking-[0.3em]"
-              style={{ color: '#00e5ff', textShadow: '0 0 24px rgba(0,229,255,0.7)' }}
+              style={{ color: 'var(--accent)', textShadow: '0 0 24px rgba(var(--accent-rgb),0.7)' }}
             >
               PARTYRADAR
             </span>
@@ -342,20 +342,20 @@ export default function GlobeLanding() {
             className="relative w-full max-w-sm"
             style={{
               background: 'rgba(8,12,24,0.95)',
-              border: '1px solid rgba(0,229,255,0.18)',
+              border: '1px solid rgba(var(--accent-rgb),0.18)',
               borderRadius: 16,
-              boxShadow: '0 0 80px rgba(0,229,255,0.08)',
+              boxShadow: '0 0 80px rgba(var(--accent-rgb),0.08)',
               padding: '32px 28px',
             }}
           >
             {/* Corner brackets */}
-            <div className="absolute top-3 left-3 w-5 h-5" style={{ borderTop: '2px solid rgba(0,229,255,0.45)', borderLeft: '2px solid rgba(0,229,255,0.45)' }} />
-            <div className="absolute top-3 right-3 w-5 h-5" style={{ borderTop: '2px solid rgba(0,229,255,0.45)', borderRight: '2px solid rgba(0,229,255,0.45)' }} />
-            <div className="absolute bottom-3 left-3 w-5 h-5" style={{ borderBottom: '2px solid rgba(0,229,255,0.45)', borderLeft: '2px solid rgba(0,229,255,0.45)' }} />
-            <div className="absolute bottom-3 right-3 w-5 h-5" style={{ borderBottom: '2px solid rgba(0,229,255,0.45)', borderRight: '2px solid rgba(0,229,255,0.45)' }} />
+            <div className="absolute top-3 left-3 w-5 h-5" style={{ borderTop: '2px solid rgba(var(--accent-rgb),0.45)', borderLeft: '2px solid rgba(var(--accent-rgb),0.45)' }} />
+            <div className="absolute top-3 right-3 w-5 h-5" style={{ borderTop: '2px solid rgba(var(--accent-rgb),0.45)', borderRight: '2px solid rgba(var(--accent-rgb),0.45)' }} />
+            <div className="absolute bottom-3 left-3 w-5 h-5" style={{ borderBottom: '2px solid rgba(var(--accent-rgb),0.45)', borderLeft: '2px solid rgba(var(--accent-rgb),0.45)' }} />
+            <div className="absolute bottom-3 right-3 w-5 h-5" style={{ borderBottom: '2px solid rgba(var(--accent-rgb),0.45)', borderRight: '2px solid rgba(var(--accent-rgb),0.45)' }} />
 
             {/* Header */}
-            <p className="text-center text-xs font-black tracking-[0.25em] mb-6" style={{ color: 'rgba(0,229,255,0.6)' }}>
+            <p className="text-center text-xs font-black tracking-[0.25em] mb-6" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
               {mode === 'login' ? 'LOG IN' : 'CREATE ACCOUNT'}
             </p>
 
@@ -409,15 +409,15 @@ export default function GlobeLanding() {
 
             {/* Divider */}
             <div className="flex items-center gap-3 mb-5">
-              <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.1)' }} />
+              <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.1)' }} />
               <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.55)' }}>OR</span>
-              <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.1)' }} />
+              <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.1)' }} />
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Email */}
               <div>
-                <label className="block text-[10px] font-black tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                <label className="block text-[10px] font-black tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                   EMAIL
                 </label>
                 <input
@@ -428,18 +428,18 @@ export default function GlobeLanding() {
                   required
                   className="w-full px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none"
                   style={{
-                    background: 'rgba(0,229,255,0.04)',
-                    border: '1px solid rgba(0,229,255,0.18)',
+                    background: 'rgba(var(--accent-rgb),0.04)',
+                    border: '1px solid rgba(var(--accent-rgb),0.18)',
                     color: '#e0f2fe',
                   }}
-                  onFocus={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.08)' }}
-                  onBlur={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.18)'; e.target.style.boxShadow = 'none' }}
+                  onFocus={(e) => { e.target.style.border = '1px solid rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.08)' }}
+                  onBlur={(e) => { e.target.style.border = '1px solid rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
                 />
               </div>
 
               {/* Password */}
               <div>
-                <label className="block text-[10px] font-black tracking-[0.2em] mb-1.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                <label className="block text-[10px] font-black tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                   PASSWORD
                 </label>
                 <div className="relative">
@@ -452,18 +452,18 @@ export default function GlobeLanding() {
                     minLength={6}
                     className="w-full px-3 py-3 pr-10 rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none"
                     style={{
-                      background: 'rgba(0,229,255,0.04)',
-                      border: '1px solid rgba(0,229,255,0.18)',
+                      background: 'rgba(var(--accent-rgb),0.04)',
+                      border: '1px solid rgba(var(--accent-rgb),0.18)',
                       color: '#e0f2fe',
                     }}
-                    onFocus={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.5)'; e.target.style.boxShadow = '0 0 12px rgba(0,229,255,0.08)' }}
-                    onBlur={(e) => { e.target.style.border = '1px solid rgba(0,229,255,0.18)'; e.target.style.boxShadow = 'none' }}
+                    onFocus={(e) => { e.target.style.border = '1px solid rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.08)' }}
+                    onBlur={(e) => { e.target.style.border = '1px solid rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPw((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2"
-                    style={{ color: 'rgba(0,229,255,0.4)' }}
+                    style={{ color: 'rgba(var(--accent-rgb),0.4)' }}
                   >
                     {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
@@ -483,10 +483,10 @@ export default function GlobeLanding() {
                 disabled={submitting}
                 className="w-full py-3 rounded-lg font-black text-sm transition-all duration-200 flex items-center justify-center gap-2"
                 style={{
-                  background: submitting ? 'rgba(0,229,255,0.08)' : 'linear-gradient(135deg, rgba(0,229,255,0.2), rgba(61,90,254,0.2))',
-                  border: '1px solid rgba(0,229,255,0.55)',
-                  color: '#00e5ff',
-                  boxShadow: submitting ? 'none' : '0 0 24px rgba(0,229,255,0.18)',
+                  background: submitting ? 'rgba(var(--accent-rgb),0.08)' : 'linear-gradient(135deg, rgba(var(--accent-rgb),0.2), rgba(61,90,254,0.2))',
+                  border: '1px solid rgba(var(--accent-rgb),0.55)',
+                  color: 'var(--accent)',
+                  boxShadow: submitting ? 'none' : '0 0 24px rgba(var(--accent-rgb),0.18)',
                   letterSpacing: '0.14em',
                   opacity: submitting ? 0.7 : 1,
                 }}
@@ -506,7 +506,7 @@ export default function GlobeLanding() {
                   <button
                     onClick={() => { setMode('register'); setError('') }}
                     className="font-black transition-colors"
-                    style={{ color: '#00e5ff' }}
+                    style={{ color: 'var(--accent)' }}
                   >
                     SIGN UP
                   </button>
@@ -517,7 +517,7 @@ export default function GlobeLanding() {
                   <button
                     onClick={() => { setMode('login'); setError('') }}
                     className="font-black transition-colors"
-                    style={{ color: '#00e5ff' }}
+                    style={{ color: 'var(--accent)' }}
                   >
                     LOG IN
                   </button>
@@ -538,15 +538,15 @@ export default function GlobeLanding() {
             <div className="relative w-20 h-20">
               <div
                 className="absolute inset-0 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'transparent', borderTopColor: '#00e5ff', boxShadow: '0 0 16px rgba(0,229,255,0.4)' }}
+                style={{ borderColor: 'transparent', borderTopColor: 'var(--accent)', boxShadow: '0 0 16px rgba(var(--accent-rgb),0.4)' }}
               />
               <div
                 className="absolute inset-2 rounded-full border border-dashed"
-                style={{ borderColor: 'rgba(0,229,255,0.2)', animation: 'spin 3s linear infinite reverse' }}
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.2)', animation: 'spin 3s linear infinite reverse' }}
               />
-              <Radio size={22} className="absolute inset-0 m-auto" style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 8px rgba(0,229,255,0.8))' }} />
+              <Radio size={22} className="absolute inset-0 m-auto" style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
             </div>
-            <p className="text-xs font-bold tracking-[0.3em]" style={{ color: '#00e5ff', textShadow: '0 0 12px rgba(0,229,255,0.6)' }}>
+            <p className="text-xs font-bold tracking-[0.3em]" style={{ color: 'var(--accent)', textShadow: '0 0 12px rgba(var(--accent-rgb),0.6)' }}>
               LOCATING YOUR SIGNAL...
             </p>
           </div>
@@ -564,11 +564,11 @@ export default function GlobeLanding() {
           <div className="w-full max-w-md">
             {/* Top logo */}
             <div className="flex items-center justify-center gap-3 mb-8">
-              <Zap size={22} fill="rgba(0,229,255,0.2)"
-                style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 10px rgba(0,229,255,0.9))' }} />
+              <Zap size={22} fill="rgba(var(--accent-rgb),0.2)"
+                style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 10px rgba(var(--accent-rgb),0.9))' }} />
               <span
                 className="font-black text-lg tracking-[0.3em]"
-                style={{ color: '#00e5ff', textShadow: '0 0 24px rgba(0,229,255,0.7)' }}
+                style={{ color: 'var(--accent)', textShadow: '0 0 24px rgba(var(--accent-rgb),0.7)' }}
               >
                 PARTYRADAR
               </span>
@@ -589,17 +589,17 @@ export default function GlobeLanding() {
                 className="text-3xl sm:text-4xl font-black tracking-widest"
                 style={{
                   color: '#ffffff',
-                  textShadow: '0 2px 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,229,255,0.2)',
+                  textShadow: '0 2px 20px rgba(0,0,0,0.8), 0 0 40px rgba(var(--accent-rgb),0.2)',
                   letterSpacing: '0.12em',
                 }}
               >
                 WHAT'S YOUR
                 <br />
-                <span style={{ color: '#00e5ff', textShadow: '0 0 30px rgba(0,229,255,0.6), 0 0 60px rgba(0,229,255,0.2)' }}>
+                <span style={{ color: 'var(--accent)', textShadow: '0 0 30px rgba(var(--accent-rgb),0.6), 0 0 60px rgba(var(--accent-rgb),0.2)' }}>
                   MISSION?
                 </span>
               </h2>
-              <div className="mt-4 h-px mx-auto w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.6), transparent)' }} />
+              <div className="mt-4 h-px mx-auto w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.6), transparent)' }} />
             </div>
 
             {/* Live party alert */}
@@ -630,39 +630,39 @@ export default function GlobeLanding() {
                 onClick={() => router.push('/events/create')}
                 className="group relative flex flex-col items-center gap-4 p-6 rounded-2xl transition-all duration-300 active:scale-95"
                 style={{
-                  background: 'rgba(0,229,255,0.08)',
-                  border: '1px solid rgba(0,229,255,0.35)',
-                  boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,229,255,0.1)',
+                  background: 'rgba(var(--accent-rgb),0.08)',
+                  border: '1px solid rgba(var(--accent-rgb),0.35)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(var(--accent-rgb),0.1)',
                 }}
                 onMouseEnter={(e) => {
                   const el = e.currentTarget
-                  el.style.background = 'rgba(0,229,255,0.15)'
-                  el.style.border = '1px solid rgba(0,229,255,0.65)'
-                  el.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5), 0 0 40px rgba(0,229,255,0.25), inset 0 1px 0 rgba(0,229,255,0.15)'
+                  el.style.background = 'rgba(var(--accent-rgb),0.15)'
+                  el.style.border = '1px solid rgba(var(--accent-rgb),0.65)'
+                  el.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5), 0 0 40px rgba(var(--accent-rgb),0.25), inset 0 1px 0 rgba(var(--accent-rgb),0.15)'
                   el.style.transform = 'translateY(-4px)'
                 }}
                 onMouseLeave={(e) => {
                   const el = e.currentTarget
-                  el.style.background = 'rgba(0,229,255,0.08)'
-                  el.style.border = '1px solid rgba(0,229,255,0.35)'
-                  el.style.boxShadow = '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,229,255,0.1)'
+                  el.style.background = 'rgba(var(--accent-rgb),0.08)'
+                  el.style.border = '1px solid rgba(var(--accent-rgb),0.35)'
+                  el.style.boxShadow = '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(var(--accent-rgb),0.1)'
                   el.style.transform = 'none'
                 }}
               >
                 {/* Corner brackets */}
-                <div className="absolute top-2.5 left-2.5 w-4 h-4" style={{ borderTop: '2px solid rgba(0,229,255,0.5)', borderLeft: '2px solid rgba(0,229,255,0.5)' }} />
-                <div className="absolute bottom-2.5 right-2.5 w-4 h-4" style={{ borderBottom: '2px solid rgba(0,229,255,0.5)', borderRight: '2px solid rgba(0,229,255,0.5)' }} />
+                <div className="absolute top-2.5 left-2.5 w-4 h-4" style={{ borderTop: '2px solid rgba(var(--accent-rgb),0.5)', borderLeft: '2px solid rgba(var(--accent-rgb),0.5)' }} />
+                <div className="absolute bottom-2.5 right-2.5 w-4 h-4" style={{ borderBottom: '2px solid rgba(var(--accent-rgb),0.5)', borderRight: '2px solid rgba(var(--accent-rgb),0.5)' }} />
 
                 <div
                   className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                  style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)' }}
+                  style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}
                 >
                   🎙️
                 </div>
                 <div className="text-center">
                   <p
                     className="font-black text-lg tracking-wider"
-                    style={{ color: '#00e5ff', textShadow: '0 0 16px rgba(0,229,255,0.8)' }}
+                    style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.8)' }}
                   >
                     HOSTING
                   </p>

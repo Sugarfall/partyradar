@@ -9,7 +9,7 @@ import { useEvent } from '@/hooks/useEvents'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
 
-function StatCard({ label, value, sub, color = '#00e5ff', icon: Icon }: {
+function StatCard({ label, value, sub, color = 'var(--accent)', icon: Icon }: {
   label: string; value: string | number; sub?: string; color?: string; icon: any
 }) {
   return (
@@ -79,7 +79,7 @@ export default function EventAnalyticsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 rounded-full border-2 animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
       </div>
     )
   }
@@ -109,7 +109,7 @@ export default function EventAnalyticsPage() {
         {isLoading && (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 rounded-full border-2 animate-spin"
-              style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+              style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
           </div>
         )}
 
@@ -118,7 +118,7 @@ export default function EventAnalyticsPage() {
             {/* Stat cards */}
             <div className="grid grid-cols-2 gap-3">
               <StatCard icon={Users} label="Total RSVPs" value={totalRsvp}
-                sub={`${confirmed} confirmed${waitlisted > 0 ? ` · ${waitlisted} waitlisted` : ''}`} color="#00e5ff" />
+                sub={`${confirmed} confirmed${waitlisted > 0 ? ` · ${waitlisted} waitlisted` : ''}`} color="var(--accent)" />
               <StatCard icon={TrendingUp} label="Capacity" value={`${capacityPct}%`}
                 sub={`${confirmed} / ${event.capacity} spots filled`}
                 color={capacityPct > 80 ? '#ff006e' : capacityPct > 50 ? '#ffd600' : '#00ff88'} />
@@ -136,7 +136,7 @@ export default function EventAnalyticsPage() {
                 <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.35)' }}>RSVP Breakdown</p>
                 <MiniBar label="Confirmed" value={rsvp['CONFIRMED'] ?? 0} max={totalRsvp} color="#00ff88" />
                 <MiniBar label="Pending" value={rsvp['PENDING'] ?? 0} max={totalRsvp} color="#ffd600" />
-                {(rsvp['WAITLISTED'] ?? 0) > 0 && <MiniBar label="Waitlisted" value={rsvp['WAITLISTED'] ?? 0} max={totalRsvp} color="#00e5ff" />}
+                {(rsvp['WAITLISTED'] ?? 0) > 0 && <MiniBar label="Waitlisted" value={rsvp['WAITLISTED'] ?? 0} max={totalRsvp} color="var(--accent)" />}
                 <MiniBar label="Cancelled" value={rsvp['CANCELLED'] ?? 0} max={totalRsvp} color="#ff006e" />
               </div>
             )}

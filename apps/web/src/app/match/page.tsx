@@ -89,7 +89,7 @@ function SwipeCard({
         className="w-full h-full rounded-3xl overflow-hidden relative"
         style={{
           background: '#0a0a1a',
-          border: '1px solid rgba(0,229,255,0.12)',
+          border: '1px solid rgba(var(--accent-rgb),0.12)',
           boxShadow: isTop ? '0 20px 60px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.4)',
         }}
       >
@@ -103,7 +103,7 @@ function SwipeCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, rgba(0,229,255,0.06), rgba(255,0,110,0.06))' }}>
+            style={{ background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.06), rgba(255,0,110,0.06))' }}>
             <div className="text-7xl opacity-20">👤</div>
           </div>
         )}
@@ -134,12 +134,12 @@ function SwipeCard({
                 {profile.displayName}
               </h2>
               {profile.username && (
-                <p className="text-xs font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>@{profile.username}</p>
+                <p className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>@{profile.username}</p>
               )}
               {profile.distance !== null && (
                 <div className="flex items-center gap-1 mt-1">
-                  <MapPin size={11} style={{ color: 'rgba(0,229,255,0.5)' }} />
-                  <span className="text-[11px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                  <MapPin size={11} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+                  <span className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                     {profile.distance < 1 ? '< 1 km away' : `${profile.distance} km away`}
                   </span>
                 </div>
@@ -153,7 +153,7 @@ function SwipeCard({
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {profile.interests.slice(0, 4).map((tag) => (
                     <span key={tag} className="px-2 py-0.5 rounded-lg text-[10px] font-bold"
-                      style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+                      style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
                       {tag}
                     </span>
                   ))}
@@ -213,7 +213,7 @@ function MatchModal({ profile, onClose, conversationId }: {
             </Link>
           )}
           <button onClick={onClose} className="flex-1 py-3.5 rounded-xl text-sm font-black tracking-widest"
-            style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
             KEEP SWIPING
           </button>
         </div>
