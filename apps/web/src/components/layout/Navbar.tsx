@@ -21,7 +21,6 @@ const MOBILE_NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/radar',    label: 'Radar',    icon: Radio   },
   { href: '/nearby',   label: 'Nearby',   icon: Users   },
-  { href: '/match',    label: 'Match',    icon: Heart   },
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
