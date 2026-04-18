@@ -47,6 +47,18 @@ const SEARCH_TYPES = [
   'pub',             // important for UK, Ireland, Australia
 ]
 
+// Venue names containing these keywords are rejected regardless of type
+const REJECT_VENUE_KEYWORDS = [
+  'casino', 'casinos', 'betting', 'bookmaker', 'ladbrokes', 'william hill',
+  'bet365', 'paddy power', 'coral', 'betfair', 'skybet', 'sky bet',
+  'gambling', 'bingo hall', 'amusement arcade', 'slot machines',
+]
+
+function isRejectedVenue(name: string): boolean {
+  const lower = name.toLowerCase()
+  return REJECT_VENUE_KEYWORDS.some((kw) => lower.includes(kw))
+}
+
 // Additional text search queries to cover more venues
 const TEXT_QUERIES = [
   'live music venue',
@@ -228,6 +240,7 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
         const types = place.types ?? []
         const isNightlife = types.some((t) => NIGHTLIFE_TYPES.has(t))
         if (!isNightlife) continue
+        if (isRejectedVenue(place.name)) continue
         if (!placeMap.has(place.place_id)) {
           placeMap.set(place.place_id, place)
         }
@@ -317,6 +330,22 @@ router.get('/status', (_req, res) => {
     searchTypes: SEARCH_TYPES,
     textQueries: TEXT_QUERIES,
   })
+})
+
+/**
+ * DELETE /api/venues/discover/purge-rejected
+ * One-time cleanup: removes any casino/betting venues already in the DB.
+ * Idempotent — safe to call multiple times.
+ */
+router.delete('/purge-rejected', async (_req, res, next) => {
+  try {
+    const all = await prisma.venue.findMany({ select: { id: true, name: true } })
+    const toDelete = all.filter((v) => isRejectedVenue(v.name)).map((v) => v.id)
+    if (toDelete.length > 0) {
+      await prisma.venue.deleteMany({ where: { id: { in: toDelete } } })
+    }
+    res.json({ deleted: toDelete.length, names: all.filter((v) => isRejectedVenue(v.name)).map((v) => v.name) })
+  } catch (err) { next(err) }
 })
 
 export default router

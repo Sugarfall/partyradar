@@ -1094,7 +1094,7 @@ function GroupChatView({
   )
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem)', background: '#04040d' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem - 4rem)', background: '#04040d' }}>
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
         style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)', backdropFilter: 'blur(12px)' }}>
