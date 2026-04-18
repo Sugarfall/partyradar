@@ -26,7 +26,18 @@ export default function LoginPage() {
       await signIn(email, password)
       router.push('/discover')
     } catch (err: any) {
-      setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
+      const code = err?.code ?? ''
+      if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-email') {
+        setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
+      } else if (code === 'auth/too-many-requests') {
+        setError('TOO MANY ATTEMPTS — WAIT A MOMENT AND TRY AGAIN')
+      } else if (code === 'auth/network-request-failed') {
+        setError('NETWORK ERROR — CHECK YOUR CONNECTION')
+      } else if (err?.message?.includes('Request failed') || err?.message?.includes('fetch')) {
+        setError('SERVER UNREACHABLE — TRY AGAIN IN A MOMENT')
+      } else {
+        setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
+      }
     } finally {
       setLoading(false)
     }

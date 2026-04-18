@@ -57,6 +57,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null)
   const [dbUser, setDbUser] = useState<DBUser | null>(null)
   const [loading, setLoading] = useState(true)
+  // Prevent duplicate /auth/sync calls when signIn triggers onAuthStateChanged
+  const syncingRef = { current: false }
 
   async function syncUser(user: User) {
     // In dev mode (no Firebase config), use a local mock DB user
@@ -64,33 +66,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDbUser(makeMockDbUser(user.email ?? 'demo@partyradar.app'))
       return
     }
-    try {
-      const res = await api.post<{ data: DBUser }>('/auth/sync')
-      setDbUser(res.data)
-
-      // Register FCM token
-      const token = await getFCMToken()
-      if (token) {
-        api.post('/notifications/fcm-token', { token }).catch(() => {})
-      }
-    } catch (err) {
-      // API not running — fall back to mock so UI stays functional
-      setDbUser(makeMockDbUser(user.email ?? 'demo@partyradar.app'))
-    }
+    const res = await api.post<{ data: DBUser }>('/auth/sync')
+    setDbUser(res.data)
+    // Register FCM token (non-blocking)
+    getFCMToken().then((token) => {
+      if (token) api.post('/notifications/fcm-token', { token }).catch(() => {})
+    }).catch(() => {})
   }
 
   useEffect(() => {
     // Pick up Google redirect result (mobile flow — page reloads after sign-in)
     if (!DEV_MODE && auth.currentUser === null) {
       getRedirectResult(auth).then(async (result) => {
-        if (result?.user) await syncUser(result.user)
+        if (result?.user) {
+          syncingRef.current = true
+          try { await syncUser(result.user) } catch {}
+          syncingRef.current = false
+        }
       }).catch(() => {})
     }
 
     const unsub = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user)
       if (user) {
-        await syncUser(user)
+        // Skip if signIn/signUp/Google already called syncUser to avoid double requests
+        if (!syncingRef.current) {
+          try { await syncUser(user) } catch {
+            setDbUser(makeMockDbUser(user.email ?? 'demo@partyradar.app'))
+          }
+        }
       } else {
         setDbUser(null)
       }
@@ -100,29 +104,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   async function signIn(email: string, password: string) {
-    const cred = await signInWithEmailAndPassword(auth, email, password)
-    // Send verification email silently if not yet verified (non-blocking — don't gate login)
-    if (!DEV_MODE && !cred.user.emailVerified) {
-      sendEmailVerification(cred.user).catch(() => {})
+    syncingRef.current = true
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password)
+      // Send verification email silently if not yet verified (non-blocking)
+      if (!DEV_MODE && !cred.user.emailVerified) {
+        sendEmailVerification(cred.user).catch(() => {})
+      }
+      await syncUser(cred.user)
+    } finally {
+      syncingRef.current = false
     }
-    await syncUser(cred.user)
   }
 
   async function signUp(email: string, password: string) {
-    const cred = await createUserWithEmailAndPassword(auth, email, password)
-    // Send email verification — user must verify before they can sign in next time
-    await sendEmailVerification(cred.user)
-    await syncUser(cred.user)
+    syncingRef.current = true
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password)
+      sendEmailVerification(cred.user).catch(() => {})
+      await syncUser(cred.user)
+    } finally {
+      syncingRef.current = false
+    }
   }
 
   async function signInWithGoogle() {
-    const cred = await signInWithPopup(auth, googleProvider)
-    await syncUser(cred.user)
+    syncingRef.current = true
+    try {
+      const cred = await signInWithPopup(auth, googleProvider)
+      await syncUser(cred.user)
+    } finally {
+      syncingRef.current = false
+    }
   }
 
   async function signInWithApple() {
-    const cred = await firebaseSignInWithApple(auth)
-    await syncUser(cred.user)
+    syncingRef.current = true
+    try {
+      const cred = await firebaseSignInWithApple(auth)
+      await syncUser(cred.user)
+    } finally {
+      syncingRef.current = false
+    }
   }
 
   async function logout() {

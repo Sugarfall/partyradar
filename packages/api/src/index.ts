@@ -272,7 +272,6 @@ const discoverLimiter = rateLimit({
 })
 
 app.use('/api', globalLimiter)
-app.use('/api/auth/sync', rateLimit({ windowMs: 60000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: { message: 'Too many requests. Please try again later.' } } }))
 app.use('/api/auth', authLimiter)
 app.use('/api/tickets', paymentLimiter)
 app.use('/api/subscriptions', paymentLimiter)
