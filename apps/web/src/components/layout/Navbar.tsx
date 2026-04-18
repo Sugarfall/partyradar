@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
@@ -131,6 +131,11 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
           </button>
         ))}
       </div>
+      <Link href="/notifications" onClick={onClose}
+        className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-all hover:bg-white/5"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(var(--accent-rgb),0.6)' }}>
+        View all notifications <ChevronRight size={12} />
+      </Link>
     </div>
   )
 }
@@ -302,6 +307,17 @@ function NavbarInner() {
                   <Gift size={16} />
                 </Link>
 
+                {/* Wallet */}
+                <Link href="/wallet"
+                  className="p-2 rounded-lg transition-all duration-150"
+                  style={{
+                    color: pathname.startsWith('/wallet') ? '#00ff88' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/wallet') ? 'rgba(0,255,136,0.08)' : 'transparent',
+                  }}
+                >
+                  <Wallet size={16} />
+                </Link>
+
                 {/* Messages */}
                 <Link href="/messages"
                   className="p-2 rounded-lg transition-all duration-150 relative"
@@ -418,6 +434,15 @@ function NavbarInner() {
             style={{ color: pathname.startsWith('/messages') ? 'var(--accent)' : 'rgba(255,255,255,0.35)' }}>
             <MessageCircle size={16} strokeWidth={pathname.startsWith('/messages') ? 2 : 1.5} />
             <span className="text-[8px] font-medium tracking-tight leading-none">Chats</span>
+          </Link>
+
+          {/* Wallet */}
+          <Link href={dbUser ? '/wallet' : '/login'}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
+            style={{ color: pathname.startsWith('/wallet') ? '#00ff88' : 'rgba(255,255,255,0.35)' }}>
+            <Wallet size={16} strokeWidth={pathname.startsWith('/wallet') ? 2 : 1.5}
+              style={pathname.startsWith('/wallet') ? { filter: 'drop-shadow(0 0 6px rgba(0,255,136,0.6))' } : undefined} />
+            <span className="text-[8px] font-medium tracking-tight leading-none">Wallet</span>
           </Link>
 
           {/* Profile */}

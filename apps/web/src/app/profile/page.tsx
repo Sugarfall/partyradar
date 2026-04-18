@@ -371,7 +371,7 @@ export default function ProfilePage() {
     }
     async function loadReviews() {
       try {
-        const res = await api.get<{ data: any[] }>('/reviews')
+        const res = await api.get<{ data: any[] }>('/reviews/my')
         const items = res?.data ?? []
         setReviews(items)
       } catch {

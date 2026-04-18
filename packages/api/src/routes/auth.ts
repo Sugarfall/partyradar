@@ -103,6 +103,11 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
     profileBg: z.string().max(200).optional().nullable(),
     themeColor: z.string().max(50).optional().nullable(),
     themeName: z.string().max(50).optional().nullable(),
+    // Settings / preferences
+    notifPrefs: z.record(z.boolean()).optional().nullable(),
+    showInNearby: z.boolean().optional(),
+    showProfileViews: z.boolean().optional(),
+    allowGoOutFromStrangers: z.boolean().optional(),
   })
 
   try {

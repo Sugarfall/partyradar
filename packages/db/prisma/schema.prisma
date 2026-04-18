@@ -127,6 +127,11 @@ model User {
   referralBalance   Float            @default(0)
   referredBy        String?
   e2ePublicKey      String?          @db.Text
+  // Settings / preferences
+  notifPrefs        Json?            // { RSVP_CONFIRMED: bool, FOLLOW: bool, ... }
+  showInNearby      Boolean          @default(true)
+  showProfileViews  Boolean          @default(true)
+  allowGoOutFromStrangers Boolean    @default(true)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 

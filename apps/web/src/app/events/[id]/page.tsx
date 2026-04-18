@@ -273,7 +273,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
 
   useEffect(() => {
     // Fetch highlights from API
-    api.get<{ data: HighlightPost[] }>(`/posts?eventId=${event.id}&limit=20`)
+    api.get<{ data: HighlightPost[] }>(`/posts/event/${event.id}?limit=20`)
       .then(r => setHighlights(r.data))
       .catch(() => {
         // Demo highlights for dev mode

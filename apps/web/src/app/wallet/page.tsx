@@ -105,14 +105,12 @@ export default function WalletPage() {
     async function load() {
       setLoading(true)
       try {
-        const [walletRes, txRes] = await Promise.allSettled([
-          api.get<{ data: WalletData }>('/wallet'),
-          api.get<{ data: WalletTransaction[] }>('/wallet/transactions'),
-        ])
-        if (walletRes.status === 'fulfilled' && walletRes.value?.data)
-          setWallet(walletRes.value.data)
-        if (txRes.status === 'fulfilled' && txRes.value?.data)
-          setTransactions(txRes.value.data)
+        const res = await api.get<{ data: WalletData & { transactions: WalletTransaction[] } }>('/wallet')
+        if (res?.data) {
+          const { transactions: txs, ...walletData } = res.data
+          setWallet(walletData as WalletData)
+          setTransactions(txs ?? [])
+        }
       } finally {
         setLoading(false)
       }
