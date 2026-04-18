@@ -24,17 +24,17 @@ const MOBILE_NAV = [
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
-  RSVP_CONFIRMED:   <Ticket   size={13} style={{ color: '#00ff88' }} />,
-  INVITE_RECEIVED:  <Zap      size={13} style={{ color: '#00e5ff' }} />,
-  EVENT_REMINDER:   <Calendar size={13} style={{ color: '#ffd600' }} />,
-  CELEBRITY_NEARBY: <Star     size={13} style={{ color: '#ffd600' }} />,
-  EVENT_UPDATED:    <Zap      size={13} style={{ color: '#3d5afe' }} />,
-  FOLLOW:           <UserPlus size={13} style={{ color: '#00e5ff' }} />,
-  PROFILE_VIEW:     <Eye      size={13} style={{ color: '#a855f7' }} />,
-  NUDGE:            <Bell     size={13} style={{ color: '#00ff88' }} />,
-  GO_OUT_REQUEST:   <Sparkles size={13} style={{ color: '#ff006e' }} />,
-  GO_OUT_ACCEPTED:  <Sparkles size={13} style={{ color: '#00ff88' }} />,
-  MESSAGE:          <MessageCircle size={13} style={{ color: '#00e5ff' }} />,
+  RSVP_CONFIRMED:   <Ticket        size={13} style={{ color: '#00ff88' }} />,
+  INVITE_RECEIVED:  <Zap           size={13} style={{ color: 'var(--accent)' }} />,
+  EVENT_REMINDER:   <Calendar      size={13} style={{ color: '#ffd600' }} />,
+  CELEBRITY_NEARBY: <Star          size={13} style={{ color: '#ffd600' }} />,
+  EVENT_UPDATED:    <Zap           size={13} style={{ color: '#3d5afe' }} />,
+  FOLLOW:           <UserPlus      size={13} style={{ color: 'var(--accent)' }} />,
+  PROFILE_VIEW:     <Eye           size={13} style={{ color: '#a855f7' }} />,
+  NUDGE:            <Bell          size={13} style={{ color: '#00ff88' }} />,
+  GO_OUT_REQUEST:   <Sparkles      size={13} style={{ color: '#ff006e' }} />,
+  GO_OUT_ACCEPTED:  <Sparkles      size={13} style={{ color: '#00ff88' }} />,
+  MESSAGE:          <MessageCircle size={13} style={{ color: 'var(--accent)' }} />,
 }
 
 function notifLink(n: Notification): string | null {
@@ -92,7 +92,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
         <span className="text-xs font-semibold" style={{ color: '#e0f2fe' }}>Notifications</span>
         <div className="flex items-center gap-3">
           {notifications.some((n) => !n.read) && (
-            <button onClick={markAll} className="text-[10px]" style={{ color: 'rgba(0,229,255,0.6)' }}>
+            <button onClick={markAll} className="text-[10px]" style={{ color: 'var(--accent)' }}>
               Mark all read
             </button>
           )}
@@ -116,7 +116,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
           >
             <div className="mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0"
               style={{ background: 'rgba(255,255,255,0.06)' }}>
-              {NOTIF_ICONS[n.type] ?? <Bell size={13} style={{ color: '#00e5ff' }} />}
+              {NOTIF_ICONS[n.type] ?? <Bell size={13} style={{ color: 'var(--accent)' }} />}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium leading-tight"
@@ -126,7 +126,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
             </div>
             {!n.read && (
               <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                style={{ background: '#00e5ff' }} />
+                style={{ background: 'var(--accent)' }} />
             )}
           </button>
         ))}
@@ -195,9 +195,8 @@ function NavbarInner() {
         <div className="max-w-5xl mx-auto px-4 h-full flex items-center justify-between">
           {/* Logo */}
           <Link href="/discover" className="flex items-center gap-2 shrink-0">
-            <Zap size={16} fill="rgba(0,229,255,0.15)"
-              style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 5px rgba(0,229,255,0.6))' }} />
-            <span className="text-sm font-bold tracking-widest" style={{ color: '#00e5ff' }}>
+            <Zap size={16} style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 5px rgba(var(--accent-rgb),0.6))' }} />
+            <span className="text-sm font-bold tracking-widest" style={{ color: 'var(--accent)' }}>
               PARTYRADAR
             </span>
           </Link>
@@ -208,25 +207,25 @@ function NavbarInner() {
             className="flex items-center gap-1 rounded-lg px-2 py-1 transition-all duration-200 shrink-0"
             style={{
               background: isHost
-                ? 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.08) 100%)'
-                : 'rgba(0,229,255,0.06)',
-              border: isHost ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(0,229,255,0.15)',
+                ? 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(var(--accent-rgb),0.08) 100%)'
+                : 'rgba(var(--accent-rgb),0.06)',
+              border: isHost ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(var(--accent-rgb),0.15)',
             }}
           >
             <span
               className="text-[9px] font-black tracking-widest transition-all"
-              style={{ color: isHost ? 'rgba(168,85,247,0.5)' : 'rgba(0,229,255,0.4)' }}
+              style={{ color: isHost ? 'rgba(168,85,247,0.5)' : 'var(--accent)', opacity: isHost ? 1 : 0.5 }}
             >
               {isHost ? 'HOST' : 'ATTENDEE'}
             </span>
             {/* Sliding dot */}
             <div className="relative w-7 h-4 rounded-full flex items-center transition-all"
-              style={{ background: isHost ? 'rgba(168,85,247,0.2)' : 'rgba(0,229,255,0.08)', border: isHost ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(0,229,255,0.12)' }}>
+              style={{ background: isHost ? 'rgba(168,85,247,0.2)' : 'rgba(var(--accent-rgb),0.08)', border: isHost ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(var(--accent-rgb),0.12)' }}>
               <div className="absolute w-3 h-3 rounded-full transition-all duration-200"
                 style={{
-                  background: isHost ? '#a855f7' : '#00e5ff',
+                  background: isHost ? '#a855f7' : 'var(--accent)',
                   left: isHost ? '13px' : '1px',
-                  boxShadow: `0 0 6px ${isHost ? 'rgba(168,85,247,0.6)' : 'rgba(0,229,255,0.5)'}`,
+                  boxShadow: `0 0 6px ${isHost ? 'rgba(168,85,247,0.6)' : 'rgba(var(--accent-rgb),0.5)'}`,
                 }} />
             </div>
           </button>
@@ -285,8 +284,8 @@ function NavbarInner() {
                 <Link href="/earn"
                   className="p-2 rounded-lg transition-all duration-150"
                   style={{
-                    color: pathname.startsWith('/earn') ? '#00e5ff' : 'rgba(255,255,255,0.4)',
-                    background: pathname.startsWith('/earn') ? 'rgba(0,229,255,0.08)' : 'transparent',
+                    color: pathname.startsWith('/earn') ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/earn') ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                   }}
                 >
                   <TrendingUp size={16} />
@@ -307,8 +306,8 @@ function NavbarInner() {
                 <Link href="/messages"
                   className="p-2 rounded-lg transition-all duration-150 relative"
                   style={{
-                    color: pathname.startsWith('/messages') ? '#00e5ff' : 'rgba(255,255,255,0.4)',
-                    background: pathname.startsWith('/messages') ? 'rgba(0,229,255,0.08)' : 'transparent',
+                    color: pathname.startsWith('/messages') ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/messages') ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                   }}
                 >
                   <MessageCircle size={16} />
@@ -319,8 +318,8 @@ function NavbarInner() {
                   <button onClick={() => setNotifOpen((o) => !o)}
                     className="relative p-2 rounded-lg transition-all duration-150"
                     style={{
-                      color: notifOpen ? '#00e5ff' : 'rgba(255,255,255,0.4)',
-                      background: notifOpen ? 'rgba(0,229,255,0.08)' : 'transparent',
+                      color: notifOpen ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
+                      background: notifOpen ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                     }}
                   >
                     <Bell size={16} />
@@ -351,7 +350,7 @@ function NavbarInner() {
                 </Link>
                 <Link href="/register"
                   className="text-sm px-3 py-1.5 rounded-lg font-semibold transition-all"
-                  style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
                   Sign up
                 </Link>
               </div>
@@ -373,16 +372,14 @@ function NavbarInner() {
         <div className="flex items-stretch h-16">
           {MOBILE_NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
-            const isMatch = href === '/match'
             return (
               <Link key={href} href={href}
                 className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
-                style={{ color: active ? (isMatch ? '#ff006e' : '#fff') : 'rgba(255,255,255,0.35)' }}>
+                style={{ color: active ? 'var(--accent)' : 'rgba(255,255,255,0.35)' }}>
                 <Icon
                   size={16}
                   strokeWidth={active ? 2 : 1.5}
-                  fill={isMatch && active ? 'rgba(255,0,110,0.3)' : 'none'}
-                  style={isMatch && active ? { filter: 'drop-shadow(0 0 6px rgba(255,0,110,0.6))' } : undefined}
+                  style={active ? { filter: 'drop-shadow(0 0 6px rgba(var(--accent-rgb),0.6))' } : undefined}
                 />
                 <span className="text-[8px] font-medium tracking-tight leading-none">{label}</span>
               </Link>
