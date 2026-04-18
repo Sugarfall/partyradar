@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 const router = Router()
 
-const ALLOWED_FOLDERS = ['events', 'avatars', 'sightings'] as const
+const ALLOWED_FOLDERS = ['events', 'avatars', 'sightings', 'profile-backgrounds'] as const
 
 /** POST /api/uploads/image — get a signed Cloudinary upload credential */
 router.post('/image', requireAuth, async (req: AuthRequest, res, next) => {

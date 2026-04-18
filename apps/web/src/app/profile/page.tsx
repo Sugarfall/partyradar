@@ -398,15 +398,8 @@ export default function ProfilePage() {
     if (!file || photoUploading) return
     setPhotoUploading(true)
     try {
-      const token = localStorage.getItem('partyradar_token') ?? ''
-      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
-
-      // Get signed upload credentials
-      const credRes = await fetch(`${API_BASE}/uploads/image`, {
-        method: 'POST', headers: hdrs, body: JSON.stringify({ folder: 'avatars' }),
-      })
-      const credJson = await credRes.json()
+      // Get signed upload credentials via the api helper (handles token automatically)
+      const credJson = await api.post<{ data: { timestamp: number; signature: string; cloudName: string; apiKey: string; folder: string } }>('/uploads/image', { folder: 'avatars' })
       const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
 
       const formData = new FormData()
@@ -422,12 +415,12 @@ export default function ProfilePage() {
       })
       const upJson = await upRes.json()
       if (upJson.secure_url) {
-        await fetch(`${API_BASE}/auth/profile`, {
-          method: 'PUT', headers: hdrs, body: JSON.stringify({ photoUrl: upJson.secure_url }),
-        })
+        await api.put('/auth/profile', { photoUrl: upJson.secure_url })
         await refreshUser()
       }
-    } catch {}
+    } catch (err) {
+      console.error('Photo upload failed:', err)
+    }
     finally { setPhotoUploading(false) }
   }
 
@@ -435,15 +428,7 @@ export default function ProfilePage() {
     if (!file || bgImageUploading) return
     setBgImageUploading(true)
     try {
-      const token = localStorage.getItem('partyradar_token') ?? ''
-      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
-
-      // Get signed upload credentials
-      const credRes = await fetch(`${API_BASE}/uploads/image`, {
-        method: 'POST', headers: hdrs, body: JSON.stringify({ folder: 'profile-backgrounds' }),
-      })
-      const credJson = await credRes.json()
+      const credJson = await api.post<{ data: { timestamp: number; signature: string; cloudName: string; apiKey: string; folder: string } }>('/uploads/image', { folder: 'profile-backgrounds' })
       const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
 
       const formData = new FormData()
@@ -459,25 +444,24 @@ export default function ProfilePage() {
       })
       const upJson = await upRes.json()
       if (upJson.secure_url) {
-        await fetch(`${API_BASE}/auth/profile`, {
-          method: 'PUT', headers: hdrs, body: JSON.stringify({ profileBgImage: upJson.secure_url }),
-        })
+        await api.put('/auth/profile', { profileBgImage: upJson.secure_url })
         setProfileBgImage(upJson.secure_url)
         await refreshUser()
       }
-    } catch {}
+    } catch (err) {
+      console.error('Background upload failed:', err)
+    }
     finally { setBgImageUploading(false) }
   }
 
   async function handleClearBgImage() {
-    const token = localStorage.getItem('partyradar_token') ?? ''
-    const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) hdrs['Authorization'] = `Bearer ${token}`
-    await fetch(`${API_BASE}/auth/profile`, {
-      method: 'PUT', headers: hdrs, body: JSON.stringify({ profileBgImage: null }),
-    })
-    setProfileBgImage(null)
-    await refreshUser()
+    try {
+      await api.put('/auth/profile', { profileBgImage: null })
+      setProfileBgImage(null)
+      await refreshUser()
+    } catch (err) {
+      console.error('Clear background failed:', err)
+    }
   }
 
   if (authLoading || !dbUser) {

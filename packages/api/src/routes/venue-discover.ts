@@ -34,7 +34,7 @@ const GOOGLE_TYPE_MAP: Record<string, VenueType> = {
  * This prevents supermarkets, petrol stations, restaurants, etc. from appearing.
  */
 const NIGHTLIFE_TYPES = new Set([
-  'night_club', 'bar', 'pub', 'casino', 'concert_hall', 'music_venue',
+  'night_club', 'bar', 'pub', 'concert_hall', 'music_venue',
   'performing_arts_theater', 'live_music_venue', 'karaoke', 'lounge',
   'cocktail_bar', 'wine_bar', 'brewery', 'beer_hall', 'comedy_club',
   'dance_hall', 'sports_bar',
@@ -45,7 +45,6 @@ const SEARCH_TYPES = [
   'night_club',
   'bar',
   'pub',             // important for UK, Ireland, Australia
-  'casino',
 ]
 
 // Additional text search queries to cover more venues
