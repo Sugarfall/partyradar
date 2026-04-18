@@ -14,22 +14,19 @@ import type { Gender } from '@partyradar/shared'
 import { api, API_URL as API_BASE } from '@/lib/api'
 
 // ── Follow List Modal (own profile) ─────────────────────────────────────────
-function FollowListModal({ username, mode, onClose, token }: {
-  username: string; mode: 'followers' | 'following'; onClose: () => void; token: string
+function FollowListModal({ username, mode, onClose }: {
+  username: string; mode: 'followers' | 'following'; onClose: () => void
 }) {
   interface FollowUser { id: string; displayName: string; username: string; photoUrl?: string | null; isFollowing: boolean }
   const [users, setUsers] = useState<FollowUser[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const h: Record<string, string> = {}
-    if (token) h['Authorization'] = `Bearer ${token}`
-    fetch(`${API_BASE}/users/${username}/${mode}`, { headers: h })
-      .then((r) => r.json())
+    api.get(`/users/${username}/${mode}`)
       .then((j) => setUsers(j.data ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [username, mode, token])
+  }, [username, mode])
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
@@ -173,8 +170,7 @@ function ClickableToggle({ icon, label, value, onChange, border }: {
 }
 
 // ── Social Inbox ──────────────────────────────────────────────────────────────
-function SocialInbox({ token }: { token: string }) {
-  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+function SocialInbox() {
   const [goOutRequests, setGoOutRequests] = useState<Array<{
     id: string; displayName: string; username: string; photoUrl?: string | null
     requestId: string; message?: string | null; sentAt: string
@@ -185,19 +181,16 @@ function SocialInbox({ token }: { token: string }) {
   const [responding, setResponding] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!token) return
     Promise.all([
-      fetch(`${API_BASE}/users/me/go-out-requests`, { headers }).then((r) => r.json()).then((j) => setGoOutRequests(j.data ?? [])),
-      fetch(`${API_BASE}/users/me/nudges`, { headers }).then((r) => r.json()).then((j) => setNudges(j.data ?? [])),
+      api.get('/users/me/go-out-requests').then((j) => setGoOutRequests(j.data ?? [])),
+      api.get('/users/me/nudges').then((j) => setNudges(j.data ?? [])),
     ]).catch(() => {})
-  }, [token])
+  }, [])
 
   async function respond(requestId: string, accept: boolean) {
     setResponding(requestId)
     try {
-      await fetch(`${API_BASE}/users/go-out-requests/${requestId}/respond`, {
-        method: 'POST', headers, body: JSON.stringify({ accept }),
-      })
+      await api.post(`/users/go-out-requests/${requestId}/respond`, { accept })
       setGoOutRequests((prev) => prev.filter((r) => r.requestId !== requestId))
     } catch {}
     finally { setResponding(null) }
@@ -863,7 +856,7 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Social Inbox ── */}
-        <SocialInbox token={typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''} />
+        <SocialInbox />
 
         {/* Going Out Tonight toggle */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
@@ -1143,7 +1136,6 @@ export default function ProfilePage() {
           username={dbUser.username}
           mode={showFollowList}
           onClose={() => setShowFollowList(null)}
-          token={typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''}
         />
       )}
     </div>

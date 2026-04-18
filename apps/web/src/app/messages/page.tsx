@@ -7,7 +7,7 @@ import {
   Camera, Mic, Radio, Play, Square, ShieldCheck, Timer,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api, API_URL } from '@/lib/api'
 import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
 import { formatPrice } from '@/lib/currency'
 
@@ -115,8 +115,6 @@ function HostGroupDashboard({
   const [newPriceTier, setNewPriceTier] = useState('MICRO')
   const [creating, setCreating] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   const myGroups = groups.filter((g) => g.isOwner)
   const totalSubs = myGroups.reduce((sum, g) => sum + (g.isPaid ? g.memberCount : 0), 0)
   const paidGroups = myGroups.filter((g) => g.isPaid)
@@ -129,8 +127,6 @@ function HostGroupDashboard({
     if (newPrivate && !newPaid && newPassword.trim().length < 4) return
     setCreating(true)
     try {
-      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
       const body: Record<string, unknown> = {
         name: newName.trim(), description: newDesc.trim() || undefined,
         emoji: newEmoji, coverColor: newColor,
@@ -142,8 +138,7 @@ function HostGroupDashboard({
         body.isPrivate = true
         body.password = newPassword.trim()
       }
-      const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
-      const j = await r.json()
+      const j = await api.post('/groups', body)
       if (j.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#a855f7')
@@ -430,8 +425,6 @@ function GroupBrowser({
   const [newGroupType, setNewGroupType] = useState<'GENRE' | 'FESTIVAL' | 'TRIP'>('GENRE')
   const [creating, setCreating] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   const q = groupSearch.toLowerCase()
   const filteredGroups = q ? groups.filter((g) => g.name.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q)) : groups
   const genres = filteredGroups.filter((g) => g.type === 'GENRE')
@@ -455,8 +448,6 @@ function GroupBrowser({
     if (newPrivate && !newPaid && newPassword.trim().length < 4) return
     setCreating(true)
     try {
-      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
       const body: Record<string, unknown> = {
         name: newName.trim(), description: newDesc.trim() || undefined,
         emoji: newEmoji, coverColor: newColor,
@@ -469,8 +460,7 @@ function GroupBrowser({
         body.isPrivate = true
         body.password = newPassword.trim()
       }
-      const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
-      const j = await r.json()
+      const j = await api.post('/groups', body)
       if (j.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')

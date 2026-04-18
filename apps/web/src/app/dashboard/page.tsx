@@ -9,7 +9,7 @@ import {
   ArrowLeft, MapPin, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { api, API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -451,14 +451,9 @@ export default function DashboardPage() {
   const [attendeeModal, setAttendeeModal] = useState<{ id: string; name: string } | null>(null)
   const [blastModal, setBlastModal] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   const load = useCallback(async () => {
-    const headers: Record<string, string> = {}
-    if (token) headers['Authorization'] = `Bearer ${token}`
     try {
-      const r = await fetch(`${API_URL}/dashboard`, { headers })
-      const j = await r.json()
+      const j = await api.get('/dashboard')
       if (j.data) {
         setStats(j.data.stats)
         setEvents(j.data.events)
@@ -469,7 +464,7 @@ export default function DashboardPage() {
       }
     } catch {}
     finally { setLoading(false) }
-  }, [token])
+  }, [])
 
   useEffect(() => { load() }, [load])
 

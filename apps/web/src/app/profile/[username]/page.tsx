@@ -9,7 +9,7 @@ import {
   Bell, Sparkles, Eye, Crown, Star, ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api, API_URL } from '@/lib/api'
 import { auth } from '@/lib/firebase'
 import { formatPrice } from '@/lib/currency'
 
@@ -81,15 +81,14 @@ function MiniAvatar({ user }: { user: { displayName: string; photoUrl?: string |
 }
 
 // ── Who Viewed Modal ────────────────────────────────────────────────────────────
-function ProfileViewersModal({ count, onClose, headers }: {
-  count: number; onClose: () => void; headers: Record<string, string>
+function ProfileViewersModal({ count, onClose }: {
+  count: number; onClose: () => void
 }) {
   const [data, setData] = useState<{ isPremium: boolean; viewers: ProfileViewer[] | null } | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`${API_URL}/users/me/profile-views`, { headers })
-      .then((r) => r.json())
+    api.get('/users/me/profile-views')
       .then((j) => setData(j.data))
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -167,9 +166,9 @@ function ProfileViewersModal({ count, onClose, headers }: {
 }
 
 // ── Followers / Following Modal ─────────────────────────────────────────────────
-function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
+function FollowListModal({ username, mode, onClose, myId }: {
   username: string; mode: 'followers' | 'following'
-  onClose: () => void; myHeaders: Record<string, string>; myId: string | null
+  onClose: () => void; myId: string | null
 }) {
   interface FollowUser {
     id: string; displayName: string; username: string; photoUrl?: string | null; isFollowing: boolean
@@ -179,8 +178,7 @@ function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetch(`${API_URL}/users/${username}/${mode}`, { headers: myHeaders })
-      .then((r) => r.json())
+    api.get(`/users/${username}/${mode}`)
       .then((j) => {
         const data: FollowUser[] = j.data ?? []
         setUsers(data)
@@ -194,7 +192,9 @@ function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
     if (!myId) return
     const isNowFollowing = followingSet.has(userId)
     setFollowingSet((s) => { const n = new Set(s); isNowFollowing ? n.delete(userId) : n.add(userId); return n })
-    await fetch(`${API_URL}/follow/${userId}`, { method: isNowFollowing ? 'DELETE' : 'POST', headers: myHeaders }).catch(() => {})
+    const method = isNowFollowing ? 'DELETE' : 'POST'
+    if (method === 'DELETE') { await api.delete(`/follow/${userId}`).catch(() => {}) }
+    else { await api.post(`/follow/${userId}`, {}).catch(() => {}) }
   }
 
   return (
@@ -246,9 +246,9 @@ function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
 }
 
 // ── Go Out Request Modal ────────────────────────────────────────────────────────
-function GoOutModal({ profile, onClose, onSent, headers }: {
+function GoOutModal({ profile, onClose, onSent }: {
   profile: PublicProfile; onClose: () => void
-  onSent: () => void; headers: Record<string, string>
+  onSent: () => void
 }) {
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -256,9 +256,7 @@ function GoOutModal({ profile, onClose, onSent, headers }: {
   async function send() {
     setSending(true)
     try {
-      await fetch(`${API_URL}/users/${profile.id}/ask-out`, {
-        method: 'POST', headers, body: JSON.stringify({ message: message.trim() || undefined }),
-      })
+      await api.post(`/users/${profile.id}/ask-out`, { message: message.trim() || undefined })
       onSent()
     } catch {}
     finally { setSending(false) }
@@ -320,10 +318,6 @@ export default function PublicProfilePage() {
   const [showViewers, setShowViewers] = useState(false)
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
   const [activeTab, setActiveTab] = useState<'events' | 'checkins'>('events')
-
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -751,14 +745,14 @@ export default function PublicProfilePage() {
 
       {/* ── Modals ── */}
       {showViewers && (
-        <ProfileViewersModal count={profile.profileViewCount} onClose={() => setShowViewers(false)} headers={headers} />
+        <ProfileViewersModal count={profile.profileViewCount} onClose={() => setShowViewers(false)} />
       )}
       {showFollowList && (
         <FollowListModal username={profile.username} mode={showFollowList}
-          onClose={() => setShowFollowList(null)} myHeaders={headers} myId={dbUser?.id ?? null} />
+          onClose={() => setShowFollowList(null)} myId={dbUser?.id ?? null} />
       )}
       {showGoOut && (
-        <GoOutModal profile={profile} headers={headers}
+        <GoOutModal profile={profile}
           onClose={() => setShowGoOut(false)}
           onSent={() => { setShowGoOut(false); setGoOutStatus('pending') }} />
       )}

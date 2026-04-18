@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Rss, Zap, Users, MapPin, Calendar, Heart, Plus } from 'lucide-react'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
 
 function timeAgo(dateStr: string) {
@@ -347,22 +347,11 @@ export default function FeedPage() {
   useEffect(() => {
     async function loadFeed() {
       setLoading(true)
+      const endpoint = tab === 'following' ? '/feed' : '/feed/discover'
       try {
-        const token = typeof window !== 'undefined'
-          ? localStorage.getItem('partyradar_mock_session') ?? ''
-          : ''
-
-        const endpoint = tab === 'following' ? '/feed' : '/feed/discover'
-        const res = await fetch(`${API_BASE}${endpoint}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        })
-        if (res.ok) {
-          const json = await res.json()
-          const items: FeedItem[] = (json?.data ?? json ?? [])
-          setFeedItems(items.length > 0 ? items : DEV_MODE ? DEMO_FEED : [])
-        } else {
-          setFeedItems(DEV_MODE ? DEMO_FEED : [])
-        }
+        const json = await api.get(endpoint)
+        const items: FeedItem[] = (json?.data ?? json ?? [])
+        setFeedItems(items.length > 0 ? items : DEV_MODE ? DEMO_FEED : [])
       } catch {
         setFeedItems(DEV_MODE ? DEMO_FEED : [])
       } finally {

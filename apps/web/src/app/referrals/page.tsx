@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Copy, Check, Users, TrendingUp, Wallet, Gift, ChevronRight, Crown, Share2 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
 
 interface ReferralData {
@@ -73,15 +73,11 @@ export default function ReferralsPage() {
   const [requestingPayout, setRequestingPayout] = useState(false)
   const [payoutMsg, setPayoutMsg] = useState('')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
   useEffect(() => {
     if (!dbUser) { setLoading(false); return }
     Promise.all([
-      fetch(`${API_URL}/referrals`, { headers }).then((r) => r.json()),
-      fetch(`${API_URL}/referrals/leaderboard`).then((r) => r.json()),
+      api.get('/referrals'),
+      api.get('/referrals/leaderboard'),
     ])
       .then(([refRes, lbRes]) => {
         if (refRes.data) setData(refRes.data)
@@ -114,15 +110,12 @@ export default function ReferralsPage() {
     setRequestingPayout(true)
     setPayoutMsg('')
     try {
-      const r = await fetch(`${API_URL}/referrals/payout`, { method: 'POST', headers })
-      const j = await r.json()
-      if (r.ok) {
-        setPayoutMsg(j.data?.message ?? 'Payout requested!')
-        setData((d) => d ? { ...d, balance: 0 } : d)
-      } else {
-        setPayoutMsg(j.error ?? 'Failed')
-      }
-    } catch { setPayoutMsg('Network error') }
+      const j = await api.post('/referrals/payout', {})
+      setPayoutMsg(j.data?.message ?? 'Payout requested!')
+      setData((d) => d ? { ...d, balance: 0 } : d)
+    } catch (err: unknown) {
+      setPayoutMsg(err instanceof Error ? err.message : 'Network error')
+    }
     finally { setRequestingPayout(false) }
   }
 
