@@ -26,11 +26,7 @@ export default function LoginPage() {
       await signIn(email, password)
       router.push('/discover')
     } catch (err: any) {
-      if (err?.code === 'auth/email-not-verified') {
-        setError('EMAIL NOT VERIFIED — A NEW LINK HAS BEEN SENT TO YOUR INBOX')
-      } else {
-        setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
-      }
+      setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
     } finally {
       setLoading(false)
     }

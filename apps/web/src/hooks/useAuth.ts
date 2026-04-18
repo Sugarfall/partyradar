@@ -101,15 +101,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signIn(email: string, password: string) {
     const cred = await signInWithEmailAndPassword(auth, email, password)
+    // Send verification email silently if not yet verified (non-blocking — don't gate login)
     if (!DEV_MODE && !cred.user.emailVerified) {
-      // Resend verification email, then sign the user back out
-      try { await sendEmailVerification(cred.user) } catch {}
-      await signOut(auth)
-      const err = Object.assign(
-        new Error('Email not verified — a new verification link has been sent to your inbox'),
-        { code: 'auth/email-not-verified' }
-      )
-      throw err
+      sendEmailVerification(cred.user).catch(() => {})
     }
     await syncUser(cred.user)
   }
