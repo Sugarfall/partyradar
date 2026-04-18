@@ -9,7 +9,7 @@ import {
   ArrowLeft, MapPin, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api, API_URL } from '@/lib/api'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -147,13 +147,8 @@ function AttendeesModal({ eventId, eventName, onClose }: {
   const [loading, setLoading] = useState(true)
   const [removing, setRemoving] = useState<string | null>(null)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   useEffect(() => {
-    const headers: Record<string, string> = {}
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    fetch(`${API_URL}/dashboard/events/${eventId}/attendees`, { headers })
-      .then((r) => r.json())
+    api.get<{ data: EventAttendees }>(`/dashboard/events/${eventId}/attendees`)
       .then((j) => setData(j.data))
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -161,9 +156,7 @@ function AttendeesModal({ eventId, eventName, onClose }: {
 
   async function removeGuest(guestId: string) {
     setRemoving(guestId)
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    await fetch(`${API_URL}/dashboard/guests/${guestId}`, { method: 'DELETE', headers })
+    await api.delete(`/dashboard/guests/${guestId}`).catch(() => {})
     setData((d) => d ? {
       ...d,
       guests: d.guests.map((g) => g.id === guestId ? { ...g, status: 'REMOVED' } : g),
@@ -303,7 +296,6 @@ function BlastModal({ events, onClose }: {
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<{ checkoutUrl: string; queuePosition: number; estimatedSendTime: string } | null>(null)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
   const upcomingEvents = events.filter((e) => isFuture(e.startsAt) && !e.isCancelled)
   const tier = PUSH_BLAST_TIERS.find((t) => t.id === selectedTier)
 
@@ -311,16 +303,11 @@ function BlastModal({ events, onClose }: {
     if (!selectedEvent || !title.trim() || !body.trim() || sending) return
     setSending(true)
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) headers['Authorization'] = `Bearer ${token}`
-      const r = await fetch(`${API_URL}/dashboard/blast`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ eventId: selectedEvent, tierId: selectedTier, title: title.trim(), body: body.trim() }),
-      })
-      const j = await r.json()
-      if (j.data?.checkoutUrl) {
-        setResult(j.data)
-      }
+      const j = await api.post<{ data: { checkoutUrl: string; queuePosition: number; estimatedSendTime: string } }>(
+        '/dashboard/blast',
+        { eventId: selectedEvent, tierId: selectedTier, title: title.trim(), body: body.trim() },
+      )
+      if (j.data?.checkoutUrl) setResult(j.data)
     } catch {}
     finally { setSending(false) }
   }

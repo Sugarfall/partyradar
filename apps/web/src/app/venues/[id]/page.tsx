@@ -11,7 +11,7 @@ import {
   ImageIcon, Send, Heart, Clock
 } from 'lucide-react'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
@@ -202,10 +202,8 @@ export default function VenueDetailPage() {
     async function load() {
       setLoading(true)
       try {
-        const res = await fetch(`${API_BASE}/venues/${id}`)
-        if (res.status === 404) { setNotFound(true); return }
-        if (!res.ok) throw new Error('Failed to fetch venue')
-        const data = await res.json()
+        const data = await api.get(`/venues/${id}`)
+        if (!data) { setNotFound(true); return }
         setVenue(data)
       } catch (err) {
         console.error('[VenueDetail] fetch error:', err)
@@ -220,9 +218,8 @@ export default function VenueDetailPage() {
   useEffect(() => {
     if (!id) return
     setPostsLoading(true)
-    fetch(`${API_BASE}/posts/venue/${id}?limit=20`)
-      .then((r) => r.ok ? r.json() : { data: [] })
-      .then((json) => setPosts(json.data ?? json ?? []))
+    api.get(`/posts/venue/${id}?limit=20`)
+      .then((json) => setPosts(json?.data ?? json ?? []))
       .catch(() => {})
       .finally(() => setPostsLoading(false))
   }, [id])
@@ -253,17 +250,11 @@ export default function VenueDetailPage() {
     if (!postText.trim()) return
     setPosting(true)
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_mock_session') ?? '' : ''
-      const res = await fetch(`${API_BASE}/posts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ text: postText.trim(), venueId: id }),
-      })
-      if (res.ok) {
-        const json = await res.json()
+      const json = await api.post('/posts', { text: postText.trim(), venueId: id })
+      if (json?.data) {
         setPosts((prev) => [json.data, ...prev])
-        setPostText('')
       }
+      setPostText('')
     } catch {}
     finally { setPosting(false) }
   }

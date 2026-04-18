@@ -16,7 +16,7 @@ router.put('/location', requireAuth, async (req: AuthRequest, res, next) => {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { lastLat: lat, lastLng: lng, lastSeenAt: new Date() },
+      data: { lastLat: lat, lastLng: lng, lastKnownLat: lat, lastKnownLng: lng, lastSeenAt: new Date() },
     })
     res.json({ data: { ok: true } })
   } catch (err) { next(err) }

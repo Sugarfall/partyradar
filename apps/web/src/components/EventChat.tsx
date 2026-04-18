@@ -196,10 +196,11 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
       return
     }
 
-    if (socketRef.current) {
+    if (socketRef.current?.connected) {
       socketRef.current.emit('message', { eventId, text })
+      setInput('')
     }
-    setInput('')
+    // If not connected, don't clear input so user can retry — no ghost messages
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {

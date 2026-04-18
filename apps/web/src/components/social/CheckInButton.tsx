@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { MapPin, Check } from 'lucide-react'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
 
 type CrowdLevel = 'QUIET' | 'BUSY' | 'RAMMED'
 
@@ -29,24 +29,11 @@ export default function CheckInButton({ eventId, venueId, venueName }: CheckInBu
     if (!selected || loading) return
     setLoading(true)
     try {
-      const token = typeof window !== 'undefined'
-        ? localStorage.getItem('partyradar_mock_session') ?? ''
-        : ''
-
-      if (!token) {
-        // Dev mode / no auth — mock success after 500ms
-        await new Promise((r) => setTimeout(r, 500))
-      } else {
-        await fetch(`${API_BASE}/checkins`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId, venueId, crowdLevel: selected }),
-        })
-      }
+      await api.post('/checkins', { eventId, venueId, crowdLevel: selected })
       setDone(true)
       setPanelOpen(false)
     } catch {
-      setDone(true) // show success anyway (optimistic)
+      setDone(true) // optimistic — show checked in even on transient error
       setPanelOpen(false)
     } finally {
       setLoading(false)

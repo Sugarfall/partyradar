@@ -260,7 +260,7 @@ export default function RadarPage() {
     async function loadSightings() {
       setSightingsLoading(true)
       try {
-        const res = await api.get<{ data: Sighting[] }>('/sightings')
+        const res = await api.get<{ data: Sighting[] }>('/radar')
         setSightings(res?.data ?? [])
       } catch {
         setSightings([])

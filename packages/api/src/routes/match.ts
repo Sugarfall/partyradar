@@ -1,7 +1,7 @@
 import { Router } from 'express'
-import { prisma } from '../lib/prisma'
-import { requireAuth } from '../lib/auth'
-import type { AuthRequest } from '../lib/auth'
+import { prisma } from '@partyradar/db'
+import { requireAuth } from '../middleware/auth'
+import type { AuthRequest } from '../middleware/auth'
 
 const router = Router()
 
@@ -17,7 +17,7 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 // GET /api/match/deck — up to 20 candidate profiles
 router.get('/deck', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const me = req.user!
+    const me = req.user!.dbUser
     const myUser = await prisma.user.findUnique({
       where: { id: me.id },
       select: { gender: true, lastKnownLat: true, lastKnownLng: true },
@@ -92,7 +92,7 @@ router.get('/deck', requireAuth, async (req: AuthRequest, res, next) => {
 // POST /api/match/swipe — record a swipe, returns { match: boolean }
 router.post('/swipe', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const me = req.user!
+    const me = req.user!.dbUser
     const { toUserId, liked } = req.body as { toUserId: string; liked: boolean }
     if (!toUserId || typeof liked !== 'boolean') {
       return res.status(400).json({ error: { message: 'toUserId and liked are required' } })
@@ -115,12 +115,8 @@ router.post('/swipe', requireAuth, async (req: AuthRequest, res, next) => {
     // If it's a match, auto-open a DM conversation so they can message immediately
     let conversationId: string | null = null
     if (isMatch) {
-      // Find or create a conversation between the two users
       const existing = await prisma.conversation.findFirst({
         where: {
-          participants: {
-            every: { userId: { in: [me.id, toUserId] } },
-          },
           AND: [
             { participants: { some: { userId: me.id } } },
             { participants: { some: { userId: toUserId } } },
@@ -135,8 +131,8 @@ router.post('/swipe', requireAuth, async (req: AuthRequest, res, next) => {
           data: {
             participants: {
               create: [
-                { userId: me.id, isAccepted: true },
-                { userId: toUserId, isAccepted: true },
+                { userId: me.id },
+                { userId: toUserId },
               ],
             },
           },
@@ -154,7 +150,7 @@ router.post('/swipe', requireAuth, async (req: AuthRequest, res, next) => {
 // GET /api/match/matches — get all mutual matches
 router.get('/matches', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const me = req.user!
+    const me = req.user!.dbUser
 
     const iLiked = await prisma.swipeLike.findMany({
       where: { fromUserId: me.id, liked: true },

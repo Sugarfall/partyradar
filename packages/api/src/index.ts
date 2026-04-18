@@ -46,6 +46,7 @@ import phoneRouter from './routes/phone-verify'
 import brandsRouter from './routes/partner-brands'
 import referralCardsRouter from './routes/referral-cards'
 import matchRouter from './routes/match'
+import squadsRouter from './routes/squads'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -325,6 +326,7 @@ app.use('/api/phone', phoneRouter)
 app.use('/api/brands', brandsRouter)
 app.use('/api/referral-cards', referralCardsRouter)
 app.use('/api/match', matchRouter)
+app.use('/api/squads', squadsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

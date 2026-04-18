@@ -4,15 +4,19 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Check, Ticket, Compass, Zap } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
 
 function SuccessContent() {
   const params = useSearchParams()
   const eventId = params.get('event_id')
   const [show, setShow] = useState(false)
+  const { refreshUser } = useAuth()
 
   useEffect(() => {
     setTimeout(() => setShow(true), 100)
-  }, [])
+    // Sync subscription tier after Stripe payment redirect
+    refreshUser().catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#04040d' }}>

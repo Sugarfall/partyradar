@@ -1,34 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight } from 'lucide-react'
+import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight, Loader2 } from 'lucide-react'
+
+import { api } from '@/lib/api'
 
 const EMOJI_OPTIONS = ['🎉', '🔥', '⚡', '🎶', '🍻', '💃', '🕺', '🌙', '🚀', '🎸', '💜', '🦄', '👾', '🎭', '🌈']
+
+interface SquadMember {
+  id: string
+  displayName: string
+  photoUrl: string | null
+  role: string
+}
 
 interface Squad {
   id: string
   emoji: string
   name: string
-  members: string[]
   createdAt: string
-}
-
-function generateId() {
-  return Math.random().toString(36).slice(2, 10)
-}
-
-function loadSquads(): Squad[] {
-  if (typeof window === 'undefined') return []
-  try {
-    return JSON.parse(localStorage.getItem('partyradar_squads') ?? '[]') as Squad[]
-  } catch {
-    return []
-  }
-}
-
-function saveSquads(squads: Squad[]) {
-  localStorage.setItem('partyradar_squads', JSON.stringify(squads))
+  isOwner: boolean
+  members: SquadMember[]
 }
 
 // ── Create Squad Modal ──────────────────────────────────────────────────────
@@ -39,17 +32,21 @@ function CreateSquadModal({ onClose, onCreate }: {
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('🎉')
   const [focused, setFocused] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleCreate() {
-    if (!name.trim()) return
-    const squad: Squad = {
-      id: generateId(),
-      emoji,
-      name: name.trim(),
-      members: ['You'],
-      createdAt: new Date().toISOString(),
+  async function handleCreate() {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      const json = await api.post<{ data: Squad }>('/squads', { name: name.trim(), emoji })
+      onCreate(json.data)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create squad')
+    } finally {
+      setSaving(false)
     }
-    onCreate(squad)
   }
 
   return (
@@ -109,7 +106,8 @@ function CreateSquadModal({ onClose, onCreate }: {
             onChange={(e) => setName(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            maxLength={40}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
+            maxLength={60}
             placeholder="Name your crew..."
             className="w-full px-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all duration-200"
             style={{
@@ -134,11 +132,15 @@ function CreateSquadModal({ onClose, onCreate }: {
           </div>
         )}
 
+        {error && (
+          <p className="text-[10px] font-bold" style={{ color: '#ff006e' }}>{error}</p>
+        )}
+
         {/* Create button */}
         <button
           onClick={handleCreate}
-          disabled={!name.trim()}
-          className="w-full py-3 rounded-xl text-sm font-black transition-all duration-200 disabled:opacity-40"
+          disabled={!name.trim() || saving}
+          className="w-full py-3 rounded-xl text-sm font-black transition-all duration-200 disabled:opacity-40 flex items-center justify-center gap-2"
           style={{
             background: name.trim() ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
             border: name.trim() ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
@@ -146,7 +148,7 @@ function CreateSquadModal({ onClose, onCreate }: {
             letterSpacing: '0.1em',
           }}
         >
-          CREATE SQUAD →
+          {saving ? <Loader2 size={14} className="animate-spin" /> : 'CREATE SQUAD →'}
         </button>
       </div>
     </div>
@@ -257,10 +259,11 @@ function PlanTonightModal({ squad, onClose }: { squad: Squad; onClose: () => voi
 }
 
 // ── Squad Card ─────────────────────────────────────────────────────────────
-function SquadCard({ squad, onPlan, onDelete }: {
+function SquadCard({ squad, onPlan, onDelete, deleting }: {
   squad: Squad
   onPlan: () => void
   onDelete: () => void
+  deleting: boolean
 }) {
   return (
     <div
@@ -269,6 +272,8 @@ function SquadCard({ squad, onPlan, onDelete }: {
         background: 'rgba(24,24,27,0.95)',
         border: '1px solid rgba(var(--accent-rgb),0.1)',
         boxShadow: '0 2px 20px rgba(0,0,0,0.3)',
+        opacity: deleting ? 0.5 : 1,
+        transition: 'opacity 0.2s',
       }}
     >
       {/* Emoji */}
@@ -302,13 +307,16 @@ function SquadCard({ squad, onPlan, onDelete }: {
         >
           PLAN TONIGHT <ArrowRight size={10} />
         </button>
-        <button
-          onClick={onDelete}
-          className="p-1.5 rounded-lg transition-all duration-200"
-          style={{ border: '1px solid rgba(255,0,110,0.15)', color: 'rgba(255,0,110,0.4)' }}
-        >
-          <X size={12} />
-        </button>
+        {squad.isOwner && (
+          <button
+            onClick={onDelete}
+            disabled={deleting}
+            className="p-1.5 rounded-lg transition-all duration-200 disabled:opacity-40"
+            style={{ border: '1px solid rgba(255,0,110,0.15)', color: 'rgba(255,0,110,0.4)' }}
+          >
+            {deleting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -317,24 +325,39 @@ function SquadCard({ squad, onPlan, onDelete }: {
 // ── Main Squad Page ─────────────────────────────────────────────────────────
 export default function SquadPage() {
   const [squads, setSquads] = useState<Squad[]>([])
+  const [loading, setLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [planSquad, setPlanSquad] = useState<Squad | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    setSquads(loadSquads())
+  const fetchSquads = useCallback(async () => {
+    try {
+      const json = await api.get<{ data: Squad[] }>('/squads')
+      setSquads(json.data ?? [])
+    } catch {
+      setSquads([])
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
+  useEffect(() => { fetchSquads() }, [fetchSquads])
+
   function handleCreate(squad: Squad) {
-    const updated = [...squads, squad]
-    setSquads(updated)
-    saveSquads(updated)
+    setSquads((prev) => [...prev, squad])
     setCreateOpen(false)
   }
 
-  function handleDelete(id: string) {
-    const updated = squads.filter((s) => s.id !== id)
-    setSquads(updated)
-    saveSquads(updated)
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    try {
+      await api.delete(`/squads/${id}`)
+      setSquads((prev) => prev.filter((s) => s.id !== id))
+    } catch {
+      // leave in list on error
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
@@ -375,7 +398,11 @@ export default function SquadPage() {
 
       {/* Squad list */}
       <div className="max-w-xl mx-auto px-4 space-y-3">
-        {squads.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center py-20">
+            <Loader2 size={24} className="animate-spin" style={{ color: 'rgba(168,85,247,0.5)' }} />
+          </div>
+        ) : squads.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div
@@ -410,6 +437,7 @@ export default function SquadPage() {
               squad={squad}
               onPlan={() => setPlanSquad(squad)}
               onDelete={() => handleDelete(squad.id)}
+              deleting={deletingId === squad.id}
             />
           ))
         )}

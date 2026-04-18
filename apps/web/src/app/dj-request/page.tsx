@@ -25,7 +25,7 @@ function DjRequestInner() {
   useEffect(() => {
     if (!dbUser || !firebaseUser) return
     firebaseUser.getIdToken().then(token =>
-      fetch(`${API_URL}/wallet/me`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`${API_URL}/wallet`, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.json())
         .then(j => setPoints(j.data?.rewardPoints ?? null))
     ).catch(() => {})

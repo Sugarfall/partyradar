@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Heart, MapPin, Calendar, Zap } from 'lucide-react'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -43,14 +43,11 @@ export default function PostCard({ post }: PostCardProps) {
     setLikes((c) => c + (prev ? -1 : 1))
     setLiking(true)
     try {
-      const token = typeof window !== 'undefined'
-        ? localStorage.getItem('partyradar_mock_session') ?? ''
-        : ''
-      const method = prev ? 'DELETE' : 'POST'
-      await fetch(`${API_BASE}/posts/${post.id}/like`, {
-        method,
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      if (prev) {
+        await api.delete(`/posts/${post.id}/like`)
+      } else {
+        await api.post(`/posts/${post.id}/like`)
+      }
     } catch {
       // Revert
       setLiked(prev)

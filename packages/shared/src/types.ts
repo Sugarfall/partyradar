@@ -3,7 +3,7 @@
 export type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT' | 'BEACH_PARTY' | 'YACHT_PARTY'
 export type AlcoholPolicy = 'NONE' | 'PROVIDED' | 'BYOB'
 export type AgeRestriction = 'ALL_AGES' | 'AGE_18' | 'AGE_21'
-export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED'
+export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED' | 'WAITLISTED'
 export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY' | 'PREFER_NOT_TO_SAY'
 export type SubscriptionTier = 'FREE' | 'BASIC' | 'PRO' | 'PREMIUM'
 export type AccountMode = 'ATTENDEE' | 'HOST'
