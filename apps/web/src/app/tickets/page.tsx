@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import useSWR from 'swr'
@@ -19,10 +20,11 @@ export default function TicketsPage() {
     fetcher
   )
 
-  if (!dbUser) {
-    router.push('/login')
-    return null
-  }
+  useEffect(() => {
+    if (!dbUser && typeof window !== 'undefined') router.push('/login')
+  }, [dbUser, router])
+
+  if (!dbUser) return null
 
   const tickets = data?.data ?? []
 

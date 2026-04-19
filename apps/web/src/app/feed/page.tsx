@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Rss, Zap, Users, MapPin, Calendar, Heart, Plus } from 'lucide-react'
+import { Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
@@ -257,6 +257,87 @@ function FeedItemCard({ item }: { item: FeedItem }) {
   return null
 }
 
+// ─── Upcoming Event Card ──────────────────────────────────────────────────
+interface UpcomingEvent {
+  id: string
+  name: string
+  type: string
+  startsAt: string
+  address?: string
+  neighbourhood?: string
+  coverImageUrl?: string | null
+  ticketPrice?: number | null
+  host?: { displayName?: string | null; username?: string | null; photoUrl?: string | null } | null
+  _guestsCount?: number
+}
+
+function UpcomingEventCard({ event }: { event: UpcomingEvent }) {
+  const typeColor = TYPE_COLORS[event.type] ?? 'var(--accent)'
+  const typeLabel = TYPE_LABELS[event.type] ?? event.type.replace('_', ' ')
+  const dateStr = new Date(event.startsAt).toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <Link href={`/events/${event.id}`}>
+      <div
+        className="rounded-2xl overflow-hidden transition-all duration-200 active:scale-[0.98]"
+        style={{ background: 'rgba(24,24,27,0.95)', border: `1px solid ${typeColor}20` }}
+      >
+        {event.coverImageUrl && (
+          <div style={{ height: 140, overflow: 'hidden' }}>
+            <img src={event.coverImageUrl} alt="" className="w-full h-full object-cover" />
+          </div>
+        )}
+        <div className="p-3">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex-1 min-w-0">
+              <span
+                className="inline-block text-[9px] font-black px-2 py-0.5 rounded mb-1.5"
+                style={{ color: typeColor, border: `1px solid ${typeColor}50`, background: `${typeColor}15`, letterSpacing: '0.12em' }}
+              >
+                {typeLabel}
+              </span>
+              <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
+            </div>
+            {event.ticketPrice != null && event.ticketPrice > 0 ? (
+              <span className="text-xs font-black shrink-0 px-2 py-1 rounded-lg"
+                style={{ color: '#00ff88', background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)' }}>
+                £{event.ticketPrice.toFixed(2)}
+              </span>
+            ) : (
+              <span className="text-[9px] font-black shrink-0 px-2 py-1 rounded-lg"
+                style={{ color: '#00ff88', background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)' }}>
+                FREE
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+            <span className="flex items-center gap-1"><Calendar size={9} /> {dateStr}</span>
+            {(event.neighbourhood || event.address) && (
+              <span className="flex items-center gap-1 truncate"><MapPin size={9} /> {event.neighbourhood ?? event.address}</span>
+            )}
+          </div>
+          {event.host && (
+            <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
+                style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
+                {(event.host.displayName ?? event.host.username ?? '?')[0]?.toUpperCase()}
+              </div>
+              <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                by {event.host.displayName ?? event.host.username ?? 'Unknown'}
+              </span>
+              {(event._guestsCount ?? 0) > 0 && (
+                <span className="ml-auto flex items-center gap-1 text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                  <Ticket size={9} /> {event._guestsCount} going
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 // ─── Stories Bar ───────────────────────────────────────────────────────────
 function StoriesBar() {
   return (
@@ -342,6 +423,7 @@ function EmptyState() {
 export default function FeedPage() {
   const [tab, setTab] = useState<FeedTab>('foryou')
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -349,9 +431,15 @@ export default function FeedPage() {
       setLoading(true)
       const endpoint = tab === 'following' ? '/feed' : '/feed/discover'
       try {
-        const json = await api.get<{ data: FeedItem[] }>(endpoint)
-        const items: FeedItem[] = json?.data ?? []
+        const [feedRes, eventsRes] = await Promise.allSettled([
+          api.get<{ data: FeedItem[] }>(endpoint),
+          tab === 'foryou' ? api.get<{ data: UpcomingEvent[] }>('/events?limit=20&published=true') : Promise.resolve(null),
+        ])
+        const items: FeedItem[] = feedRes.status === 'fulfilled' ? (feedRes.value?.data ?? []) : (DEV_MODE ? DEMO_FEED : [])
         setFeedItems(items.length > 0 ? items : DEV_MODE ? DEMO_FEED : [])
+        if (eventsRes.status === 'fulfilled' && eventsRes.value) {
+          setUpcomingEvents((eventsRes.value as { data: UpcomingEvent[] }).data ?? [])
+        }
       } catch {
         setFeedItems(DEV_MODE ? DEMO_FEED : [])
       } finally {
@@ -435,12 +523,34 @@ export default function FeedPage() {
               LOADING FEED...
             </p>
           </div>
-        ) : feedItems.length === 0 ? (
-          <EmptyState />
         ) : (
-          feedItems.map((item, i) => (
-            <FeedItemCard key={item.id ?? i} item={item} />
-          ))
+          <>
+            {/* Social activity items */}
+            {feedItems.map((item, i) => (
+              <FeedItemCard key={item.id ?? i} item={item} />
+            ))}
+
+            {/* Upcoming events — shown in For You tab, either as filler or after activity */}
+            {tab === 'foryou' && upcomingEvents.length > 0 && (
+              <>
+                {feedItems.length > 0 && (
+                  <div className="flex items-center gap-3 py-2">
+                    <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.08)' }} />
+                    <span className="text-[9px] font-black tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>UPCOMING EVENTS</span>
+                    <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.08)' }} />
+                  </div>
+                )}
+                {upcomingEvents.map((event) => (
+                  <UpcomingEventCard key={event.id} event={event} />
+                ))}
+              </>
+            )}
+
+            {/* Empty state — only if truly nothing */}
+            {feedItems.length === 0 && (tab !== 'foryou' || upcomingEvents.length === 0) && (
+              <EmptyState />
+            )}
+          </>
         )}
       </div>
     </div>
