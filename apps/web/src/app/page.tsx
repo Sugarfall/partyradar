@@ -1,5 +1,6 @@
 'use client'
 
+import { Component, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 
 const GlobeLanding = dynamic(
@@ -20,6 +21,31 @@ const GlobeLanding = dynamic(
   }
 )
 
+// ── Fallback sign-in screen shown when Globe/WebGL fails ──────────────────────
+const FlatLanding = dynamic(() => import('@/components/globe/FlatLanding'), { ssr: false })
+
+interface ErrorBoundaryState { hasError: boolean }
+
+class GlobeErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  render() {
+    if (this.state.hasError) {
+      return <FlatLanding />
+    }
+    return this.props.children
+  }
+}
+
 export default function Home() {
-  return <GlobeLanding />
+  return (
+    <GlobeErrorBoundary>
+      <GlobeLanding />
+    </GlobeErrorBoundary>
+  )
 }
