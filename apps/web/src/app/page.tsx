@@ -2,6 +2,9 @@
 
 import { Component, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
+// Static import so FlatLanding is always bundled — never depends on a lazy load
+// that could fail when the error boundary needs to render its fallback
+import FlatLanding from '@/components/globe/FlatLanding'
 
 const GlobeLanding = dynamic(
   () => import('@/components/globe/GlobeLanding'),
@@ -21,9 +24,6 @@ const GlobeLanding = dynamic(
   }
 )
 
-// ── Fallback sign-in screen shown when Globe/WebGL fails ──────────────────────
-const FlatLanding = dynamic(() => import('@/components/globe/FlatLanding'), { ssr: false })
-
 interface ErrorBoundaryState { hasError: boolean }
 
 class GlobeErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
@@ -33,6 +33,9 @@ class GlobeErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundar
   }
   static getDerivedStateFromError() {
     return { hasError: true }
+  }
+  componentDidCatch(error: Error) {
+    console.error('[PartyRadar] Globe failed, using flat fallback:', error?.message)
   }
   render() {
     if (this.state.hasError) {
