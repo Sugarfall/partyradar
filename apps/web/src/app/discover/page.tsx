@@ -838,8 +838,33 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
 }
 
 // ── Empty / loading placeholders ─────────────────────────────────────────────
-function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => void }) {
+const FEATURED_VENUES = [
+  { name: 'Sub Club', tag: 'Techno · Underground', emoji: '🖤', city: 'Glasgow' },
+  { name: 'SWG3', tag: 'Warehouse · DJ Sets', emoji: '🏭', city: 'Glasgow' },
+  { name: 'Fabric', tag: 'House · Techno', emoji: '⚫', city: 'London' },
+  { name: 'Printworks', tag: 'Electronic · Rave', emoji: '🏗️', city: 'London' },
+  { name: 'The Warehouse Project', tag: 'Bass · Electronic', emoji: '🔊', city: 'Manchester' },
+  { name: 'Egg London', tag: 'Club · House', emoji: '🥚', city: 'London' },
+]
+
+const QUICK_CITIES = ['Glasgow', 'Edinburgh', 'London', 'Manchester', 'Birmingham', 'Bristol']
+
+function EmptyState({ loading, onRetry, onSearch, onCreateEvent }: {
+  loading: boolean
+  onRetry?: () => void
+  onSearch?: () => void
+  onCreateEvent?: () => void
+}) {
   const [retrying, setRetrying] = useState(false)
+  const [anyEvents, setAnyEvents] = useState<{ id: string; name: string; type: string; startsAt: string; neighbourhood?: string }[]>([])
+
+  // On mount, fetch any events from anywhere as suggestions
+  useEffect(() => {
+    fetch(`${API_URL}/events?limit=6&published=true`)
+      .then(r => r.json())
+      .then(j => { if (Array.isArray(j?.data)) setAnyEvents(j.data) })
+      .catch(() => {})
+  }, [])
 
   const handleRetry = async () => {
     if (!onRetry || retrying) return
@@ -847,37 +872,122 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
     try { await onRetry() } catch {} finally { setRetrying(false) }
   }
 
-  const showSpinner = loading || retrying
+  if (loading || retrying) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <div className="w-12 h-12 rounded-full border-2 animate-spin"
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+        <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+          {retrying ? 'RETRYING...' : 'SCANNING FOR EVENTS...'}
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4">
-      {showSpinner ? (
-        <>
-          <div
-            className="w-12 h-12 rounded-full border-2 animate-spin"
-            style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }}
-          />
-          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-            {retrying ? 'RETRYING...' : 'FINDING EVENTS NEAR YOU...'}
+    <div className="overflow-y-auto h-full pb-6">
+      {/* Hero */}
+      <div className="flex flex-col items-center pt-8 pb-5 px-6 text-center">
+        <div className="text-4xl mb-3">📡</div>
+        <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>
+          NO EVENTS IN YOUR AREA
+        </p>
+        <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
+          PartyRadar is growing. No events near you yet — search another city, create one yourself, or explore below.
+        </p>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 px-4 mb-5">
+        {onSearch && (
+          <button onClick={onSearch}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
+            style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
+            <Search size={12} /> SEARCH EVENTS
+          </button>
+        )}
+        {onCreateEvent && (
+          <button onClick={onCreateEvent}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
+            style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', letterSpacing: '0.1em' }}>
+            + CREATE EVENT
+          </button>
+        )}
+      </div>
+
+      {/* Any events from platform */}
+      {anyEvents.length > 0 && (
+        <div className="px-4 mb-5">
+          <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+            EVENTS ON THE PLATFORM
           </p>
-        </>
-      ) : (
-        <>
-          <div style={{ fontSize: 40 }}>📡</div>
-          <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-            NO EVENTS NEAR YOU YET
-          </p>
-          <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
-            PartyRadar is growing — no events have been listed in your area yet. Be the first to create one, or try searching a different city.
-          </p>
-          {onRetry && (
-            <button onClick={handleRetry}
-              className="mt-2 px-5 py-2 rounded-xl text-xs font-black tracking-widest transition-all"
-              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
-              RETRY
-            </button>
-          )}
-        </>
+          <div className="space-y-2">
+            {anyEvents.map(ev => (
+              <Link key={ev.id} href={`/events/${ev.id}`}>
+                <div className="flex items-center gap-3 p-3 rounded-xl transition-all active:scale-[0.98]"
+                  style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-base"
+                    style={{ background: `${TYPE_COLORS[ev.type] ?? 'var(--accent)'}15`, border: `1px solid ${TYPE_COLORS[ev.type] ?? 'var(--accent)'}30` }}>
+                    {ev.type === 'HOME_PARTY' ? '🏠' : ev.type === 'CLUB_NIGHT' ? '🎧' : ev.type === 'CONCERT' ? '🎵' : '🎉'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black truncate" style={{ color: '#e0f2fe' }}>{ev.name}</p>
+                    <p className="text-[10px] truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                      {ev.neighbourhood ?? ''} · {new Date(ev.startsAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </p>
+                  </div>
+                  <ChevronRight size={12} style={{ color: 'rgba(var(--accent-rgb),0.4)', flexShrink: 0 }} />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick city search */}
+      <div className="px-4 mb-5">
+        <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+          SEARCH BY CITY
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {QUICK_CITIES.map(city => (
+            <Link key={city} href={`/discover?city=${encodeURIComponent(city)}`}>
+              <span className="px-3 py-1.5 rounded-full text-[10px] font-black transition-all"
+                style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.7)', letterSpacing: '0.08em' }}>
+                {city}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Featured venues */}
+      <div className="px-4">
+        <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+          ICONIC VENUES
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {FEATURED_VENUES.map(v => (
+            <div key={v.name} className="p-3 rounded-xl"
+              style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <div className="text-xl mb-1">{v.emoji}</div>
+              <p className="text-xs font-black" style={{ color: '#e0f2fe' }}>{v.name}</p>
+              <p className="text-[9px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>{v.tag}</p>
+              <p className="text-[9px] mt-0.5 font-bold" style={{ color: 'rgba(74,96,128,0.5)' }}>{v.city}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Retry */}
+      {onRetry && (
+        <div className="flex justify-center mt-5">
+          <button onClick={handleRetry}
+            className="px-5 py-2 rounded-xl text-xs font-black tracking-widest transition-all"
+            style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.6)' }}>
+            RETRY LOCATION SCAN
+          </button>
+        </div>
       )}
     </div>
   )
@@ -1085,7 +1195,7 @@ export default function DiscoverPage() {
 
   // watchPosition — continuously tracks; re-fetches events + venues when moved >500 m
   useEffect(() => {
-    if (!navigator.geolocation) { setGeoResolved(true); return }
+    if (typeof window === 'undefined' || !navigator.geolocation) { setGeoResolved(true); return }
 
     const fallback = setTimeout(() => setGeoResolved(true), 8500)
 
@@ -1220,6 +1330,7 @@ export default function DiscoverPage() {
   useEffect(() => { goPrevRef.current = goPrev }, [goPrev])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'ArrowRight') goNextRef.current()
       if (e.key === 'ArrowLeft') goPrevRef.current()
@@ -1523,7 +1634,7 @@ export default function DiscoverPage() {
               <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SCANNING AREA...</p>
             </div>
           ) : events.length === 0 ? (
-            <EmptyState loading={syncing} onRetry={forceRetry} />
+            <EmptyState loading={syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
           ) : (() => {
             const liveEvents = events.filter(e => {
               const start = new Date(e.startsAt).getTime()
@@ -1608,7 +1719,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} userTier={userTier} />}
+            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} /> : <EventStage event={event!} dir={slideDir} userTier={userTier} />}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
