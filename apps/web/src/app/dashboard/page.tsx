@@ -453,8 +453,8 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const j = await api.get('/dashboard')
-      if (j.data) {
+      const j = await api.get<{ data: { stats: DashStats; events: DashEvent[]; groups: DashGroup[]; recentAttendees: DashAttendee[]; blasts: DashBlast[]; blastQueue?: { queuedAhead: number } } }>('/dashboard')
+      if (j?.data) {
         setStats(j.data.stats)
         setEvents(j.data.events)
         setGroups(j.data.groups)

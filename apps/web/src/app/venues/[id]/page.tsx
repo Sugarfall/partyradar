@@ -219,8 +219,8 @@ export default function VenueDetailPage() {
   useEffect(() => {
     if (!id) return
     setPostsLoading(true)
-    api.get(`/posts/venue/${id}?limit=20`)
-      .then((json) => setPosts(json?.data ?? json ?? []))
+    api.get<{ data: VenuePost[] }>(`/posts/venue/${id}?limit=20`)
+      .then((json) => setPosts(json?.data ?? []))
       .catch(() => {})
       .finally(() => setPostsLoading(false))
   }, [id])
@@ -251,7 +251,7 @@ export default function VenueDetailPage() {
     if (!postText.trim()) return
     setPosting(true)
     try {
-      const json = await api.post('/posts', { text: postText.trim(), venueId: id })
+      const json = await api.post<{ data: VenuePost }>('/posts', { text: postText.trim(), venueId: id })
       if (json?.data) {
         setPosts((prev) => [json.data, ...prev])
       }

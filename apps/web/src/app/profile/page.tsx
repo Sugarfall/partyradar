@@ -23,8 +23,8 @@ function FollowListModal({ username, mode, onClose }: {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get(`/users/${username}/${mode}`)
-      .then((j) => setUsers(j.data ?? []))
+    api.get<{ data: FollowUser[] }>(`/users/${username}/${mode}`)
+      .then((j) => setUsers(j?.data ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [username, mode])
@@ -183,8 +183,8 @@ function SocialInbox() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/users/me/go-out-requests').then((j) => setGoOutRequests(j.data ?? [])),
-      api.get('/users/me/nudges').then((j) => setNudges(j.data ?? [])),
+      api.get<{ data: typeof goOutRequests }>('/users/me/go-out-requests').then((j) => setGoOutRequests(j?.data ?? [])),
+      api.get<{ data: typeof nudges }>('/users/me/nudges').then((j) => setNudges(j?.data ?? [])),
     ]).catch(() => {})
   }, [])
 

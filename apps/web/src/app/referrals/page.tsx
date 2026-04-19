@@ -76,12 +76,12 @@ export default function ReferralsPage() {
   useEffect(() => {
     if (!dbUser) { setLoading(false); return }
     Promise.all([
-      api.get('/referrals'),
-      api.get('/referrals/leaderboard'),
+      api.get<{ data: ReferralData }>('/referrals'),
+      api.get<{ data: LeaderEntry[] }>('/referrals/leaderboard'),
     ])
       .then(([refRes, lbRes]) => {
-        if (refRes.data) setData(refRes.data)
-        if (lbRes.data) setLeaderboard(lbRes.data)
+        if (refRes?.data) setData(refRes.data)
+        if (lbRes?.data) setLeaderboard(lbRes.data)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -110,8 +110,8 @@ export default function ReferralsPage() {
     setRequestingPayout(true)
     setPayoutMsg('')
     try {
-      const j = await api.post('/referrals/payout', {})
-      setPayoutMsg(j.data?.message ?? 'Payout requested!')
+      const j = await api.post<{ data: { message?: string } }>('/referrals/payout', {})
+      setPayoutMsg(j?.data?.message ?? 'Payout requested!')
       setData((d) => d ? { ...d, balance: 0 } : d)
     } catch (err: unknown) {
       setPayoutMsg(err instanceof Error ? err.message : 'Network error')

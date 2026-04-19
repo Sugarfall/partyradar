@@ -83,8 +83,8 @@ function ProfileViewersModal({ count, onClose }: {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get('/users/me/profile-views')
-      .then((j) => setData(j.data))
+    api.get<{ data: { isPremium: boolean; viewers: ProfileViewer[] | null } }>('/users/me/profile-views')
+      .then((j) => setData(j?.data ?? null))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -173,9 +173,9 @@ function FollowListModal({ username, mode, onClose, myId }: {
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    api.get(`/users/${username}/${mode}`)
+    api.get<{ data: FollowUser[] }>(`/users/${username}/${mode}`)
       .then((j) => {
-        const data: FollowUser[] = j.data ?? []
+        const data: FollowUser[] = j?.data ?? []
         setUsers(data)
         setFollowingSet(new Set(data.filter((u) => u.isFollowing).map((u) => u.id)))
       })

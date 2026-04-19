@@ -139,8 +139,8 @@ function HostGroupDashboard({
         body.isPrivate = true
         body.password = newPassword.trim()
       }
-      const j = await api.post('/groups', body)
-      if (j.data) {
+      const j = await api.post<{ data: GroupChat }>('/groups', body)
+      if (j?.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#a855f7')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO')
@@ -461,8 +461,8 @@ function GroupBrowser({
         body.isPrivate = true
         body.password = newPassword.trim()
       }
-      const j = await api.post('/groups', body)
-      if (j.data) {
+      const j = await api.post<{ data: GroupChat }>('/groups', body)
+      if (j?.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO'); setNewGroupType('GENRE')

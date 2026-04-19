@@ -349,8 +349,8 @@ export default function FeedPage() {
       setLoading(true)
       const endpoint = tab === 'following' ? '/feed' : '/feed/discover'
       try {
-        const json = await api.get(endpoint)
-        const items: FeedItem[] = (json?.data ?? json ?? [])
+        const json = await api.get<{ data: FeedItem[] }>(endpoint)
+        const items: FeedItem[] = json?.data ?? []
         setFeedItems(items.length > 0 ? items : DEV_MODE ? DEMO_FEED : [])
       } catch {
         setFeedItems(DEV_MODE ? DEMO_FEED : [])
