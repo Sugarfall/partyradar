@@ -1199,25 +1199,6 @@ export default function DiscoverPage() {
     return () => clearInterval(t)
   }, [])
 
-  // Keyboard navigation
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'ArrowRight') goNext()
-      if (e.key === 'ArrowLeft') goPrev()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [goNext, goPrev])
-
-  // Simulate host push notification after 2s
-  useEffect(() => {
-    if (alertDismissed) return
-    const t = setTimeout(() => {
-      setPartyAlert(events[1] ?? events[0] ?? null) // show rooftop house party
-    }, 2000)
-    return () => clearTimeout(t)
-  }, [events, alertDismissed])
-
   const goNext = useCallback(() => {
     if (index >= events.length - 1) return
     setSlideDir('next')
@@ -1231,6 +1212,30 @@ export default function DiscoverPage() {
     setIndex((i) => i - 1)
     setTimeout(() => setSlideDir(null), 400)
   }, [index])
+
+  // Keyboard navigation — use refs so we always call the latest callbacks
+  const goNextRef = useRef(goNext)
+  const goPrevRef = useRef(goPrev)
+  useEffect(() => { goNextRef.current = goNext }, [goNext])
+  useEffect(() => { goPrevRef.current = goPrev }, [goPrev])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowRight') goNextRef.current()
+      if (e.key === 'ArrowLeft') goPrevRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Simulate host push notification after 2s
+  useEffect(() => {
+    if (alertDismissed) return
+    const t = setTimeout(() => {
+      setPartyAlert(events[1] ?? events[0] ?? null) // show rooftop house party
+    }, 2000)
+    return () => clearTimeout(t)
+  }, [events, alertDismissed])
 
   const event = events[index] ?? null
 
