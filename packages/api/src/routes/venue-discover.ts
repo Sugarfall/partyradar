@@ -223,7 +223,7 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
       const sortedExisting = existing.slice().sort((a, b) =>
         Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
       )
-      return res.json({ data: sortedExisting, source: 'database', discovered: 0 })
+      return res.json({ data: { venues: sortedExisting, source: 'database', discovered: 0 } })
     }
 
     // Fetch from multiple Google Places searches in parallel
@@ -314,10 +314,7 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
     })
 
     res.json({
-      data: sorted,
-      source: 'google',   // matches frontend LiveVenue source type
-      discovered,
-      total: sorted.length,
+      data: { venues: sorted, source: 'google', discovered, total: sorted.length },
     })
   } catch (err) { next(err) }
 })
@@ -328,9 +325,11 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
  */
 router.get('/status', (_req, res) => {
   res.json({
-    googlePlacesEnabled: !!GOOGLE_API_KEY,
-    searchTypes: SEARCH_TYPES,
-    textQueries: TEXT_QUERIES,
+    data: {
+      googlePlacesEnabled: !!GOOGLE_API_KEY,
+      searchTypes: SEARCH_TYPES,
+      textQueries: TEXT_QUERIES,
+    },
   })
 })
 
@@ -346,7 +345,7 @@ router.delete('/purge-rejected', async (_req, res, next) => {
     if (toDelete.length > 0) {
       await prisma.venue.deleteMany({ where: { id: { in: toDelete } } })
     }
-    res.json({ deleted: toDelete.length, names: all.filter((v) => isRejectedVenue(v.name)).map((v) => v.name) })
+    res.json({ data: { deleted: toDelete.length, names: all.filter((v) => isRejectedVenue(v.name)).map((v) => v.name) } })
   } catch (err) { next(err) }
 })
 

@@ -11,7 +11,8 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
 
-import { api, API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
+import { uploadImage } from '@/lib/cloudinary'
 
 // ── Follow List Modal (own profile) ─────────────────────────────────────────
 function FollowListModal({ username, mode, onClose }: {
@@ -275,7 +276,7 @@ function SocialInbox() {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { dbUser, firebaseUser, loading: authLoading, logout: signOut, refreshUser } = useAuth()
+  const { dbUser, loading: authLoading, logout: signOut, refreshUser } = useAuth()
 
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -388,59 +389,14 @@ export default function ProfilePage() {
     localStorage.setItem('partyradar_going_out', String(next))
   }
 
-  async function getUploadHeaders(): Promise<Record<string, string>> {
-    const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (firebaseUser) {
-      const token = await firebaseUser.getIdToken()
-      hdrs['Authorization'] = `Bearer ${token}`
-    }
-    return hdrs
-  }
-
-  async function cloudinaryUpload(file: File, folder: string): Promise<string | null> {
-    const hdrs = await getUploadHeaders()
-    const credRes = await fetch(`${API_BASE}/uploads/image`, {
-      method: 'POST', headers: hdrs, body: JSON.stringify({ folder }),
-    })
-    if (!credRes.ok) {
-      const err = await credRes.json().catch(() => ({}))
-      throw new Error(err.error ?? `Upload auth failed (${credRes.status})`)
-    }
-    const { data: creds } = await credRes.json()
-    const { timestamp, signature, cloudName, apiKey, folder: credFolder, transformation } = creds
-
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('timestamp', String(timestamp))
-    formData.append('signature', signature)
-    formData.append('api_key', apiKey)
-    formData.append('folder', credFolder)
-    // Only append transformation if it was included in the signature
-    if (transformation) formData.append('transformation', transformation)
-
-    const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST', body: formData,
-    })
-    const upJson = await upRes.json()
-    if (!upRes.ok || !upJson.secure_url) {
-      throw new Error(upJson.error?.message ?? 'Cloudinary upload failed')
-    }
-    return upJson.secure_url as string
-  }
-
   async function handlePhotoUpload(file: File) {
     if (!file || photoUploading) return
     setPhotoUploading(true)
     setPhotoError(null)
     try {
-      const url = await cloudinaryUpload(file, 'avatars')
-      if (url) {
-        const hdrs = await getUploadHeaders()
-        await fetch(`${API_BASE}/auth/profile`, {
-          method: 'PUT', headers: hdrs, body: JSON.stringify({ photoUrl: url }),
-        })
-        await refreshUser()
-      }
+      const url = await uploadImage(file, 'avatars')
+      await api.put('/auth/profile', { photoUrl: url })
+      await refreshUser()
     } catch (err: any) {
       setPhotoError(err?.message ?? 'Upload failed — try again')
     } finally {
@@ -452,15 +408,10 @@ export default function ProfilePage() {
     if (!file || bgImageUploading) return
     setBgImageUploading(true)
     try {
-      const url = await cloudinaryUpload(file, 'profile-backgrounds')
-      if (url) {
-        const hdrs = await getUploadHeaders()
-        await fetch(`${API_BASE}/auth/profile`, {
-          method: 'PUT', headers: hdrs, body: JSON.stringify({ profileBgImage: url }),
-        })
-        setProfileBgImage(url)
-        await refreshUser()
-      }
+      const url = await uploadImage(file, 'profile-backgrounds')
+      await api.put('/auth/profile', { profileBgImage: url })
+      setProfileBgImage(url)
+      await refreshUser()
     } catch (err: any) {
       setPhotoError(err?.message ?? 'Background upload failed — try again')
     } finally {
@@ -470,10 +421,7 @@ export default function ProfilePage() {
 
   async function handleClearBgImage() {
     try {
-      const hdrs = await getUploadHeaders()
-      await fetch(`${API_BASE}/auth/profile`, {
-        method: 'PUT', headers: hdrs, body: JSON.stringify({ profileBgImage: null }),
-      })
+      await api.put('/auth/profile', { profileBgImage: null })
       setProfileBgImage(null)
       await refreshUser()
     } catch {}
@@ -517,15 +465,7 @@ export default function ProfilePage() {
     // Notify Navbar and any other listeners in the same tab
     window.dispatchEvent(new CustomEvent('partyradar:mode-change', { detail: next }))
     // Best-effort API sync — doesn't block the UI
-    import('@/lib/firebase').then(({ auth }) =>
-      auth.currentUser?.getIdToken().then((token) =>
-        fetch(`${API_BASE}/auth/mode`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ accountMode: next }),
-        }).catch(() => {})
-      )
-    )
+    api.put('/auth/mode', { accountMode: next }).catch(() => {})
   }
 
   function switchMode(next: 'ATTENDEE' | 'HOST') {

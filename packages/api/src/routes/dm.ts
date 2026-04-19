@@ -33,7 +33,7 @@ router.get('/users', requireAuth, async (req: AuthRequest, res, next) => {
         orderBy: { createdAt: 'desc' },
         take: 12,
       })
-      return res.json({ data: suggestions, isSuggestions: true })
+      return res.json({ data: suggestions, meta: { isSuggestions: true } })
     }
 
     const users = await prisma.user.findMany({
@@ -48,7 +48,7 @@ router.get('/users', requireAuth, async (req: AuthRequest, res, next) => {
       take: 8,
     })
 
-    res.json({ data: users, isSuggestions: false })
+    res.json({ data: users, meta: { isSuggestions: false } })
   } catch (err) { next(err) }
 })
 

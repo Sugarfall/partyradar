@@ -40,7 +40,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
       payment_method_types: ['card'],
       line_items: [{ price: event.stripePriceId, quantity }],
       mode: 'payment',
-      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event_id=${eventId}`,
       cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/events/${eventId}`,
       metadata: { eventId, userId, quantity: String(quantity) },
       payment_intent_data: {

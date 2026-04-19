@@ -342,7 +342,7 @@ router.post('/seed-venues', async (_req, res, next) => {
     })
     await seedGroupChats(allVenuesForGroups)
 
-    res.json({ message: `Seeded ${created} venues, skipped ${skipped} existing, groups seeded` })
+    res.json({ data: { message: `Seeded ${created} venues, skipped ${skipped} existing, groups seeded` } })
   } catch (err) {
     next(err)
   }
@@ -365,7 +365,7 @@ router.post('/fix-event-types', async (_req, res, next) => {
       where: { name: { in: pubNightNames } },
       data: { type: 'PUB_NIGHT' },
     })
-    res.json({ message: `Fixed ${count} events → PUB_NIGHT` })
+    res.json({ data: { message: `Fixed ${count} events → PUB_NIGHT` } })
   } catch (err) { next(err) }
 })
 
@@ -879,12 +879,14 @@ router.post('/seed-activity', async (_req, res, next) => {
     }
 
     res.json({
-      message: 'Activity seeded',
-      users: Object.keys(hosts).length,
-      eventsCreated,
-      postsCreated,
-      checkInsCreated,
-      groupsSeeded: true,
+      data: {
+        message: 'Activity seeded',
+        users: Object.keys(hosts).length,
+        eventsCreated,
+        postsCreated,
+        checkInsCreated,
+        groupsSeeded: true,
+      },
     })
   } catch (err) {
     next(err)
@@ -947,7 +949,7 @@ router.post('/refresh-activity', async (_req, res, next) => {
     })
 
     if (demoUsers.length === 0 || venues.length === 0) {
-      res.json({ message: 'No demo users or venues found — run seed-activity first' })
+      res.json({ data: { message: 'No demo users or venues found — run seed-activity first' } })
       return
     }
 
@@ -963,7 +965,7 @@ router.post('/refresh-activity', async (_req, res, next) => {
       created.push(`${venue.name}: "${text}"`)
     }
 
-    res.json({ message: `Added ${created.length} fresh posts`, posts: created })
+    res.json({ data: { message: `Added ${created.length} fresh posts`, posts: created } })
   } catch (err) {
     next(err)
   }

@@ -14,6 +14,7 @@ import SaveButton from '@/components/events/SaveButton'
 import { useEvent, updateEvent, cancelEvent } from '@/hooks/useEvents'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { uploadImage } from '@/lib/cloudinary'
 import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
@@ -268,13 +269,33 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
   const [highlights, setHighlights] = useState<HighlightPost[]>([])
   const [viewingIdx, setViewingIdx] = useState<number | null>(null)
   const [liked, setLiked] = useState<Set<string>>(new Set())
+  const [uploading, setUploading] = useState(false)
   const { dbUser } = useAuth()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  // Map raw API post shape to flat HighlightPost interface
+  function mapPost(p: any): HighlightPost {
+    return {
+      id: p.id,
+      userId: p.userId ?? p.user?.id ?? '',
+      userName: p.user?.displayName ?? 'User',
+      userPhoto: p.user?.photoUrl ?? undefined,
+      imageUrl: p.imageUrl ?? '',
+      caption: p.text ?? undefined,
+      likes: p._count?.likes ?? 0,
+      createdAt: p.createdAt,
+    }
+  }
 
   useEffect(() => {
-    // Fetch highlights from API
-    api.get<{ data: HighlightPost[] }>(`/posts/event/${event.id}?limit=20`)
-      .then(r => setHighlights(r.data))
+    // Fetch highlights from API — filter to image-only posts
+    api.get<{ data: any[] }>(`/posts/event/${event.id}?limit=20`)
+      .then(r => {
+        const mapped = (r?.data ?? []).filter((p) => p.imageUrl).map(mapPost)
+        if (mapped.length > 0) setHighlights(mapped)
+        else throw new Error('no images')
+      })
       .catch(() => {
         // Demo highlights for dev mode
         setHighlights([
@@ -350,19 +371,43 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
         <div ref={scrollRef} className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4">
           {/* Upload button */}
           {dbUser && (
-            <button
-              onClick={() => alert('Upload coming soon — snap a pic and tag this event!')}
-              className="shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl"
-              style={{
-                width: 80, height: 110,
-                background: `${color}08`, border: `2px dashed ${color}30`,
-              }}>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
-                style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
-                <span style={{ color }}>+</span>
-              </div>
-              <span className="text-[8px] font-bold" style={{ color: `${color}60`, letterSpacing: '0.08em' }}>ADD</span>
-            </button>
+            <>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  e.target.value = ''
+                  setUploading(true)
+                  try {
+                    const imageUrl = await uploadImage(file, 'events')
+                    const res = await api.post<{ data: any }>('/posts', { eventId: event.id, imageUrl })
+                    if (res?.data) setHighlights((prev) => [mapPost(res.data), ...prev])
+                  } catch {}
+                  finally { setUploading(false) }
+                }}
+              />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={uploading}
+                className="shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl transition-opacity disabled:opacity-50"
+                style={{
+                  width: 80, height: 110,
+                  background: `${color}08`, border: `2px dashed ${color}30`,
+                }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
+                  style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
+                  <span style={{ color }}>{uploading ? '…' : '+'}</span>
+                </div>
+                <span className="text-[8px] font-bold" style={{ color: `${color}60`, letterSpacing: '0.08em' }}>
+                  {uploading ? 'UPLOADING' : 'ADD'}
+                </span>
+              </button>
+            </>
           )}
 
           {/* Photo thumbnails */}
@@ -456,58 +501,72 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
 }
 
 function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName: string }) {
-  const [messages, setMessages] = useState<Array<{ id: string; name: string; text: string; time: string; isStaff?: boolean }>>([])
+  interface VenuePost { id: string; user: { displayName: string; photoUrl?: string | null }; text?: string | null; createdAt: string }
+  const [posts, setPosts] = useState<VenuePost[]>([])
   const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const { dbUser } = useAuth()
 
   useEffect(() => {
-    // Demo messages for the venue community
-    setMessages([
-      { id: '1', name: 'VenueStaff', text: `Welcome to the ${venueName} community! Share tips, ask questions, and connect with other regulars.`, time: '2h ago', isStaff: true },
-      { id: '2', name: 'Sarah M', text: 'Best cocktails in Glasgow hands down 🍹', time: '45m ago' },
-      { id: '3', name: 'DJ_Marco', text: 'Playing here next Friday — who\'s coming?', time: '20m ago' },
-      { id: '4', name: 'Chris B', text: 'Any dress code tonight?', time: '5m ago' },
-    ])
-  }, [venueName])
+    api.get<{ data: VenuePost[] }>(`/posts/venue/${venueId}?limit=20`)
+      .then((r) => setPosts((r?.data ?? []).filter((p) => p.text)))
+      .catch(() => {})
+  }, [venueId])
 
-  const visibleMessages = expanded ? messages : messages.slice(-3)
+  async function sendPost() {
+    const text = input.trim()
+    if (!text || !dbUser || sending) return
+    setSending(true)
+    setInput('')
+    try {
+      const res = await api.post<{ data: VenuePost }>('/posts', { text, venueId })
+      if (res?.data) setPosts((prev) => [res.data, ...prev])
+    } catch {}
+    finally { setSending(false) }
+  }
+
+  const visiblePosts = expanded ? posts : posts.slice(0, 3)
+
+  function timeAgoShort(iso: string) {
+    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+    if (m < 1) return 'now'
+    if (m < 60) return `${m}m`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h`
+    return `${Math.floor(h / 24)}d`
+  }
 
   return (
     <div style={{ background: 'rgba(4,4,13,0.6)' }}>
-      {/* Messages */}
+      {/* Posts */}
       <div className="px-4 py-3 space-y-3 max-h-60 overflow-y-auto">
-        {!expanded && messages.length > 3 && (
+        {posts.length === 0 && (
+          <p className="text-center text-[10px] py-2" style={{ color: 'rgba(74,96,128,0.4)' }}>
+            No posts yet — be the first!
+          </p>
+        )}
+        {!expanded && posts.length > 3 && (
           <button onClick={() => setExpanded(true)}
             className="w-full text-center text-[9px] font-bold tracking-widest py-1"
             style={{ color: 'rgba(255,214,0,0.5)' }}>
-            ▲ SHOW {messages.length - 3} MORE
+            ▲ SHOW {posts.length - 3} MORE
           </button>
         )}
-        {visibleMessages.map((msg) => (
-          <div key={msg.id} className="flex gap-2.5">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
-              style={{
-                background: msg.isStaff ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.08)',
-                border: `1px solid ${msg.isStaff ? 'rgba(255,214,0,0.25)' : 'rgba(var(--accent-rgb),0.15)'}`,
-                color: msg.isStaff ? '#ffd600' : 'var(--accent)',
-              }}>
-              {msg.name[0]}
+        {visiblePosts.map((p) => (
+          <div key={p.id} className="flex gap-2.5">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold overflow-hidden"
+              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'var(--accent)' }}>
+              {p.user.photoUrl
+                ? <img src={p.user.photoUrl} alt="" className="w-full h-full object-cover" />
+                : p.user.displayName[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[10px] font-bold" style={{ color: msg.isStaff ? '#ffd600' : '#e0f2fe' }}>
-                  {msg.name}
-                </span>
-                {msg.isStaff && (
-                  <span className="text-[7px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.25)', color: '#ffd600', letterSpacing: '0.08em' }}>
-                    STAFF
-                  </span>
-                )}
-                <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.5)' }}>{msg.time}</span>
+                <span className="text-[10px] font-bold" style={{ color: '#e0f2fe' }}>{p.user.displayName}</span>
+                <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.5)' }}>{timeAgoShort(p.createdAt)}</span>
               </div>
-              <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.65)' }}>{msg.text}</p>
+              <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.65)' }}>{p.text}</p>
             </div>
           </div>
         ))}
@@ -525,34 +584,15 @@ function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && input.trim()) {
-                  setMessages(prev => [...prev, {
-                    id: `me_${Date.now()}`,
-                    name: dbUser.displayName ?? 'You',
-                    text: input.trim(),
-                    time: 'now',
-                  }])
-                  setInput('')
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') sendPost() }}
               placeholder={`Say something in ${venueName}...`}
               maxLength={200}
               className="flex-1 px-3 py-2 rounded-lg text-xs outline-none"
               style={{ background: 'rgba(4,4,13,0.8)', border: '1px solid rgba(255,214,0,0.12)', color: '#e0f2fe', caretColor: '#ffd600' }}
             />
             <button
-              onClick={() => {
-                if (!input.trim()) return
-                setMessages(prev => [...prev, {
-                  id: `me_${Date.now()}`,
-                  name: dbUser.displayName ?? 'You',
-                  text: input.trim(),
-                  time: 'now',
-                }])
-                setInput('')
-              }}
-              disabled={!input.trim()}
+              onClick={sendPost}
+              disabled={!input.trim() || sending}
               className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
               style={{
                 background: input.trim() ? 'rgba(255,214,0,0.12)' : 'rgba(255,214,0,0.04)',

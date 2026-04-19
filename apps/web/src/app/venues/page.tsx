@@ -7,7 +7,7 @@ import Map, { Marker, Popup, NavigationControl } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { Search, MapPin, Phone, Globe, Zap, CheckCircle, X, Loader2, Compass } from 'lucide-react'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -236,10 +236,8 @@ export default function VenuesPage() {
       if (search) params.set('q', search)
       if (typeFilter !== 'ALL') params.set('type', typeFilter)
 
-      const res = await fetch(`${API_BASE}/venues?${params}`)
-      if (!res.ok) throw new Error('Failed to fetch venues')
-      const json = await res.json()
-      setVenues(json.data ?? [])
+      const json = await api.get<{ data: Venue[] }>(`/venues?${params}`)
+      setVenues(json?.data ?? [])
     } catch (err) {
       console.error('[VenuesPage] fetch error:', err)
     } finally {
@@ -251,14 +249,9 @@ export default function VenuesPage() {
   const discoverVenues = useCallback(async (lat: number, lng: number, radius: number) => {
     setDiscovering(true)
     try {
-      const res = await fetch(`${API_BASE}/venues/discover`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat, lng, radius: Math.round(radius) }),
-      })
-      const json = await res.json()
-      if (json.discovered > 0) {
-        setDiscoveredCount((c) => c + json.discovered)
+      const json = await api.post<{ data: { discovered: number } }>('/venues/discover', { lat, lng, radius: Math.round(radius) })
+      if ((json?.data?.discovered ?? 0) > 0) {
+        setDiscoveredCount((c) => c + (json?.data?.discovered ?? 0))
         // Refetch from DB to get the enriched data
         await fetchVenues(lat, lng, radius)
       }

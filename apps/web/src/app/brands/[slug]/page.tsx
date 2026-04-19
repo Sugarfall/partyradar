@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { ShieldCheck, Star, Zap, Crown } from 'lucide-react'
 
 interface Brand {
@@ -14,37 +14,23 @@ interface Brand {
 
 export default function BrandPage() {
   const { slug } = useParams<{ slug: string }>()
-  const { firebaseUser, dbUser } = useAuth()
+  const { dbUser } = useAuth()
   const [brand, setBrand] = useState<Brand | null>(null)
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState(false)
 
   useEffect(() => {
-    async function load() {
-      const headers: Record<string, string> = {}
-      if (firebaseUser) {
-        const token = await firebaseUser.getIdToken().catch(() => null)
-        if (token) headers['Authorization'] = `Bearer ${token}`
-      }
-      const res = await fetch(`${API_URL}/brands/${slug}`, { headers })
-      const json = await res.json()
-      if (json.data) setBrand(json.data)
-      setLoading(false)
-    }
-    load()
-  }, [slug, firebaseUser])
+    api.get<{ data: Brand }>(`/brands/${slug}`)
+      .then(j => { if (j?.data) setBrand(j.data) })
+      .finally(() => setLoading(false))
+  }, [slug])
 
   async function apply() {
-    if (!firebaseUser) return
+    if (!dbUser) return
     setApplying(true)
-    const token = await firebaseUser.getIdToken().catch(() => null)
-    const res = await fetch(`${API_URL}/brands/${slug}/apply`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token ?? ''}` },
-    })
-    const json = await res.json()
-    if (json.data?.status === 'granted') {
+    const json = await api.post<{ data: { status: string; tier: string } }>(`/brands/${slug}/apply`, {}).catch(() => null)
+    if (json?.data?.status === 'granted') {
       setApplied(true)
       setBrand(prev => prev ? { ...prev, entitlement: { tier: json.data.tier, grantedAt: new Date().toISOString() } } : prev)
     }

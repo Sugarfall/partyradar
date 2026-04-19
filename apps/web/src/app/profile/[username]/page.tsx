@@ -9,13 +9,8 @@ import {
   Bell, Sparkles, Eye, Crown, Star, ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { api, API_URL } from '@/lib/api'
-import { auth } from '@/lib/firebase'
+import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
-
-async function getToken() {
-  try { return (await auth.currentUser?.getIdToken()) ?? '' } catch { return '' }
-}
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e', CLUB_NIGHT: 'var(--accent)', CONCERT: '#3d5afe', PUB_NIGHT: '#f59e0b',
@@ -322,13 +317,9 @@ export default function PublicProfilePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const tok = await getToken()
-      const h: Record<string, string> = {}
-      if (tok) h['Authorization'] = `Bearer ${tok}`
-      const res = await fetch(`${API_URL}/users/${encodeURIComponent(username)}`, { headers: h })
-      if (res.status === 404) { setNotFound(true); return }
-      const json = await res.json()
-      const data: PublicProfile = json.data
+      const json = await api.get<{ data: PublicProfile }>(`/users/${encodeURIComponent(username)}`)
+      const data = json?.data
+      if (!data) { setNotFound(true); return }
       setProfile(data)
       setFollowing(data.isFollowing)
       setGoOutStatus(data.goOutStatus)
@@ -346,14 +337,12 @@ export default function PublicProfilePage() {
     if (!profile || followLoading || !dbUser) return
     setFollowLoading(true)
     try {
-      const tok = await getToken()
-      const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` }
       if (following) {
-        await fetch(`${API_URL}/follow/${profile.id}`, { method: 'DELETE', headers: h })
+        await api.delete(`/follow/${profile.id}`)
         setFollowing(false)
         setProfile((p) => p ? { ...p, followersCount: p.followersCount - 1 } : p)
       } else {
-        await fetch(`${API_URL}/follow/${profile.id}`, { method: 'POST', headers: h })
+        await api.post(`/follow/${profile.id}`, {})
         setFollowing(true)
         setProfile((p) => p ? { ...p, followersCount: p.followersCount + 1 } : p)
       }
@@ -365,12 +354,7 @@ export default function PublicProfilePage() {
     if (!profile || dmLoading || !dbUser) return
     setDmLoading(true)
     try {
-      const tok = await getToken()
-      await fetch(`${API_URL}/dm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ recipientId: profile.id }),
-      })
+      await api.post('/dm', { recipientId: profile.id })
       router.push('/messages')
     } catch {
       router.push('/messages')
@@ -381,11 +365,7 @@ export default function PublicProfilePage() {
     if (!profile || nudging || nudgeDone || !dbUser) return
     setNudging(true)
     try {
-      const tok = await getToken()
-      await fetch(`${API_URL}/users/${profile.id}/nudge`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-      })
+      await api.post(`/users/${profile.id}/nudge`, {})
       setNudgeDone(true)
     } catch {}
     finally { setNudging(false) }

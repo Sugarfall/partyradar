@@ -56,7 +56,7 @@ interface VenuePost {
   text?: string
   imageUrl?: string
   createdAt: string
-  likesCount: number
+  _count: { likes: number }
   user: { id: string; displayName: string; username: string; photoUrl?: string }
 }
 
@@ -202,7 +202,8 @@ export default function VenueDetailPage() {
     async function load() {
       setLoading(true)
       try {
-        const data = await api.get(`/venues/${id}`)
+        const res = await api.get<{ data: Venue }>(`/venues/${id}`)
+        const data = res?.data ?? null
         if (!data) { setNotFound(true); return }
         setVenue(data)
       } catch (err) {
@@ -487,7 +488,7 @@ export default function VenueDetailPage() {
                 )}
                 <div className="flex items-center gap-1 mt-2">
                   <Heart size={12} style={{ color: 'rgba(255,0,110,0.5)' }} />
-                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{post.likesCount}</span>
+                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{post._count?.likes ?? 0}</span>
                 </div>
               </div>
             ))}

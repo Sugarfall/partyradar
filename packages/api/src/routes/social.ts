@@ -103,7 +103,7 @@ router.post('/parse', requireAuth, async (req: AuthRequest, res, next) => {
       throw new AppError('Failed to parse OpenAI response as JSON', 502)
     }
 
-    res.json({ event: parsed, raw: cleaned })
+    res.json({ data: { event: parsed, raw: cleaned } })
   } catch (err) {
     next(err)
   }

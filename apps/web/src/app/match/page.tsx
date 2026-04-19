@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { Heart, X, MessageCircle, Zap, MapPin, RefreshCw, Star } from 'lucide-react'
 import Link from 'next/link'
 
@@ -223,7 +223,7 @@ function MatchModal({ profile, onClose, conversationId }: {
 }
 
 export default function MatchPage() {
-  const { dbUser, firebaseUser } = useAuth()
+  const { dbUser } = useAuth()
   const [deck, setDeck] = useState<MatchProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [swiping, setSwiping] = useState(false)
@@ -234,42 +234,29 @@ export default function MatchPage() {
   const [matches, setMatches] = useState<MatchProfile[]>([])
   const [matchesLoading, setMatchesLoading] = useState(false)
 
-  async function getToken() {
-    if (!firebaseUser) return ''
-    try { return await firebaseUser.getIdToken() } catch { return '' }
-  }
-
   async function loadDeck() {
     setLoading(true)
     setOutOfCards(false)
-    const tok = await getToken()
     try {
-      const r = await fetch(`${API_URL}/match/deck`, {
-        headers: { Authorization: `Bearer ${tok}` },
-      })
-      const j = await r.json()
-      setDeck(j.data ?? [])
-      if ((j.data ?? []).length === 0) setOutOfCards(true)
+      const j = await api.get<{ data: MatchProfile[] }>('/match/deck')
+      setDeck(j?.data ?? [])
+      if ((j?.data ?? []).length === 0) setOutOfCards(true)
     } catch {}
     setLoading(false)
   }
 
   async function loadMatches() {
     setMatchesLoading(true)
-    const tok = await getToken()
     try {
-      const r = await fetch(`${API_URL}/match/matches`, {
-        headers: { Authorization: `Bearer ${tok}` },
-      })
-      const j = await r.json()
-      setMatches(j.data ?? [])
+      const j = await api.get<{ data: MatchProfile[] }>('/match/matches')
+      setMatches(j?.data ?? [])
     } catch {}
     setMatchesLoading(false)
   }
 
   useEffect(() => {
-    if (dbUser && firebaseUser) { loadDeck(); loadMatches() }
-  }, [dbUser?.id, firebaseUser])
+    if (dbUser) { loadDeck(); loadMatches() }
+  }, [dbUser?.id])
 
   async function swipe(profile: MatchProfile, liked: boolean) {
     if (swiping) return
@@ -277,15 +264,9 @@ export default function MatchPage() {
     setDeck((prev) => prev.filter((p) => p.id !== profile.id))
     if (deck.length <= 1) setOutOfCards(true)
 
-    const tok = await getToken()
     try {
-      const r = await fetch(`${API_URL}/match/swipe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ toUserId: profile.id, liked }),
-      })
-      const j = await r.json()
-      if (j.data?.match && liked) {
+      const j = await api.post<{ data: { match: boolean; conversationId?: string } }>('/match/swipe', { toUserId: profile.id, liked })
+      if (j?.data?.match && liked) {
         setMatchedProfile(profile)
         setMatchConvoId(j.data?.conversationId ?? null)
         loadMatches()

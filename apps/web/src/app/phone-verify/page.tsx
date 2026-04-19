@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { Phone, ShieldCheck } from 'lucide-react'
 
 export default function PhoneVerifyPage() {
-  const { dbUser, firebaseUser, refreshUser } = useAuth()
+  const { dbUser, refreshUser } = useAuth()
   const router = useRouter()
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
@@ -17,35 +17,21 @@ export default function PhoneVerifyPage() {
   const [devCode, setDevCode] = useState<string | null>(null)
 
   async function sendCode() {
-    if (!firebaseUser || !phone.trim()) return
+    if (!phone.trim()) return
     setLoading(true); setError(null)
     try {
-      const token = await firebaseUser.getIdToken()
-      const res = await fetch(`${API_URL}/phone/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ phone: phone.trim() }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error?.message || 'Failed to send code')
-      if (json.data?.code) setDevCode(json.data.code) // dev mode only
+      const json = await api.post<{ data?: { code?: string }; error?: { message: string } }>('/phone/send', { phone: phone.trim() })
+      if (json?.data?.code) setDevCode(json.data.code) // dev mode only
       setStep('code')
     } catch (err) { setError(err instanceof Error ? err.message : 'Error') }
     finally { setLoading(false) }
   }
 
   async function verifyCode() {
-    if (!firebaseUser || !code.trim()) return
+    if (!code.trim()) return
     setLoading(true); setError(null)
     try {
-      const token = await firebaseUser.getIdToken()
-      const res = await fetch(`${API_URL}/phone/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error?.message || 'Verification failed')
+      await api.post('/phone/verify', { phone: phone.trim(), code: code.trim() })
       await refreshUser()
       router.push('/profile')
     } catch (err) { setError(err instanceof Error ? err.message : 'Error') }

@@ -3,13 +3,13 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { Music, Zap } from 'lucide-react'
 
 const CREDIT_COST = 50
 
 function DjRequestInner() {
-  const { dbUser, firebaseUser } = useAuth()
+  const { dbUser } = useAuth()
   const searchParams = useSearchParams()
   const router = useRouter()
   const eventId = searchParams.get('eventId')
@@ -23,32 +23,31 @@ function DjRequestInner() {
   const [points, setPoints] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!dbUser || !firebaseUser) return
-    firebaseUser.getIdToken().then(token =>
-      fetch(`${API_URL}/wallet`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(j => setPoints(j.data?.rewardPoints ?? null))
-    ).catch(() => {})
-  }, [dbUser, firebaseUser])
+    if (!dbUser) return
+    api.get<{ data: { rewardPoints: number } }>('/wallet')
+      .then(j => setPoints(j?.data?.rewardPoints ?? null))
+      .catch(() => {})
+  }, [dbUser])
 
   async function submit() {
-    if (!song.trim() || !firebaseUser) return
+    if (!song.trim()) return
     setSubmitting(true)
     setError(null)
     try {
-      const token = await firebaseUser.getIdToken()
-      const res = await fetch(`${API_URL}/dj-requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ song: song.trim(), artist: artist.trim() || undefined, message: message.trim() || undefined, eventId: eventId || undefined, venueId: venueId || undefined }),
+      await api.post('/dj-requests', {
+        song: song.trim(),
+        artist: artist.trim() || undefined,
+        message: message.trim() || undefined,
+        eventId: eventId || undefined,
+        venueId: venueId || undefined,
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error?.message || 'Failed to submit request')
       setSubmitted(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally { setSubmitting(false) }
   }
+
+  const isFreeUser = dbUser && (dbUser.subscriptionTier === 'FREE' || !dbUser.subscriptionTier)
 
   if (!dbUser) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#07071a' }}>
@@ -74,6 +73,22 @@ function DjRequestInner() {
   )
 
   const hasEnough = points === null || points >= CREDIT_COST
+
+  if (isFreeUser) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#07071a' }}>
+      <div className="text-center space-y-4 px-6 max-w-sm">
+        <Music size={36} style={{ color: 'rgba(var(--accent-rgb),0.3)', margin: '0 auto' }} />
+        <p className="text-xl font-black" style={{ color: '#e0f2fe' }}>Upgrade Required</p>
+        <p className="text-sm" style={{ color: 'rgba(224,242,254,0.5)' }}>
+          DJ Song Requests are available from the <span className="font-black" style={{ color: 'var(--accent)' }}>BASIC</span> tier and above.
+        </p>
+        <a href="/pricing" className="inline-block px-6 py-2.5 rounded-xl text-xs font-black"
+          style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.4)', color: 'var(--accent)' }}>
+          VIEW PLANS
+        </a>
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#07071a' }}>

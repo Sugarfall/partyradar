@@ -7,7 +7,8 @@ import {
   Camera, Mic, Radio, Play, Square, ShieldCheck, Timer,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { api, API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
+import { uploadImage } from '@/lib/cloudinary'
 import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
 import { formatPrice } from '@/lib/currency'
 
@@ -829,14 +830,10 @@ function GroupChatView({
   const [crawlStops, setCrawlStops] = useState([{ name: '', address: '' }, { name: '', address: '' }])
   const [crawlCreating, setCrawlCreating] = useState(false)
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/messages`, { headers })
-      const j = await r.json()
+      const j = await api.get<{ data: { group: GroupChat; locked: boolean; messages: GroupMessage[] } }>(`/groups/${groupId}/messages`)
       if (j.data) {
         setGroup(j.data.group)
         if (j.data.locked) {
@@ -868,8 +865,7 @@ function GroupChatView({
   const loadCrawl = useCallback(async () => {
     setCrawlLoading(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, { headers })
-      const j = await r.json()
+      const j = await api.get<{ data: unknown }>(`/groups/${groupId}/pub-crawl`)
       setCrawl(j.data)
     } catch {}
     finally { setCrawlLoading(false) }
@@ -885,10 +881,7 @@ function GroupChatView({
     if (validStops.length < 2) return
     setCrawlCreating(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, {
-        method: 'POST', headers, body: JSON.stringify({ name: crawlName.trim(), stops: validStops }),
-      })
-      const j = await r.json()
+      const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, { name: crawlName.trim(), stops: validStops })
       if (j.data) { setCrawl(j.data); setShowCreateCrawl(false); setCrawlName(''); setCrawlStops([{ name: '', address: '' }, { name: '', address: '' }]) }
     } catch {}
     finally { setCrawlCreating(false) }
@@ -896,13 +889,13 @@ function GroupChatView({
 
   async function checkIn(stopId: string) {
     try {
-      await fetch(`${API_URL}/groups/${groupId}/pub-crawl/stops/${stopId}/checkin`, { method: 'POST', headers })
+      await api.post(`/groups/${groupId}/pub-crawl/stops/${stopId}/checkin`, {})
       await loadCrawl()
     } catch {}
   }
 
   async function endCrawl() {
-    await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, { method: 'DELETE', headers }).catch(() => {})
+    await api.delete(`/groups/${groupId}/pub-crawl`).catch(() => {})
     setCrawl(null)
   }
 
@@ -922,10 +915,10 @@ function GroupChatView({
       return
     }
 
-    const r = await fetch(`${API_URL}/groups/${groupId}/${joined ? 'leave' : 'join'}`, {
-      method: joined ? 'DELETE' : 'POST', headers,
-    })
-    if (r.ok) {
+    try {
+      await (joined ? api.delete(`/groups/${groupId}/leave`) : api.post(`/groups/${groupId}/join`, {}))
+    } catch { return }
+    {
       const patch = {
         isJoined: !joined,
         memberCount: group.memberCount + (joined ? -1 : 1),
@@ -940,34 +933,27 @@ function GroupChatView({
   async function joinWithPassword() {
     if (!pwInput.trim()) return
     setPwError('')
-    const r = await fetch(`${API_URL}/groups/${groupId}/join`, {
-      method: 'POST', headers, body: JSON.stringify({ password: pwInput.trim() }),
-    })
-    if (r.ok) {
+    try {
+      await api.post(`/groups/${groupId}/join`, { password: pwInput.trim() })
       setShowPwModal(false); setPwInput('')
       const patch = { isJoined: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
       setGroup((g) => g ? { ...g, ...patch } : g)
       onGroupUpdate(groupId, patch)
       load()
-    } else {
-      const j = await r.json().catch(() => ({}))
-      setPwError(j.error ?? 'Incorrect password')
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Incorrect password')
     }
   }
 
   async function handleSubscribe() {
     setSubscribing(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/subscribe`, {
-        method: 'POST', headers,
-      })
-      if (r.ok) {
-        setShowSubModal(false)
-        const patch = { isJoined: true, isSubscribed: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
-        setGroup((g) => g ? { ...g, ...patch } : g)
-        onGroupUpdate(groupId, patch)
-        load()
-      }
+      await api.post(`/groups/${groupId}/subscribe`, {})
+      setShowSubModal(false)
+      const patch = { isJoined: true, isSubscribed: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
+      setGroup((g) => g ? { ...g, ...patch } : g)
+      onGroupUpdate(groupId, patch)
+      load()
     } catch {}
     finally { setSubscribing(false) }
   }
@@ -975,9 +961,7 @@ function GroupChatView({
   async function toggleNotifications() {
     if (!group) return
     const enabled = !group.notificationsEnabled
-    await fetch(`${API_URL}/groups/${groupId}/notifications`, {
-      method: 'PUT', headers, body: JSON.stringify({ enabled }),
-    })
+    await api.put(`/groups/${groupId}/notifications`, { enabled })
     setGroup((g) => g ? { ...g, notificationsEnabled: enabled } : g)
   }
 
@@ -1002,10 +986,7 @@ function GroupChatView({
     setMessages((prev) => [...prev, optimisticMsg])
 
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/messages`, {
-        method: 'POST', headers, body: JSON.stringify({ text: draft }),
-      })
-      const j = await r.json()
+      const j = await api.post<{ data: GroupMessage }>(`/groups/${groupId}/messages`, { text: draft })
       if (j.data) {
         // Replace optimistic message with the real server response
         setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
@@ -1032,29 +1013,8 @@ function GroupChatView({
     if (!dbUserId || !groupId || photoUploading) return
     setPhotoUploading(true)
     try {
-      const hdrs: Record<string, string> = {}
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
-      hdrs['Content-Type'] = 'application/json'
-      const credRes = await fetch(`${API_URL}/uploads/image`, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify({ folder: 'group-snaps' }),
-      })
-      const credJson = await credRes.json()
-      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
-      const form = new FormData()
-      form.append('file', file)
-      form.append('timestamp', timestamp)
-      form.append('signature', signature)
-      form.append('api_key', apiKey)
-      form.append('folder', folder)
-      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: form })
-      const upJson = await upRes.json()
-      if (!upJson.secure_url) return
-      const msgRes = await fetch(`${API_URL}/groups/${groupId}/messages`, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify({ imageUrl: upJson.secure_url }),
-      })
-      const msgJson = await msgRes.json()
+      const imageUrl = await uploadImage(file, 'events')
+      const msgJson = await api.post<{ data: GroupMessage }>(`/groups/${groupId}/messages`, { imageUrl })
       if (msgJson.data) setMessages((prev) => [...prev, msgJson.data])
     } catch {}
     finally { setPhotoUploading(false) }
@@ -1063,16 +1023,15 @@ function GroupChatView({
   async function followUser(senderId: string) {
     if (!dbUserId || senderId === dbUserId) return
     const already = followingSet.has(senderId)
-    const method = already ? 'DELETE' : 'POST'
-    const r = await fetch(`${API_URL}/follow/${senderId}`, { method, headers })
-    if (r.ok || r.status === 409) {
+    try {
+      await (already ? api.delete(`/follow/${senderId}`) : api.post(`/follow/${senderId}`, {}))
       setFollowingSet((s) => {
         const next = new Set(s)
         already ? next.delete(senderId) : next.add(senderId)
         return next
       })
       setMessages((prev) => prev.map((m) => m.senderId === senderId ? { ...m, isFollowing: !already } : m))
-    }
+    } catch {}
     setUserPopup(null)
   }
 
@@ -1576,12 +1535,7 @@ function VoiceMessagePlayer({ url }: { url: string }) {
 
 // ── Walkie talkie button ───────────────────────────────────────────────────────
 
-function WalkieTalkieButton({
-  headers, onSend,
-}: {
-  headers: Record<string, string>
-  onSend: (voiceUrl: string) => void
-}) {
+function WalkieTalkieButton({ onSend }: { onSend: (voiceUrl: string) => void }) {
   const [recording, setRecording] = useState(false)
   const [uploading, setUploading] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -1600,8 +1554,7 @@ function WalkieTalkieButton({
         try {
           const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
           // Get signed upload credentials
-          const credRes = await fetch(`${API_URL}/uploads/audio`, { method: 'POST', headers })
-          const credJson = await credRes.json()
+          const credJson = await api.post<{ data: { timestamp: number; signature: string; cloudName: string; apiKey: string; folder: string } }>('/uploads/audio', {})
           const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
 
           const formData = new FormData()
@@ -1651,12 +1604,10 @@ function WalkieTalkieButton({
 // ── Snap message bubble ────────────────────────────────────────────────────────
 
 function SnapMessageBubble({
-  message, isMe, headers, convoId,
-  onViewed,
+  message, isMe, convoId, onViewed,
 }: {
   message: DmMessage
   isMe: boolean
-  headers: Record<string, string>
   convoId: string
   onViewed: (msgId: string) => void
 }) {
@@ -1668,7 +1619,7 @@ function SnapMessageBubble({
     if (isMe || message.snapViewed || viewing) return
     // Mark as viewed on server
     try {
-      await fetch(`${API_URL}/dm/${convoId}/messages/${message.id}/view-snap`, { method: 'POST', headers })
+      await api.post(`/dm/${convoId}/messages/${message.id}/view-snap`, {})
     } catch {}
     setViewing(true)
     setSecondsLeft(10)
@@ -1737,14 +1688,13 @@ function SnapMessageBubble({
 
 // ── Follow button in DM header ─────────────────────────────────────────────────
 
-function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Record<string, string> }) {
+function FollowButtonDm({ targetId }: { targetId: string }) {
   const [following, setFollowing] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    fetch(`${API_URL}/follow/${targetId}`, { headers })
-      .then((r) => r.json())
-      .then((j) => setFollowing(j.data?.isFollowing ?? false))
+    api.get<{ data: { isFollowing: boolean } }>(`/follow/${targetId}`)
+      .then((j) => setFollowing(j?.data?.isFollowing ?? false))
       .catch(() => {})
   }, [targetId])
 
@@ -1753,9 +1703,9 @@ function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Reco
     setLoading(true)
     try {
       if (following) {
-        await fetch(`${API_URL}/follow/${targetId}`, { method: 'DELETE', headers })
+        await api.delete(`/follow/${targetId}`)
       } else {
-        await fetch(`${API_URL}/follow/${targetId}`, { method: 'POST', headers })
+        await api.post(`/follow/${targetId}`, {})
       }
       setFollowing(!following)
     } catch {}
@@ -1780,13 +1730,9 @@ function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Reco
 
 // ── DM Section ─────────────────────────────────────────────────────────────────
 
-function DmSection({ dbUser, token }: {
+function DmSection({ dbUser }: {
   dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
-  token: string
 }) {
-  // Build headers from the live token so all fetches are authenticated
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [requestConvos, setRequestConvos] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -1814,7 +1760,7 @@ function DmSection({ dbUser, token }: {
     if (!dbUser) return
     getOrCreateKeyPair().then(({ publicKeyJWK }) => {
       const pubStr = serializePublicKey(publicKeyJWK)
-      fetch(`${API_URL}/dm/public-key`, { method: 'PUT', headers, body: JSON.stringify({ publicKey: pubStr }) })
+      api.put('/dm/public-key', { publicKey: pubStr })
         .then(() => setE2eReady(true))
         .catch(() => setE2eReady(true))
     }).catch(() => {})
@@ -1822,19 +1768,16 @@ function DmSection({ dbUser, token }: {
 
   const fetchConversations = useCallback(async () => {
     if (!dbUser) { setLoading(false); return }
-    const h: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) h['Authorization'] = `Bearer ${token}`
     try {
-      const [inboxRes, reqRes] = await Promise.all([
-        fetch(`${API_URL}/dm`, { headers: h }),
-        fetch(`${API_URL}/dm?requests=true`, { headers: h }),
+      const [inboxJson, reqJson] = await Promise.all([
+        api.get<{ data: Conversation[] }>('/dm'),
+        api.get<{ data: Conversation[] }>('/dm?requests=true'),
       ])
-      const [inboxJson, reqJson] = await Promise.all([inboxRes.json(), reqRes.json()])
-      setConversations(inboxJson.data ?? [])
-      setRequestConvos(reqJson.data ?? [])
+      setConversations(inboxJson?.data ?? [])
+      setRequestConvos(reqJson?.data ?? [])
     } catch {}
     setLoading(false)
-  }, [dbUser?.id, token])
+  }, [dbUser?.id])
 
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
@@ -1842,13 +1785,12 @@ function DmSection({ dbUser, token }: {
     if (!activeConvo) return
     initialLoadRef.current = true
     setMsgsLoading(true)
-    fetch(`${API_URL}/dm/${activeConvo}`, { headers })
-      .then((r) => r.json())
+    api.get<{ data: { messages: DmMessage[]; other: OtherUser | null; otherPublicKey: string | null; isRequest: boolean } }>(`/dm/${activeConvo}`)
       .then((j) => {
-        setMessages(j.data?.messages ?? [])
-        setActiveOther(j.data?.other ?? null)
-        setOtherPublicKey(j.data?.otherPublicKey ?? null)
-        setActiveConvoIsRequest(j.data?.isRequest ?? false)
+        setMessages(j?.data?.messages ?? [])
+        setActiveOther(j?.data?.other ?? null)
+        setOtherPublicKey(j?.data?.otherPublicKey ?? null)
+        setActiveConvoIsRequest(j?.data?.isRequest ?? false)
       })
       .catch(() => {}).finally(() => setMsgsLoading(false))
   }, [activeConvo])
@@ -1883,31 +1825,30 @@ function DmSection({ dbUser, token }: {
     if (!search.trim()) { setSearchResults([]); return }
     const t = setTimeout(() => {
       setSearching(true)
-      fetch(`${API_URL}/dm/users?q=${encodeURIComponent(search)}`, { headers })
-        .then((r) => r.json()).then((j) => setSearchResults(j.data ?? [])).catch(() => {}).finally(() => setSearching(false))
+      api.get<{ data: OtherUser[] }>(`/dm/users?q=${encodeURIComponent(search)}`)
+        .then((j) => setSearchResults(j?.data ?? [])).catch(() => {}).finally(() => setSearching(false))
     }, 300)
     return () => clearTimeout(t)
   }, [search])
 
   async function openOrCreateConvo(recipientId: string) {
-    const res = await fetch(`${API_URL}/dm`, { method: 'POST', headers, body: JSON.stringify({ recipientId }) })
-    const j = await res.json()
-    if (j.data?.id) {
-      setSearch(''); setSearchResults([])
-      setActiveConvo(j.data.id)
-      fetchConversations()
-    }
+    try {
+      const j = await api.post<{ data: { id: string } }>('/dm', { recipientId })
+      if (j?.data?.id) {
+        setSearch(''); setSearchResults([])
+        setActiveConvo(j.data.id)
+        fetchConversations()
+      }
+    } catch {}
   }
 
   async function acceptRequest() {
     if (!activeConvo || acceptingRequest) return
     setAcceptingRequest(true)
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}/accept`, { method: 'POST', headers })
-      if (res.ok) {
-        setActiveConvoIsRequest(false)
-        fetchConversations()
-      }
+      await api.post(`/dm/${activeConvo}/accept`, {})
+      setActiveConvoIsRequest(false)
+      fetchConversations()
     } catch {}
     finally { setAcceptingRequest(false) }
   }
@@ -1933,9 +1874,8 @@ function DmSection({ dbUser, token }: {
     setDecrypted((prev) => ({ ...prev, [optimisticId]: draft }))
 
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: textToSend }) })
-      const j = await res.json()
-      if (j.data) {
+      const j = await api.post<{ data: DmMessage }>(`/dm/${activeConvo}`, { text: textToSend })
+      if (j?.data) {
         setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
         setDecrypted((prev) => { const n = { ...prev }; n[j.data.id] = draft; delete n[optimisticId]; return n })
       } else {
@@ -1960,9 +1900,8 @@ function DmSection({ dbUser, token }: {
     }
     setMessages((prev) => [...prev, optimisticMsg])
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: voiceUrl }) })
-      const j = await res.json()
-      if (j.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+      const j = await api.post<{ data: DmMessage }>(`/dm/${activeConvo}`, { text: voiceUrl })
+      if (j?.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
       else setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
@@ -1972,22 +1911,8 @@ function DmSection({ dbUser, token }: {
   async function sendSnap(file: File) {
     if (!activeConvo || !dbUser) return
     try {
-      const credRes = await fetch(`${API_URL}/uploads/image`, { method: 'POST', headers, body: JSON.stringify({ folder: 'events' }) })
-      const credJson = await credRes.json()
-      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
-
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('timestamp', String(timestamp))
-      formData.append('signature', signature)
-      formData.append('api_key', apiKey)
-      formData.append('folder', folder)
-
-      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData })
-      const upJson = await upRes.json()
-      if (!upJson.secure_url) return
-
-      const snapText = `[SNAP]${upJson.secure_url}`
+      const secureUrl = await uploadImage(file, 'events')
+      const snapText = `[SNAP]${secureUrl}`
       const optimisticId = `optimistic_${Date.now()}`
       const optimisticMsg: DmMessage = {
         id: optimisticId, senderId: dbUser.id, senderName: dbUser.displayName ?? '',
@@ -1995,10 +1920,8 @@ function DmSection({ dbUser, token }: {
         createdAt: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, optimisticMsg])
-
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: snapText, isSnap: true }) })
-      const j = await res.json()
-      if (j.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+      const j = await api.post<{ data: DmMessage }>(`/dm/${activeConvo}`, { text: snapText, isSnap: true })
+      if (j?.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
       else setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
     } catch {}
   }
@@ -2042,7 +1965,7 @@ function DmSection({ dbUser, token }: {
             </span>
           )}
           {/* Follow button */}
-          {activeOther && dbUser && <FollowButtonDm targetId={activeOther.id} headers={headers} />}
+          {activeOther && dbUser && <FollowButtonDm targetId={activeOther.id} />}
         </div>
 
         {/* Message request banner */}
@@ -2094,7 +2017,7 @@ function DmSection({ dbUser, token }: {
                     <VoiceMessagePlayer url={m.text.replace('[VOICE]', '')} />
                   ) : isSnap ? (
                     <SnapMessageBubble
-                      message={m} isMe={isMe} headers={headers}
+                      message={m} isMe={isMe}
                       convoId={activeConvo} onViewed={handleSnapViewed}
                     />
                   ) : (
@@ -2133,7 +2056,7 @@ function DmSection({ dbUser, token }: {
             style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
 
           {/* Walkie talkie */}
-          <WalkieTalkieButton headers={headers} onSend={sendVoiceMessage} />
+          <WalkieTalkieButton onSend={sendVoiceMessage} />
 
           {/* Send */}
           <button onClick={sendTextMessage} disabled={!text.trim() || sending}
@@ -2292,7 +2215,7 @@ interface PersonResult {
   isFollowing: boolean
 }
 
-function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; dbUserId: string | null }) {
+function PeopleSearch({ dbUserId }: { dbUserId: string | null }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<PersonResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -2303,10 +2226,9 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
     if (!q.trim()) { setResults([]); return }
     const t = setTimeout(() => {
       setSearching(true)
-      fetch(`${API_URL}/users/search?q=${encodeURIComponent(q)}`, { headers })
-        .then((r) => r.json())
+      api.get<{ data: PersonResult[] }>(`/users/search?q=${encodeURIComponent(q)}`)
         .then((j) => {
-          const data = (j.data ?? []) as PersonResult[]
+          const data = (j?.data ?? []) as PersonResult[]
           setResults(data)
           const fs: Record<string, boolean> = {}
           data.forEach((u) => { fs[u.id] = u.isFollowing })
@@ -2323,10 +2245,11 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
     setFollowLoading((p) => ({ ...p, [userId]: true }))
     const isFollowing = followStates[userId]
     try {
-      await fetch(`${API_URL}/follow/${userId}`, {
-        method: isFollowing ? 'DELETE' : 'POST',
-        headers,
-      })
+      if (isFollowing) {
+        await api.delete(`/follow/${userId}`)
+      } else {
+        await api.post(`/follow/${userId}`, {})
+      }
       setFollowStates((p) => ({ ...p, [userId]: !isFollowing }))
     } catch {}
     finally { setFollowLoading((p) => ({ ...p, [userId]: false })) }
@@ -2428,7 +2351,7 @@ export default function MessagesPage() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [token, setToken] = useState('')
 
-  // Fetch a live Firebase ID token — replaces the old stale localStorage approach
+  // Fetch a live Firebase ID token — used by GroupChatView
   useEffect(() => {
     if (!firebaseUser) return
     firebaseUser.getIdToken().then(setToken).catch(() => {})
@@ -2443,16 +2366,12 @@ export default function MessagesPage() {
     return () => window.removeEventListener('partyradar:mode-change', onModeChange)
   }, [])
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
   useEffect(() => {
     // Try to get user location for proximity-sorted venue groups
     function fetchGroups(lat?: number, lng?: number) {
       const params = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
-      fetch(`${API_URL}/groups${params}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-        .then((r) => r.json())
-        .then((j) => setGroups(j.data ?? []))
+      api.get<{ data: GroupChat[] }>(`/groups${params}`)
+        .then((j) => setGroups(j?.data ?? []))
         .catch(() => {})
         .finally(() => setGroupsLoading(false))
     }
@@ -2504,11 +2423,11 @@ export default function MessagesPage() {
       </div>
 
       {tab === 'dms' && (
-        <DmSection dbUser={dbUser} token={token} />
+        <DmSection dbUser={dbUser} />
       )}
 
       {tab === 'people' && (
-        <PeopleSearch headers={headers} dbUserId={dbUser?.id ?? null} />
+        <PeopleSearch dbUserId={dbUser?.id ?? null} />
       )}
 
       {tab === 'community' && (

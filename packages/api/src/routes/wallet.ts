@@ -166,7 +166,6 @@ router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {
     const newBalance = Number((wallet.balance - amount).toFixed(2))
     const pointsEarned = Math.floor(amount * WALLET_CONFIG.POINTS_PER_POUND)
     const newPoints = wallet.rewardPoints + pointsEarned
-    const newFreeDrinks = Math.floor(newPoints / WALLET_CONFIG.POINTS_PER_FREE_DRINK) - wallet.freeDrinksEarned + wallet.freeDrinksEarned
 
     // Check if this pushes them to a new free drink
     const oldDrinkCount = Math.floor(wallet.rewardPoints / WALLET_CONFIG.POINTS_PER_FREE_DRINK)

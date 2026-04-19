@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
-import { Star, Flag } from 'lucide-react'
+import { api } from '@/lib/api'
+import { Star } from 'lucide-react'
 
 interface ScoreData {
   socialScore: number
@@ -28,7 +28,7 @@ function timeAgo(d: string) {
 
 export default function SocialScorePage() {
   const { username } = useParams<{ username: string }>()
-  const { dbUser, firebaseUser } = useAuth()
+  const { dbUser } = useAuth()
   const [data, setData] = useState<ScoreData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -39,26 +39,21 @@ export default function SocialScorePage() {
   const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
-    fetch(`${API_URL}/social-score/${username}`)
-      .then(r => r.json())
-      .then(j => { if (j.data) setData(j.data) })
+    api.get<{ data: ScoreData }>(`/social-score/${username}`)
+      .then(j => { if (j?.data) setData(j.data) })
       .finally(() => setLoading(false))
   }, [username])
 
   async function submitFeedback() {
-    if (!firebaseUser) return
+    if (!dbUser) return
     setSubmitting(true)
-    const token = await firebaseUser.getIdToken().catch(() => null)
     // Need userId — fetch user first
-    const userRes = await fetch(`${API_URL}/users/${username}`)
-    const userJson = await userRes.json()
-    const targetId = userJson.data?.id
+    const userJson = await api.get<{ data: { id: string } }>(`/users/${username}`)
+    const targetId = userJson?.data?.id
     if (!targetId) { setSubmitting(false); return }
 
-    await fetch(`${API_URL}/social-score/${targetId}/feedback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-      body: JSON.stringify({ category: fbCategory, score: fbScore, comment: fbComment.trim() || undefined }),
+    await api.post(`/social-score/${targetId}/feedback`, {
+      category: fbCategory, score: fbScore, comment: fbComment.trim() || undefined,
     })
     setSubmitted(true)
     setShowForm(false)

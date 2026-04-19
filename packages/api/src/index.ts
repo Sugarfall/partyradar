@@ -96,11 +96,28 @@ io.use(async (socket, next) => {
     socket.data['photoUrl'] = dbUser.photoUrl ?? null
     next()
   } catch {
-    // In dev mode with mock tokens — allow with a fallback identity
+    // In dev mode with mock tokens — upsert a real dev user to avoid FK violations
     if (process.env['NODE_ENV'] !== 'production') {
-      socket.data['userId'] = 'dev-user'
-      socket.data['displayName'] = 'Dev User'
-      socket.data['photoUrl'] = null
+      try {
+        const devUser = await prisma.user.upsert({
+          where: { firebaseUid: 'dev-user' },
+          create: {
+            firebaseUid: 'dev-user',
+            email: 'dev@partyradar.local',
+            username: 'devuser',
+            displayName: 'Dev User',
+          },
+          update: {},
+          select: { id: true, displayName: true, photoUrl: true },
+        })
+        socket.data['userId'] = devUser.id
+        socket.data['displayName'] = devUser.displayName
+        socket.data['photoUrl'] = devUser.photoUrl ?? null
+      } catch {
+        socket.data['userId'] = null
+        socket.data['displayName'] = 'Anonymous'
+        socket.data['photoUrl'] = null
+      }
       return next()
     }
     next(new Error('Invalid token'))
@@ -527,9 +544,16 @@ cron.schedule('0 * * * *', async () => {
       }
     }
 
-    // Call seed-activity internally
+    // Call seed-activity internally — use APP_URL in production, localhost in dev
     const port = process.env['PORT'] ?? 4000
-    await fetch(`http://localhost:${port}/api/admin/seed-activity`, { method: 'POST' })
+    const railwayDomain = process.env['RAILWAY_PUBLIC_DOMAIN']
+    const appUrl = process.env['APP_URL']
+    const baseUrl = appUrl
+      ? appUrl
+      : railwayDomain
+        ? `https://${railwayDomain}`
+        : `http://localhost:${port}`
+    await fetch(`${baseUrl}/api/admin/seed-activity`, { method: 'POST' })
     console.log('[Cron] Reseed complete')
   } catch (err) {
     console.error('[Cron] Error auto-reseeding events:', err)

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import Link from 'next/link'
 import { MapPin, Users, RefreshCw, Heart, X, MessageCircle, Star } from 'lucide-react'
 
@@ -214,13 +214,8 @@ function MatchModal({ profile, conversationId, onClose }: {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function NearbyPage() {
-  const { dbUser, firebaseUser } = useAuth()
+  const { dbUser } = useAuth()
   const [tab, setTab] = useState<'nearby' | 'match'>('nearby')
-
-  async function getToken() {
-    if (!firebaseUser) return ''
-    try { return await firebaseUser.getIdToken() } catch { return '' }
-  }
 
   // ── Nearby state ──────────────────────────────────────────────────────────
   const [people, setPeople] = useState<NearbyUser[]>([])
@@ -229,22 +224,15 @@ export default function NearbyPage() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [following, setFollowing] = useState<Set<string>>(new Set())
 
-  async function updateLocation(lat: number, lng: number) {
-    const token = await getToken()
-    if (!token) return
-    fetch(`${API_URL}/nearby/location`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ lat, lng }),
-    }).catch(() => {})
+  function updateLocation(lat: number, lng: number) {
+    api.put('/nearby/location', { lat, lng }).catch(() => {})
   }
 
   const fetchPeople = useCallback(async (lat: number, lng: number) => {
     setNearbyLoading(true)
     try {
-      const res = await fetch(`${API_URL}/nearby/people?lat=${lat}&lng=${lng}`)
-      const json = await res.json()
-      if (Array.isArray(json.data)) setPeople(json.data)
+      const res = await api.get<{ data: NearbyUser[] }>(`/nearby/people?lat=${lat}&lng=${lng}`)
+      if (Array.isArray(res?.data)) setPeople(res.data)
     } catch {}
     finally { setNearbyLoading(false) }
   }, [])
@@ -264,17 +252,16 @@ export default function NearbyPage() {
   }, [])
 
   async function toggleFollow(userId: string, currentlyFollowing: boolean) {
-    const token = await getToken()
-    if (!token) return
     setFollowing(prev => {
       const next = new Set(prev)
       currentlyFollowing ? next.delete(userId) : next.add(userId)
       return next
     })
-    fetch(`${API_URL}/follow/${userId}`, {
-      method: currentlyFollowing ? 'DELETE' : 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => {})
+    if (currentlyFollowing) {
+      api.delete(`/follow/${userId}`).catch(() => {})
+    } else {
+      api.post(`/follow/${userId}`, {}).catch(() => {})
+    }
   }
 
   // ── Match state ───────────────────────────────────────────────────────────
@@ -292,50 +279,40 @@ export default function NearbyPage() {
   async function loadDeck() {
     setDeckLoading(true)
     setOutOfCards(false)
-    const tok = await getToken()
     try {
-      const r = await fetch(`${API_URL}/match/deck`, { headers: { Authorization: `Bearer ${tok}` } })
-      const j = await r.json()
-      setDeck(j.data ?? [])
-      if ((j.data ?? []).length === 0) setOutOfCards(true)
+      const j = await api.get<{ data: MatchProfile[] }>('/match/deck')
+      setDeck(j?.data ?? [])
+      if ((j?.data ?? []).length === 0) setOutOfCards(true)
     } catch {}
     setDeckLoading(false)
   }
 
   async function loadMatches() {
     setMatchesLoading(true)
-    const tok = await getToken()
     try {
-      const r = await fetch(`${API_URL}/match/matches`, { headers: { Authorization: `Bearer ${tok}` } })
-      const j = await r.json()
-      setMatches(j.data ?? [])
+      const j = await api.get<{ data: MatchProfile[] }>('/match/matches')
+      setMatches(j?.data ?? [])
     } catch {}
     setMatchesLoading(false)
   }
 
   // Lazy-load match deck only when the tab is first opened
   useEffect(() => {
-    if (tab === 'match' && dbUser && firebaseUser && !deckLoadedRef.current) {
+    if (tab === 'match' && dbUser && !deckLoadedRef.current) {
       deckLoadedRef.current = true
       loadDeck()
       loadMatches()
     }
-  }, [tab, dbUser?.id, firebaseUser])
+  }, [tab, dbUser?.id])
 
   async function swipe(profile: MatchProfile, liked: boolean) {
     if (swiping) return
     setSwiping(true)
     setDeck(prev => prev.filter(p => p.id !== profile.id))
     if (deck.length <= 1) setOutOfCards(true)
-    const tok = await getToken()
     try {
-      const r = await fetch(`${API_URL}/match/swipe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ toUserId: profile.id, liked }),
-      })
-      const j = await r.json()
-      if (j.data?.match && liked) {
+      const j = await api.post<{ data: { match: boolean; conversationId?: string } }>('/match/swipe', { toUserId: profile.id, liked })
+      if (j?.data?.match && liked) {
         setMatchedProfile(profile)
         setMatchConvoId(j.data?.conversationId ?? null)
         loadMatches()

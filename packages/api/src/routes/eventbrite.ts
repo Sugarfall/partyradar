@@ -100,13 +100,15 @@ router.get('/search', async (req, res, next) => {
     const events = (data['events'] as EBEvent[] | undefined) ?? []
 
     res.json({
-      events: events.map((ev) => ({
-        id: ev.id,
-        url: ev.url,
-        ...mapEBEvent(ev),
-      })),
-      page: (data['pagination'] as Record<string, unknown>)?.['page_number'] ?? 1,
-      total: (data['pagination'] as Record<string, unknown>)?.['object_count'] ?? 0,
+      data: {
+        events: events.map((ev) => ({
+          id: ev.id,
+          url: ev.url,
+          ...mapEBEvent(ev),
+        })),
+        page: (data['pagination'] as Record<string, unknown>)?.['page_number'] ?? 1,
+        total: (data['pagination'] as Record<string, unknown>)?.['object_count'] ?? 0,
+      },
     })
   } catch (err) {
     next(err)
@@ -134,7 +136,7 @@ router.post('/import', requireAuth, async (req: AuthRequest, res, next) => {
       where: { eventbriteId },
     })
     if (existing) {
-      return res.json({ event: existing, imported: false, message: 'Already imported' })
+      return res.json({ data: { event: existing, imported: false, message: 'Already imported' } })
     }
 
     // Determine neighbourhood from address (first part before first comma)
@@ -169,7 +171,7 @@ router.post('/import', requireAuth, async (req: AuthRequest, res, next) => {
       },
     })
 
-    res.status(201).json({ event: created, imported: true })
+    res.status(201).json({ data: { event: created, imported: true } })
   } catch (err) {
     next(err)
   }
@@ -189,7 +191,7 @@ router.post('/sync', requireAdmin, async (req: AuthRequest, res, next) => {
     const { syncExternalEvents } = await import('../lib/eventSync')
     const result = await syncExternalEvents(city, lat, lng, req.user!.dbUser.id)
 
-    res.json(result)
+    res.json({ data: result })
   } catch (err) {
     next(err)
   }

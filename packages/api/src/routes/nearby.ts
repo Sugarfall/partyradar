@@ -47,6 +47,7 @@ router.get('/people', optionalAuth, async (req: AuthRequest, res, next) => {
         lastLng: { gte: lng - DELTA, lte: lng + DELTA },
         lastSeenAt: { gte: cutoff },
         id: { not: userId ?? 'none' },
+        showInNearby: true,
       },
       select: {
         id: true, displayName: true, username: true, photoUrl: true,

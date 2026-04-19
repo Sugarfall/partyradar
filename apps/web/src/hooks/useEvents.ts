@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import useSWR from 'swr'
-import { fetcher, api, API_URL } from '@/lib/api'
+import { fetcher, api } from '@/lib/api'
 import type { Event, EventDiscoverQuery, CreateEventInput } from '@partyradar/shared'
 
 // ─── Glasgow Venues (reference data for the Venues tab) ──────────────────────
@@ -68,23 +68,16 @@ export function useEvents(query: EventDiscoverQuery = {}) {
     }
   )
 
-  // Safety net: if SWR stalls for 3s force a raw fetch
+  // Safety net: if SWR stalls for 3s force a fetch via api helper (includes auth)
   const retried = useRef(false)
   useEffect(() => {
     if (data || retried.current) return
     const timer = setTimeout(() => {
       if (retried.current) return
       retried.current = true
-      fetch(`${API_URL}${swrKey}`, {
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-      })
-        .then((r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`)
-          return r.json()
-        })
-        .then((j) => { if (j?.data) mutate(j, false) })
-        .catch((err) => console.error('[useEvents] Raw fetch failed:', err))
+      api.get(swrKey)
+        .then((j) => { if ((j as { data?: unknown })?.data) mutate(j as never, false) })
+        .catch((err) => console.error('[useEvents] Retry failed:', err))
     }, 3000)
     return () => clearTimeout(timer)
   }, [data, swrKey, mutate])
@@ -92,13 +85,8 @@ export function useEvents(query: EventDiscoverQuery = {}) {
   // Manual retry — bypasses SWR cache entirely
   const forceRetry = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}${swrKey}`, {
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      if (json?.data) mutate(json, false)
+      const json = await api.get(swrKey)
+      if ((json as { data?: unknown })?.data) mutate(json as never, false)
     } catch (err) {
       console.error('[useEvents] Force retry failed:', err)
       mutate()
@@ -131,23 +119,16 @@ export function useEvent(id: string | null) {
     }
   )
 
-  // Safety net: force raw fetch if SWR stalls
+  // Safety net: force fetch via api helper if SWR stalls
   const retried = useRef(false)
   useEffect(() => {
     if (data || !swrKey || retried.current) return
     const timer = setTimeout(() => {
       if (retried.current) return
       retried.current = true
-      fetch(`${API_URL}${swrKey}`, {
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-      })
-        .then((r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`)
-          return r.json()
-        })
-        .then((j) => { if (j?.data) mutate(j, false) })
-        .catch((err) => console.error('[useEvent] Raw fetch failed:', err))
+      api.get(swrKey)
+        .then((j) => { if ((j as { data?: unknown })?.data) mutate(j as never, false) })
+        .catch((err) => console.error('[useEvent] Retry failed:', err))
     }, 3000)
     return () => clearTimeout(timer)
   }, [data, swrKey, mutate])

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { Gift, Copy, Check, TrendingUp } from 'lucide-react'
 
 interface ReferralCard {
@@ -17,32 +17,25 @@ interface ReferralCard {
 }
 
 export default function ReferralCardPage() {
-  const { dbUser, firebaseUser } = useAuth()
+  const { dbUser } = useAuth()
   const [card, setCard] = useState<ReferralCard | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    if (!firebaseUser) { setLoading(false); return }
-    firebaseUser.getIdToken().then(token =>
-      fetch(`${API_URL}/referral-cards/mine`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(j => { if (j.data?.length > 0) setCard(j.data[0]) })
-        .finally(() => setLoading(false))
-    ).catch(() => setLoading(false))
-  }, [firebaseUser])
+    if (!dbUser) { setLoading(false); return }
+    api.get<{ data: ReferralCard[] }>('/referral-cards/mine')
+      .then(j => { if (j?.data?.length > 0) setCard(j.data[0]) })
+      .finally(() => setLoading(false))
+      .catch(() => setLoading(false))
+  }, [dbUser?.id])
 
   async function createCard() {
-    if (!firebaseUser) return
+    if (!dbUser) return
     setCreating(true)
-    const token = await firebaseUser.getIdToken().catch(() => null)
-    const res = await fetch(`${API_URL}/referral-cards`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token ?? ''}` },
-    })
-    const json = await res.json()
-    if (json.data) setCard(json.data)
+    const json = await api.post<{ data: ReferralCard }>('/referral-cards', {}).catch(() => null)
+    if (json?.data) setCard(json.data)
     setCreating(false)
   }
 

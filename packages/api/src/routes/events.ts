@@ -13,7 +13,7 @@ const router = Router()
 
 const eventSchema = z.object({
   name: z.string().min(3).max(100),
-  type: z.enum(['HOME_PARTY', 'CLUB_NIGHT', 'CONCERT']),
+  type: z.enum(['HOME_PARTY', 'CLUB_NIGHT', 'CONCERT', 'PUB_NIGHT', 'BEACH_PARTY', 'YACHT_PARTY']),
   description: z.string().min(10).max(2000),
   startsAt: z.string().min(1),
   endsAt: z.string().min(1).optional(),
@@ -265,7 +265,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       const price = await stripe.prices.create({
         product: product.id,
         unit_amount: Math.round(event.price * 100),
-        currency: 'usd',
+        currency: 'gbp',
       })
       await prisma.event.update({
         where: { id: event.id },

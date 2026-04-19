@@ -7,6 +7,7 @@ import { fetcher } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { Ticket, Calendar, MapPin, Loader2 } from 'lucide-react'
 import { EventTypeBadge } from '@/components/ui/Badge'
+import { formatPrice } from '@/lib/currency'
 import type { Ticket as TicketType } from '@partyradar/shared'
 
 export default function TicketsPage() {
@@ -86,7 +87,7 @@ export default function TicketsPage() {
                 </div>
 
                 <p className="text-center text-xs text-zinc-600 mt-2">
-                  ${ticket.pricePaid.toFixed(2)} · {ticket.qrCode.slice(0, 8)}...
+                  {formatPrice(ticket.pricePaid)} · {ticket.qrCode.slice(0, 8)}...
                 </p>
               </div>
             </div>
