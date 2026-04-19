@@ -47,7 +47,9 @@ const userSelect = {
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
+    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', limit = '20', tonight } = req.query
+    // Support both ?q= (new search bar) and ?search= (existing filters panel)
+    const search = q ?? searchParam
 
     const skip = (Number(page) - 1) * Number(limit)
     const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
@@ -75,7 +77,15 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         where['type'] = { notIn: excludeTypes }
       }
     }
-    if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
+    if (search) {
+      where['OR'] = [
+        { name:          { contains: search as string, mode: 'insensitive' } },
+        { description:   { contains: search as string, mode: 'insensitive' } },
+        { address:       { contains: search as string, mode: 'insensitive' } },
+        { neighbourhood: { contains: search as string, mode: 'insensitive' } },
+        { type:          { contains: search as string, mode: 'insensitive' } },
+      ]
+    }
 
     // Hide alcohol events only for logged-in users who haven't enabled the toggle
     if (req.user && !showAlcohol) {

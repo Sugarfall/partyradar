@@ -333,7 +333,7 @@ export default function SquadPage() {
   const fetchSquads = useCallback(async () => {
     try {
       const json = await api.get<{ data: Squad[] }>('/squads')
-      setSquads(json.data ?? [])
+      setSquads(json?.data ?? [])
     } catch {
       setSquads([])
     } finally {

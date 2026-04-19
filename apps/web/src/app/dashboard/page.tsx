@@ -456,10 +456,10 @@ export default function DashboardPage() {
       const j = await api.get<{ data: { stats: DashStats; events: DashEvent[]; groups: DashGroup[]; recentAttendees: DashAttendee[]; blasts: DashBlast[]; blastQueue?: { queuedAhead: number } } }>('/dashboard')
       if (j?.data) {
         setStats(j.data.stats)
-        setEvents(j.data.events)
-        setGroups(j.data.groups)
-        setAttendees(j.data.recentAttendees)
-        setBlasts(j.data.blasts)
+        setEvents(j.data.events ?? [])
+        setGroups(j.data.groups ?? [])
+        setAttendees(j.data.recentAttendees ?? [])
+        setBlasts(j.data.blasts ?? [])
         setBlastQueue(j.data.blastQueue?.queuedAhead ?? 0)
       }
     } catch {}

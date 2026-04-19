@@ -238,7 +238,7 @@ export default function NearbyPage() {
   }, [])
 
   useEffect(() => {
-    if (!navigator.geolocation) { setLocationDenied(true); return }
+    if (typeof window === 'undefined' || !navigator.geolocation) { setLocationDenied(true); return }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords

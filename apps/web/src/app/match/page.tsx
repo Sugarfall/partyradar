@@ -149,9 +149,9 @@ function SwipeCard({
                   {profile.bio}
                 </p>
               )}
-              {profile.interests.length > 0 && (
+              {profile.interests?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
-                  {profile.interests.slice(0, 4).map((tag) => (
+                  {profile.interests?.slice(0, 4).map((tag) => (
                     <span key={tag} className="px-2 py-0.5 rounded-lg text-[10px] font-bold"
                       style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
                       {tag}

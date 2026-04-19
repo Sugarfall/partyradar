@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, createContext, useContext, type ReactNode } from 'react'
+import { useState, useEffect, useRef, createContext, useContext, type ReactNode } from 'react'
 import {
   auth,
   onAuthStateChanged,
@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [dbUser, setDbUser] = useState<DBUser | null>(null)
   const [loading, setLoading] = useState(true)
   // Prevent duplicate /auth/sync calls when signIn triggers onAuthStateChanged
-  const syncingRef = { current: false }
+  const syncingRef = useRef(false)
 
   async function syncUser(user: User) {
     // In dev mode (no Firebase config), use a local mock DB user
@@ -170,8 +170,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+const AUTH_FALLBACK: AuthContextValue = {
+  firebaseUser: null,
+  dbUser: null,
+  loading: true,
+  signIn: async () => {},
+  signUp: async () => {},
+  signInWithGoogle: async () => {},
+  signInWithApple: async () => {},
+  logout: async () => {},
+  refreshUser: async () => {},
+}
+
 export function useAuth() {
   const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
-  return ctx
+  return ctx ?? AUTH_FALLBACK
 }

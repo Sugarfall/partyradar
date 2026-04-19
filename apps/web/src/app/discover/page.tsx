@@ -12,6 +12,7 @@ import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
 import { AGE_RESTRICTION_LABELS, ALCOHOL_POLICY_LABELS, getTier } from '@partyradar/shared'
 import { useAuth } from '@/hooks/useAuth'
+import { API_URL } from '@/lib/api'
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
@@ -168,7 +169,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
               {timeUntil(event.startsAt)}
             </span>
           )}
-          {event.vibeTags.slice(0, 2).map(t => (
+          {event.vibeTags?.slice(0, 2).map(t => (
             <span key={t} className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>#{t}</span>
           ))}
         </div>
@@ -312,7 +313,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
               className="w-8 h-8 rounded flex items-center justify-center text-sm font-bold"
               style={{ background: `${color}18`, border: `1px solid ${color}40`, color }}
             >
-              {event.host.displayName[0]}
+              {event.host?.displayName?.[0]}
             </div>
           )}
           <div>
@@ -375,9 +376,9 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
         </div>
 
         {/* Vibe tags */}
-        {event.vibeTags.length > 0 && (
+        {event.vibeTags?.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
-            {event.vibeTags.slice(0, 6).map((tag) => (
+            {event.vibeTags?.slice(0, 6).map((tag) => (
               <span
                 key={tag}
                 className="text-[10px] font-bold px-2.5 py-1 rounded-full"
@@ -882,6 +883,170 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
   )
 }
 
+// ── Full-screen search overlay ────────────────────────────────────────────────
+interface SearchOverlayProps {
+  onClose: () => void
+  userTier: string
+}
+
+function SearchOverlay({ onClose, userTier }: SearchOverlayProps) {
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [results, setResults] = useState<Event[]>([])
+  const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-focus input when overlay opens
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Debounce query by 400 ms
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!query.trim()) {
+      setDebouncedQuery('')
+      setResults([])
+      setSearched(false)
+      return
+    }
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(query.trim())
+    }, 400)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [query])
+
+  // Fetch when debounced query changes
+  useEffect(() => {
+    if (!debouncedQuery) return
+    let cancelled = false
+    setLoading(true)
+    const params = new URLSearchParams({ q: debouncedQuery, limit: '20' })
+    fetch(`${API_URL}/events?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json: { data?: Event[] }) => {
+        if (cancelled) return
+        setResults(json.data ?? [])
+        setSearched(true)
+      })
+      .catch(() => { if (!cancelled) { setResults([]); setSearched(true) } })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [debouncedQuery])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ background: '#04040d' }}
+    >
+      {/* Search header */}
+      <div
+        className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+        style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(4,4,13,0.97)', backdropFilter: 'blur(16px)' }}
+      >
+        <div className="relative flex-1">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: 'var(--accent)' }}
+          />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search events by name, vibe, area..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full pl-9 pr-9 py-2.5 rounded-xl text-sm outline-none bg-transparent"
+            style={{
+              border: '1px solid rgba(var(--accent-rgb),0.25)',
+              color: '#e0f2fe',
+              background: 'rgba(var(--accent-rgb),0.04)',
+            }}
+          />
+          {query && (
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              onClick={() => { setQuery(''); setResults([]); setSearched(false); inputRef.current?.focus() }}
+            >
+              <X size={14} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="shrink-0 px-3 py-2 rounded-lg text-xs font-black tracking-widest transition-all"
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.6)', background: 'transparent' }}
+        >
+          CANCEL
+        </button>
+      </div>
+
+      {/* Results area */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-20">
+        {/* Loading spinner */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div
+              className="w-8 h-8 rounded-full border-2 animate-spin"
+              style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }}
+            />
+            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SEARCHING...</p>
+          </div>
+        )}
+
+        {/* Empty prompt — not yet searched */}
+        {!loading && !searched && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <Search size={40} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+            <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>FIND YOUR NEXT PARTY</p>
+            <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.25)', maxWidth: 240 }}>
+              Type to search by event name, description, neighbourhood, or event type.
+            </p>
+          </div>
+        )}
+
+        {/* No results */}
+        {!loading && searched && results.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <span style={{ fontSize: 40 }}>📡</span>
+            <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>NO EVENTS FOUND</p>
+            <p className="text-xs" style={{ color: 'rgba(224,242,254,0.25)' }}>
+              Try a different search term or check back later.
+            </p>
+          </div>
+        )}
+
+        {/* Results list */}
+        {!loading && results.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
+              {results.length} RESULT{results.length !== 1 ? 'S' : ''} FOR &ldquo;{debouncedQuery}&rdquo;
+            </p>
+            {results.map((e) => (
+              <div key={e.id} onClick={onClose}>
+                <EventListCard event={e} userTier={userTier} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function DiscoverPage() {
   const { dbUser } = useAuth()
@@ -889,6 +1054,7 @@ export default function DiscoverPage() {
 
   const [tab, setTab] = useState<'events' | 'venues'>('events')
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const [index, setIndex] = useState(0)
   const [slideDir, setSlideDir] = useState<SlideDir>(null)
@@ -1041,7 +1207,7 @@ export default function DiscoverPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  })
+  }, [goNext, goPrev])
 
   // Simulate host push notification after 2s
   useEffect(() => {
@@ -1069,6 +1235,10 @@ export default function DiscoverPage() {
   const event = events[index] ?? null
 
   return (
+    <>
+      {/* ── Full-screen search overlay ── */}
+      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} userTier={userTier} />}
+
     <div
       className="flex flex-col"
       style={{ height: 'calc(100vh - 3.5rem)', overflow: 'hidden' }}
@@ -1193,6 +1363,20 @@ export default function DiscoverPage() {
           )}
           {tab === 'events' && (
             <>
+              {/* Search button — opens full-screen search overlay */}
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="p-1.5 rounded transition-all duration-200"
+                title="Search events"
+                style={{
+                  border: '1px solid rgba(var(--accent-rgb),0.25)',
+                  color: 'var(--accent)',
+                  background: 'rgba(var(--accent-rgb),0.08)',
+                  boxShadow: '0 0 8px rgba(var(--accent-rgb),0.15)',
+                }}
+              >
+                <Search size={14} />
+              </button>
               <button
                 onClick={() => setViewMode(v => v === 'list' ? 'card' : 'list')}
                 className="p-1.5 rounded transition-all duration-200"
@@ -1450,5 +1634,6 @@ export default function DiscoverPage() {
       </>}
       </>}
     </div>
+    </>
   )
 }
