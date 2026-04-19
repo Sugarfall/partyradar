@@ -23,6 +23,8 @@ export function EventMap({ events, centerLat, centerLng, onBoundsChange }: Event
     zoom: 12,
   })
 
+  const mapboxToken = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
+
   // Re-centre when parent provides a user location
   useEffect(() => {
     if (centerLat && centerLng) {
@@ -30,9 +32,17 @@ export function EventMap({ events, centerLat, centerLng, onBoundsChange }: Event
     }
   }, [centerLat, centerLng])
 
+  if (!mapboxToken) {
+    return (
+      <div className="w-full h-full flex items-center justify-center" style={{ background: '#04040d' }}>
+        <p className="text-xs" style={{ color: 'rgba(74,96,128,0.5)' }}>Map unavailable</p>
+      </div>
+    )
+  }
+
   return (
     <Map
-      mapboxAccessToken={process.env['NEXT_PUBLIC_MAPBOX_TOKEN']}
+      mapboxAccessToken={mapboxToken}
       {...viewport}
       onMove={(evt) => setViewport(evt.viewState)}
       style={{ width: '100%', height: '100%' }}

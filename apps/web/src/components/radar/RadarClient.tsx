@@ -44,7 +44,7 @@ export default function RadarClient() {
   const sightings = data?.data ?? []
 
   const canUseRadar = dbUser
-    ? TIERS[dbUser.subscriptionTier as SubscriptionTier].radar
+    ? (TIERS[dbUser.subscriptionTier as SubscriptionTier]?.radar ?? false)
     : false
 
   const geojson = {
@@ -105,7 +105,7 @@ export default function RadarClient() {
       {/* Map */}
       <div className="flex-1 relative">
         <Map
-          mapboxAccessToken={process.env['NEXT_PUBLIC_MAPBOX_TOKEN']}
+          mapboxAccessToken={process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''}
           initialViewState={{ longitude: -74.006, latitude: 40.7128, zoom: 11 }}
           style={{ width: '100%', height: '100%' }}
           mapStyle="mapbox://styles/mapbox/dark-v11"

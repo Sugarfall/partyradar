@@ -39,6 +39,7 @@ const CACHE_KEY = 'partyradar_venues_cache'
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 function loadCache(): VenueCache | null {
+  if (typeof window === 'undefined') return null
   try {
     const raw = sessionStorage.getItem(CACHE_KEY)
     if (!raw) return null
@@ -49,16 +50,16 @@ function loadCache(): VenueCache | null {
 }
 
 function saveCache(c: VenueCache) {
+  if (typeof window === 'undefined') return
   try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(c)) } catch {}
 }
 
 export function useVenueDiscover() {
-  const [venues, setVenues] = useState<LiveVenue[]>(() => loadCache()?.venues ?? [])
+  // Use empty defaults for SSR; useEffect below hydrates from cache on the client
+  const [venues, setVenues] = useState<LiveVenue[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [source, setSource] = useState<'google' | 'database' | 'google_places' | null>(
-    () => loadCache()?.source ?? null,
-  )
+  const [source, setSource] = useState<'google' | 'database' | 'google_places' | null>(null)
 
   // On first render, hydrate from cache if fresh
   useEffect(() => {
