@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import 'dotenv/config' // v2789fe8
 import { createServer } from 'http'
 import express from 'express'
 import cors from 'cors'
@@ -559,6 +559,48 @@ cron.schedule('0 * * * *', async () => {
     console.error('[Cron] Error auto-reseeding events:', err)
   }
 })
+
+// ─── Startup cleanup ──────────────────────────────────────────────────────────
+// Runs once on boot: purges external events that expired or were synced for wrong cities
+;(async () => {
+  try {
+    const cutoff = new Date(Date.now() - 8 * 3_600_000)
+
+    // 1. Delete expired externally-synced events (Ticketmaster, Skiddle, Perplexity, etc.)
+    //    User-created events are never auto-deleted.
+    const expiredExternal = await prisma.event.deleteMany({
+      where: {
+        externalSource: { not: null },
+        startsAt: { lt: cutoff },
+      },
+    })
+    if (expiredExternal.count > 0) {
+      console.log(`[Startup] Deleted ${expiredExternal.count} expired external events`)
+    }
+
+    // 2. Unpublish external events outside the UK/Ireland bounding box
+    //    (catches Amsterdam, US, or other mis-geocoded events that slipped through)
+    //    UK+Ireland rough bbox: lat 49–60, lng -11 to 2
+    const overseas = await prisma.event.updateMany({
+      where: {
+        externalSource: { not: null },
+        isPublished: true,
+        OR: [
+          { lat: { lt: 49 } },
+          { lat: { gt: 60 } },
+          { lng: { lt: -11 } },
+          { lng: { gt: 2 } },
+        ],
+      },
+      data: { isPublished: false },
+    })
+    if (overseas.count > 0) {
+      console.log(`[Startup] Unpublished ${overseas.count} out-of-region external events`)
+    }
+  } catch (err) {
+    console.error('[Startup] Cleanup error:', err)
+  }
+})()
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
