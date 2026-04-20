@@ -36,6 +36,7 @@ interface FeedPost {
   text?: string | null
   isStory: boolean
   likesCount: number
+  viewCount?: number
 }
 
 interface FeedCheckin {
@@ -66,6 +67,12 @@ interface Story {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatViews(n: number): string {
+  if (n < 1000) return `${n}`
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}K`
+  return `${(n / 1_000_000).toFixed(1)}M`
+}
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -220,8 +227,17 @@ function PostCard({
   const post = item.post!
   const [imgLoaded, setImgLoaded] = useState(false)
   const [showHeart, setShowHeart] = useState(false)
+  const [localViews, setLocalViews] = useState(post.viewCount ?? 0)
   const lastTapRef = useRef(0)
+  const viewedRef = useRef(false)
   const isVideo = post.imageUrl ? isVideoUrl(post.imageUrl) : false
+
+  function handleVideoPlay() {
+    if (viewedRef.current) return
+    viewedRef.current = true
+    setLocalViews(v => v + 1)
+    api.post(`/posts/${post.id}/view`, {}).catch(() => {})
+  }
 
   function handleMediaTap() {
     const now = Date.now()
@@ -290,6 +306,7 @@ function PostCard({
               playsInline
               className="w-full block"
               style={{ maxHeight: 480, background: '#000' }}
+              onPlay={handleVideoPlay}
             />
           ) : (
             <img
@@ -316,6 +333,13 @@ function PostCard({
             </div>
           )}
         </div>
+      )}
+
+      {/* View count — videos only, Instagram-style */}
+      {isVideo && localViews > 0 && (
+        <p className="px-4 pt-2 pb-0 text-xs font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>
+          {formatViews(localViews)} views
+        </p>
       )}
 
       {/* Caption */}

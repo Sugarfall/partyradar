@@ -90,7 +90,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         user: p.user,
         event: p.event,
         venue: p.venue,
-        post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount },
+        post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount, viewCount: p.viewCount },
         checkin: null,
         createdAt: p.createdAt,
       })),
@@ -153,7 +153,7 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
       user: p.user,
       event: p.event,
       venue: p.venue,
-      post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount },
+      post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount, viewCount: p.viewCount },
       checkin: null,
       createdAt: p.createdAt,
     }))

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
@@ -154,7 +154,7 @@ router.get('/user/:username', async (req, res, next) => {
       },
       orderBy: { createdAt: 'desc' },
       take: 60,
-      select: { id: true, imageUrl: true, text: true, likesCount: true, createdAt: true },
+      select: { id: true, imageUrl: true, text: true, likesCount: true, viewCount: true, createdAt: true },
     })
 
     res.json({ data: posts })
@@ -230,6 +230,19 @@ router.get('/venue/:venueId', async (req, res, next) => {
       limit: Number(limit),
       hasMore: skip + posts.length < total,
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/posts/:id/view — record a video view (once per play) */
+router.post('/:id/view', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+    const post = await prisma.post.findUnique({ where: { id }, select: { id: true } })
+    if (!post) throw new AppError('Post not found', 404)
+    await prisma.post.update({ where: { id }, data: { viewCount: { increment: 1 } } })
+    res.json({ data: { ok: true } })
   } catch (err) {
     next(err)
   }

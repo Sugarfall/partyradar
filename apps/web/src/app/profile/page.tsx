@@ -329,7 +329,7 @@ export default function ProfilePage() {
 
   // Profile tabs
   const [profileTab, setProfileTab] = useState<ProfileTab>('photos')
-  const [myPhotos, setMyPhotos] = useState<{ id: string; imageUrl: string; likesCount: number }[]>([])
+  const [myPhotos, setMyPhotos] = useState<{ id: string; imageUrl: string; likesCount: number; viewCount: number }[]>([])
   const [photosLoading, setPhotosLoading] = useState(false)
   const [photosFetched, setPhotosFetched] = useState(false)
 
@@ -337,7 +337,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (profileTab !== 'photos' || photosFetched || !dbUser?.username) return
     setPhotosLoading(true)
-    api.get<{ data: { id: string; imageUrl: string; likesCount: number }[] }>(`/posts/user/${dbUser.username}`)
+    api.get<{ data: { id: string; imageUrl: string; likesCount: number; viewCount: number }[] }>(`/posts/user/${dbUser.username}`)
       .then(j => { setMyPhotos(j?.data ?? []); setPhotosFetched(true) })
       .catch(() => {})
       .finally(() => setPhotosLoading(false))
@@ -1091,7 +1091,16 @@ export default function ProfilePage() {
                           <span style={{ fontSize: 9, color: '#fff' }}>▶</span>
                         </div>
                       )}
-                      {photo.likesCount > 0 && (
+                      {isVid && photo.viewCount > 0 && (
+                        <div className="absolute bottom-1 left-1 flex items-center gap-0.5"
+                          style={{ background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '1px 4px' }}>
+                          <span style={{ fontSize: 8, color: '#fff' }}>▶</span>
+                          <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)' }}>
+                            {photo.viewCount >= 1000 ? `${(photo.viewCount / 1000).toFixed(photo.viewCount < 10000 ? 1 : 0)}K` : photo.viewCount}
+                          </span>
+                        </div>
+                      )}
+                      {!isVid && photo.likesCount > 0 && (
                         <div className="absolute bottom-1 left-1 flex items-center gap-0.5"
                           style={{ background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '1px 4px' }}>
                           <span style={{ fontSize: 8, color: '#ec4899' }}>♥</span>

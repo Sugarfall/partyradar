@@ -483,6 +483,7 @@ model Post {
   isStory    Boolean    @default(false)
   expiresAt  DateTime?
   likesCount Int        @default(0)
+  viewCount  Int        @default(0)
   createdAt  DateTime   @default(now())
 
   likes PostLike[]

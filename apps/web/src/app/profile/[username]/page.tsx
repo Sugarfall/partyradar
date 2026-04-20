@@ -314,7 +314,7 @@ export default function PublicProfilePage() {
   const [showViewers, setShowViewers] = useState(false)
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
   const [activeTab, setActiveTab] = useState<'events' | 'checkins' | 'photos'>('events')
-  const [profilePhotos, setProfilePhotos] = useState<{ id: string; imageUrl: string; likesCount: number }[]>([])
+  const [profilePhotos, setProfilePhotos] = useState<{ id: string; imageUrl: string; likesCount: number; viewCount: number }[]>([])
   const [photosLoading, setPhotosLoading] = useState(false)
 
   const load = useCallback(async () => {
@@ -368,7 +368,7 @@ export default function PublicProfilePage() {
   useEffect(() => {
     if (activeTab !== 'photos' || !profile || profilePhotos.length > 0) return
     setPhotosLoading(true)
-    api.get<{ data: { id: string; imageUrl: string; likesCount: number }[] }>(`/posts/user/${profile.username}`)
+    api.get<{ data: { id: string; imageUrl: string; likesCount: number; viewCount: number }[] }>(`/posts/user/${profile.username}`)
       .then(j => setProfilePhotos(j?.data ?? []))
       .catch(() => {})
       .finally(() => setPhotosLoading(false))
@@ -777,7 +777,17 @@ export default function PublicProfilePage() {
                         <span style={{ fontSize: 9 }}>▶</span>
                       </div>
                     )}
-                    {photo.likesCount > 0 && (
+                    {/* Videos show view count; images show like count */}
+                    {isVid && photo.viewCount > 0 && (
+                      <div className="absolute bottom-1 left-1 flex items-center gap-0.5"
+                        style={{ background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '1px 4px' }}>
+                        <span style={{ fontSize: 8, color: '#fff' }}>▶</span>
+                        <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)' }}>
+                          {photo.viewCount >= 1000 ? `${(photo.viewCount / 1000).toFixed(photo.viewCount < 10000 ? 1 : 0)}K` : photo.viewCount}
+                        </span>
+                      </div>
+                    )}
+                    {!isVid && photo.likesCount > 0 && (
                       <div className="absolute bottom-1 left-1 flex items-center gap-0.5"
                         style={{ background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '1px 4px' }}>
                         <span style={{ fontSize: 8, color: '#ec4899' }}>♥</span>
