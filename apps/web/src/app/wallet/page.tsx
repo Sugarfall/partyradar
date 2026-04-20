@@ -1,9 +1,7 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
-
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
@@ -96,7 +94,6 @@ function SectionCard({ children, className = '' }: { children: React.ReactNode; 
 export default function WalletPage() {
   const { dbUser } = useAuth()
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [wallet, setWallet]           = useState<WalletData | null>(null)
   const [transactions, setTransactions] = useState<WalletTransaction[]>([])
@@ -128,7 +125,8 @@ export default function WalletPage() {
     load()
 
     // Handle ?success=true redirect from Stripe Checkout
-    if (searchParams.get('success') === 'true') {
+    // Read from window.location so we don't need useSearchParams (avoids Next.js Suspense requirement)
+    if (new URLSearchParams(window.location.search).get('success') === 'true') {
       setTopUpSuccess(true)
       // Clean the query param without a full page reload
       window.history.replaceState({}, '', '/wallet')
