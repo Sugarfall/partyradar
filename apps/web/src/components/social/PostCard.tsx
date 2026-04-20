@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Heart, MapPin, Calendar, Zap } from 'lucide-react'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -43,14 +43,11 @@ export default function PostCard({ post }: PostCardProps) {
     setLikes((c) => c + (prev ? -1 : 1))
     setLiking(true)
     try {
-      const token = typeof window !== 'undefined'
-        ? localStorage.getItem('partyradar_mock_session') ?? ''
-        : ''
-      const method = prev ? 'DELETE' : 'POST'
-      await fetch(`${API_BASE}/posts/${post.id}/like`, {
-        method,
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      if (prev) {
+        await api.delete(`/posts/${post.id}/like`)
+      } else {
+        await api.post(`/posts/${post.id}/like`)
+      }
     } catch {
       // Revert
       setLiked(prev)
@@ -65,7 +62,7 @@ export default function PostCard({ post }: PostCardProps) {
       className="rounded-2xl overflow-hidden"
       style={{
         background: 'rgba(24,24,27,0.95)',
-        border: '1px solid rgba(0,229,255,0.1)',
+        border: '1px solid rgba(var(--accent-rgb),0.1)',
         boxShadow: '0 2px 20px rgba(0,0,0,0.4)',
       }}
     >
@@ -77,12 +74,12 @@ export default function PostCard({ post }: PostCardProps) {
             src={post.user.photoUrl}
             alt=""
             className="w-9 h-9 rounded-full object-cover shrink-0"
-            style={{ border: '1px solid rgba(0,229,255,0.25)', boxShadow: '0 0 8px rgba(0,229,255,0.12)' }}
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.25)', boxShadow: '0 0 8px rgba(var(--accent-rgb),0.12)' }}
           />
         ) : (
           <div
             className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black shrink-0"
-            style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}
           >
             {initials}
           </div>
@@ -91,7 +88,7 @@ export default function PostCard({ post }: PostCardProps) {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{post.user.displayName}</p>
           {(post.event || post.venue) && (
-            <p className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
+            <p className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
               {post.event ? <Calendar size={9} /> : <MapPin size={9} />}
               {post.event?.name ?? post.venue?.name}
             </p>
@@ -135,7 +132,7 @@ export default function PostCard({ post }: PostCardProps) {
       {/* Footer */}
       <div
         className="flex items-center gap-3 px-4 py-2.5"
-        style={{ borderTop: '1px solid rgba(0,229,255,0.06)' }}
+        style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}
       >
         <button
           onClick={handleLike}
@@ -153,7 +150,7 @@ export default function PostCard({ post }: PostCardProps) {
 
         {/* Zap accent */}
         <div className="ml-auto">
-          <Zap size={11} style={{ color: 'rgba(0,229,255,0.15)' }} />
+          <Zap size={11} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
         </div>
       </div>
     </div>

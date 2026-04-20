@@ -85,9 +85,9 @@ function Step({
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-black"
         style={{
-          background: 'rgba(0,229,255,0.1)',
-          border: '1px solid rgba(0,229,255,0.25)',
-          color: '#00e5ff',
+          background: 'rgba(var(--accent-rgb),0.1)',
+          border: '1px solid rgba(var(--accent-rgb),0.25)',
+          color: 'var(--accent)',
         }}
       >
         {num}
@@ -127,7 +127,7 @@ function RevenueCalculator() {
             <span className="text-xs" style={{ color: 'rgba(224,242,254,0.5)' }}>
               {label}
             </span>
-            <span className="text-xs font-bold" style={{ color: '#00e5ff' }}>
+            <span className="text-xs font-bold" style={{ color: 'var(--accent)' }}>
               {label.includes('price') ? `\u00a3${value}` : value}
             </span>
           </div>
@@ -138,7 +138,7 @@ function RevenueCalculator() {
             value={value}
             onChange={(e) => set(Number(e.target.value))}
             className="w-full accent-cyan-400"
-            style={{ accentColor: '#00e5ff' }}
+            style={{ accentColor: 'var(--accent)' }}
           />
         </div>
       ))}
@@ -147,18 +147,18 @@ function RevenueCalculator() {
       <div
         className="rounded-xl p-5 text-center"
         style={{
-          background: 'linear-gradient(135deg, rgba(0,229,255,0.08) 0%, rgba(0,255,136,0.06) 100%)',
-          border: '1px solid rgba(0,229,255,0.2)',
+          background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.08) 0%, rgba(0,255,136,0.06) 100%)',
+          border: '1px solid rgba(var(--accent-rgb),0.2)',
         }}
       >
-        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: 'rgba(0,229,255,0.6)' }}>
+        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
           Estimated monthly earnings
         </p>
         <p
           className="text-3xl font-black"
           style={{
-            color: '#00e5ff',
-            textShadow: '0 0 30px rgba(0,229,255,0.3)',
+            color: 'var(--accent)',
+            textShadow: '0 0 30px rgba(var(--accent-rgb),0.3)',
           }}
         >
           {'\u00a3'}{total.toLocaleString('en-GB', { minimumFractionDigits: 0 })}
@@ -182,19 +182,19 @@ export default function EarnPage() {
             <div
               className="w-14 h-14 rounded-2xl flex items-center justify-center"
               style={{
-                background: 'rgba(0,229,255,0.08)',
-                border: '1px solid rgba(0,229,255,0.2)',
-                boxShadow: '0 0 40px rgba(0,229,255,0.15)',
+                background: 'rgba(var(--accent-rgb),0.08)',
+                border: '1px solid rgba(var(--accent-rgb),0.2)',
+                boxShadow: '0 0 40px rgba(var(--accent-rgb),0.15)',
               }}
             >
-              <TrendingUp size={28} style={{ color: '#00e5ff' }} />
+              <TrendingUp size={28} style={{ color: 'var(--accent)' }} />
             </div>
           </div>
           <h1
             className="text-3xl sm:text-5xl font-black tracking-wider"
             style={{
-              color: '#00e5ff',
-              textShadow: '0 0 60px rgba(0,229,255,0.25), 0 0 120px rgba(0,229,255,0.1)',
+              color: 'var(--accent)',
+              textShadow: '0 0 60px rgba(var(--accent-rgb),0.25), 0 0 120px rgba(var(--accent-rgb),0.1)',
             }}
           >
             EARN WITH PARTYRADAR
@@ -280,14 +280,14 @@ export default function EarnPage() {
         </SectionCard>
 
         {/* ── Wallet Rewards ─────────────────────────────────────────────── */}
-        <SectionCard icon={Wallet} title="Wallet Rewards" accent="#00e5ff">
+        <SectionCard icon={Wallet} title="Wallet Rewards" accent="var(--accent)">
           <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(224,242,254,0.55)' }}>
             Every purchase earns you loyalty points. Spend on tickets, food, or merch and watch your
             rewards grow automatically.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <Stat label="Points per \u00a31 spent" value="10 pts" accent="#00e5ff" />
-            <Stat label="Free drink at" value="500 pts" accent="#00e5ff" />
+            <Stat label="Points per \u00a31 spent" value="10 pts" accent="var(--accent)" />
+            <Stat label="Free drink at" value="500 pts" accent="var(--accent)" />
           </div>
           <p className="text-xs mt-4" style={{ color: 'rgba(224,242,254,0.4)' }}>
             Points never expire. Redeem for drinks, merchandise, and exclusive event perks.
@@ -303,7 +303,7 @@ export default function EarnPage() {
         </SectionCard>
 
         {/* ── How to Get Started ─────────────────────────────────────────── */}
-        <SectionCard icon={Star} title="How to Get Started" accent="#00e5ff">
+        <SectionCard icon={Star} title="How to Get Started" accent="var(--accent)">
           <div className="space-y-5">
             <Step num={1} title="Create your account" desc="Sign up for free in under a minute." />
             <Step num={2} title="Switch to Host mode" desc="Toggle to Host in the top bar to unlock creator tools." />
@@ -329,25 +329,6 @@ export default function EarnPage() {
           <RevenueCalculator />
         </SectionCard>
 
-        {/* CTA */}
-        <div className="pt-4 text-center">
-          <Link
-            href="/register"
-            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl text-sm font-bold tracking-wider transition-all active:scale-95"
-            style={{
-              background: 'linear-gradient(135deg, rgba(0,229,255,0.15) 0%, rgba(168,85,247,0.1) 100%)',
-              border: '1px solid rgba(0,229,255,0.3)',
-              color: '#00e5ff',
-              boxShadow: '0 0 30px rgba(0,229,255,0.1)',
-            }}
-          >
-            START EARNING TODAY
-            <ArrowRight size={16} />
-          </Link>
-          <p className="text-xs mt-3" style={{ color: 'rgba(224,242,254,0.3)' }}>
-            Free to join. No upfront costs.
-          </p>
-        </div>
       </div>
     </div>
   )

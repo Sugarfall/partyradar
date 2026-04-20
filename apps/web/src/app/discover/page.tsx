@@ -1,22 +1,31 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Wine, Star, Lock, LayoutList, Layers } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useEvents, DEMO_EVENTS } from '@/hooks/useEvents'
-import { formatPrice } from '@/lib/currency'
+import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
+import type { DemoVenue } from '@/hooks/useEvents'
+import { useVenueDiscover } from '@/hooks/useVenues'
+import type { LiveVenue } from '@/hooks/useVenues'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
-import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS } from '@partyradar/shared'
+import { AGE_RESTRICTION_LABELS, getTier } from '@partyradar/shared'
+import { useAuth } from '@/hooks/useAuth'
+import { api, API_URL } from '@/lib/api'
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center" style={{ background: '#07071a' }}>
-      <span style={{ color: 'rgba(0,229,255,0.5)', letterSpacing: '0.15em', fontSize: 12 }}>LOADING MAP...</span>
+      <span style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.15em', fontSize: 12 }}>LOADING MAP...</span>
     </div>
   ),
+})
+
+const VenuesMiniMap = dynamic(() => import('@/components/venues/VenuesMiniMap'), {
+  ssr: false,
+  loading: () => <div className="w-full h-full" style={{ background: '#07071a' }} />,
 })
 
 
@@ -27,14 +36,14 @@ function formatDate(dateStr: string) {
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
-  CLUB_NIGHT: '#00e5ff',
+  CLUB_NIGHT: 'var(--accent)',
   CONCERT: '#3d5afe',
   PUB_NIGHT: '#f59e0b',
   BEACH_PARTY: '#06b6d4',
   YACHT_PARTY: '#0ea5e9',
 }
 const TYPE_LABELS: Record<string, string> = {
-  HOME_PARTY: 'HOME PARTY',
+  HOME_PARTY: 'HOUSE PARTY',
   CLUB_NIGHT: 'CLUB NIGHT',
   CONCERT: 'CONCERT',
   PUB_NIGHT: 'PUB NIGHT',
@@ -44,10 +53,61 @@ const TYPE_LABELS: Record<string, string> = {
 
 type SlideDir = 'next' | 'prev' | null
 
+// ── Locked card shown to FREE users for YACHT_PARTY events ───────────────────
+function LockedEventListCard({ event }: { event: Event }) {
+  const color = '#0ea5e9' // YACHT_PARTY color
+  return (
+    <Link href="/pricing"
+      className="flex gap-3 p-3 rounded-2xl relative overflow-hidden transition-all"
+      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid rgba(14,165,233,0.2)` }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(14,165,233,0.45)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(14,165,233,0.2)')}
+    >
+      {/* Blurred thumbnail */}
+      <div className="shrink-0 relative" style={{ width: 64, height: 64 }}>
+        <div className="w-full h-full rounded-xl flex items-center justify-center"
+          style={{ background: `${color}12`, border: `1px solid ${color}30` }}>
+          <Calendar size={22} style={{ color, opacity: 0.3 }} />
+        </div>
+      </div>
+
+      {/* Blurred info */}
+      <div className="flex-1 min-w-0 select-none" style={{ filter: 'blur(4px)', pointerEvents: 'none' }}>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-sm font-bold truncate leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
+          <span className="shrink-0 text-sm font-bold" style={{ color: '#e0f2fe' }}>£??</span>
+        </div>
+        <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
+          <MapPin size={9} className="inline mr-0.5" />Hidden location
+        </p>
+        <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+          style={{ color, background: `${color}12`, border: `1px solid ${color}30`, letterSpacing: '0.1em' }}>
+          YACHT PARTY
+        </span>
+      </div>
+
+      {/* Lock badge overlay */}
+      <div className="absolute inset-0 flex items-center justify-center rounded-2xl"
+        style={{ background: 'rgba(7,7,26,0.55)', backdropFilter: 'blur(2px)' }}>
+        <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl"
+          style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.35)' }}>
+          <Lock size={13} style={{ color: '#0ea5e9' }} />
+          <span className="text-[9px] font-black tracking-widest" style={{ color: '#0ea5e9' }}>BASIC+ TO UNLOCK</span>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 // ── Compact list card for list view ──────────────────────────────────────────
-function EventListCard({ event, live }: { event: Event; live?: boolean }) {
-  const color = TYPE_COLORS[event.type] ?? '#00e5ff'
-  const isFree = event.price === 0
+function EventListCard({ event, live, userTier }: { event: Event; live?: boolean; userTier?: string }) {
+  // Gate YACHT_PARTY for FREE users
+  if (event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties) {
+    return <LockedEventListCard event={event} />
+  }
+
+  const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
+  const isFree = (event.price ?? 0) === 0
 
   function timeUntil(dateStr: string) {
     const diff = new Date(dateStr).getTime() - Date.now()
@@ -63,9 +123,9 @@ function EventListCard({ event, live }: { event: Event; live?: boolean }) {
   return (
     <Link href={`/events/${event.id}`}
       className="flex gap-3 p-3 rounded-2xl transition-all"
-      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid ${live ? 'rgba(255,0,110,0.2)' : 'rgba(0,229,255,0.08)'}` }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.4)' : 'rgba(0,229,255,0.2)')}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.2)' : 'rgba(0,229,255,0.08)')}>
+      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid ${live ? 'rgba(255,0,110,0.2)' : 'rgba(var(--accent-rgb),0.08)'}` }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.4)' : 'rgba(var(--accent-rgb),0.2)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = live ? 'rgba(255,0,110,0.2)' : 'rgba(var(--accent-rgb),0.08)')}>
 
       {/* Cover / color swatch */}
       <div className="shrink-0 relative" style={{ width: 64, height: 64 }}>
@@ -88,7 +148,7 @@ function EventListCard({ event, live }: { event: Event; live?: boolean }) {
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="text-sm font-bold truncate leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
           <span className="shrink-0 text-sm font-bold" style={{ color: isFree ? '#00ff88' : '#e0f2fe' }}>
-            {isFree ? 'FREE' : formatPrice(event.price)}
+            {isFree ? 'FREE' : `£${(event.price ?? 0).toFixed(2)}`}
           </span>
         </div>
         <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
@@ -105,12 +165,12 @@ function EventListCard({ event, live }: { event: Event; live?: boolean }) {
               ● LIVE
             </span>
           ) : (
-            <span className="text-[9px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+            <span className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
               {timeUntil(event.startsAt)}
             </span>
           )}
-          {event.vibeTags.slice(0, 2).map(t => (
-            <span key={t} className="text-[9px]" style={{ color: 'rgba(0,229,255,0.35)' }}>#{t}</span>
+          {event.vibeTags?.slice(0, 2).map(t => (
+            <span key={t} className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>#{t}</span>
           ))}
         </div>
       </div>
@@ -119,19 +179,47 @@ function EventListCard({ event, live }: { event: Event; live?: boolean }) {
 }
 
 // ── Full-screen sequential event card ────────────────────────────────────────
-function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
-  const color = TYPE_COLORS[event.type] ?? '#00e5ff'
-  const isFree = event.price === 0
+function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; userTier?: string }) {
+  const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
+  const isFree = (event.price ?? 0) === 0
   const [interested, setInterested] = useState(false)
   const [requested, setRequested] = useState(false)
+
+  const isYachtLocked = event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties
 
   return (
     <div
       className={dir === 'next' ? 'animate-slide-next' : dir === 'prev' ? 'animate-slide-prev' : ''}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}
     >
+      {/* Yacht Party lock overlay for FREE users */}
+      {isYachtLocked && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4"
+          style={{ background: 'rgba(7,7,26,0.85)', backdropFilter: 'blur(12px)' }}>
+          <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl text-center"
+            style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.3)', maxWidth: 280 }}>
+            <span style={{ fontSize: 40 }}>⛵</span>
+            <div>
+              <p className="text-sm font-black tracking-widest mb-1" style={{ color: '#0ea5e9', letterSpacing: '0.12em' }}>
+                YACHT PARTY
+              </p>
+              <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.55)' }}>
+                Exclusive yacht parties are available to <strong style={{ color: 'var(--accent)' }}>Basic</strong> subscribers and above.
+              </p>
+            </div>
+            <Link
+              href="/pricing"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
+              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.5)', color: '#0ea5e9' }}
+            >
+              <Lock size={11} /> UPGRADE TO BASIC — £4.99/mo
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Cover image / colour header */}
-      <div className="relative flex-shrink-0" style={{ height: 220 }}>
+      <div className="relative flex-shrink-0" style={{ height: 220, filter: isYachtLocked ? 'blur(6px)' : 'none' }}>
         {event.coverImageUrl ? (
           <img
             src={event.coverImageUrl}
@@ -210,10 +298,10 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ filter: isYachtLocked ? 'blur(6px)' : 'none', pointerEvents: isYachtLocked ? 'none' : undefined }}>
         {/* Host row */}
         <div className="flex items-center gap-3">
-          {event.host.photoUrl ? (
+          {event.host?.photoUrl ? (
             <img
               src={event.host.photoUrl}
               alt=""
@@ -225,12 +313,12 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
               className="w-8 h-8 rounded flex items-center justify-center text-sm font-bold"
               style={{ background: `${color}18`, border: `1px solid ${color}40`, color }}
             >
-              {event.host.displayName[0]}
+              {event.host?.displayName?.[0] ?? '?'}
             </div>
           )}
           <div>
             <p className="text-xs font-bold" style={{ color: 'rgba(224,242,254,0.9)', letterSpacing: '0.05em' }}>
-              {event.host.displayName}
+              {event.host?.displayName ?? 'Host'}
             </p>
             {event.hostRating && (
               <p className="text-[10px] flex items-center gap-1" style={{ color: '#ffd600' }}>
@@ -243,44 +331,44 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
               className="text-xl font-bold"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}
             >
-              {isFree ? 'FREE' : formatPrice(event.price)}
+              {isFree ? 'FREE' : `£${(event.price ?? 0).toFixed(2)}`}
             </p>
           </div>
         </div>
 
         {/* Horizontal divider */}
-        <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(0,229,255,0.2), transparent)' }} />
+        <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.2), transparent)' }} />
 
         {/* Meta grid */}
         <div className="grid grid-cols-2 gap-3">
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>DATE &amp; TIME</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>DATE &amp; TIME</p>
             <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>{formatDate(event.startsAt)}</p>
           </div>
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>LOCATION</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>LOCATION</p>
             <p className="text-xs font-medium truncate" style={{ color: '#e0f2fe' }}>{event.neighbourhood}</p>
           </div>
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>CAPACITY</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CAPACITY</p>
             <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>
               {event.guestCount ?? 0} / {event.capacity}
             </p>
           </div>
           <div
             className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>AGE POLICY</p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>AGE POLICY</p>
             <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>
               {AGE_RESTRICTION_LABELS[event.ageRestriction] ?? 'All Ages'}
             </p>
@@ -288,16 +376,16 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
         </div>
 
         {/* Vibe tags */}
-        {event.vibeTags.length > 0 && (
+        {event.vibeTags?.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
-            {event.vibeTags.slice(0, 6).map((tag) => (
+            {event.vibeTags?.slice(0, 6).map((tag) => (
               <span
                 key={tag}
                 className="text-[10px] font-bold px-2.5 py-1 rounded-full"
                 style={{
-                  color: 'rgba(0,229,255,0.7)',
-                  border: '1px solid rgba(0,229,255,0.2)',
-                  background: 'rgba(0,229,255,0.05)',
+                  color: 'rgba(var(--accent-rgb),0.7)',
+                  border: '1px solid rgba(var(--accent-rgb),0.2)',
+                  background: 'rgba(var(--accent-rgb),0.05)',
                   letterSpacing: '0.08em',
                 }}
               >
@@ -314,31 +402,24 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
           const femPct  = Math.round((female / total) * 100)
           const nbPct   = Math.max(0, 100 - malePct - femPct)
           return (
-            <div className="rounded-lg px-3 py-2.5" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}>
+            <div className="rounded-lg px-3 py-2.5" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>CROWD MIX</p>
+                <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CROWD MIX</p>
                 <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{total} attending</span>
               </div>
               <div className="flex h-1.5 rounded-full overflow-hidden gap-px mb-1.5">
                 {malePct > 0 && <div style={{ width: `${malePct}%`, background: '#3b82f6' }} />}
                 {femPct  > 0 && <div style={{ width: `${femPct}%`,  background: '#ec4899' }} />}
-                {nbPct   > 0 && <div style={{ width: `${nbPct}%`,   background: '#00e5ff' }} />}
+                {nbPct   > 0 && <div style={{ width: `${nbPct}%`,   background: 'var(--accent)' }} />}
               </div>
               <div className="flex gap-3">
                 <span className="text-[9px] font-bold" style={{ color: 'rgba(59,130,246,0.7)' }}>♂ {malePct}%</span>
                 <span className="text-[9px] font-bold" style={{ color: 'rgba(236,72,153,0.7)' }}>♀ {femPct}%</span>
-                {nbPct > 0 && <span className="text-[9px] font-bold" style={{ color: 'rgba(0,229,255,0.6)' }}>⚧ {nbPct}%</span>}
+                {nbPct > 0 && <span className="text-[9px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>⚧ {nbPct}%</span>}
               </div>
             </div>
           )
         })()}
-
-        {/* Alcohol */}
-        {event.alcoholPolicy !== 'NONE' && (
-          <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'rgba(224,242,254,0.4)' }}>
-            <Wine size={11} /> {ALCOHOL_POLICY_LABELS[event.alcoholPolicy]}
-          </p>
-        )}
 
         {/* Party signals (home party only) */}
         {event.type === 'HOME_PARTY' && (event as any).partySigns?.length > 0 && (
@@ -352,14 +433,14 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
 
         {/* Lineup (club/concert) */}
         {(event as any).lineup && (
-          <p className="text-[11px] font-medium truncate" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          <p className="text-[11px] font-medium truncate" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             🎧 {(event as any).lineup}
           </p>
         )}
       </div>
 
       {/* CTA */}
-      <div className="px-5 pb-6 pt-3 flex-shrink-0 space-y-2">
+      <div className="px-5 pb-6 pt-3 flex-shrink-0 space-y-2" style={{ filter: isYachtLocked ? 'blur(6px)' : 'none', pointerEvents: isYachtLocked ? 'none' : undefined }}>
         {/* Primary action */}
         <Link
           href={`/events/${event.id}`}
@@ -372,7 +453,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
             letterSpacing: '0.1em',
           }}
         >
-          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — ${formatPrice(event.price)}`}
+          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — £${(event.price ?? 0).toFixed(2)}`}
         </Link>
 
         {/* Secondary actions */}
@@ -381,8 +462,8 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
             onClick={() => setInterested((v) => !v)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200"
             style={{
-              background: interested ? 'rgba(255,214,0,0.1)' : 'rgba(0,229,255,0.03)',
-              border: interested ? '1px solid rgba(255,214,0,0.4)' : '1px solid rgba(0,229,255,0.12)',
+              background: interested ? 'rgba(255,214,0,0.1)' : 'rgba(var(--accent-rgb),0.03)',
+              border: interested ? '1px solid rgba(255,214,0,0.4)' : '1px solid rgba(var(--accent-rgb),0.12)',
               color: interested ? '#ffd600' : 'rgba(74,96,128,0.7)',
               letterSpacing: '0.08em',
             }}
@@ -394,8 +475,8 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
             href={`/events/${event.id}`}
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200"
             style={{
-              background: 'rgba(0,229,255,0.03)',
-              border: '1px solid rgba(0,229,255,0.12)',
+              background: 'rgba(var(--accent-rgb),0.03)',
+              border: '1px solid rgba(var(--accent-rgb),0.12)',
               color: 'rgba(74,96,128,0.7)',
               letterSpacing: '0.08em',
             }}
@@ -408,24 +489,375 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
   )
 }
 
-// ── Venues list ───────────────────────────────────────────────────────────────
-function VenuesList() {
+// ── Venue card ────────────────────────────────────────────────────────────────
+const VENUE_TYPE_LABELS: Record<string, string> = {
+  NIGHTCLUB: 'NIGHTCLUB', BAR: 'BAR', PUB: 'PUB',
+  CONCERT_HALL: 'CONCERT HALL', ROOFTOP_BAR: 'ROOFTOP BAR', LOUNGE: 'LOUNGE',
+}
+const VENUE_TYPE_COLORS: Record<string, string> = {
+  NIGHTCLUB: 'var(--accent)', BAR: '#a855f7', PUB: '#22c55e',
+  CONCERT_HALL: '#3d5afe', ROOFTOP_BAR: '#f59e0b', LOUNGE: '#ec4899',
+}
+
+function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
+  const color = VENUE_TYPE_COLORS[venue.type] ?? 'var(--accent)'
+  const typeLabel = VENUE_TYPE_LABELS[venue.type] ?? venue.type
+  const rating = typeof venue.rating === 'number' ? venue.rating : null
+  const website = 'website' in venue ? venue.website : null
+  const phone = 'phone' in venue ? venue.phone : null
+  const photoUrl = 'photoUrl' in venue ? venue.photoUrl : null
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-4 py-16 gap-4">
-      <span style={{ fontSize: 40 }}>🏢</span>
-      <p className="text-sm font-bold tracking-widest text-center" style={{ color: 'rgba(0,229,255,0.5)' }}>
-        VENUES NEARBY
-      </p>
-      <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 240 }}>
-        No venues found nearby — check back soon
-      </p>
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: 'rgba(7,7,26,0.95)', border: `1px solid ${color}25`, boxShadow: `0 0 20px ${color}08` }}
+    >
+      {/* Cover photo or color band */}
+      {photoUrl ? (
+        <div className="relative h-24 overflow-hidden">
+          <img src={photoUrl} alt={venue.name} className="w-full h-full object-cover" style={{ filter: 'brightness(0.55) saturate(1.2)' }} />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 30%, rgba(7,7,26,0.95) 100%)' }} />
+          <span className="absolute bottom-2 left-3 text-[9px] font-bold px-2 py-0.5 rounded"
+            style={{ color, border: `1px solid ${color}50`, background: `rgba(7,7,26,0.75)`, backdropFilter: 'blur(4px)', letterSpacing: '0.12em' }}>
+            {typeLabel}
+          </span>
+          {rating && (
+            <span className="absolute bottom-2 right-3 text-[10px] font-bold" style={{ color: '#ffd600' }}>★ {rating.toFixed(1)}</span>
+          )}
+        </div>
+      ) : (
+        <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${color}60, transparent)` }} />
+      )}
+
+      <div className="p-4 space-y-3">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-black text-sm leading-tight truncate" style={{ color: '#e0f2fe', letterSpacing: '0.05em' }}>
+              {venue.name}
+            </h3>
+            <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
+              <MapPin size={9} className="inline mr-0.5" />{venue.address}
+            </p>
+          </div>
+          {!photoUrl && (
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded"
+                style={{ color, border: `1px solid ${color}50`, background: `${color}12`, letterSpacing: '0.12em' }}>
+                {typeLabel}
+              </span>
+              {rating && <span className="text-[10px] font-bold" style={{ color: '#ffd600' }}>★ {rating.toFixed(1)}</span>}
+            </div>
+          )}
+        </div>
+
+        {/* Vibe tags */}
+        {venue.vibeTags && venue.vibeTags.length > 0 && (
+          <div className="flex gap-1 flex-wrap">
+            {venue.vibeTags.slice(0, 5).map((tag) => (
+              <span key={tag} className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                style={{ color: `${color}bb`, border: `1px solid ${color}25`, background: `${color}0a`, letterSpacing: '0.08em' }}>
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Contact links */}
+        {(phone || website) && (
+          <div className="flex gap-3">
+            {phone && (
+              <a href={`tel:${phone}`} className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                <Phone size={9} /> {phone}
+              </a>
+            )}
+            {website && (
+              <a href={website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                <Globe size={9} /> Website <ExternalLink size={8} />
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <Link href={`/venues/${venue.id}`}
+            className="flex-1 text-center py-2 rounded-lg text-[10px] font-black"
+            style={{ background: `${color}15`, border: `1px solid ${color}40`, color, letterSpacing: '0.1em' }}>
+            VIEW EVENTS →
+          </Link>
+          {!venue.isClaimed ? (
+            <button
+              className="flex-1 text-center py-2 rounded-lg text-[10px] font-black"
+              style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600', letterSpacing: '0.08em' }}
+              onClick={() => alert(`Claim flow for ${venue.name} — coming soon!`)}>
+              CLAIM VENUE ★
+            </button>
+          ) : (
+            <span className="flex-1 text-center py-2 rounded-lg text-[10px] font-bold"
+              style={{ border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', letterSpacing: '0.08em' }}>
+              ✓ CLAIMED
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Venues list ───────────────────────────────────────────────────────────────
+interface VenuesListProps {
+  liveVenues: LiveVenue[]
+  venuesLoading: boolean
+  venueCity: string | null
+  mapCenter: { lat: number; lng: number } | null
+  isTracking: boolean
+  onCitySearch: (city: string, lat: number, lng: number) => void
+  onWiderSearch: () => void
+}
+
+function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTracking, onCitySearch, onWiderSearch }: VenuesListProps) {
+  const [venueSearch, setVenueSearch] = useState('')
+  const [cityInput, setCityInput] = useState('')
+  const [citySearching, setCitySearching] = useState(false)
+  const [cityError, setCityError] = useState('')
+  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
+  // When GPS is active, city search starts collapsed
+  const [showCitySearch, setShowCitySearch] = useState(!isTracking)
+
+  const hasRealVenues = liveVenues.length > 0
+  const mapVenues = hasRealVenues ? liveVenues : GLASGOW_VENUES
+
+  const filtered = venueSearch
+    ? liveVenues.filter((v) =>
+        v.name.toLowerCase().includes(venueSearch.toLowerCase()) ||
+        (v.vibeTags ?? []).some((t) => t.toLowerCase().includes(venueSearch.toLowerCase())) ||
+        v.type.toLowerCase().includes(venueSearch.toLowerCase())
+      )
+    : liveVenues
+
+  async function handleCitySearch(e: React.FormEvent) {
+    e.preventDefault()
+    const q = cityInput.trim()
+    if (!q || citySearching) return
+    setCitySearching(true)
+    setCityError('')
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'en' } },
+      )
+      const results = await r.json() as Array<{ lat: string; lon: string; display_name: string }>
+      if (!results.length) { setCityError('City not found — try a different name'); return }
+      const { lat, lon, display_name } = results[0]!
+      const cityName = display_name.split(',')[0]!.trim()
+      onCitySearch(cityName, parseFloat(lat), parseFloat(lon))
+      setCityInput('')
+    } catch {
+      setCityError('Search failed — check your connection')
+    } finally {
+      setCitySearching(false)
+    }
+  }
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+
+      {/* ── Location header / City explorer bar ── */}
+      <div className="flex-shrink-0" style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(255,214,0,0.12)' }}>
+        {/* GPS active: show detected city prominently */}
+        {isTracking && venueCity ? (
+          <div className="px-4 py-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: '#00ff88', boxShadow: '0 0 6px #00ff88' }} />
+                <div>
+                  <p className="text-[8px] font-black tracking-widest" style={{ color: 'rgba(0,255,136,0.55)' }}>VENUES NEAR YOU</p>
+                  <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe', letterSpacing: '0.06em' }}>{venueCity}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCitySearch((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest transition-all"
+                style={{
+                  background: showCitySearch ? 'rgba(255,214,0,0.12)' : 'rgba(255,214,0,0.06)',
+                  border: `1px solid ${showCitySearch ? 'rgba(255,214,0,0.45)' : 'rgba(255,214,0,0.2)'}`,
+                  color: showCitySearch ? '#ffd600' : 'rgba(255,214,0,0.55)',
+                }}
+              >
+                🌍 {showCitySearch ? 'HIDE' : 'EXPLORE ELSEWHERE'}
+              </button>
+            </div>
+          </div>
+        ) : !isTracking ? (
+          /* No GPS: show city search prominently as the primary way to get started */
+          <div className="px-4 py-3">
+            <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>
+              🌍 EXPLORE A CITY
+            </p>
+          </div>
+        ) : (
+          /* GPS active but city not yet resolved */
+          <div className="px-4 py-2.5 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: '#00ff88', boxShadow: '0 0 6px #00ff88' }} />
+            <p className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(0,255,136,0.55)' }}>LOCATING YOU...</p>
+          </div>
+        )}
+
+        {/* City search form — shown when GPS is off OR user toggled "Explore elsewhere" */}
+        {(!isTracking || showCitySearch) && (
+          <div className="px-4 pb-3">
+            <form onSubmit={handleCitySearch} className="flex gap-2">
+              <div className="relative flex-1">
+                <MapPin size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,214,0,0.45)' }} />
+                <input
+                  type="text"
+                  placeholder="London, New York, Tokyo..."
+                  value={cityInput}
+                  onChange={(e) => { setCityInput(e.target.value); setCityError('') }}
+                  className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
+                  style={{ border: '1px solid rgba(255,214,0,0.25)', color: '#e0f2fe' }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!cityInput.trim() || citySearching}
+                className="px-3 py-2 rounded-lg text-[10px] font-black tracking-widest transition-all disabled:opacity-40"
+                style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
+              >
+                {citySearching ? '...' : 'GO'}
+              </button>
+            </form>
+            {cityError && (
+              <p className="text-[10px] mt-1.5 font-bold" style={{ color: '#ff006e' }}>{cityError}</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Mini venues map (flies to new city) ── */}
+      <div className="flex-shrink-0" style={{ height: 180, borderBottom: '1px solid rgba(255,214,0,0.08)' }}>
+        <VenuesMiniMap
+          venues={mapVenues}
+          selectedId={selectedVenueId}
+          onSelect={(id) => setSelectedVenueId(id === selectedVenueId ? null : id)}
+          flyToCenter={mapCenter}
+        />
+      </div>
+
+      {/* ── Venue name filter ── */}
+      <div className="flex-shrink-0 px-4 py-2" style={{ background: 'rgba(4,4,13,0.8)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+        <div className="relative">
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />
+          <input
+            type="text"
+            placeholder="Filter by name, vibe, type..."
+            value={venueSearch}
+            onChange={(e) => setVenueSearch(e.target.value)}
+            className="w-full pl-8 pr-3 py-2 rounded-lg text-xs bg-transparent outline-none"
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.12)', color: '#e0f2fe' }}
+          />
+          {venueSearch && (
+            <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setVenueSearch('')}>
+              <X size={12} style={{ color: 'rgba(74,96,128,0.6)' }} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Status bar ── */}
+      <div className="flex-shrink-0 px-4 py-1.5 flex items-center justify-between" style={{ background: 'rgba(4,4,13,0.6)' }}>
+        {venuesLoading ? (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full border border-t-transparent animate-spin" style={{ borderColor: 'rgba(255,214,0,0.3)', borderTopColor: '#ffd600' }} />
+            <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.5)' }}>SCANNING VENUES...</span>
+          </div>
+        ) : (
+          <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
+            {filtered.length} VENUES
+            {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ' · GLASGOW (DEMO)'}
+          </p>
+        )}
+        {hasRealVenues && !venuesLoading && (
+          <button
+            onClick={onWiderSearch}
+            className="text-[9px] font-black tracking-widest px-2 py-1 rounded transition-all"
+            style={{ color: 'rgba(var(--accent-rgb),0.5)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}
+          >
+            WIDER →
+          </button>
+        )}
+      </div>
+
+      {/* ── Scrollable venue list ── */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-20">
+        {venuesLoading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(255,214,0,0.1)', borderTopColor: '#ffd600' }} />
+            <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>SCANNING NEARBY VENUES...</p>
+          </div>
+        )}
+        {!venuesLoading && filtered.map((venue) => (
+          <VenueCard key={venue.id} venue={venue} />
+        ))}
+        {!venuesLoading && !hasRealVenues && (
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-4">
+            <span style={{ fontSize: 36 }}>🌍</span>
+            <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(255,214,0,0.6)' }}>EXPLORE VENUES WORLDWIDE</p>
+            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.3)', maxWidth: 280 }}>
+              {isTracking
+                ? 'Scanning for venues near you — this may take a moment.'
+                : 'Allow location access to auto-discover venues around you, or type any city above — London, Berlin, Tokyo, New York.'}
+            </p>
+            {!isTracking && (
+              <button
+                onClick={onWiderSearch}
+                className="mt-1 px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all"
+                style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
+              >
+                📍 USE MY LOCATION
+              </button>
+            )}
+          </div>
+        )}
+        {!venuesLoading && hasRealVenues && filtered.length === 0 && (
+          <div className="py-10 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
+            No venues match "{venueSearch}"
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
 // ── Empty / loading placeholders ─────────────────────────────────────────────
-function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => void }) {
+const FEATURED_VENUES = [
+  { name: 'Sub Club', tag: 'Techno · Underground', emoji: '🖤', city: 'Glasgow' },
+  { name: 'SWG3', tag: 'Warehouse · DJ Sets', emoji: '🏭', city: 'Glasgow' },
+  { name: 'Fabric', tag: 'House · Techno', emoji: '⚫', city: 'London' },
+  { name: 'Printworks', tag: 'Electronic · Rave', emoji: '🏗️', city: 'London' },
+  { name: 'The Warehouse Project', tag: 'Bass · Electronic', emoji: '🔊', city: 'Manchester' },
+  { name: 'Egg London', tag: 'Club · House', emoji: '🥚', city: 'London' },
+]
+
+const QUICK_CITIES = ['Glasgow', 'Edinburgh', 'London', 'Manchester', 'Birmingham', 'Bristol']
+
+function EmptyState({ loading, onRetry, onSearch, onCreateEvent }: {
+  loading: boolean
+  onRetry?: () => void
+  onSearch?: () => void
+  onCreateEvent?: () => void
+}) {
   const [retrying, setRetrying] = useState(false)
+  const [anyEvents, setAnyEvents] = useState<{ id: string; name: string; type: string; startsAt: string; neighbourhood?: string }[]>([])
+
+  // On mount, fetch any events from anywhere as suggestions
+  useEffect(() => {
+    fetch(`${API_URL}/events?limit=6&published=true`)
+      .then(r => r.json())
+      .then(j => { if (Array.isArray(j?.data)) setAnyEvents(j.data) })
+      .catch(() => {})
+  }, [])
 
   const handleRetry = async () => {
     if (!onRetry || retrying) return
@@ -433,86 +865,501 @@ function EmptyState({ loading, onRetry }: { loading: boolean; onRetry?: () => vo
     try { await onRetry() } catch {} finally { setRetrying(false) }
   }
 
-  const showSpinner = loading || retrying
+  if (loading || retrying) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <div className="w-12 h-12 rounded-full border-2 animate-spin"
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+        <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+          {retrying ? 'RETRYING...' : 'SCANNING FOR EVENTS...'}
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4">
-      {showSpinner ? (
-        <>
-          <div
-            className="w-12 h-12 rounded-full border-2 animate-spin"
-            style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }}
+    <div className="overflow-y-auto h-full pb-6">
+      {/* Hero */}
+      <div className="flex flex-col items-center pt-8 pb-5 px-6 text-center">
+        <div className="text-4xl mb-3">📡</div>
+        <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>
+          NO EVENTS IN YOUR AREA
+        </p>
+        <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
+          PartyRadar is growing. No events near you yet — search another city, create one yourself, or explore below.
+        </p>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 px-4 mb-5">
+        {onSearch && (
+          <button onClick={onSearch}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
+            style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
+            <Search size={12} /> SEARCH EVENTS
+          </button>
+        )}
+        {onCreateEvent && (
+          <button onClick={onCreateEvent}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
+            style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', letterSpacing: '0.1em' }}>
+            + CREATE EVENT
+          </button>
+        )}
+      </div>
+
+      {/* Any events from platform */}
+      {anyEvents.length > 0 && (
+        <div className="px-4 mb-5">
+          <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+            EVENTS ON THE PLATFORM
+          </p>
+          <div className="space-y-2">
+            {anyEvents.map(ev => (
+              <Link key={ev.id} href={`/events/${ev.id}`}>
+                <div className="flex items-center gap-3 p-3 rounded-xl transition-all active:scale-[0.98]"
+                  style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-base"
+                    style={{ background: `${TYPE_COLORS[ev.type] ?? 'var(--accent)'}15`, border: `1px solid ${TYPE_COLORS[ev.type] ?? 'var(--accent)'}30` }}>
+                    {ev.type === 'HOME_PARTY' ? '🏠' : ev.type === 'CLUB_NIGHT' ? '🎧' : ev.type === 'CONCERT' ? '🎵' : '🎉'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black truncate" style={{ color: '#e0f2fe' }}>{ev.name}</p>
+                    <p className="text-[10px] truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                      {ev.neighbourhood ?? ''} · {new Date(ev.startsAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </p>
+                  </div>
+                  <ChevronRight size={12} style={{ color: 'rgba(var(--accent-rgb),0.4)', flexShrink: 0 }} />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick city search */}
+      <div className="px-4 mb-5">
+        <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+          SEARCH BY CITY
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {QUICK_CITIES.map(city => (
+            <Link key={city} href={`/discover?city=${encodeURIComponent(city)}`}>
+              <span className="px-3 py-1.5 rounded-full text-[10px] font-black transition-all"
+                style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.7)', letterSpacing: '0.08em' }}>
+                {city}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Featured venues */}
+      <div className="px-4">
+        <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+          ICONIC VENUES
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {FEATURED_VENUES.map(v => (
+            <div key={v.name} className="p-3 rounded-xl"
+              style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <div className="text-xl mb-1">{v.emoji}</div>
+              <p className="text-xs font-black" style={{ color: '#e0f2fe' }}>{v.name}</p>
+              <p className="text-[9px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>{v.tag}</p>
+              <p className="text-[9px] mt-0.5 font-bold" style={{ color: 'rgba(74,96,128,0.5)' }}>{v.city}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Retry */}
+      {onRetry && (
+        <div className="flex justify-center mt-5">
+          <button onClick={handleRetry}
+            className="px-5 py-2 rounded-xl text-xs font-black tracking-widest transition-all"
+            style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.6)' }}>
+            RETRY LOCATION SCAN
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Full-screen search overlay ────────────────────────────────────────────────
+interface SearchOverlayProps {
+  onClose: () => void
+  userTier: string
+}
+
+function SearchOverlay({ onClose, userTier }: SearchOverlayProps) {
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [results, setResults] = useState<Event[]>([])
+  const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-focus input when overlay opens
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Debounce query by 400 ms
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!query.trim()) {
+      setDebouncedQuery('')
+      setResults([])
+      setSearched(false)
+      return
+    }
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(query.trim())
+    }, 400)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [query])
+
+  // Fetch when debounced query changes
+  useEffect(() => {
+    if (!debouncedQuery) return
+    let cancelled = false
+    setLoading(true)
+    const params = new URLSearchParams({ q: debouncedQuery, limit: '20' })
+    fetch(`${API_URL}/events?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json: { data?: Event[] }) => {
+        if (cancelled) return
+        setResults(json.data ?? [])
+        setSearched(true)
+      })
+      .catch(() => { if (!cancelled) { setResults([]); setSearched(true) } })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [debouncedQuery])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ background: '#04040d' }}
+    >
+      {/* Search header */}
+      <div
+        className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+        style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(4,4,13,0.97)', backdropFilter: 'blur(16px)' }}
+      >
+        <div className="relative flex-1">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: 'var(--accent)' }}
           />
-          <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>
-            {retrying ? 'RETRYING...' : 'SCANNING AREA...'}
-          </p>
-        </>
-      ) : (
-        <>
-          <div style={{ fontSize: 40 }}>📡</div>
-          <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>
-            NO EVENTS DETECTED
-          </p>
-          <p className="text-xs text-center" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 240 }}>
-            Try adjusting filters or check back later
-          </p>
-          {onRetry && (
-            <button onClick={handleRetry}
-              className="mt-2 px-5 py-2 rounded-xl text-xs font-black tracking-widest transition-all"
-              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
-              RETRY
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search events by name, vibe, area..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full pl-9 pr-9 py-2.5 rounded-xl text-sm outline-none bg-transparent"
+            style={{
+              border: '1px solid rgba(var(--accent-rgb),0.25)',
+              color: '#e0f2fe',
+              background: 'rgba(var(--accent-rgb),0.04)',
+            }}
+          />
+          {query && (
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              onClick={() => { setQuery(''); setResults([]); setSearched(false); inputRef.current?.focus() }}
+            >
+              <X size={14} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
             </button>
           )}
-        </>
-      )}
+        </div>
+        <button
+          onClick={onClose}
+          className="shrink-0 px-3 py-2 rounded-lg text-xs font-black tracking-widest transition-all"
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.6)', background: 'transparent' }}
+        >
+          CANCEL
+        </button>
+      </div>
+
+      {/* Results area */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-20">
+        {/* Loading spinner */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div
+              className="w-8 h-8 rounded-full border-2 animate-spin"
+              style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }}
+            />
+            <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SEARCHING...</p>
+          </div>
+        )}
+
+        {/* Empty prompt — not yet searched */}
+        {!loading && !searched && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <Search size={40} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+            <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>FIND YOUR NEXT PARTY</p>
+            <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.25)', maxWidth: 240 }}>
+              Type to search by event name, description, neighbourhood, or event type.
+            </p>
+          </div>
+        )}
+
+        {/* No results */}
+        {!loading && searched && results.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <span style={{ fontSize: 40 }}>📡</span>
+            <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>NO EVENTS FOUND</p>
+            <p className="text-xs" style={{ color: 'rgba(224,242,254,0.25)' }}>
+              Try a different search term or check back later.
+            </p>
+          </div>
+        )}
+
+        {/* Results list */}
+        {!loading && results.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
+              {results.length} RESULT{results.length !== 1 ? 'S' : ''} FOR &ldquo;{debouncedQuery}&rdquo;
+            </p>
+            {results.map((e) => (
+              <div key={e.id} onClick={onClose}>
+                <EventListCard event={e} userTier={userTier} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function DiscoverPage() {
+  const { dbUser } = useAuth()
+  const userTier = dbUser?.subscriptionTier ?? 'FREE'
+
   const [tab, setTab] = useState<'events' | 'venues'>('events')
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
-  const [now, setNow] = useState(() => Date.now())
+  const [searchOpen, setSearchOpen] = useState(false)
+  // Use 0 as server-safe initial value to avoid SSR/client hydration mismatch.
+  // useEffect sets the real timestamp on the client after hydration.
+  const [now, setNow] = useState(0)
   const [index, setIndex] = useState(0)
   const [slideDir, setSlideDir] = useState<SlideDir>(null)
   const [showMap, setShowMap] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
-  const [mapBounds, setMapBounds] = useState<{ lat?: number; lng?: number; radius?: number }>({})
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [geoResolved, setGeoResolved] = useState(false)
+  // locationReady = we have actual coordinates (GPS lock OR user searched a city).
+  // This is the ONLY gate for the events fetch — prevents global/Amsterdam events
+  // appearing when GPS times out without giving us a position.
+  const [locationReady, setLocationReady] = useState(false)
+  const [isTracking, setIsTracking] = useState(false)   // true when watchPosition is active
 
-  const { events, isLoading, mutate, forceRetry } = useEvents({ ...filters, ...mapBounds })
+  // AI event scan state — fires once when GPS provides first fix
+  const [aiSyncing, setAiSyncing] = useState(false)
+  const [aiCity, setAiCity] = useState<string | null>(null)
+  const [aiFound, setAiFound] = useState<number | null>(null)
+  const aiSyncedRef = useRef(false)
+  const aiFoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [partyAlert, setPartyAlert] = useState<null | typeof DEMO_EVENTS[0]>(null)
+  // ── Venue discovery state (lifted here so it survives tab switches) ──────────
+  const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
+  const [venueCity, setVenueCity] = useState<string | null>(null)
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
+
+  // Track the last position we fetched for, to avoid re-fetching on tiny GPS jitter
+  const lastFetchedPos = useRef<{ lat: number; lng: number } | null>(null)
+
+  // Haversine distance in km between two coords
+  function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  }
+
+  // watchPosition — continuously tracks; re-fetches events + venues when moved >500 m
+  useEffect(() => {
+    if (typeof window === 'undefined' || !navigator.geolocation) { setGeoResolved(true); return }
+
+    const fallback = setTimeout(() => setGeoResolved(true), 8500)
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        clearTimeout(fallback)
+        setIsTracking(true)
+        // GPS settled — allow events fetch to start (gated on geoResolved)
+        setGeoResolved(true)
+
+        const last = lastFetchedPos.current
+        const moved = last ? haversineKm(last.lat, last.lng, lat, lng) : Infinity
+
+        // Only re-fetch when first lock OR moved more than 500 m
+        if (moved > 0.5) {
+          lastFetchedPos.current = { lat, lng }
+          setUserLocation({ lat, lng })
+          setLocationReady(true)   // We now have real coordinates — unlock events fetch
+          setMapCenter({ lat, lng })
+          discover(lat, lng, 15000)
+
+          // Reverse-geocode for display label (throttled by the moved>500m guard)
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+            .then((r) => r.json())
+            .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
+            .catch(() => {})
+        }
+      },
+      () => { clearTimeout(fallback); setGeoResolved(true); setIsTracking(false) },
+      {
+        timeout: 10000,
+        maximumAge: 30000,      // accept a cached fix up to 30 s old between updates
+        enableHighAccuracy: false, // battery-efficient
+      },
+    )
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
+      clearTimeout(fallback)
+    }
+  }, [discover])
+
+  // City search from the Venues tab search bar — also refreshes events for that city
+  function handleCitySearch(cityName: string, lat: number, lng: number) {
+    setVenueCity(cityName)
+    setMapCenter({ lat, lng })
+    discover(lat, lng, 15000)
+    // Update userLocation so useEvents re-fetches for this city
+    setUserLocation({ lat, lng })
+    setLocationReady(true)  // Unlock events fetch for this city
+    setGeoResolved(true)    // Mark geo as resolved even if GPS hasn't fired
+    // Allow auto-retry and AI sync to re-fire for the new city
+    autoRetried.current = false
+    aiSyncedRef.current = false
+    setSyncing(false)
+  }
+
+  // "Use my location" / "Wider area"
+  function handleVenueWiderSearch() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude: lat, longitude: lng } = pos.coords
+          lastFetchedPos.current = { lat, lng }
+          discover(lat, lng, 25000)
+          setMapCenter({ lat, lng })
+        },
+        () => {},
+        { timeout: 8000 },
+      )
+    }
+  }
+
+  // Don't fetch events until we have real coordinates (GPS lock or manual city search).
+  // This prevents global/Amsterdam events appearing when GPS times out without a fix.
+  // userLocation is always set before locationReady, so lat/lng is always included.
+  const { events, isLoading, mutate, forceRetry } = useEvents({
+    ...filters,
+    ...(filters.type === undefined ? { excludeTypes: 'CONCERT' } : {}),
+    ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
+    limit: 100,
+  }, !locationReady)
+
+  // AI sync — fires once when we get the first GPS fix.
+  // Calls POST /api/events/ai-sync which runs Perplexity + Ticketmaster/Skiddle
+  // for the user's city, then revalidates the events list when done.
+  useEffect(() => {
+    if (!userLocation || aiSyncedRef.current) return
+    aiSyncedRef.current = true
+
+    const { lat, lng } = userLocation
+    setAiSyncing(true)
+    setAiFound(null)
+
+    // Resolve city name then run AI sync
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+      .then((r) => r.json())
+      .then((d: { address?: { city?: string; town?: string; county?: string } }) => {
+        const city =
+          d?.address?.city || d?.address?.town || d?.address?.county ||
+          `${lat.toFixed(2)},${lng.toFixed(2)}`
+        setAiCity(city)
+        return api.post<{ data: { imported: number; skipped: number; sources: string[] } }>(
+          '/events/ai-sync',
+          { city, lat, lng, force: true },
+        )
+      })
+      .then((res) => {
+        const found = res?.data?.imported ?? 0
+        setAiFound(found)
+        setAiSyncing(false)
+        // Revalidate events list so newly synced events appear
+        mutate()
+        // Hide the "found X events" badge after 5s
+        if (aiFoundTimerRef.current) clearTimeout(aiFoundTimerRef.current)
+        aiFoundTimerRef.current = setTimeout(() => setAiFound(null), 5000)
+      })
+      .catch(() => {
+        setAiSyncing(false)
+        mutate() // still revalidate on error — fire-and-forget may have persisted something
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation])
+
+  // Auto-retry once when 0 events returned after getting location — the first
+  // fetch triggers the background sync; 4 s later events will be in the DB.
+  const autoRetried = useRef(false)
+  const [syncing, setSyncing] = useState(false)
+  useEffect(() => {
+    if (autoRetried.current) return
+    if (isLoading || !locationReady || events.length > 0) return
+    autoRetried.current = true
+    setSyncing(true)
+    const t = setTimeout(async () => {
+      await forceRetry().catch(() => {})
+      setSyncing(false)
+    }, 4000)
+    return () => clearTimeout(t)
+  }, [isLoading, locationReady, events.length, forceRetry])
+
+  // locationLoading: spinner while we're waiting for coordinates OR the first event fetch
+  const locationLoading = !locationReady || (isLoading && events.length === 0)
+  // gpsDenied: GPS settled but no coordinates and user hasn't searched a city yet
+  const gpsDenied = geoResolved && !locationReady
+
+  const [partyAlert, setPartyAlert] = useState<null | Event>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
 
   // Reset index when events change
   useEffect(() => { setIndex(0) }, [events.length])
 
-  // Tick every 60s so LIVE/UPCOMING sections re-classify without page reload
+  // Set real timestamp on client after hydration, then tick every 60s
   useEffect(() => {
+    setNow(Date.now())
     const t = setInterval(() => setNow(Date.now()), 60000)
     return () => clearInterval(t)
   }, [])
-
-  // Keyboard navigation
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'ArrowRight') goNext()
-      if (e.key === 'ArrowLeft') goPrev()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
-
-  // Simulate host push notification after 2s
-  useEffect(() => {
-    if (alertDismissed) return
-    const t = setTimeout(() => {
-      setPartyAlert(events[1] ?? events[0] ?? null) // show rooftop house party
-    }, 2000)
-    return () => clearTimeout(t)
-  }, [events, alertDismissed])
 
   const goNext = useCallback(() => {
     if (index >= events.length - 1) return
@@ -528,9 +1375,41 @@ export default function DiscoverPage() {
     setTimeout(() => setSlideDir(null), 400)
   }, [index])
 
-  const event = events[index] ?? null
+  // Keyboard navigation — use refs so we always call the latest callbacks
+  const goNextRef = useRef(goNext)
+  const goPrevRef = useRef(goPrev)
+  useEffect(() => { goNextRef.current = goNext }, [goNext])
+  useEffect(() => { goPrevRef.current = goPrev }, [goPrev])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowRight') goNextRef.current()
+      if (e.key === 'ArrowLeft') goPrevRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Simulate host push notification after 2s
+  useEffect(() => {
+    if (alertDismissed) return
+    const t = setTimeout(() => {
+      setPartyAlert(events[1] ?? events[0] ?? null) // show rooftop house party
+    }, 2000)
+    return () => clearTimeout(t)
+  }, [events, alertDismissed])
+
+  // Clamp index so a stale value never exceeds the new array length during the
+  // one render before the setIndex(0) useEffect fires on events.length change.
+  const safeIndex = events.length > 0 ? Math.min(index, events.length - 1) : 0
+  const event = events[safeIndex] ?? null
 
   return (
+    <>
+      {/* ── Full-screen search overlay ── */}
+      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} userTier={userTier} />}
+
     <div
       className="flex flex-col"
       style={{ height: 'calc(100vh - 3.5rem)', overflow: 'hidden' }}
@@ -601,57 +1480,100 @@ export default function DiscoverPage() {
         className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 gap-3"
         style={{
           background: 'rgba(4,4,13,0.9)',
-          borderBottom: '1px solid rgba(0,229,255,0.1)',
+          borderBottom: '1px solid rgba(var(--accent-rgb),0.1)',
           backdropFilter: 'blur(12px)',
         }}
       >
-        {/* Tab switcher */}
-        <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.1)' }}>
-          <button
-            onClick={() => setTab('events')}
-            className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
-            style={{
-              background: tab === 'events' ? 'rgba(0,229,255,0.15)' : 'transparent',
-              color: tab === 'events' ? '#00e5ff' : 'rgba(74,96,128,0.6)',
-              letterSpacing: '0.12em',
-              boxShadow: tab === 'events' ? '0 0 8px rgba(0,229,255,0.2)' : 'none',
-            }}
-          >
-            EVENTS
-          </button>
-          <button
-            onClick={() => setTab('venues')}
-            className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
-            style={{
-              background: tab === 'venues' ? 'rgba(255,214,0,0.12)' : 'transparent',
-              color: tab === 'venues' ? '#ffd600' : 'rgba(74,96,128,0.6)',
-              letterSpacing: '0.12em',
-              boxShadow: tab === 'venues' ? '0 0 8px rgba(255,214,0,0.15)' : 'none',
-            }}
-          >
-            VENUES
-          </button>
+        {/* Tab switcher + live tracking badge */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+            <button
+              onClick={() => setTab('events')}
+              className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
+              style={{
+                background: tab === 'events' ? 'rgba(var(--accent-rgb),0.15)' : 'transparent',
+                color: tab === 'events' ? 'var(--accent)' : 'rgba(74,96,128,0.6)',
+                letterSpacing: '0.12em',
+                boxShadow: tab === 'events' ? '0 0 8px rgba(var(--accent-rgb),0.2)' : 'none',
+              }}
+            >
+              EVENTS
+            </button>
+            <button
+              onClick={() => setTab('venues')}
+              className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
+              style={{
+                background: tab === 'venues' ? 'rgba(255,214,0,0.12)' : 'transparent',
+                color: tab === 'venues' ? '#ffd600' : 'rgba(74,96,128,0.6)',
+                letterSpacing: '0.12em',
+                boxShadow: tab === 'venues' ? '0 0 8px rgba(255,214,0,0.15)' : 'none',
+              }}
+            >
+              VENUES
+            </button>
+          </div>
+          {/* Live location tracking badge */}
+          {isTracking && !aiSyncing && aiFound === null && (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#00ff88', boxShadow: '0 0 6px #00ff88' }} />
+              <span className="text-[9px] font-black tracking-widest" style={{ color: '#00ff88' }}>LIVE</span>
+            </div>
+          )}
+          {/* AI event scan status badge */}
+          {aiSyncing && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.35)' }}>
+              <div className="w-2.5 h-2.5 rounded-full border border-t-transparent animate-spin shrink-0"
+                style={{ borderColor: 'rgba(139,92,246,0.3)', borderTopColor: '#8b5cf6' }} />
+              <span className="text-[9px] font-black tracking-widest whitespace-nowrap" style={{ color: '#8b5cf6' }}>
+                AI{aiCity ? ` · ${aiCity.toUpperCase()}` : ' SCANNING...'}
+              </span>
+            </div>
+          )}
+          {!aiSyncing && aiFound !== null && (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)' }}>
+              <span className="text-[9px] font-black tracking-widest whitespace-nowrap" style={{ color: '#00ff88' }}>
+                ✨ {aiFound > 0 ? `+${aiFound} EVENTS` : 'SCANNED'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Counter + controls */}
         <div className="flex items-center gap-2">
-          {tab === 'events' && !isLoading && events.length > 0 && (
+          {tab === 'events' && !isLoading && !locationLoading && events.length > 0 && (
             <span
               className="text-[10px] font-bold px-2 py-0.5 rounded"
-              style={{ color: 'rgba(0,229,255,0.6)', border: '1px solid rgba(0,229,255,0.15)', background: 'rgba(0,229,255,0.05)', letterSpacing: '0.08em' }}
+              style={{ color: 'rgba(var(--accent-rgb),0.6)', border: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(var(--accent-rgb),0.05)', letterSpacing: '0.08em' }}
             >
               {index + 1} / {events.length}
             </span>
           )}
           {tab === 'events' && (
             <>
+              {/* Search button — opens full-screen search overlay */}
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="p-1.5 rounded transition-all duration-200"
+                title="Search events"
+                style={{
+                  border: '1px solid rgba(var(--accent-rgb),0.25)',
+                  color: 'var(--accent)',
+                  background: 'rgba(var(--accent-rgb),0.08)',
+                  boxShadow: '0 0 8px rgba(var(--accent-rgb),0.15)',
+                }}
+              >
+                <Search size={14} />
+              </button>
               <button
                 onClick={() => setViewMode(v => v === 'list' ? 'card' : 'list')}
                 className="p-1.5 rounded transition-all duration-200"
                 title={viewMode === 'list' ? 'Card view' : 'List view'}
                 style={{
-                  border: '1px solid rgba(0,229,255,0.12)',
-                  color: 'rgba(0,229,255,0.7)',
+                  border: '1px solid rgba(var(--accent-rgb),0.12)',
+                  color: 'rgba(var(--accent-rgb),0.7)',
                   background: 'transparent',
                 }}
               >
@@ -661,23 +1583,23 @@ export default function DiscoverPage() {
                 onClick={() => setShowFilters((v) => !v)}
                 className="p-1.5 rounded transition-all duration-200 relative"
                 style={{
-                  border: showFilters ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.12)',
-                  color: showFilters ? '#00e5ff' : 'rgba(74,96,128,0.7)',
-                  background: showFilters ? 'rgba(0,229,255,0.08)' : 'transparent',
+                  border: showFilters ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.12)',
+                  color: showFilters ? 'var(--accent)' : 'rgba(74,96,128,0.7)',
+                  background: showFilters ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                 }}
               >
                 <SlidersHorizontal size={14} />
                 {(filters.type || filters.showFree || filters.tonight || filters.search) && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: '#00e5ff', boxShadow: '0 0 6px #00e5ff' }} />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
                 )}
               </button>
               <button
                 onClick={() => setShowMap((v) => !v)}
                 className="p-1.5 rounded transition-all duration-200"
                 style={{
-                  border: showMap ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.12)',
-                  color: showMap ? '#00e5ff' : 'rgba(74,96,128,0.7)',
-                  background: showMap ? 'rgba(0,229,255,0.08)' : 'transparent',
+                  border: showMap ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.12)',
+                  color: showMap ? 'var(--accent)' : 'rgba(74,96,128,0.7)',
+                  background: showMap ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                 }}
               >
                 <Map size={14} />
@@ -687,8 +1609,18 @@ export default function DiscoverPage() {
         </div>
       </div>
 
-      {/* ── Venues tab ── */}
-      {tab === 'venues' && <VenuesList />}
+      {/* ── Venues tab — always mounted, hidden when not active to preserve discovery state ── */}
+      <div style={{ display: tab === 'venues' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+        <VenuesList
+          liveVenues={liveVenues}
+          venuesLoading={venuesLoading}
+          venueCity={venueCity}
+          mapCenter={mapCenter}
+          isTracking={isTracking}
+          onCitySearch={handleCitySearch}
+          onWiderSearch={handleVenueWiderSearch}
+        />
+      </div>
 
       {/* ── Events tab content ── */}
       {tab === 'events' && <>
@@ -696,12 +1628,12 @@ export default function DiscoverPage() {
       {/* ── Event type filter pills (always visible) ── */}
       <div
         className="flex-shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar"
-        style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(0,229,255,0.08)' }}
+        style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}
       >
-        {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'CONCERT'] as (EventType | undefined)[]).map((type) => {
+        {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'PUB_NIGHT', 'CONCERT'] as (EventType | undefined)[]).map((type) => {
           const isActive = filters.type === type
-          const label = type ? TYPE_LABELS[type] : 'ALL'
-          const color = type ? TYPE_COLORS[type] : '#00e5ff'
+          const label = type === 'CONCERT' ? '🎭 CONCERTS' : type ? TYPE_LABELS[type] : 'ALL'
+          const color = type ? TYPE_COLORS[type] : 'var(--accent)'
           return (
             <button
               key={type ?? 'all'}
@@ -709,7 +1641,7 @@ export default function DiscoverPage() {
               className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
               style={{
                 background: isActive ? `${color}18` : 'transparent',
-                border: `1px solid ${isActive ? `${color}60` : 'rgba(0,229,255,0.1)'}`,
+                border: `1px solid ${isActive ? `${color}60` : 'rgba(var(--accent-rgb),0.1)'}`,
                 color: isActive ? color : 'rgba(74,96,128,0.6)',
                 boxShadow: isActive ? `0 0 10px ${color}20` : 'none',
                 letterSpacing: '0.12em',
@@ -724,7 +1656,7 @@ export default function DiscoverPage() {
           className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
           style={{
             background: filters.tonight ? 'rgba(255,214,0,0.12)' : 'transparent',
-            border: `1px solid ${filters.tonight ? 'rgba(255,214,0,0.5)' : 'rgba(0,229,255,0.1)'}`,
+            border: `1px solid ${filters.tonight ? 'rgba(255,214,0,0.5)' : 'rgba(var(--accent-rgb),0.1)'}`,
             color: filters.tonight ? '#ffd600' : 'rgba(74,96,128,0.6)',
             letterSpacing: '0.12em',
           }}
@@ -736,7 +1668,7 @@ export default function DiscoverPage() {
           className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
           style={{
             background: filters.showFree ? 'rgba(0,255,136,0.1)' : 'transparent',
-            border: `1px solid ${filters.showFree ? 'rgba(0,255,136,0.4)' : 'rgba(0,229,255,0.1)'}`,
+            border: `1px solid ${filters.showFree ? 'rgba(0,255,136,0.4)' : 'rgba(var(--accent-rgb),0.1)'}`,
             color: filters.showFree ? '#00ff88' : 'rgba(74,96,128,0.6)',
             letterSpacing: '0.12em',
           }}
@@ -749,7 +1681,7 @@ export default function DiscoverPage() {
       {showFilters && (
         <div
           className="flex-shrink-0 px-4 py-3 animate-fade-up"
-          style={{ background: 'rgba(7,7,26,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)' }}
+          style={{ background: 'rgba(7,7,26,0.95)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)' }}
         >
           <EventFilters filters={filters} onChange={setFilters} />
         </div>
@@ -760,23 +1692,41 @@ export default function DiscoverPage() {
         <div className="flex-1 overflow-y-auto pb-20">
           {/* Map overlay */}
           {showMap && (
-            <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
-              <EventMap events={events} onBoundsChange={setMapBounds} />
+            <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+              <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
-                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
-                {isLoading ? 'SCANNING...' : `${events.length} EVENTS`}
+                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
+                {(isLoading || locationLoading) ? 'SCANNING...' : `${events.length} EVENTS`}
               </div>
             </div>
           )}
 
-          {isLoading ? (
+          {gpsDenied ? (
+            /* GPS timed out with no fix — prompt user to search a city */
+            <div className="flex flex-col items-center justify-center py-20 gap-4 px-6 text-center">
+              <div className="text-4xl">📍</div>
+              <div>
+                <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>LOCATION NOT AVAILABLE</p>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
+                  Location access is off or unavailable. Switch to the <strong style={{ color: '#ffd600' }}>VENUES</strong> tab and search a city to load local events.
+                </p>
+              </div>
+              <button
+                onClick={() => setTab('venues')}
+                className="px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
+                style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600', letterSpacing: '0.12em' }}
+              >
+                🌍 SEARCH A CITY
+              </button>
+            </div>
+          ) : (isLoading || locationLoading) ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <div className="w-10 h-10 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
-              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>SCANNING AREA...</p>
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SCANNING AREA...</p>
             </div>
           ) : events.length === 0 ? (
-            <EmptyState loading={false} onRetry={forceRetry} />
+            <EmptyState loading={syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
           ) : (() => {
             const liveEvents = events.filter(e => {
               const start = new Date(e.startsAt).getTime()
@@ -799,7 +1749,7 @@ export default function DiscoverPage() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live />)}
+                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live userTier={userTier} />)}
                     </div>
                   </div>
                 )}
@@ -808,15 +1758,15 @@ export default function DiscoverPage() {
                 {upcomingEvents.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <Calendar size={12} style={{ color: '#00e5ff' }} />
-                      <span className="text-[11px] font-black tracking-widest" style={{ color: '#00e5ff' }}>UPCOMING</span>
+                      <Calendar size={12} style={{ color: 'var(--accent)' }} />
+                      <span className="text-[11px] font-black tracking-widest" style={{ color: 'var(--accent)' }}>UPCOMING</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded font-bold"
-                        style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+                        style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
                         {upcomingEvents.length}
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} />)}
+                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} userTier={userTier} />)}
                     </div>
                   </div>
                 )}
@@ -842,8 +1792,8 @@ export default function DiscoverPage() {
               className="flex-1 rounded-full transition-all duration-300"
               style={{
                 height: 2,
-                background: i === index ? '#00e5ff' : i < index ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.08)',
-                boxShadow: i === index ? '0 0 6px rgba(0,229,255,0.7)' : 'none',
+                background: i === index ? 'var(--accent)' : i < index ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(var(--accent-rgb),0.08)',
+                boxShadow: i === index ? '0 0 6px rgba(var(--accent-rgb),0.7)' : 'none',
               }} />
           ))}
         </div>
@@ -852,23 +1802,42 @@ export default function DiscoverPage() {
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 flex flex-col relative overflow-hidden">
           {showMap && (
-            <div className="absolute inset-0 z-10" style={{ background: '#07071a', border: '1px solid rgba(0,229,255,0.1)' }}>
-              <EventMap events={events} onBoundsChange={setMapBounds} />
+            <div className="absolute inset-0 z-10" style={{ background: '#07071a', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+              <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
-                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
+                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
                 {isLoading ? 'SCANNING...' : `${events.length} EVENTS NEARBY`}
               </div>
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {isLoading || events.length === 0 ? <EmptyState loading={isLoading} onRetry={forceRetry} /> : <EventStage event={event!} dir={slideDir} />}
+            {gpsDenied ? (
+              <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
+                <div className="text-4xl">📍</div>
+                <div>
+                  <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>LOCATION NOT AVAILABLE</p>
+                  <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
+                    Switch to <strong style={{ color: '#ffd600' }}>VENUES</strong> and search a city to load events near you.
+                  </p>
+                </div>
+                <button onClick={() => setTab('venues')}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
+                  style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}>
+                  🌍 SEARCH A CITY
+                </button>
+              </div>
+            ) : (isLoading || locationLoading) || events.length === 0 || !event ? (
+              <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
+            ) : (
+              <EventStage event={event} dir={slideDir} userTier={userTier} />
+            )}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
-              style={{ background: 'rgba(4,4,13,0.85)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+              style={{ background: 'rgba(4,4,13,0.85)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
               <button onClick={goPrev} disabled={index === 0}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-xs transition-all duration-200 disabled:opacity-25"
-                style={{ background: index === 0 ? 'transparent' : 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                style={{ background: index === 0 ? 'transparent' : 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
                 <ChevronLeft size={14} /> PREV
               </button>
               <div className="flex items-center gap-1.5">
@@ -876,13 +1845,13 @@ export default function DiscoverPage() {
                   const absI = Math.max(0, index - 2) + relI
                   return (
                     <div key={absI} className="rounded-full transition-all duration-300"
-                      style={{ width: absI === index ? 18 : 5, height: 5, background: absI === index ? '#00e5ff' : 'rgba(0,229,255,0.2)', boxShadow: absI === index ? '0 0 8px rgba(0,229,255,0.7)' : 'none' }} />
+                      style={{ width: absI === index ? 18 : 5, height: 5, background: absI === index ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.2)', boxShadow: absI === index ? '0 0 8px rgba(var(--accent-rgb),0.7)' : 'none' }} />
                   )
                 })}
               </div>
               <button onClick={goNext} disabled={index === events.length - 1}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-xs transition-all duration-200 disabled:opacity-25"
-                style={{ background: index === events.length - 1 ? 'transparent' : 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                style={{ background: index === events.length - 1 ? 'transparent' : 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
                 NEXT <ChevronRight size={14} />
               </button>
             </div>
@@ -892,5 +1861,6 @@ export default function DiscoverPage() {
       </>}
       </>}
     </div>
+    </>
   )
 }

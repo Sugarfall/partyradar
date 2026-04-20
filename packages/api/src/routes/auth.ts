@@ -97,12 +97,17 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
     displayName: z.string().min(1).max(60).optional(),
     bio: z.string().max(300).optional(),
     photoUrl: z.string().url().optional().nullable(),
-    alcoholFriendly: z.boolean().optional(),
+    profileBgImage: z.string().url().optional().nullable(),
     username: z.string().min(3).max(30).regex(/^[a-z0-9_]+$/).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY']).optional().nullable(),
     profileBg: z.string().max(200).optional().nullable(),
     themeColor: z.string().max(50).optional().nullable(),
     themeName: z.string().max(50).optional().nullable(),
+    // Settings / preferences
+    notifPrefs: z.record(z.boolean()).optional().nullable(),
+    showInNearby: z.boolean().optional(),
+    showProfileViews: z.boolean().optional(),
+    allowGoOutFromStrangers: z.boolean().optional(),
   })
 
   try {
@@ -134,22 +139,10 @@ router.post('/age-verify', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** PUT /api/auth/settings */
+/** PUT /api/auth/settings — reserved for future preferences */
 router.put('/settings', requireAuth, async (req: AuthRequest, res, next) => {
-  const schema = z.object({
-    showAlcoholEvents: z.boolean().optional(),
-    alcoholFriendly: z.boolean().optional(),
-  })
-
   try {
-    const body = schema.parse(req.body)
-    const dbUser = req.user!.dbUser
-
-    if (body.showAlcoholEvents && !dbUser.ageVerified) {
-      throw new AppError('Age verification required to enable alcohol filter', 403)
-    }
-
-    const user = await prisma.user.update({ where: { id: dbUser.id }, data: body })
+    const user = await prisma.user.findUnique({ where: { id: req.user!.dbUser.id } })
     res.json({ data: user })
   } catch (err) {
     next(err)

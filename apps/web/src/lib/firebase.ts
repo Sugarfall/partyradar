@@ -33,10 +33,19 @@ export const auth = _realAuth ?? ({
   currentUser: null,
 } as unknown as ReturnType<typeof getAuth>)
 export const googleProvider = new GoogleAuthProvider()
+googleProvider.addScope('email')
+googleProvider.addScope('profile')
+googleProvider.setCustomParameters({ prompt: 'select_account' })
 
 export const appleProvider = new OAuthProvider('apple.com')
 appleProvider.addScope('email')
 appleProvider.addScope('name')
+
+/** True when running on a mobile browser (popups get blocked) */
+function isMobile() {
+  if (typeof navigator === 'undefined') return false
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+}
 
 // ── Dev mock auth (used when no Firebase API key is configured) ──────────────
 const MOCK_USERS_KEY = 'partyradar_mock_users'
@@ -54,7 +63,7 @@ function saveMockUsers(users: Record<string, MockUser>) {
 }
 
 function makeMockUserRecord(email: string): User {
-  return { uid: `mock_${email}`, email, displayName: null, photoURL: null, getIdToken: async () => 'mock-token' } as unknown as User
+  return { uid: `mock_${email}`, email, displayName: null, photoURL: null, emailVerified: true, getIdToken: async () => 'mock-token' } as unknown as User
 }
 
 export const DEV_MODE = !firebaseConfig.apiKey
@@ -130,8 +139,14 @@ export async function signInWithPopup(
   provider: GoogleAuthProvider
 ): Promise<{ user: User }> {
   if (DEV_MODE) throw new Error('Google sign-in not available in dev mode — use email/password')
-  const { signInWithPopup: _fn } = await import('firebase/auth')
-  return _fn(authInstance, provider)
+  const { signInWithPopup: _popupFn, signInWithRedirect: _redirectFn } = await import('firebase/auth')
+  // Mobile browsers block popups — use redirect flow instead
+  if (isMobile()) {
+    await _redirectFn(authInstance, provider)
+    // signInWithRedirect never resolves — page will reload, result picked up by getRedirectResult
+    return new Promise(() => {})
+  }
+  return _popupFn(authInstance, provider)
 }
 
 export async function signInWithApple(
@@ -140,6 +155,12 @@ export async function signInWithApple(
   if (DEV_MODE) throw new Error('Apple sign-in not available in dev mode')
   const { signInWithPopup: _fn } = await import('firebase/auth')
   return _fn(authInstance, appleProvider)
+}
+
+export async function sendEmailVerification(user: User): Promise<void> {
+  if (DEV_MODE) return
+  const { sendEmailVerification: _fn } = await import('firebase/auth')
+  return _fn(user)
 }
 
 export async function signOut(authInstance: ReturnType<typeof getAuth>): Promise<void> {

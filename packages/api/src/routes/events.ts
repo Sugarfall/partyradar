@@ -13,7 +13,7 @@ const router = Router()
 
 const eventSchema = z.object({
   name: z.string().min(3).max(100),
-  type: z.enum(['HOME_PARTY', 'CLUB_NIGHT', 'CONCERT']),
+  type: z.enum(['HOME_PARTY', 'CLUB_NIGHT', 'CONCERT', 'PUB_NIGHT', 'BEACH_PARTY', 'YACHT_PARTY']),
   description: z.string().min(10).max(2000),
   startsAt: z.string().min(1),
   endsAt: z.string().min(1).optional(),
@@ -32,6 +32,9 @@ const eventSchema = z.object({
   houseRules: z.string().max(1000).optional(),
   vibeTags: z.array(z.string()).max(8).default([]),
   isInviteOnly: z.boolean().default(false),
+  partySigns: z.array(z.string()).max(16).default([]),
+  lineup: z.string().max(500).optional(),
+  venueName: z.string().max(200).optional(),
   coverImageUrl: z.preprocess(
     (v) => (v === '' || v == null ? undefined : v),
     z.string().url().optional()
@@ -47,15 +50,19 @@ const userSelect = {
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, alcohol, search, page = '1', limit = '20', tonight } = req.query
+    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', limit = '20', tonight } = req.query
+    // Support both ?q= (new search bar) and ?search= (existing filters panel)
+    const search = q ?? searchParam
 
     const skip = (Number(page) - 1) * Number(limit)
-    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
+
+    // Include events that are currently in progress (started up to 8 h ago) as well as future ones
+    const eightHoursAgo = new Date(Date.now() - 8 * 3_600_000)
 
     const where: Record<string, unknown> = {
       isPublished: true,
       isCancelled: false,
-      startsAt: { gte: new Date() },
+      startsAt: { gte: eightHoursAgo },
     }
 
     if (tonight === 'true') {
@@ -65,12 +72,24 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['startsAt'] = { gte: now, lte: midnight }
     }
 
-    if (type) where['type'] = type
-    if (search) where['name'] = { contains: search as string, mode: 'insensitive' }
-
-    // Hide alcohol events only for logged-in users who haven't enabled the toggle
-    if (req.user && !showAlcohol) {
-      where['alcoholPolicy'] = 'NONE'
+    if (type) {
+      where['type'] = type
+    } else {
+      const excludeTypes = req.query['excludeTypes']
+        ? String(req.query['excludeTypes']).split(',')
+        : []
+      if (excludeTypes.length > 0) {
+        where['type'] = { notIn: excludeTypes }
+      }
+    }
+    if (search) {
+      where['OR'] = [
+        { name:          { contains: search as string, mode: 'insensitive' } },
+        { description:   { contains: search as string, mode: 'insensitive' } },
+        { address:       { contains: search as string, mode: 'insensitive' } },
+        { neighbourhood: { contains: search as string, mode: 'insensitive' } },
+        { type:          { contains: search as string, mode: 'insensitive' } },
+      ]
     }
 
     // Geo filter
@@ -153,7 +172,7 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
 router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const event = await prisma.event.findUnique({
-      where: { inviteToken: req.params['token'] },
+      where: { inviteToken: String(req.params['token']) },
       include: { host: { select: userSelect }, _count: { select: { guests: true } } },
     })
     if (!event) throw new AppError('Invite link not found', 404)
@@ -163,11 +182,34 @@ router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) =
   }
 })
 
+/** POST /api/events/ai-sync — explicitly trigger AI event discovery for a city */
+router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { city, lat, lng, force } = req.body as {
+      city?: string; lat?: number; lng?: number; force?: boolean
+    }
+    if (!city || lat == null || lng == null) {
+      throw new AppError('city, lat and lng are required', 400)
+    }
+
+    const { syncExternalEvents } = await import('../lib/eventSync')
+    // Run full sync (including Perplexity AI) and await results so the client
+    // knows when it's safe to re-fetch events.
+    const result = await syncExternalEvents(
+      String(city), Number(lat), Number(lng), 'user', force === true
+    )
+
+    res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** GET /api/events/:id */
 router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const event = await prisma.event.findUnique({
-      where: { id: req.params['id'] },
+      where: { id: String(req.params['id']) },
       include: {
         host: { select: userSelect },
         _count: { select: { guests: { where: { status: 'CONFIRMED' } } } },
@@ -256,7 +298,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       const price = await stripe.prices.create({
         product: product.id,
         unit_amount: Math.round(event.price * 100),
-        currency: 'usd',
+        currency: 'gbp',
       })
       await prisma.event.update({
         where: { id: event.id },
@@ -273,7 +315,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 /** PUT /api/events/:id */
 router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const event = await prisma.event.findUnique({ where: { id: req.params['id'] } })
+    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
@@ -294,6 +336,8 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         startsAt: rest.startsAt ? new Date(rest.startsAt) : undefined,
         endsAt: rest.endsAt ? new Date(rest.endsAt) : undefined,
         accentColor: accentColor !== undefined ? accentColor : undefined,
+        lineup: lineup !== undefined ? lineup : undefined,
+        partySigns: partySigns !== undefined ? partySigns : undefined,
       },
       include: { host: { select: userSelect } },
     })
@@ -307,7 +351,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 /** DELETE /api/events/:id — cancel event */
 router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const event = await prisma.event.findUnique({ where: { id: req.params['id'] } })
+    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 

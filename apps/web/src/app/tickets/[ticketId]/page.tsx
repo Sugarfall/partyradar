@@ -18,8 +18,9 @@ function formatDate(d: string) {
 
 const TYPE_COLOR: Record<string, string> = {
   HOME_PARTY: '#ff006e',
-  CLUB_NIGHT:  '#00e5ff',
+  CLUB_NIGHT:  'var(--accent)',
   CONCERT:     '#3d5afe',
+  PUB_NIGHT:   '#f59e0b',
 }
 
 export default function TicketPage() {
@@ -54,7 +55,7 @@ export default function TicketPage() {
         width: 220,
         margin: 2,
         color: {
-          dark: '#00e5ff',
+          dark: '#7c3aed',   // accent purple — CSS vars don't resolve in canvas context
           light: '#04040d',
         },
       }).then(() => setQrGenerated(true))
@@ -82,13 +83,13 @@ export default function TicketPage() {
     link.click()
   }
 
-  const color = TYPE_COLOR[ticket?.event?.type ?? 'CLUB_NIGHT'] ?? '#00e5ff'
+  const color = TYPE_COLOR[ticket?.event?.type ?? 'CLUB_NIGHT'] ?? 'var(--accent)'
 
   if (authLoading || (!dbUser && !error)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
       </div>
     )
   }
@@ -98,7 +99,7 @@ export default function TicketPage() {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <p className="text-sm font-bold tracking-widest" style={{ color: '#ff006e' }}>TICKET NOT FOUND</p>
         <Link href="/profile" className="text-xs font-bold px-4 py-2 rounded-lg"
-          style={{ border: '1px solid rgba(0,229,255,0.3)', color: '#00e5ff' }}>← MY TICKETS</Link>
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>← MY TICKETS</Link>
       </div>
     )
   }
@@ -107,8 +108,8 @@ export default function TicketPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3">
         <div className="w-10 h-10 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
-        <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>LOADING TICKET...</p>
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+        <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>LOADING TICKET...</p>
       </div>
     )
   }
@@ -120,7 +121,7 @@ export default function TicketPage() {
     <div className="min-h-screen pb-28 px-4 py-6 max-w-sm mx-auto" style={{ background: '#04040d' }}>
       {/* Back */}
       <Link href="/profile" className="inline-flex items-center gap-1.5 text-xs font-bold mb-6"
-        style={{ color: 'rgba(0,229,255,0.5)' }}>
+        style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
         <ArrowLeft size={13} /> MY TICKETS
       </Link>
 
@@ -205,17 +206,17 @@ export default function TicketPage() {
           </div>
 
           {/* Ticket ID */}
-          <p className="font-mono text-[10px] tracking-widest" style={{ color: 'rgba(0,229,255,0.3)' }}>
+          <p className="font-mono text-[10px] tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>
             {ticket!.qrCode.toUpperCase().slice(0, 24)}...
           </p>
 
           {/* Price paid */}
           <div className="w-full flex items-center justify-between px-2 py-3 rounded-xl"
-            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-            <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>PAID</span>
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+            <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>PAID</span>
             <span className="text-lg font-black"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.5)' : 'none' }}>
-              {isFree ? 'FREE' : formatPrice(ticket!.pricePaid)}
+              {formatPrice(ticket!.pricePaid)}
             </span>
           </div>
         </div>
@@ -228,12 +229,12 @@ export default function TicketPage() {
       <div className="flex gap-3 mt-5">
         <button onClick={handleDownload}
           className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs transition-all duration-200"
-          style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
           <Download size={13} /> SAVE
         </button>
         <button onClick={handleShare}
           className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs transition-all duration-200"
-          style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.2)', color: copied ? '#00ff88' : '#00e5ff', letterSpacing: '0.1em' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: copied ? '#00ff88' : 'var(--accent)', letterSpacing: '0.1em' }}>
           {copied ? <><Check size={13} /> COPIED</> : <><Share2 size={13} /> SHARE</>}
         </button>
       </div>

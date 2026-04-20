@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { MapPin, Check } from 'lucide-react'
 
-import { API_URL as API_BASE } from '@/lib/api'
+import { api } from '@/lib/api'
 
 type CrowdLevel = 'QUIET' | 'BUSY' | 'RAMMED'
 
@@ -29,24 +29,11 @@ export default function CheckInButton({ eventId, venueId, venueName }: CheckInBu
     if (!selected || loading) return
     setLoading(true)
     try {
-      const token = typeof window !== 'undefined'
-        ? localStorage.getItem('partyradar_mock_session') ?? ''
-        : ''
-
-      if (!token) {
-        // Dev mode / no auth — mock success after 500ms
-        await new Promise((r) => setTimeout(r, 500))
-      } else {
-        await fetch(`${API_BASE}/checkins`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId, venueId, crowdLevel: selected }),
-        })
-      }
+      await api.post('/checkins', { eventId, venueId, crowdLevel: selected })
       setDone(true)
       setPanelOpen(false)
     } catch {
-      setDone(true) // show success anyway (optimistic)
+      setDone(true) // optimistic — show checked in even on transient error
       setPanelOpen(false)
     } finally {
       setLoading(false)
@@ -77,13 +64,13 @@ export default function CheckInButton({ eventId, venueId, venueName }: CheckInBu
           onClick={() => setPanelOpen(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all duration-200"
           style={{
-            background: 'rgba(0,229,255,0.07)',
-            border: '1px solid rgba(0,229,255,0.25)',
-            color: '#00e5ff',
+            background: 'rgba(var(--accent-rgb),0.07)',
+            border: '1px solid rgba(var(--accent-rgb),0.25)',
+            color: 'var(--accent)',
             letterSpacing: '0.1em',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,229,255,0.12)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,229,255,0.07)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--accent-rgb),0.12)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--accent-rgb),0.07)' }}
         >
           <MapPin size={13} /> CHECK IN
         </button>
@@ -95,16 +82,16 @@ export default function CheckInButton({ eventId, venueId, venueName }: CheckInBu
           className="rounded-xl overflow-hidden"
           style={{
             background: 'rgba(7,7,26,0.97)',
-            border: '1px solid rgba(0,229,255,0.2)',
+            border: '1px solid rgba(var(--accent-rgb),0.2)',
             boxShadow: '0 0 24px rgba(0,0,0,0.6)',
           }}
         >
           <div
             className="px-3 py-2 flex items-center gap-2"
-            style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}
+            style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}
           >
-            <MapPin size={11} style={{ color: '#00e5ff' }} />
-            <span className="text-[10px] font-black tracking-widest" style={{ color: '#00e5ff' }}>
+            <MapPin size={11} style={{ color: 'var(--accent)' }} />
+            <span className="text-[10px] font-black tracking-widest" style={{ color: 'var(--accent)' }}>
               {venueName ? `CHECK IN @ ${venueName.toUpperCase()}` : 'HOW BUSY IS IT?'}
             </span>
           </div>
@@ -116,8 +103,8 @@ export default function CheckInButton({ eventId, venueId, venueName }: CheckInBu
                 onClick={() => setSelected(level)}
                 className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-lg text-[10px] font-black transition-all duration-150"
                 style={{
-                  background: selected === level ? `${color}15` : 'rgba(0,229,255,0.03)',
-                  border: selected === level ? `1px solid ${color}60` : '1px solid rgba(0,229,255,0.1)',
+                  background: selected === level ? `${color}15` : 'rgba(var(--accent-rgb),0.03)',
+                  border: selected === level ? `1px solid ${color}60` : '1px solid rgba(var(--accent-rgb),0.1)',
                   color: selected === level ? color : 'rgba(224,242,254,0.45)',
                   letterSpacing: '0.1em',
                   boxShadow: selected === level ? `0 0 10px ${color}25` : 'none',
@@ -133,7 +120,7 @@ export default function CheckInButton({ eventId, venueId, venueName }: CheckInBu
             <button
               onClick={() => { setPanelOpen(false); setSelected(null) }}
               className="flex-1 py-2 rounded-lg text-[10px] font-bold"
-              style={{ border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(74,96,128,0.6)' }}
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.1)', color: 'rgba(74,96,128,0.6)' }}
             >
               CANCEL
             </button>
@@ -142,9 +129,9 @@ export default function CheckInButton({ eventId, venueId, venueName }: CheckInBu
               disabled={!selected || loading}
               className="flex-1 py-2 rounded-lg text-[10px] font-black transition-all duration-200 disabled:opacity-40"
               style={{
-                background: selected ? 'rgba(0,229,255,0.12)' : 'transparent',
-                border: selected ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-                color: selected ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+                background: selected ? 'rgba(var(--accent-rgb),0.12)' : 'transparent',
+                border: selected ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                color: selected ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
                 letterSpacing: '0.1em',
               }}
             >

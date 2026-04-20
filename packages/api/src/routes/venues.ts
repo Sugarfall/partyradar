@@ -159,7 +159,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
 
     if (!venue) throw new AppError('Venue not found', 404)
 
-    res.json(venue)
+    res.json({ data: venue })
   } catch (err) {
     next(err)
   }
@@ -179,7 +179,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       },
     })
 
-    res.status(201).json(venue)
+    res.status(201).json({ data: venue })
   } catch (err) {
     next(err)
   }
@@ -202,7 +202,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     const data = venueUpdateSchema.parse(req.body)
     const updated = await prisma.venue.update({ where: { id }, data })
 
-    res.json(updated)
+    res.json({ data: updated })
   } catch (err) {
     next(err)
   }
@@ -226,7 +226,7 @@ router.post('/:id/claim', requireAuth, async (req: AuthRequest, res, next) => {
       data: { isClaimed: true, claimedById: userId },
     })
 
-    res.json(updated)
+    res.json({ data: updated })
   } catch (err) {
     next(err)
   }

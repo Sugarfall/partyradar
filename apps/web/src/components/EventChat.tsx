@@ -36,7 +36,7 @@ function Avatar({ name, photo, size = 28 }: { name: string; photo?: string; size
           height: size,
           borderRadius: '50%',
           objectFit: 'cover',
-          border: '1px solid rgba(0,229,255,0.2)',
+          border: '1px solid rgba(var(--accent-rgb),0.2)',
           flexShrink: 0,
         }}
       />
@@ -48,14 +48,14 @@ function Avatar({ name, photo, size = 28 }: { name: string; photo?: string; size
         width: size,
         height: size,
         borderRadius: '50%',
-        background: 'rgba(0,229,255,0.12)',
-        border: '1px solid rgba(0,229,255,0.25)',
+        background: 'rgba(var(--accent-rgb),0.12)',
+        border: '1px solid rgba(var(--accent-rgb),0.25)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: size * 0.4,
         fontWeight: 900,
-        color: '#00e5ff',
+        color: 'var(--accent)',
         flexShrink: 0,
       }}
     >
@@ -196,10 +196,11 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
       return
     }
 
-    if (socketRef.current) {
+    if (socketRef.current?.connected) {
       socketRef.current.emit('message', { eventId, text })
+      setInput('')
     }
-    setInput('')
+    // If not connected, don't clear input so user can retry — no ghost messages
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -228,9 +229,9 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
           gap: 6,
           padding: '8px 14px',
           borderRadius: 8,
-          background: 'rgba(0,229,255,0.07)',
-          border: '1px solid rgba(0,229,255,0.3)',
-          color: '#00e5ff',
+          background: 'rgba(var(--accent-rgb),0.07)',
+          border: '1px solid rgba(var(--accent-rgb),0.3)',
+          color: 'var(--accent)',
           fontSize: 11,
           fontWeight: 900,
           letterSpacing: '0.12em',
@@ -273,10 +274,10 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
               right: 0,
               height: '60vh',
               background: '#04040d',
-              border: '1px solid rgba(0,229,255,0.2)',
+              border: '1px solid rgba(var(--accent-rgb),0.2)',
               borderBottom: 'none',
               borderRadius: '16px 16px 0 0',
-              boxShadow: '0 -8px 40px rgba(0,229,255,0.1)',
+              boxShadow: '0 -8px 40px rgba(var(--accent-rgb),0.1)',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
@@ -291,8 +292,8 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '12px 16px',
-                borderBottom: '1px solid rgba(0,229,255,0.1)',
-                background: 'rgba(0,229,255,0.03)',
+                borderBottom: '1px solid rgba(var(--accent-rgb),0.1)',
+                background: 'rgba(var(--accent-rgb),0.03)',
                 flexShrink: 0,
               }}
             >
@@ -312,7 +313,7 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                     fontSize: 11,
                     fontWeight: 900,
                     letterSpacing: '0.16em',
-                    color: '#00e5ff',
+                    color: 'var(--accent)',
                   }}
                 >
                   LIVE CHAT
@@ -321,7 +322,7 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                   style={{
                     fontSize: 10,
                     fontWeight: 700,
-                    color: 'rgba(0,229,255,0.5)',
+                    color: 'rgba(var(--accent-rgb),0.5)',
                   }}
                 >
                   ● {onlineCount} online
@@ -348,7 +349,7 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                   style={{
                     fontSize: 9,
                     fontWeight: 700,
-                    color: 'rgba(0,229,255,0.35)',
+                    color: 'rgba(var(--accent-rgb),0.35)',
                     letterSpacing: '0.1em',
                     maxWidth: 140,
                     overflow: 'hidden',
@@ -364,7 +365,7 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
-                    color: 'rgba(0,229,255,0.4)',
+                    color: 'rgba(var(--accent-rgb),0.4)',
                     padding: 4,
                     display: 'flex',
                     alignItems: 'center',
@@ -398,8 +399,8 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                     opacity: 0.4,
                   }}
                 >
-                  <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.4)' }} />
-                  <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,229,255,0.5)', letterSpacing: '0.12em' }}>
+                  <MessageCircle size={28} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.12em' }}>
                     NO MESSAGES YET
                   </p>
                   <p style={{ fontSize: 10, color: 'rgba(74,96,128,0.6)' }}>Be the first to say something!</p>
@@ -445,7 +446,7 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                     >
                       {!isOwn && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: isMsgHost ? '#ffd600' : '#00e5ff', letterSpacing: '0.06em' }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: isMsgHost ? '#ffd600' : 'var(--accent)', letterSpacing: '0.06em' }}>
                             {msg.senderName}
                           </span>
                           {isMsgHost && (
@@ -466,12 +467,12 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                             ? 'rgba(255,0,110,0.12)'
                             : isMsgHost
                             ? 'rgba(255,214,0,0.06)'
-                            : 'rgba(0,229,255,0.06)',
+                            : 'rgba(var(--accent-rgb),0.06)',
                           border: isOwn
                             ? '1px solid rgba(255,0,110,0.25)'
                             : isMsgHost
                             ? '1px solid rgba(255,214,0,0.2)'
-                            : '1px solid rgba(0,229,255,0.12)',
+                            : '1px solid rgba(var(--accent-rgb),0.12)',
                           fontSize: 13,
                           color: isOwn ? '#fce7f3' : '#e0f2fe',
                           lineHeight: 1.4,
@@ -494,7 +495,7 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
               {/* Typing indicator */}
               {typing && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ display: 'flex', gap: 3, padding: '6px 10px', borderRadius: 12, background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.08)' }}>
+                  <div style={{ display: 'flex', gap: 3, padding: '6px 10px', borderRadius: 12, background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
                     {[0, 1, 2].map((i) => (
                       <div
                         key={i}
@@ -502,7 +503,7 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                           width: 5,
                           height: 5,
                           borderRadius: '50%',
-                          background: 'rgba(0,229,255,0.4)',
+                          background: 'rgba(var(--accent-rgb),0.4)',
                           animation: `typingBounce 1.2s ease-in-out ${i * 0.2}s infinite`,
                         }}
                       />
@@ -521,8 +522,8 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
             <div
               style={{
                 padding: '10px 12px',
-                borderTop: '1px solid rgba(0,229,255,0.1)',
-                background: 'rgba(0,229,255,0.02)',
+                borderTop: '1px solid rgba(var(--accent-rgb),0.1)',
+                background: 'rgba(var(--accent-rgb),0.02)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
@@ -545,13 +546,13 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                     style={{
                       flex: 1,
                       background: 'rgba(4,4,13,0.8)',
-                      border: '1px solid rgba(0,229,255,0.15)',
+                      border: '1px solid rgba(var(--accent-rgb),0.15)',
                       borderRadius: 10,
                       padding: '9px 13px',
                       fontSize: 13,
                       color: '#e0f2fe',
                       outline: 'none',
-                      caretColor: '#00e5ff',
+                      caretColor: 'var(--accent)',
                     }}
                   />
                   <button
@@ -561,9 +562,9 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
                       width: 38,
                       height: 38,
                       borderRadius: 10,
-                      background: input.trim() ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.04)',
-                      border: `1px solid ${input.trim() ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.1)'}`,
-                      color: input.trim() ? '#00e5ff' : 'rgba(0,229,255,0.25)',
+                      background: input.trim() ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+                      border: `1px solid ${input.trim() ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.1)'}`,
+                      color: input.trim() ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.25)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',

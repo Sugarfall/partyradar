@@ -13,7 +13,7 @@ const TIER_ORDER: SubscriptionTier[] = ['FREE', 'BASIC', 'PRO', 'PREMIUM']
 const TIER_STYLE: Record<string, { color: string; glow: string; icon: string; badge?: string }> = {
   FREE:    { color: '#4b5563', glow: 'rgba(75,85,99,0.2)',     icon: '⚡' },
   BASIC:   { color: '#3b82f6', glow: 'rgba(59,130,246,0.2)',   icon: '🔵' },
-  PRO:     { color: '#00e5ff', glow: 'rgba(0,229,255,0.2)',    icon: '💎', badge: 'MOST POPULAR' },
+  PRO:     { color: 'var(--accent)', glow: 'rgba(var(--accent-rgb),0.2)',    icon: '💎', badge: 'MOST POPULAR' },
   PREMIUM: { color: '#ffd600', glow: 'rgba(255,214,0,0.2)',    icon: '👑', badge: 'FULL ACCESS' },
 }
 
@@ -65,12 +65,12 @@ function SubscriptionsContent() {
       {/* Header */}
       <div className="text-center mb-10 max-w-lg mx-auto">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4"
-          style={{ border: '1px solid rgba(0,229,255,0.2)', background: 'rgba(0,229,255,0.05)' }}>
-          <Crown size={11} style={{ color: '#00e5ff' }} />
-          <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.7)' }}>PLANS & PRICING</span>
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', background: 'rgba(var(--accent-rgb),0.05)' }}>
+          <Crown size={11} style={{ color: 'var(--accent)' }} />
+          <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.7)' }}>PLANS & PRICING</span>
         </div>
         <h1 className="text-3xl font-black mb-3"
-          style={{ color: '#00e5ff', textShadow: '0 0 30px rgba(0,229,255,0.3)' }}>
+          style={{ color: 'var(--accent)', textShadow: '0 0 30px rgba(var(--accent-rgb),0.3)' }}>
           UNLOCK THE RADAR
         </h1>
         <p className="text-sm" style={{ color: 'rgba(224,242,254,0.5)' }}>
@@ -157,7 +157,7 @@ function SubscriptionsContent() {
                         onClick={handleManage}
                         disabled={loading === 'portal'}
                         className="w-full py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
-                        style={{ border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.6)', letterSpacing: '0.08em' }}>
+                        style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.6)', letterSpacing: '0.08em' }}>
                         {loading === 'portal' ? 'LOADING...' : 'MANAGE BILLING'}
                       </button>
                     )}

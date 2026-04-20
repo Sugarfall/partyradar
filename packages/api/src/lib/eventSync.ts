@@ -74,6 +74,10 @@ const REJECT_KEYWORDS = [
   // Other
   'dog show', 'horse show', 'equestrian', 'agricultural show',
   'antiques fair', 'collectors fair',
+  // Casino, gambling & irrelevant social events
+  'casino', 'gambling', 'poker night', 'bingo', 'quiz night', 'trivia night',
+  'karaoke night only', 'afternoon tea', 'baby shower', 'wedding', 'funeral',
+  'corporate event',
 ]
 
 /**
@@ -752,12 +756,13 @@ export async function syncExternalEvents(
   city: string,
   lat: number,
   lng: number,
-  _hostIdHint: string
+  _hostIdHint: string,
+  force = false,
 ): Promise<SyncResult> {
-  // Throttle: skip if synced this city recently
+  // Throttle: skip if synced this city recently (unless forced — e.g. explicit user AI scan)
   const key = city.toLowerCase()
   const last = lastSyncTime.get(key) ?? 0
-  if (Date.now() - last < SYNC_THROTTLE_MS) {
+  if (!force && Date.now() - last < SYNC_THROTTLE_MS) {
     return { imported: 0, skipped: 0, sources: [] }
   }
   lastSyncTime.set(key, Date.now())

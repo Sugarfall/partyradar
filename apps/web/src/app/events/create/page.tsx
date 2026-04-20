@@ -12,7 +12,7 @@ import { VIBE_TAGS } from '@partyradar/shared'
 // ── Types ─────────────────────────────────────────────────────────────────────
 const EVENT_TYPES: { id: EventType; label: string; emoji: string; desc: string; sub: string; color: string; glow: string }[] = [
   { id: 'HOME_PARTY',  label: 'Home Party',  emoji: '🏠', desc: 'Private space, intimate crowd, your rules',        sub: 'Unlisted address · RSVP gating · Party signals', color: '#ff006e', glow: 'rgba(255,0,110,0.3)' },
-  { id: 'CLUB_NIGHT',  label: 'Club Night',  emoji: '🎵', desc: 'Licensed venue, ticketed entry, professional setup', sub: 'Ticket tiers · Lineup · Promoter profile',          color: '#00e5ff', glow: 'rgba(0,229,255,0.3)' },
+  { id: 'CLUB_NIGHT',  label: 'Club Night',  emoji: '🎵', desc: 'Licensed venue, ticketed entry, professional setup', sub: 'Ticket tiers · Lineup · Promoter profile',          color: 'var(--accent)', glow: 'rgba(var(--accent-rgb),0.3)' },
   { id: 'CONCERT',     label: 'Concert',     emoji: '🎤', desc: 'Live performance or touring act',                  sub: 'General admission · Artist info · Stage times',     color: '#3d5afe', glow: 'rgba(61,90,254,0.3)' },
   { id: 'PUB_NIGHT',   label: 'Pub Night',   emoji: '🍺', desc: 'Pub crawl, quiz night, bar event or open mic',     sub: 'Casual entry · Pub venue · Drinks social',          color: '#f59e0b', glow: 'rgba(245,158,11,0.3)' },
   { id: 'BEACH_PARTY', label: 'Beach Party', emoji: '🏖️', desc: 'Beach, pool, or waterfront...',                   sub: 'Outdoor venue · Waterfront · Casual vibes',         color: '#06b6d4', glow: 'rgba(6,182,212,0.3)'  },
@@ -84,17 +84,17 @@ function CyberInput({ label, error, className = '', ...props }: React.InputHTMLA
   const [focused, setFocused] = useState(false)
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      {label && <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.55)' }}>{label}</label>}
+      {label && <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>{label}</label>}
       <input
         {...props}
         onFocus={(e) => { setFocused(true); props.onFocus?.(e) }}
         onBlur={(e) => { setFocused(false); props.onBlur?.(e) }}
         className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
         style={{
-          background: 'rgba(0,229,255,0.04)',
-          border: focused ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)',
+          background: 'rgba(var(--accent-rgb),0.04)',
+          border: focused ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
           color: '#e0f2fe',
-          boxShadow: focused ? '0 0 12px rgba(0,229,255,0.1)' : 'none',
+          boxShadow: focused ? '0 0 12px rgba(var(--accent-rgb),0.1)' : 'none',
         }}
       />
       {error && <p className="text-[11px] font-medium" style={{ color: '#ff006e' }}>{error}</p>}
@@ -106,17 +106,17 @@ function CyberTextarea({ label, error, className = '', ...props }: React.Textare
   const [focused, setFocused] = useState(false)
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      {label && <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.55)' }}>{label}</label>}
+      {label && <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>{label}</label>}
       <textarea
         {...props}
         onFocus={(e) => { setFocused(true); props.onFocus?.(e) }}
         onBlur={(e) => { setFocused(false); props.onBlur?.(e) }}
         className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200 resize-none"
         style={{
-          background: 'rgba(0,229,255,0.04)',
-          border: focused ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)',
+          background: 'rgba(var(--accent-rgb),0.04)',
+          border: focused ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
           color: '#e0f2fe',
-          boxShadow: focused ? '0 0 12px rgba(0,229,255,0.1)' : 'none',
+          boxShadow: focused ? '0 0 12px rgba(var(--accent-rgb),0.1)' : 'none',
         }}
       />
       {error && <p className="text-[11px]" style={{ color: '#ff006e' }}>{error}</p>}
@@ -237,8 +237,8 @@ export default function CreateEventPage() {
   }
 
   const currentType = EVENT_TYPES.find((t) => t.id === form.type)
-  const accentColor = currentType?.color ?? '#00e5ff'
-  const accentGlow = currentType?.glow ?? 'rgba(0,229,255,0.3)'
+  const accentColor = currentType?.color ?? 'var(--accent)'
+  const accentGlow = currentType?.glow ?? 'rgba(var(--accent-rgb),0.3)'
   const progress = ((step) / (STEPS.length - 1)) * 100
 
   // ── Published success ────────────────────────────────────────────────────
@@ -265,17 +265,17 @@ export default function CreateEventPage() {
         className="sticky top-14 z-30 flex-shrink-0"
         style={{
           background: 'rgba(4,4,13,0.92)',
-          borderBottom: '1px solid rgba(0,229,255,0.1)',
+          borderBottom: '1px solid rgba(var(--accent-rgb),0.1)',
           backdropFilter: 'blur(16px)',
         }}
       >
         {/* Neon progress line */}
-        <div className="h-px relative" style={{ background: 'rgba(0,229,255,0.08)' }}>
+        <div className="h-px relative" style={{ background: 'rgba(var(--accent-rgb),0.08)' }}>
           <div
             className="absolute top-0 left-0 h-px transition-all duration-500"
             style={{
               width: `${progress}%`,
-              background: `linear-gradient(90deg, ${accentColor}, rgba(0,229,255,0.4))`,
+              background: `linear-gradient(90deg, ${accentColor}, rgba(var(--accent-rgb),0.4))`,
               boxShadow: `0 0 8px ${accentColor}`,
             }}
           />
@@ -286,7 +286,7 @@ export default function CreateEventPage() {
           <button
             onClick={() => step > 0 ? setStep((s) => s - 1) : router.push('/discover')}
             className="p-1.5 rounded transition-all duration-200"
-            style={{ color: 'rgba(74,96,128,0.7)', border: '1px solid rgba(0,229,255,0.1)' }}
+            style={{ color: 'rgba(74,96,128,0.7)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
             <ChevronLeft size={16} />
           </button>
@@ -304,7 +304,7 @@ export default function CreateEventPage() {
                     ? accentColor
                     : s.id === step
                     ? accentColor
-                    : 'rgba(0,229,255,0.12)',
+                    : 'rgba(var(--accent-rgb),0.12)',
                   boxShadow: s.id === step ? `0 0 8px ${accentColor}` : 'none',
                 }}
               />
@@ -312,7 +312,7 @@ export default function CreateEventPage() {
           </div>
 
           {/* Step label */}
-          <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             {STEPS[step].short} / {STEPS[STEPS.length - 1].short}
           </span>
         </div>
@@ -346,7 +346,7 @@ export default function CreateEventPage() {
                   className="relative flex items-center gap-5 p-5 rounded-2xl text-left transition-all duration-250"
                   style={{
                     background: selected ? `${type.color}12` : 'rgba(7,7,26,0.8)',
-                    border: selected ? `1px solid ${type.color}60` : '1px solid rgba(0,229,255,0.1)',
+                    border: selected ? `1px solid ${type.color}60` : '1px solid rgba(var(--accent-rgb),0.1)',
                     boxShadow: selected ? `0 0 30px ${type.glow}` : 'none',
                     transform: selected ? 'scale(1.01)' : 'scale(1)',
                   }}
@@ -360,8 +360,8 @@ export default function CreateEventPage() {
                   <div
                     className="text-4xl flex-shrink-0 w-16 h-16 rounded-xl flex items-center justify-center"
                     style={{
-                      background: selected ? `${type.color}18` : 'rgba(0,229,255,0.04)',
-                      border: `1px solid ${selected ? type.color + '40' : 'rgba(0,229,255,0.1)'}`,
+                      background: selected ? `${type.color}18` : 'rgba(var(--accent-rgb),0.04)',
+                      border: `1px solid ${selected ? type.color + '40' : 'rgba(var(--accent-rgb),0.1)'}`,
                     }}
                   >
                     {type.emoji}
@@ -434,7 +434,7 @@ export default function CreateEventPage() {
 
             {/* Cover image */}
             <div>
-              <p className="text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: 'rgba(0,229,255,0.55)' }}>COVER IMAGE</p>
+              <p className="text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>COVER IMAGE</p>
               {coverPreview ? (
                 <div className="relative rounded-xl overflow-hidden mb-3" style={{ height: 180 }}>
                   <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
@@ -452,14 +452,14 @@ export default function CreateEventPage() {
                   onClick={() => fileRef.current?.click()}
                   className="w-full flex flex-col items-center gap-2 py-8 rounded-xl transition-all duration-200"
                   style={{
-                    background: 'rgba(0,229,255,0.03)',
-                    border: '1px dashed rgba(0,229,255,0.2)',
+                    background: 'rgba(var(--accent-rgb),0.03)',
+                    border: '1px dashed rgba(var(--accent-rgb),0.2)',
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,229,255,0.4)' }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,229,255,0.2)' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(var(--accent-rgb),0.4)' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(var(--accent-rgb),0.2)' }}
                 >
-                  <Upload size={20} style={{ color: 'rgba(0,229,255,0.4)' }} />
-                  <span className="text-xs font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.45)' }}>UPLOAD COVER IMAGE</span>
+                  <Upload size={20} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                  <span className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>UPLOAD COVER IMAGE</span>
                 </button>
               )}
               <input ref={fileRef} type="file" accept="image/*" onChange={handleCover} className="hidden" />
@@ -524,15 +524,15 @@ export default function CreateEventPage() {
               onClick={() => update({ showNeighbourhoodOnly: !form.showNeighbourhoodOnly })}
               className="flex items-start gap-3 p-4 rounded-xl w-full text-left transition-all duration-200"
               style={{
-                background: form.showNeighbourhoodOnly ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.02)',
-                border: form.showNeighbourhoodOnly ? '1px solid rgba(0,229,255,0.3)' : '1px solid rgba(0,229,255,0.1)',
+                background: form.showNeighbourhoodOnly ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.02)',
+                border: form.showNeighbourhoodOnly ? '1px solid rgba(var(--accent-rgb),0.3)' : '1px solid rgba(var(--accent-rgb),0.1)',
               }}
             >
               <div
                 className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5"
                 style={{
-                  border: form.showNeighbourhoodOnly ? '1px solid rgba(0,229,255,0.6)' : '1px solid rgba(0,229,255,0.2)',
-                  background: form.showNeighbourhoodOnly ? '#00e5ff' : 'transparent',
+                  border: form.showNeighbourhoodOnly ? '1px solid rgba(var(--accent-rgb),0.6)' : '1px solid rgba(var(--accent-rgb),0.2)',
+                  background: form.showNeighbourhoodOnly ? 'var(--accent)' : 'transparent',
                 }}
               >
                 {form.showNeighbourhoodOnly && <Check size={12} color="#04040d" strokeWidth={3} />}
@@ -553,7 +553,7 @@ export default function CreateEventPage() {
             {/* Capacity slider */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.55)' }}>CAPACITY</label>
+                <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>CAPACITY</label>
                 <span className="text-lg font-black" style={{ color: accentColor, textShadow: `0 0 12px ${accentGlow}` }}>
                   {form.capacity} guests
                 </span>
@@ -567,7 +567,7 @@ export default function CreateEventPage() {
                 onChange={(e) => update({ capacity: Number(e.target.value) })}
                 className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
                 style={{
-                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((form.capacity ?? 50) / 10000) * 100}%, rgba(0,229,255,0.1) ${((form.capacity ?? 50) / 10000) * 100}%, rgba(0,229,255,0.1) 100%)`,
+                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((form.capacity ?? 50) / 10000) * 100}%, rgba(var(--accent-rgb),0.1) ${((form.capacity ?? 50) / 10000) * 100}%, rgba(var(--accent-rgb),0.1) 100%)`,
                 }}
               />
               <div className="flex justify-between text-[10px] mt-1" style={{ color: 'rgba(74,96,128,0.5)' }}>
@@ -577,7 +577,7 @@ export default function CreateEventPage() {
 
             {/* Free vs Paid toggle */}
             <div>
-              <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(0,229,255,0.55)' }}>ENTRY</label>
+              <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>ENTRY</label>
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: 'FREE', value: 0, emoji: '🎁', color: '#00ff88', glow: 'rgba(0,255,136,0.3)' },
@@ -591,8 +591,8 @@ export default function CreateEventPage() {
                       onClick={() => update({ price: isPaid ? 10 : 0 })}
                       className="flex flex-col items-center gap-2 py-5 rounded-xl transition-all duration-200"
                       style={{
-                        background: isSelected ? `${opt.color}10` : 'rgba(0,229,255,0.03)',
-                        border: isSelected ? `1px solid ${opt.color}50` : '1px solid rgba(0,229,255,0.1)',
+                        background: isSelected ? `${opt.color}10` : 'rgba(var(--accent-rgb),0.03)',
+                        border: isSelected ? `1px solid ${opt.color}50` : '1px solid rgba(var(--accent-rgb),0.1)',
                         boxShadow: isSelected ? `0 0 20px ${opt.glow}` : 'none',
                       }}
                     >
@@ -649,7 +649,7 @@ export default function CreateEventPage() {
               const opts = isVenue ? ALCOHOL_OPTIONS_VENUE : ALCOHOL_OPTIONS_PARTY
               return (
                 <div>
-                  <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(0,229,255,0.55)' }}>
+                  <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
                     {isVenue ? 'BAR POLICY' : 'ALCOHOL POLICY'}
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -661,16 +661,16 @@ export default function CreateEventPage() {
                           onClick={() => update({ alcoholPolicy: opt.value as AlcoholPolicy })}
                           className="flex flex-col items-center gap-2 py-4 rounded-xl transition-all duration-200"
                           style={{
-                            background: selected ? 'rgba(0,229,255,0.08)' : 'rgba(0,229,255,0.02)',
-                            border: selected ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-                            boxShadow: selected ? '0 0 16px rgba(0,229,255,0.12)' : 'none',
+                            background: selected ? 'rgba(var(--accent-rgb),0.08)' : 'rgba(var(--accent-rgb),0.02)',
+                            border: selected ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                            boxShadow: selected ? '0 0 16px rgba(var(--accent-rgb),0.12)' : 'none',
                           }}
                         >
                           <span className="text-2xl">{opt.emoji}</span>
-                          <span className="text-[9px] font-bold tracking-widest leading-tight text-center" style={{ color: selected ? '#00e5ff' : 'rgba(74,96,128,0.7)' }}>
+                          <span className="text-[9px] font-bold tracking-widest leading-tight text-center" style={{ color: selected ? 'var(--accent)' : 'rgba(74,96,128,0.7)' }}>
                             {opt.label.toUpperCase()}
                           </span>
-                          <span className="text-[8px] leading-tight text-center" style={{ color: selected ? 'rgba(0,229,255,0.5)' : 'rgba(74,96,128,0.4)' }}>
+                          <span className="text-[8px] leading-tight text-center" style={{ color: selected ? 'rgba(var(--accent-rgb),0.5)' : 'rgba(74,96,128,0.4)' }}>
                             {opt.sublabel}
                           </span>
                         </button>
@@ -690,7 +690,7 @@ export default function CreateEventPage() {
                           🍾 <strong>Hosting at a venue?</strong> — confirm the venue permits your own bar service. Corkage or bar-hire fees typically range £150–£500.
                         </div>
                       )}
-                      <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
+                      <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)', color: 'rgba(var(--accent-rgb),0.6)' }}>
                         👁 This event is hidden from guests who haven't enabled alcohol events in their settings.
                       </div>
                     </div>
@@ -703,7 +703,7 @@ export default function CreateEventPage() {
                           : <><strong>BYOB</strong> — remind guests to bring enough for the night. Consider adding a list in "What to Bring".</>
                         }
                       </div>
-                      <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.6)' }}>
+                      <div className="px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)', color: 'rgba(var(--accent-rgb),0.6)' }}>
                         👁 This event is hidden from guests who haven't enabled alcohol events in their settings.
                       </div>
                     </div>
@@ -714,7 +714,7 @@ export default function CreateEventPage() {
 
             {/* Age restriction */}
             <div>
-              <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(0,229,255,0.55)' }}>AGE RESTRICTION</label>
+              <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>AGE RESTRICTION</label>
               <div className="grid grid-cols-3 gap-2">
                 {AGE_OPTIONS.map((opt) => {
                   const selected = form.ageRestriction === opt.value
@@ -724,13 +724,13 @@ export default function CreateEventPage() {
                       onClick={() => update({ ageRestriction: opt.value as AgeRestriction })}
                       className="flex flex-col items-center gap-1.5 py-4 rounded-xl transition-all duration-200"
                       style={{
-                        background: selected ? 'rgba(0,229,255,0.08)' : 'rgba(0,229,255,0.02)',
-                        border: selected ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-                        boxShadow: selected ? '0 0 16px rgba(0,229,255,0.12)' : 'none',
+                        background: selected ? 'rgba(var(--accent-rgb),0.08)' : 'rgba(var(--accent-rgb),0.02)',
+                        border: selected ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                        boxShadow: selected ? '0 0 16px rgba(var(--accent-rgb),0.12)' : 'none',
                       }}
                     >
                       <span className="text-2xl">{opt.emoji}</span>
-                      <span className="text-[10px] font-black" style={{ color: selected ? '#00e5ff' : 'rgba(74,96,128,0.7)' }}>{opt.label}</span>
+                      <span className="text-[10px] font-black" style={{ color: selected ? 'var(--accent)' : 'rgba(74,96,128,0.7)' }}>{opt.label}</span>
                     </button>
                   )
                 })}
@@ -752,7 +752,7 @@ export default function CreateEventPage() {
 
             {/* Vibe tags */}
             <div>
-              <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(0,229,255,0.55)' }}>
+              <label className="text-[10px] font-bold tracking-[0.2em] mb-3 block" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
                 {form.type === 'CLUB_NIGHT' ? 'MUSIC & GENRE TAGS' : 'VIBE TAGS'}
               </label>
               <div className="flex flex-wrap gap-2">
@@ -767,8 +767,8 @@ export default function CreateEventPage() {
                       }}
                       className="px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200"
                       style={{
-                        background: on ? `${accentColor}15` : 'rgba(0,229,255,0.03)',
-                        border: on ? `1px solid ${accentColor}50` : '1px solid rgba(0,229,255,0.12)',
+                        background: on ? `${accentColor}15` : 'rgba(var(--accent-rgb),0.03)',
+                        border: on ? `1px solid ${accentColor}50` : '1px solid rgba(var(--accent-rgb),0.12)',
                         color: on ? accentColor : 'rgba(74,96,128,0.7)',
                         boxShadow: on ? `0 0 8px ${accentGlow}` : 'none',
                         letterSpacing: '0.08em',
@@ -829,14 +829,14 @@ export default function CreateEventPage() {
               onClick={() => update({ isInviteOnly: !form.isInviteOnly })}
               className="flex items-start gap-3 p-4 rounded-xl w-full text-left transition-all duration-200"
               style={{
-                background: form.isInviteOnly ? 'rgba(255,0,110,0.06)' : 'rgba(0,229,255,0.02)',
-                border: form.isInviteOnly ? '1px solid rgba(255,0,110,0.3)' : '1px solid rgba(0,229,255,0.1)',
+                background: form.isInviteOnly ? 'rgba(255,0,110,0.06)' : 'rgba(var(--accent-rgb),0.02)',
+                border: form.isInviteOnly ? '1px solid rgba(255,0,110,0.3)' : '1px solid rgba(var(--accent-rgb),0.1)',
               }}
             >
               <div
                 className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5"
                 style={{
-                  border: form.isInviteOnly ? '1px solid rgba(255,0,110,0.6)' : '1px solid rgba(0,229,255,0.2)',
+                  border: form.isInviteOnly ? '1px solid rgba(255,0,110,0.6)' : '1px solid rgba(var(--accent-rgb),0.2)',
                   background: form.isInviteOnly ? '#ff006e' : 'transparent',
                 }}
               >
@@ -882,8 +882,8 @@ export default function CreateEventPage() {
                 { label: 'ALCOHOL', value: form.alcoholPolicy?.replace('_', ' ') || '—' },
                 { label: 'AGE', value: form.ageRestriction?.replace('_', ' ') || '—' },
               ].map((item) => (
-                <div key={item.label} className="p-3 rounded-lg" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}>
-                  <p className="text-[9px] font-bold tracking-[0.15em]" style={{ color: 'rgba(0,229,255,0.45)' }}>{item.label}</p>
+                <div key={item.label} className="p-3 rounded-lg" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                  <p className="text-[9px] font-bold tracking-[0.15em]" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>{item.label}</p>
                   <p className="text-sm font-bold mt-0.5" style={{ color: '#e0f2fe' }}>{item.value}</p>
                 </div>
               ))}
@@ -902,8 +902,8 @@ export default function CreateEventPage() {
 
             {/* Lineup preview (club/concert) */}
             {(form as any).lineup && (
-              <div className="p-3 rounded-lg" style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}>
-                <p className="text-[9px] font-bold tracking-[0.15em] mb-1" style={{ color: 'rgba(0,229,255,0.45)' }}>LINEUP</p>
+              <div className="p-3 rounded-lg" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                <p className="text-[9px] font-bold tracking-[0.15em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>LINEUP</p>
                 <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{(form as any).lineup}</p>
               </div>
             )}
@@ -938,7 +938,7 @@ export default function CreateEventPage() {
           left: 0,
           right: 0,
           background: 'rgba(4,4,13,0.95)',
-          borderTop: '1px solid rgba(0,229,255,0.1)',
+          borderTop: '1px solid rgba(var(--accent-rgb),0.1)',
           backdropFilter: 'blur(16px)',
         }}
       >
@@ -947,7 +947,7 @@ export default function CreateEventPage() {
             <button
               onClick={() => setStep((s) => s - 1)}
               className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-xs transition-all duration-200"
-              style={{ border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.6)', letterSpacing: '0.1em' }}
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.6)', letterSpacing: '0.1em' }}
             >
               <ChevronLeft size={14} /> BACK
             </button>
@@ -958,9 +958,9 @@ export default function CreateEventPage() {
             disabled={!isStepValid() || submitting}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm transition-all duration-250 disabled:opacity-30"
             style={{
-              background: isStepValid() && !submitting ? `linear-gradient(135deg, ${accentColor}20, rgba(61,90,254,0.15))` : 'rgba(0,229,255,0.04)',
-              border: `1px solid ${isStepValid() && !submitting ? accentColor + '60' : 'rgba(0,229,255,0.15)'}`,
-              color: isStepValid() ? accentColor : 'rgba(0,229,255,0.3)',
+              background: isStepValid() && !submitting ? `linear-gradient(135deg, ${accentColor}20, rgba(61,90,254,0.15))` : 'rgba(var(--accent-rgb),0.04)',
+              border: `1px solid ${isStepValid() && !submitting ? accentColor + '60' : 'rgba(var(--accent-rgb),0.15)'}`,
+              color: isStepValid() ? accentColor : 'rgba(var(--accent-rgb),0.3)',
               boxShadow: isStepValid() && !submitting ? `0 0 20px ${accentGlow}` : 'none',
               letterSpacing: '0.1em',
             }}

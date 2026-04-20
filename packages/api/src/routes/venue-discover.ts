@@ -24,20 +24,51 @@ const GOOGLE_TYPE_MAP: Record<string, VenueType> = {
   wine_bar: 'BAR',
   brewery: 'BAR',
   beer_hall: 'PUB',
+  comedy_club: 'LOUNGE',
+  dance_hall: 'NIGHTCLUB',
+  sports_bar: 'BAR',
 }
+
+/**
+ * A place must have at least one of these Google types to be accepted.
+ * This prevents supermarkets, petrol stations, restaurants, etc. from appearing.
+ */
+const NIGHTLIFE_TYPES = new Set([
+  'night_club', 'bar', 'pub', 'concert_hall', 'music_venue',
+  'performing_arts_theater', 'live_music_venue', 'karaoke', 'lounge',
+  'cocktail_bar', 'wine_bar', 'brewery', 'beer_hall', 'comedy_club',
+  'dance_hall', 'sports_bar',
+])
 
 // Types to search for in Google Places
 const SEARCH_TYPES = [
   'night_club',
   'bar',
+  'pub',             // important for UK, Ireland, Australia
 ]
+
+// Venue names containing these keywords are rejected regardless of type
+const REJECT_VENUE_KEYWORDS = [
+  'casino', 'casinos', 'betting', 'bookmaker', 'bookmakers',
+  'ladbrokes', 'william hill', 'bet365', 'paddy power', 'coral',
+  'betfair', 'skybet', 'sky bet', 'betfred', 'betvictor', 'unibet',
+  '888sport', 'boyle sports', 'boylesports', 'stan james', 'grosvenor',
+  'gambling', 'bingo hall', 'amusement arcade', 'slot machines', 'amusements',
+]
+
+function isRejectedVenue(name: string): boolean {
+  const lower = name.toLowerCase()
+  return REJECT_VENUE_KEYWORDS.some((kw) => lower.includes(kw))
+}
 
 // Additional text search queries to cover more venues
 const TEXT_QUERIES = [
   'live music venue',
   'concert hall',
   'rooftop bar',
-  'pub nightlife',
+  'nightclub',
+  'karaoke bar',
+  'sports bar',
 ]
 
 interface GooglePlace {
@@ -188,9 +219,11 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
           lng: { gte: lng - lngDelta, lte: lng + lngDelta },
         },
         take: 100,
-        orderBy: { name: 'asc' },
       })
-      return res.json({ data: existing, source: 'database', discovered: 0 })
+      const sortedExisting = existing.slice().sort((a, b) =>
+        Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
+      )
+      return res.json({ data: { venues: sortedExisting, source: 'database', discovered: 0 } })
     }
 
     // Fetch from multiple Google Places searches in parallel
@@ -200,11 +233,16 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
       Promise.all(TEXT_QUERIES.map((q) => fetchTextSearch(q, lat, lng, searchRadius))),
     ])
 
-    // Dedupe by place_id
+    // Dedupe by place_id, filtering to nightlife venues only
     const placeMap = new Map<string, GooglePlace>()
     for (const results of [...nearbyResults, ...textResults]) {
       for (const place of results) {
         if (place.business_status === 'CLOSED_PERMANENTLY') continue
+        // Skip anything that isn't a real nightlife/drinking venue
+        const types = place.types ?? []
+        const isNightlife = types.some((t) => NIGHTLIFE_TYPES.has(t))
+        if (!isNightlife) continue
+        if (isRejectedVenue(place.name)) continue
         if (!placeMap.has(place.place_id)) {
           placeMap.set(place.place_id, place)
         }
@@ -268,11 +306,15 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     const venues = await Promise.all(upsertPromises)
 
+    // Sort by distance from the requested coords (closest first)
+    const sorted = venues.slice().sort((a, b) => {
+      const distA = Math.hypot(a.lat - lat, a.lng - lng)
+      const distB = Math.hypot(b.lat - lat, b.lng - lng)
+      return distA - distB
+    })
+
     res.json({
-      data: venues,
-      source: 'google_places',
-      discovered,
-      total: venues.length,
+      data: { venues: sorted, source: 'google', discovered, total: sorted.length },
     })
   } catch (err) { next(err) }
 })
@@ -283,10 +325,28 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
  */
 router.get('/status', (_req, res) => {
   res.json({
-    googlePlacesEnabled: !!GOOGLE_API_KEY,
-    searchTypes: SEARCH_TYPES,
-    textQueries: TEXT_QUERIES,
+    data: {
+      googlePlacesEnabled: !!GOOGLE_API_KEY,
+      searchTypes: SEARCH_TYPES,
+      textQueries: TEXT_QUERIES,
+    },
   })
+})
+
+/**
+ * DELETE /api/venues/discover/purge-rejected
+ * One-time cleanup: removes any casino/betting venues already in the DB.
+ * Idempotent — safe to call multiple times.
+ */
+router.delete('/purge-rejected', async (_req, res, next) => {
+  try {
+    const all = await prisma.venue.findMany({ select: { id: true, name: true } })
+    const toDelete = all.filter((v) => isRejectedVenue(v.name)).map((v) => v.id)
+    if (toDelete.length > 0) {
+      await prisma.venue.deleteMany({ where: { id: { in: toDelete } } })
+    }
+    res.json({ data: { deleted: toDelete.length, names: all.filter((v) => isRejectedVenue(v.name)).map((v) => v.name) } })
+  } catch (err) { next(err) }
 })
 
 export default router

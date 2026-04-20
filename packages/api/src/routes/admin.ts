@@ -342,15 +342,48 @@ router.post('/seed-venues', async (_req, res, next) => {
     })
     await seedGroupChats(allVenuesForGroups)
 
-    res.json({ message: `Seeded ${created} venues, skipped ${skipped} existing, groups seeded` })
+    res.json({ data: { message: `Seeded ${created} venues, skipped ${skipped} existing, groups seeded` } })
   } catch (err) {
     next(err)
   }
 })
 
+/** POST /api/admin/fix-event-types — one-shot migration: correct HOME_PARTY → proper type */
+router.post('/fix-event-types', async (_req, res, next) => {
+  try {
+    const pubNightNames = [
+      'The Doublet: Pub Karaoke',
+      'Lucky Cat: Private Room Karaoke Party',
+      'Drygate Tap Takeover: Craft Beer Night',
+      "Maggie May's: Saturday Singalong",
+      'Horseshoe Bar: Karaoke Night',
+      'Ben Nevis: Live Folk Session',
+      'State Bar: Blues Night',
+      'Polo Lounge: Drag Bingo & Karaoke',
+    ]
+    const { count } = await prisma.event.updateMany({
+      where: { name: { in: pubNightNames } },
+      data: { type: 'PUB_NIGHT' },
+    })
+    res.json({ data: { message: `Fixed ${count} events → PUB_NIGHT` } })
+  } catch (err) { next(err) }
+})
+
 /** POST /api/admin/seed-activity — seed Glasgow nightlife activity (idempotent) */
 router.post('/seed-activity', async (_req, res, next) => {
   try {
+    // ── 0. One-shot type corrections (idempotent) ────────────────────────────
+    const pubNightFix = [
+      'The Doublet: Pub Karaoke', 'Lucky Cat: Private Room Karaoke Party',
+      'Drygate Tap Takeover: Craft Beer Night', "Maggie May's: Saturday Singalong",
+      'Horseshoe Bar: Karaoke Night', 'Ben Nevis: Live Folk Session',
+      'State Bar: Blues Night', 'Polo Lounge: Drag Bingo & Karaoke',
+    ]
+    await prisma.event.updateMany({
+      where: { name: { in: pubNightFix } },
+      data: { type: 'PUB_NIGHT' },
+    })
+
     // ── 1. Ensure demo host users exist ──────────────────────────────────────
     const demoHosts = [
       { firebaseUid: 'demo_subclub', email: 'bookings@subclub.co.uk', username: 'subclub_gla', displayName: 'Sub Club Glasgow' },
@@ -448,7 +481,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Drygate Tap Takeover: Craft Beer Night',
         venueKey: 'Drygate Brewery', hostKey: 'ross_gla',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 150,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 150,
         startsAt: inDays(3, 18), endsAt: inDays(3, 23),
         description: 'Monthly tap takeover. New seasonal releases, brewery tour, food pairings. All welcome.',
         vibeTags: ['Craft Beer', 'Casual', 'Food', 'Social'],
@@ -519,27 +552,27 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Horseshoe Bar: Karaoke Night',
         venueKey: 'The Horseshoe Bar', hostKey: 'kezia_out',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 120,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 120,
         startsAt: tonight(21), endsAt: inDays(1, 0, 30),
         description: 'Karaoke upstairs at Glasgow\'s most iconic pub. Free entry, longest bar in Europe downstairs. Belters and ballads welcome.',
-        vibeTags: ['Karaoke', 'Free Entry', 'Iconic', 'Traditional'],
+        vibeTags: ['Karaoke', 'Free Entry', 'Iconic', 'Traditional', 'Pub Night'],
         alcoholPolicy: 'PROVIDED' as const,
         ageRestriction: 'AGE_18' as const,
       },
       {
         name: 'The Doublet: Pub Karaoke',
         venueKey: 'The Doublet', hostKey: 'sarah_vibes',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 60,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 60,
         startsAt: inDays(1, 20, 30), endsAt: inDays(1, 23, 30),
         description: 'A proper Glasgow local with the best karaoke atmosphere in the West End. Regulars, students and everyone in between.',
-        vibeTags: ['Karaoke', 'Free Entry', 'West End', 'Locals'],
+        vibeTags: ['Karaoke', 'Free Entry', 'West End', 'Locals', 'Pub Night'],
         alcoholPolicy: 'PROVIDED' as const,
         ageRestriction: 'AGE_18' as const,
       },
       {
         name: 'Ben Nevis: Live Folk Session',
         venueKey: 'The Ben Nevis', hostKey: 'ross_gla',
-        type: 'CONCERT' as const, price: 0, capacity: 80,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 80,
         startsAt: tonight(21), endsAt: tonight(23, 30),
         description: 'Live traditional folk music session. Fiddles, guitars, bodhráns. Huge whisky selection. The spirit of Scotland in Finnieston.',
         vibeTags: ['Folk', 'Live Music', 'Whisky', 'Traditional', 'Free Entry'],
@@ -549,7 +582,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Lucky Cat: Private Room Karaoke Party',
         venueKey: 'Lucky Cat', hostKey: 'kezia_out',
-        type: 'HOME_PARTY' as const, price: 15, capacity: 100,
+        type: 'PUB_NIGHT' as const, price: 15, capacity: 100,
         startsAt: inDays(2, 19), endsAt: inDays(2, 23, 30),
         description: 'Japanese-style private room karaoke. Sing your heart out with cocktails & Asian street food. Book a room or walk in.',
         vibeTags: ['Karaoke', 'Private Rooms', 'Cocktails', 'Asian', 'Party'],
@@ -579,7 +612,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'State Bar: Blues Night',
         venueKey: 'The State Bar', hostKey: 'ross_gla',
-        type: 'CONCERT' as const, price: 0, capacity: 80,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 80,
         startsAt: inDays(2, 20), endsAt: inDays(2, 23),
         description: 'Live blues & jazz from Glasgow\'s finest. Free entry, real ale on tap. A proper midweek wind-down.',
         vibeTags: ['Blues', 'Jazz', 'Live Music', 'Free Entry', 'Chill'],
@@ -599,7 +632,7 @@ router.post('/seed-activity', async (_req, res, next) => {
       {
         name: 'Maggie May\'s: Saturday Singalong',
         venueKey: "Maggie May's", hostKey: 'kezia_out',
-        type: 'HOME_PARTY' as const, price: 0, capacity: 100,
+        type: 'PUB_NIGHT' as const, price: 0, capacity: 100,
         startsAt: inDays(3, 21), endsAt: inDays(4, 1),
         description: 'Trongate\'s karaoke headquarters. No judgement, maximum volume. Two stages, massive song library, cheap drinks.',
         vibeTags: ['Karaoke', 'Free Entry', 'Late Night', 'Fun', 'Party'],
@@ -648,22 +681,21 @@ router.post('/seed-activity', async (_req, res, next) => {
       // If event exists but has expired, update its dates to new future times
       if (existing) {
         const hasExpired = existing.startsAt < new Date()
-        if (hasExpired) {
-          await prisma.event.update({
-            where: { id: existing.id },
-            data: {
-              startsAt: def.startsAt,
-              endsAt: def.endsAt,
-              isCancelled: false,
-              isPublished: true,
-              ticketsRemaining: Math.floor(def.capacity * 0.4),
-            },
-          })
-          createdEventIds.push(existing.id)
-          eventsCreated++
-        } else {
-          createdEventIds.push(existing.id)
+        // Always update type + vibe tags so corrections in seed defs propagate to DB
+        const updateData: Record<string, unknown> = {
+          type: def.type,
+          vibeTags: def.vibeTags,
+          isPublished: true,
         }
+        if (hasExpired) {
+          updateData['startsAt'] = def.startsAt
+          updateData['endsAt'] = def.endsAt
+          updateData['isCancelled'] = false
+          updateData['ticketsRemaining'] = Math.floor(def.capacity * 0.4)
+          eventsCreated++
+        }
+        await prisma.event.update({ where: { id: existing.id }, data: updateData })
+        createdEventIds.push(existing.id)
         continue
       }
       const isDemoHost = demoHosts.find((h) => h.username === def.hostKey)?.firebaseUid?.startsWith('demo_') ?? false
@@ -847,12 +879,14 @@ router.post('/seed-activity', async (_req, res, next) => {
     }
 
     res.json({
-      message: 'Activity seeded',
-      users: Object.keys(hosts).length,
-      eventsCreated,
-      postsCreated,
-      checkInsCreated,
-      groupsSeeded: true,
+      data: {
+        message: 'Activity seeded',
+        users: Object.keys(hosts).length,
+        eventsCreated,
+        postsCreated,
+        checkInsCreated,
+        groupsSeeded: true,
+      },
     })
   } catch (err) {
     next(err)
@@ -915,7 +949,7 @@ router.post('/refresh-activity', async (_req, res, next) => {
     })
 
     if (demoUsers.length === 0 || venues.length === 0) {
-      res.json({ message: 'No demo users or venues found — run seed-activity first' })
+      res.json({ data: { message: 'No demo users or venues found — run seed-activity first' } })
       return
     }
 
@@ -931,7 +965,7 @@ router.post('/refresh-activity', async (_req, res, next) => {
       created.push(`${venue.name}: "${text}"`)
     }
 
-    res.json({ message: `Added ${created.length} fresh posts`, posts: created })
+    res.json({ data: { message: `Added ${created.length} fresh posts`, posts: created } })
   } catch (err) {
     next(err)
   }

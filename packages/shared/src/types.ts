@@ -3,7 +3,7 @@
 export type EventType = 'HOME_PARTY' | 'CLUB_NIGHT' | 'CONCERT' | 'PUB_NIGHT' | 'BEACH_PARTY' | 'YACHT_PARTY'
 export type AlcoholPolicy = 'NONE' | 'PROVIDED' | 'BYOB'
 export type AgeRestriction = 'ALL_AGES' | 'AGE_18' | 'AGE_21'
-export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED'
+export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED' | 'WAITLISTED'
 export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY' | 'PREFER_NOT_TO_SAY'
 export type SubscriptionTier = 'FREE' | 'BASIC' | 'PRO' | 'PREMIUM'
 export type AccountMode = 'ATTENDEE' | 'HOST'
@@ -57,7 +57,6 @@ export interface PublicUser {
   bio?: string | null
   gender?: Gender | null
   ageVerified: boolean
-  alcoholFriendly: boolean
   subscriptionTier: SubscriptionTier
 }
 
@@ -111,6 +110,13 @@ export interface Event {
   guestCount: number
   genderRatio?: GenderRatio | null
   createdAt: string
+  /** External sync fields */
+  externalSource?: string | null
+  socialSourceUrl?: string | null
+  ticketmasterId?: string | null
+  skiddleId?: string | null
+  eventbriteId?: string | null
+  eventbriteUrl?: string | null
 }
 
 export interface CreateEventInput {
@@ -145,6 +151,7 @@ export interface CreateEventInput {
 
 export interface EventDiscoverQuery {
   type?: EventType
+  excludeTypes?: string
   lat?: number
   lng?: number
   radius?: number

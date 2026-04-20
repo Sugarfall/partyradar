@@ -3,8 +3,25 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+import twilio from 'twilio'
 
 const router = Router()
+
+const TWILIO_SID   = process.env['TWILIO_ACCOUNT_SID']
+const TWILIO_TOKEN = process.env['TWILIO_AUTH_TOKEN']
+const TWILIO_FROM  = process.env['TWILIO_FROM_NUMBER']
+
+const twilioClient = TWILIO_SID && TWILIO_TOKEN
+  ? twilio(TWILIO_SID, TWILIO_TOKEN)
+  : null
+
+async function sendSms(to: string, body: string) {
+  if (!twilioClient || !TWILIO_FROM) {
+    console.warn('[phone-verify] Twilio not configured — SMS not sent. Code:', body)
+    return
+  }
+  await twilioClient.messages.create({ from: TWILIO_FROM, to, body })
+}
 
 function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000))
@@ -29,8 +46,11 @@ router.post('/send', requireAuth, async (req: AuthRequest, res, next) => {
 
     await prisma.phoneVerification.create({ data: { userId, phone, code, expiresAt } })
 
-    // In production: send SMS via Twilio/etc. For now, return code in dev mode.
     const isDev = process.env['NODE_ENV'] !== 'production'
+    if (!isDev) {
+      await sendSms(phone, `Your PartyRadar verification code is: ${code}. Valid for 10 minutes.`)
+    }
+
     res.json({ data: { sent: true, ...(isDev ? { code } : {}) } })
   } catch (err) { next(err) }
 })

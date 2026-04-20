@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { Phone, ShieldCheck } from 'lucide-react'
 
 export default function PhoneVerifyPage() {
-  const { dbUser, firebaseUser, refreshUser } = useAuth()
+  const { dbUser, refreshUser } = useAuth()
   const router = useRouter()
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
@@ -17,35 +17,21 @@ export default function PhoneVerifyPage() {
   const [devCode, setDevCode] = useState<string | null>(null)
 
   async function sendCode() {
-    if (!firebaseUser || !phone.trim()) return
+    if (!phone.trim()) return
     setLoading(true); setError(null)
     try {
-      const token = await firebaseUser.getIdToken()
-      const res = await fetch(`${API_URL}/phone/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ phone: phone.trim() }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error?.message || 'Failed to send code')
-      if (json.data?.code) setDevCode(json.data.code) // dev mode only
+      const json = await api.post<{ data?: { code?: string }; error?: { message: string } }>('/phone/send', { phone: phone.trim() })
+      if (json?.data?.code) setDevCode(json.data.code) // dev mode only
       setStep('code')
     } catch (err) { setError(err instanceof Error ? err.message : 'Error') }
     finally { setLoading(false) }
   }
 
   async function verifyCode() {
-    if (!firebaseUser || !code.trim()) return
+    if (!code.trim()) return
     setLoading(true); setError(null)
     try {
-      const token = await firebaseUser.getIdToken()
-      const res = await fetch(`${API_URL}/phone/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error?.message || 'Verification failed')
+      await api.post('/phone/verify', { phone: phone.trim(), code: code.trim() })
       await refreshUser()
       router.push('/profile')
     } catch (err) { setError(err instanceof Error ? err.message : 'Error') }
@@ -54,7 +40,7 @@ export default function PhoneVerifyPage() {
 
   if (!dbUser) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#07071a' }}>
-      <a href="/login" className="text-sm font-black" style={{ color: '#00e5ff' }}>Log in first</a>
+      <a href="/login" className="text-sm font-black" style={{ color: 'var(--accent)' }}>Log in first</a>
     </div>
   )
 
@@ -72,7 +58,7 @@ export default function PhoneVerifyPage() {
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#07071a' }}>
       <div className="w-full max-w-sm space-y-5">
         <div className="text-center space-y-2">
-          <Phone size={36} style={{ color: '#00e5ff', margin: '0 auto' }} />
+          <Phone size={36} style={{ color: 'var(--accent)', margin: '0 auto' }} />
           <h1 className="text-xl font-black" style={{ color: '#e0f2fe' }}>Verify Your Phone</h1>
           <p className="text-sm" style={{ color: 'rgba(224,242,254,0.4)' }}>
             {step === 'phone' ? 'Enter your phone number to receive a code' : `Code sent to ${phone}`}
@@ -83,10 +69,10 @@ export default function PhoneVerifyPage() {
           <>
             <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+44 7700 000000"
               type="tel" className="w-full px-4 py-3 rounded-xl text-sm bg-transparent outline-none"
-              style={{ border: '1px solid rgba(0,229,255,0.2)', color: '#e0f2fe' }} />
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: '#e0f2fe' }} />
             <button onClick={sendCode} disabled={loading || !phone.trim()}
               className="w-full py-3.5 rounded-xl text-sm font-black tracking-widest disabled:opacity-40"
-              style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}>
+              style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}>
               {loading ? 'SENDING…' : 'SEND CODE'}
             </button>
           </>
@@ -100,14 +86,14 @@ export default function PhoneVerifyPage() {
             <input value={code} onChange={e => setCode(e.target.value)} placeholder="6-digit code"
               type="text" inputMode="numeric" maxLength={6}
               className="w-full px-4 py-3 rounded-xl text-sm bg-transparent outline-none tracking-widest text-center"
-              style={{ border: '1px solid rgba(0,229,255,0.2)', color: '#e0f2fe' }} />
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: '#e0f2fe' }} />
             <button onClick={verifyCode} disabled={loading || code.length < 6}
               className="w-full py-3.5 rounded-xl text-sm font-black tracking-widest disabled:opacity-40"
-              style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.35)', color: '#00e5ff' }}>
+              style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}>
               {loading ? 'VERIFYING…' : 'VERIFY'}
             </button>
             <button onClick={() => { setStep('phone'); setError(null) }}
-              className="w-full py-2 text-xs" style={{ color: 'rgba(0,229,255,0.4)' }}>
+              className="w-full py-2 text-xs" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
               Use a different number
             </button>
           </>

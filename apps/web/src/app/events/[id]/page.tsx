@@ -14,6 +14,7 @@ import SaveButton from '@/components/events/SaveButton'
 import { useEvent, updateEvent, cancelEvent } from '@/hooks/useEvents'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { uploadImage } from '@/lib/cloudinary'
 import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
@@ -26,7 +27,7 @@ import type { EventGuest } from '@partyradar/shared'
 
 const TYPE_CONFIG: Record<string, { color: string; glow: string; label: string }> = {
   HOME_PARTY:  { color: '#ff006e', glow: 'rgba(255,0,110,0.25)',   label: 'HOME PARTY'  },
-  CLUB_NIGHT:  { color: '#00e5ff', glow: 'rgba(0,229,255,0.25)',   label: 'CLUB NIGHT'  },
+  CLUB_NIGHT:  { color: 'var(--accent)', glow: 'rgba(var(--accent-rgb),0.25)',   label: 'CLUB NIGHT'  },
   CONCERT:     { color: '#3d5afe', glow: 'rgba(61,90,254,0.25)',   label: 'CONCERT'     },
   PUB_NIGHT:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)',  label: 'PUB NIGHT'   },
   BEACH_PARTY: { color: '#06b6d4', glow: 'rgba(6,182,212,0.25)',   label: 'BEACH PARTY' },
@@ -42,10 +43,10 @@ function formatDate(d: string) {
 
 function MetaCell({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
   return (
-    <div className="p-4 rounded-xl flex flex-col gap-2" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.1)' }}>
+    <div className="p-4 rounded-xl flex flex-col gap-2" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
       <div className="flex items-center gap-1.5">
-        <Icon size={11} style={{ color: 'rgba(0,229,255,0.4)' }} />
-        <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(0,229,255,0.45)' }}>{label}</span>
+        <Icon size={11} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+        <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>{label}</span>
       </div>
       <p className="text-sm font-bold leading-tight" style={{ color: '#e0f2fe' }}>{value}</p>
     </div>
@@ -101,10 +102,10 @@ function WeatherWidget({ lat, lng, eventDate }: { lat: number; lng: number; even
 
   return (
     <div className="flex items-center gap-3 mb-5 px-4 py-3 rounded-xl"
-      style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+      style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
       <span className="text-2xl">{weather.emoji}</span>
       <div className="flex-1">
-        <p className="text-[9px] font-bold tracking-[0.15em] mb-0.5" style={{ color: 'rgba(0,229,255,0.45)' }}>WEATHER FORECAST</p>
+        <p className="text-[9px] font-bold tracking-[0.15em] mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>WEATHER FORECAST</p>
         <p className="text-sm font-medium" style={{ color: '#e0f2fe' }}>{weather.label}</p>
       </div>
       <div className="text-right">
@@ -268,13 +269,33 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
   const [highlights, setHighlights] = useState<HighlightPost[]>([])
   const [viewingIdx, setViewingIdx] = useState<number | null>(null)
   const [liked, setLiked] = useState<Set<string>>(new Set())
+  const [uploading, setUploading] = useState(false)
   const { dbUser } = useAuth()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  // Map raw API post shape to flat HighlightPost interface
+  function mapPost(p: any): HighlightPost {
+    return {
+      id: p.id,
+      userId: p.userId ?? p.user?.id ?? '',
+      userName: p.user?.displayName ?? 'User',
+      userPhoto: p.user?.photoUrl ?? undefined,
+      imageUrl: p.imageUrl ?? '',
+      caption: p.text ?? undefined,
+      likes: p._count?.likes ?? 0,
+      createdAt: p.createdAt,
+    }
+  }
 
   useEffect(() => {
-    // Fetch highlights from API
-    api.get<{ data: HighlightPost[] }>(`/posts?eventId=${event.id}&limit=20`)
-      .then(r => setHighlights(r.data))
+    // Fetch highlights from API — filter to image-only posts
+    api.get<{ data: any[] }>(`/posts/event/${event.id}?limit=20`)
+      .then(r => {
+        const mapped = (r?.data ?? []).filter((p) => p.imageUrl).map(mapPost)
+        if (mapped.length > 0) setHighlights(mapped)
+        else throw new Error('no images')
+      })
       .catch(() => {
         // Demo highlights for dev mode
         setHighlights([
@@ -350,19 +371,43 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
         <div ref={scrollRef} className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4">
           {/* Upload button */}
           {dbUser && (
-            <button
-              onClick={() => alert('Upload coming soon — snap a pic and tag this event!')}
-              className="shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl"
-              style={{
-                width: 80, height: 110,
-                background: `${color}08`, border: `2px dashed ${color}30`,
-              }}>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
-                style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
-                <span style={{ color }}>+</span>
-              </div>
-              <span className="text-[8px] font-bold" style={{ color: `${color}60`, letterSpacing: '0.08em' }}>ADD</span>
-            </button>
+            <>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  e.target.value = ''
+                  setUploading(true)
+                  try {
+                    const imageUrl = await uploadImage(file, 'events')
+                    const res = await api.post<{ data: any }>('/posts', { eventId: event.id, imageUrl })
+                    if (res?.data) setHighlights((prev) => [mapPost(res.data), ...prev])
+                  } catch {}
+                  finally { setUploading(false) }
+                }}
+              />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={uploading}
+                className="shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl transition-opacity disabled:opacity-50"
+                style={{
+                  width: 80, height: 110,
+                  background: `${color}08`, border: `2px dashed ${color}30`,
+                }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
+                  style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
+                  <span style={{ color }}>{uploading ? '…' : '+'}</span>
+                </div>
+                <span className="text-[8px] font-bold" style={{ color: `${color}60`, letterSpacing: '0.08em' }}>
+                  {uploading ? 'UPLOADING' : 'ADD'}
+                </span>
+              </button>
+            </>
           )}
 
           {/* Photo thumbnails */}
@@ -456,58 +501,72 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
 }
 
 function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName: string }) {
-  const [messages, setMessages] = useState<Array<{ id: string; name: string; text: string; time: string; isStaff?: boolean }>>([])
+  interface VenuePost { id: string; user: { displayName: string; photoUrl?: string | null }; text?: string | null; createdAt: string }
+  const [posts, setPosts] = useState<VenuePost[]>([])
   const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const { dbUser } = useAuth()
 
   useEffect(() => {
-    // Demo messages for the venue community
-    setMessages([
-      { id: '1', name: 'VenueStaff', text: `Welcome to the ${venueName} community! Share tips, ask questions, and connect with other regulars.`, time: '2h ago', isStaff: true },
-      { id: '2', name: 'Sarah M', text: 'Best cocktails in Glasgow hands down 🍹', time: '45m ago' },
-      { id: '3', name: 'DJ_Marco', text: 'Playing here next Friday — who\'s coming?', time: '20m ago' },
-      { id: '4', name: 'Chris B', text: 'Any dress code tonight?', time: '5m ago' },
-    ])
-  }, [venueName])
+    api.get<{ data: VenuePost[] }>(`/posts/venue/${venueId}?limit=20`)
+      .then((r) => setPosts((r?.data ?? []).filter((p) => p.text)))
+      .catch(() => {})
+  }, [venueId])
 
-  const visibleMessages = expanded ? messages : messages.slice(-3)
+  async function sendPost() {
+    const text = input.trim()
+    if (!text || !dbUser || sending) return
+    setSending(true)
+    setInput('')
+    try {
+      const res = await api.post<{ data: VenuePost }>('/posts', { text, venueId })
+      if (res?.data) setPosts((prev) => [res.data, ...prev])
+    } catch {}
+    finally { setSending(false) }
+  }
+
+  const visiblePosts = expanded ? posts : posts.slice(0, 3)
+
+  function timeAgoShort(iso: string) {
+    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+    if (m < 1) return 'now'
+    if (m < 60) return `${m}m`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h`
+    return `${Math.floor(h / 24)}d`
+  }
 
   return (
     <div style={{ background: 'rgba(4,4,13,0.6)' }}>
-      {/* Messages */}
+      {/* Posts */}
       <div className="px-4 py-3 space-y-3 max-h-60 overflow-y-auto">
-        {!expanded && messages.length > 3 && (
+        {posts.length === 0 && (
+          <p className="text-center text-[10px] py-2" style={{ color: 'rgba(74,96,128,0.4)' }}>
+            No posts yet — be the first!
+          </p>
+        )}
+        {!expanded && posts.length > 3 && (
           <button onClick={() => setExpanded(true)}
             className="w-full text-center text-[9px] font-bold tracking-widest py-1"
             style={{ color: 'rgba(255,214,0,0.5)' }}>
-            ▲ SHOW {messages.length - 3} MORE
+            ▲ SHOW {posts.length - 3} MORE
           </button>
         )}
-        {visibleMessages.map((msg) => (
-          <div key={msg.id} className="flex gap-2.5">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
-              style={{
-                background: msg.isStaff ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.08)',
-                border: `1px solid ${msg.isStaff ? 'rgba(255,214,0,0.25)' : 'rgba(0,229,255,0.15)'}`,
-                color: msg.isStaff ? '#ffd600' : '#00e5ff',
-              }}>
-              {msg.name[0]}
+        {visiblePosts.map((p) => (
+          <div key={p.id} className="flex gap-2.5">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold overflow-hidden"
+              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'var(--accent)' }}>
+              {p.user.photoUrl
+                ? <img src={p.user.photoUrl} alt="" className="w-full h-full object-cover" />
+                : p.user.displayName[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[10px] font-bold" style={{ color: msg.isStaff ? '#ffd600' : '#e0f2fe' }}>
-                  {msg.name}
-                </span>
-                {msg.isStaff && (
-                  <span className="text-[7px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.25)', color: '#ffd600', letterSpacing: '0.08em' }}>
-                    STAFF
-                  </span>
-                )}
-                <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.5)' }}>{msg.time}</span>
+                <span className="text-[10px] font-bold" style={{ color: '#e0f2fe' }}>{p.user.displayName}</span>
+                <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.5)' }}>{timeAgoShort(p.createdAt)}</span>
               </div>
-              <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.65)' }}>{msg.text}</p>
+              <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.65)' }}>{p.text}</p>
             </div>
           </div>
         ))}
@@ -525,34 +584,15 @@ function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && input.trim()) {
-                  setMessages(prev => [...prev, {
-                    id: `me_${Date.now()}`,
-                    name: dbUser.displayName ?? 'You',
-                    text: input.trim(),
-                    time: 'now',
-                  }])
-                  setInput('')
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') sendPost() }}
               placeholder={`Say something in ${venueName}...`}
               maxLength={200}
               className="flex-1 px-3 py-2 rounded-lg text-xs outline-none"
               style={{ background: 'rgba(4,4,13,0.8)', border: '1px solid rgba(255,214,0,0.12)', color: '#e0f2fe', caretColor: '#ffd600' }}
             />
             <button
-              onClick={() => {
-                if (!input.trim()) return
-                setMessages(prev => [...prev, {
-                  id: `me_${Date.now()}`,
-                  name: dbUser.displayName ?? 'You',
-                  text: input.trim(),
-                  time: 'now',
-                }])
-                setInput('')
-              }}
-              disabled={!input.trim()}
+              onClick={sendPost}
+              disabled={!input.trim() || sending}
               className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
               style={{
                 background: input.trim() ? 'rgba(255,214,0,0.12)' : 'rgba(255,214,0,0.04)',
@@ -615,8 +655,8 @@ export default function EventDetailPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <div className="w-12 h-12 rounded-full border-2 animate-spin"
-          style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
-        <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.5)' }}>LOADING EVENT...</p>
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+        <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>LOADING EVENT...</p>
       </div>
     )
   }
@@ -817,17 +857,17 @@ export default function EventDetailPage() {
         {/* Back button */}
         <Link href="/discover"
           className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200"
-          style={{ background: 'rgba(4,4,13,0.7)', border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.7)', backdropFilter: 'blur(8px)' }}>
+          style={{ background: 'rgba(4,4,13,0.7)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)' }}>
           <ArrowLeft size={12} /> DISCOVER
         </Link>
 
         {/* Share button */}
         <button onClick={handleShare}
           className="absolute top-4 right-4 p-2 rounded-lg transition-all duration-200 flex items-center gap-1.5"
-          style={{ background: 'rgba(4,4,13,0.7)', border: '1px solid rgba(0,229,255,0.2)', backdropFilter: 'blur(8px)' }}>
+          style={{ background: 'rgba(4,4,13,0.7)', border: '1px solid rgba(var(--accent-rgb),0.2)', backdropFilter: 'blur(8px)' }}>
           {copied
             ? <><Check size={13} style={{ color: '#00ff88' }} /><span className="text-[10px] font-bold" style={{ color: '#00ff88' }}>COPIED</span></>
-            : <Share2 size={14} style={{ color: 'rgba(0,229,255,0.6)' }} />
+            : <Share2 size={14} style={{ color: 'rgba(var(--accent-rgb),0.6)' }} />
           }
         </button>
 
@@ -872,7 +912,7 @@ export default function EventDetailPage() {
 
         {/* Host row */}
         <div className="flex items-center gap-3 mb-6 p-3 rounded-xl"
-          style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           {event.host.photoUrl ? (
             <img src={event.host.photoUrl} alt="" className="w-10 h-10 rounded-lg object-cover"
               style={{ border: `1px solid ${tc.color}40`, boxShadow: `0 0 8px ${tc.glow}` }} />
@@ -894,7 +934,7 @@ export default function EventDetailPage() {
           <div className="text-right">
             <p className="text-xl font-black"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}>
-              {isFree ? 'FREE' : formatPrice(event.price)}
+              {formatPrice(event.price)}
             </p>
             {!isFree && <p className="text-[10px] font-bold" style={{ color: 'rgba(74,96,128,0.6)' }}>PER TICKET</p>}
           </div>
@@ -925,32 +965,32 @@ export default function EventDetailPage() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
-            style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.8)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.8)' }}
           >
             <MapPin size={13} /> Directions
           </a>
           <button
             onClick={addToCalendar}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
-            style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.8)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.8)' }}
           >
             <Calendar size={13} /> Add to Calendar
           </button>
         </div>
 
         {/* Capacity bar */}
-        <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.1)' }}>
+        <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <Users size={11} style={{ color: 'rgba(0,229,255,0.4)' }} />
-              <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(0,229,255,0.45)' }}>CAPACITY</span>
+              <Users size={11} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+              <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>CAPACITY</span>
             </div>
             <span className="text-xs font-black" style={{ color: isFull ? '#ff006e' : '#e0f2fe' }}>
               {event.guestCount ?? 0} / {event.capacity}
               {isFull && <span className="ml-2 text-[9px] tracking-widest" style={{ color: '#ff006e' }}>FULL</span>}
             </span>
           </div>
-          <div className="h-1.5 rounded-full" style={{ background: 'rgba(0,229,255,0.08)' }}>
+          <div className="h-1.5 rounded-full" style={{ background: 'rgba(var(--accent-rgb),0.08)' }}>
             <div
               className="h-1.5 rounded-full transition-all duration-700"
               style={{
@@ -988,13 +1028,13 @@ export default function EventDetailPage() {
         {/* Friends going */}
         {friendsGoing.count > 0 && (
           <div className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl"
-            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             <div className="flex -space-x-2">
               {friendsGoing.friends.slice(0, 3).map(f => (
                 f.photoUrl
                   ? <img key={f.id} src={f.photoUrl} alt={f.displayName} className="w-7 h-7 rounded-full object-cover ring-2 ring-[#04040d]" />
                   : <div key={f.id} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-[#04040d]"
-                      style={{ background: 'rgba(0,229,255,0.15)', color: '#00e5ff' }}>
+                      style={{ background: 'rgba(var(--accent-rgb),0.15)', color: 'var(--accent)' }}>
                       {f.displayName[0]}
                     </div>
               ))}
@@ -1015,10 +1055,10 @@ export default function EventDetailPage() {
           const femPct   = Math.round((female    / total) * 100)
           const nbPct    = Math.max(0, 100 - malePct - femPct)
           return (
-            <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.1)' }}>
+            <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(0,229,255,0.45)' }}>CROWD MIX</span>
+                  <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>CROWD MIX</span>
                 </div>
                 <span className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.4)' }}>{total} attending</span>
               </div>
@@ -1031,7 +1071,7 @@ export default function EventDetailPage() {
                   <div style={{ width: `${femPct}%`, background: '#ec4899', boxShadow: '0 0 6px rgba(236,72,153,0.5)', transition: 'width 0.7s' }} />
                 )}
                 {nbPct > 0 && (
-                  <div style={{ width: `${nbPct}%`, background: '#00e5ff', boxShadow: '0 0 6px rgba(0,229,255,0.4)', transition: 'width 0.7s' }} />
+                  <div style={{ width: `${nbPct}%`, background: 'var(--accent)', boxShadow: '0 0 6px rgba(var(--accent-rgb),0.4)', transition: 'width 0.7s' }} />
                 )}
               </div>
               {/* Legend */}
@@ -1046,8 +1086,8 @@ export default function EventDetailPage() {
                 </div>
                 {nbPct > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full" style={{ background: '#00e5ff', boxShadow: '0 0 4px rgba(0,229,255,0.5)' }} />
-                    <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.7)' }}>⚧ {nbPct}%</span>
+                    <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 4px rgba(var(--accent-rgb),0.5)' }} />
+                    <span className="text-[10px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.7)' }}>⚧ {nbPct}%</span>
                   </div>
                 )}
               </div>
@@ -1056,8 +1096,8 @@ export default function EventDetailPage() {
         })()}
 
         {/* About */}
-        <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-          <p className="text-[9px] font-bold tracking-[0.2em] mb-3" style={{ color: 'rgba(0,229,255,0.45)' }}>ABOUT THIS EVENT</p>
+        <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+          <p className="text-[9px] font-bold tracking-[0.2em] mb-3" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>ABOUT THIS EVENT</p>
           <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(224,242,254,0.75)' }}>{event.description}</p>
         </div>
 
@@ -1109,10 +1149,10 @@ export default function EventDetailPage() {
         {/* Dress code */}
         {event.dressCode && (
           <div className="flex gap-3 mb-4 p-3 rounded-xl"
-            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
-            <Shirt size={14} style={{ color: 'rgba(0,229,255,0.4)' }} className="shrink-0 mt-0.5" />
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+            <Shirt size={14} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} className="shrink-0 mt-0.5" />
             <div>
-              <p className="text-[9px] font-bold tracking-[0.15em] mb-0.5" style={{ color: 'rgba(0,229,255,0.45)' }}>DRESS CODE</p>
+              <p className="text-[9px] font-bold tracking-[0.15em] mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>DRESS CODE</p>
               <p className="text-sm" style={{ color: '#e0f2fe' }}>{event.dressCode}</p>
             </div>
           </div>
@@ -1146,9 +1186,9 @@ export default function EventDetailPage() {
 
         {/* Lineup — club/concert */}
         {(event as any).lineup && (
-          <div className="flex gap-3 mb-5 p-3 rounded-xl" style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+          <div className="flex gap-3 mb-5 p-3 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             <div>
-              <p className="text-[9px] font-bold tracking-[0.15em] mb-0.5" style={{ color: 'rgba(0,229,255,0.45)' }}>LINEUP</p>
+              <p className="text-[9px] font-bold tracking-[0.15em] mb-0.5" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>LINEUP</p>
               <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{(event as any).lineup}</p>
             </div>
           </div>
@@ -1194,24 +1234,24 @@ export default function EventDetailPage() {
             <div className="flex flex-wrap gap-2">
               <Link href={`/events/${event.id}/scan`}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200"
-                style={{ border: '1px solid rgba(0,229,255,0.3)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                style={{ border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
                 <QrCode size={13} /> SCAN TICKETS
               </Link>
               <Link href={`/events/${event.id}/edit`}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200"
-                style={{ border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.6)', letterSpacing: '0.1em' }}>
+                style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.6)', letterSpacing: '0.1em' }}>
                 EDIT EVENT
               </Link>
               <Link href={`/events/${event.id}/analytics`}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200"
-                style={{ border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.6)', letterSpacing: '0.1em' }}>
+                style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.6)', letterSpacing: '0.1em' }}>
                 <TrendingUp size={13} /> ANALYTICS
               </Link>
               <button
                 onClick={handleInviteLink}
                 disabled={inviteLoading}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 disabled:opacity-50"
-                style={{ border: `1px solid ${inviteCopied ? 'rgba(0,255,136,0.4)' : 'rgba(0,229,255,0.15)'}`, color: inviteCopied ? '#00ff88' : 'rgba(0,229,255,0.6)', letterSpacing: '0.1em' }}>
+                style={{ border: `1px solid ${inviteCopied ? 'rgba(0,255,136,0.4)' : 'rgba(var(--accent-rgb),0.15)'}`, color: inviteCopied ? '#00ff88' : 'rgba(var(--accent-rgb),0.6)', letterSpacing: '0.1em' }}>
                 {inviteLoading
                   ? <Loader2 size={12} className="animate-spin" />
                   : inviteCopied
@@ -1403,51 +1443,51 @@ export default function EventDetailPage() {
             </div>
 
             {/* Guest list toggle */}
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,229,255,0.12)' }}>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.12)' }}>
               <button
                 onClick={() => setGuestListOpen((o) => !o)}
                 className="w-full flex items-center justify-between px-4 py-3 transition-all"
-                style={{ background: 'rgba(0,229,255,0.03)' }}>
+                style={{ background: 'rgba(var(--accent-rgb),0.03)' }}>
                 <div className="flex items-center gap-2">
-                  <Users size={12} style={{ color: 'rgba(0,229,255,0.5)' }} />
+                  <Users size={12} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
                   <span className="text-xs font-black tracking-widest" style={{ color: '#e0f2fe' }}>
                     GUEST LIST
                   </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff' }}>
+                    style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
                     {event.guestCount ?? 0}
                   </span>
                 </div>
                 {guestListOpen
-                  ? <ChevronUp size={14} style={{ color: 'rgba(0,229,255,0.4)' }} />
-                  : <ChevronDown size={14} style={{ color: 'rgba(0,229,255,0.4)' }} />
+                  ? <ChevronUp size={14} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                  : <ChevronDown size={14} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
                 }
               </button>
 
               {guestListOpen && (
-                <div style={{ borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+                <div style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
                   {!guestData ? (
                     <div className="flex items-center justify-center py-6 gap-2">
                       <div className="w-4 h-4 border border-current border-t-transparent rounded-full animate-spin"
-                        style={{ color: 'rgba(0,229,255,0.3)' }} />
-                      <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.3)' }}>LOADING...</span>
+                        style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
+                      <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>LOADING...</span>
                     </div>
                   ) : guestData.data.length === 0 ? (
                     <div className="py-6 text-center">
                       <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO GUESTS YET</p>
                     </div>
                   ) : (
-                    <div className="max-h-64 overflow-y-auto divide-y" style={{ borderColor: 'rgba(0,229,255,0.05)' }}>
+                    <div className="max-h-64 overflow-y-auto divide-y" style={{ borderColor: 'rgba(var(--accent-rgb),0.05)' }}>
                       {guestData.data.map((guest) => (
                         <div key={guest.id} className="flex items-center gap-3 px-4 py-2.5">
                           {(guest as any).user?.photoUrl ? (
                             <img src={(guest as any).user.photoUrl} alt=""
                               className="w-7 h-7 rounded-full object-cover shrink-0"
-                              style={{ border: '1px solid rgba(0,229,255,0.2)' }} />
+                              style={{ border: '1px solid rgba(var(--accent-rgb),0.2)' }} />
                           ) : (
                             <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-                              style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.15)' }}>
-                              <UserCircle2 size={14} style={{ color: 'rgba(0,229,255,0.4)' }} />
+                              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+                              <UserCircle2 size={14} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
@@ -1487,7 +1527,7 @@ export default function EventDetailPage() {
             left: 0,
             right: 0,
             background: 'rgba(4,4,13,0.96)',
-            borderTop: '1px solid rgba(0,229,255,0.1)',
+            borderTop: '1px solid rgba(var(--accent-rgb),0.1)',
             backdropFilter: 'blur(16px)',
           }}
         >
@@ -1548,7 +1588,7 @@ export default function EventDetailPage() {
                         disabled={rsvpLoading}
                         className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,229,255,0.1))',
+                          background: 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(var(--accent-rgb),0.1))',
                           border: '1px solid rgba(0,255,136,0.45)',
                           color: '#00ff88',
                           boxShadow: '0 0 20px rgba(0,255,136,0.15)',
@@ -1622,8 +1662,8 @@ export default function EventDetailPage() {
 
                 {/* People going */}
                 <div className="flex items-center justify-center gap-1.5">
-                  <Users size={10} style={{ color: 'rgba(0,229,255,0.4)' }} />
-                  <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.45)' }}>
+                  <Users size={10} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                  <span className="text-[10px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
                     {(event.guestCount ?? 0) > 0
                       ? `${event.guestCount} going`
                       : 'Be the first to go'}

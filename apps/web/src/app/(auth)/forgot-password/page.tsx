@@ -39,25 +39,25 @@ export default function ForgotPasswordPage() {
       {/* Ambient glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(0,229,255,0.04) 0%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(circle, rgba(var(--accent-rgb),0.04) 0%, transparent 70%)' }} />
       </div>
 
       <div className="w-full max-w-xs">
         {/* Back link */}
         <Link href="/login"
           className="inline-flex items-center gap-1.5 text-xs font-bold mb-8"
-          style={{ color: 'rgba(0,229,255,0.5)' }}>
+          style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
           <ArrowLeft size={13} /> BACK TO LOGIN
         </Link>
 
         {/* Header */}
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4"
-            style={{ border: '1px solid rgba(0,229,255,0.2)', background: 'rgba(0,229,255,0.05)' }}>
-            <Mail size={10} style={{ color: '#00e5ff' }} />
-            <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.7)' }}>PASSWORD RECOVERY</span>
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', background: 'rgba(var(--accent-rgb),0.05)' }}>
+            <Mail size={10} style={{ color: 'var(--accent)' }} />
+            <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.7)' }}>PASSWORD RECOVERY</span>
           </div>
-          <h1 className="text-2xl font-black" style={{ color: '#00e5ff', textShadow: '0 0 30px rgba(0,229,255,0.3)' }}>
+          <h1 className="text-2xl font-black" style={{ color: 'var(--accent)', textShadow: '0 0 30px rgba(var(--accent-rgb),0.3)' }}>
             RESET ACCESS
           </h1>
           <p className="text-xs mt-2" style={{ color: 'rgba(224,242,254,0.4)' }}>
@@ -70,7 +70,7 @@ export default function ForgotPasswordPage() {
             {/* Email */}
             <div>
               <label className="text-[10px] font-black tracking-[0.15em] block mb-1.5"
-                style={{ color: 'rgba(0,229,255,0.5)' }}>EMAIL</label>
+                style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>EMAIL</label>
               <input
                 type="email"
                 value={email}
@@ -80,8 +80,8 @@ export default function ForgotPasswordPage() {
                 autoFocus
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
                 style={{
-                  background: 'rgba(0,229,255,0.04)',
-                  border: '1px solid rgba(0,229,255,0.2)',
+                  background: 'rgba(var(--accent-rgb),0.04)',
+                  border: '1px solid rgba(var(--accent-rgb),0.2)',
                   color: '#e0f2fe',
                 }}
               />
@@ -99,11 +99,11 @@ export default function ForgotPasswordPage() {
               disabled={!email || loading}
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all disabled:opacity-40"
               style={{
-                background: 'linear-gradient(135deg, rgba(0,229,255,0.15), rgba(0,229,255,0.08))',
-                border: '1px solid rgba(0,229,255,0.4)',
-                color: '#00e5ff',
+                background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(var(--accent-rgb),0.08))',
+                border: '1px solid rgba(var(--accent-rgb),0.4)',
+                color: 'var(--accent)',
                 letterSpacing: '0.12em',
-                boxShadow: '0 0 24px rgba(0,229,255,0.1)',
+                boxShadow: '0 0 24px rgba(var(--accent-rgb),0.1)',
               }}>
               {loading
                 ? <><div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> SENDING...</>
@@ -126,14 +126,14 @@ export default function ForgotPasswordPage() {
 
             <p className="text-[10px] text-center" style={{ color: 'rgba(74,96,128,0.5)' }}>
               Didn&apos;t receive it? Check your spam folder or{' '}
-              <button onClick={() => setSent(false)} className="underline" style={{ color: 'rgba(0,229,255,0.5)' }}>
+              <button onClick={() => setSent(false)} className="underline" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                 try again
               </button>
             </p>
 
             <Link href="/login"
               className="w-full flex items-center justify-center py-3 rounded-xl text-xs font-black transition-all"
-              style={{ border: '1px solid rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.6)', letterSpacing: '0.1em' }}>
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.6)', letterSpacing: '0.1em' }}>
               BACK TO LOGIN
             </Link>
           </div>

@@ -10,10 +10,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<string, CSSProperties> = {
   primary: {
-    background: 'linear-gradient(135deg, rgba(0,229,255,0.12), rgba(61,90,254,0.12))',
-    border: '1px solid rgba(0,229,255,0.45)',
-    color: '#00e5ff',
-    boxShadow: '0 0 14px rgba(0,229,255,0.18)',
+    background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.12), rgba(61,90,254,0.12))',
+    border: '1px solid rgba(var(--accent-rgb),0.45)',
+    color: 'var(--accent)',
+    boxShadow: '0 0 14px rgba(var(--accent-rgb),0.18)',
     letterSpacing: '0.06em',
   },
   secondary: {

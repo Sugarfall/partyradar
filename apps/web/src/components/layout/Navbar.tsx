@@ -4,30 +4,37 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users } from 'lucide-react'
+import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
 
-// ── Core nav links (desktop centre + mobile tabs) ────────────────────────────
+// ── Desktop nav links ────────────────────────────────────────────────────────
 const NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/radar',    label: 'Radar',    icon: Radio   },
   { href: '/nearby',   label: 'Nearby',   icon: Users   },
 ]
 
+// ── Mobile bottom tabs ───────────────────────────────────────────────────────
+const MOBILE_NAV = [
+  { href: '/discover', label: 'Discover', icon: Compass },
+  { href: '/radar',    label: 'Radar',    icon: Radio   },
+  { href: '/nearby',   label: 'Nearby',   icon: Users   },
+]
+
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
-  RSVP_CONFIRMED:   <Ticket   size={13} style={{ color: '#00ff88' }} />,
-  INVITE_RECEIVED:  <Zap      size={13} style={{ color: '#00e5ff' }} />,
-  EVENT_REMINDER:   <Calendar size={13} style={{ color: '#ffd600' }} />,
-  CELEBRITY_NEARBY: <Star     size={13} style={{ color: '#ffd600' }} />,
-  EVENT_UPDATED:    <Zap      size={13} style={{ color: '#3d5afe' }} />,
-  FOLLOW:           <UserPlus size={13} style={{ color: '#00e5ff' }} />,
-  PROFILE_VIEW:     <Eye      size={13} style={{ color: '#a855f7' }} />,
-  NUDGE:            <Bell     size={13} style={{ color: '#00ff88' }} />,
-  GO_OUT_REQUEST:   <Sparkles size={13} style={{ color: '#ff006e' }} />,
-  GO_OUT_ACCEPTED:  <Sparkles size={13} style={{ color: '#00ff88' }} />,
-  MESSAGE:          <MessageCircle size={13} style={{ color: '#00e5ff' }} />,
+  RSVP_CONFIRMED:   <Ticket        size={13} style={{ color: '#00ff88' }} />,
+  INVITE_RECEIVED:  <Zap           size={13} style={{ color: 'var(--accent)' }} />,
+  EVENT_REMINDER:   <Calendar      size={13} style={{ color: '#ffd600' }} />,
+  CELEBRITY_NEARBY: <Star          size={13} style={{ color: '#ffd600' }} />,
+  EVENT_UPDATED:    <Zap           size={13} style={{ color: '#3d5afe' }} />,
+  FOLLOW:           <UserPlus      size={13} style={{ color: 'var(--accent)' }} />,
+  PROFILE_VIEW:     <Eye           size={13} style={{ color: '#a855f7' }} />,
+  NUDGE:            <Bell          size={13} style={{ color: '#00ff88' }} />,
+  GO_OUT_REQUEST:   <Sparkles      size={13} style={{ color: '#ff006e' }} />,
+  GO_OUT_ACCEPTED:  <Sparkles      size={13} style={{ color: '#00ff88' }} />,
+  MESSAGE:          <MessageCircle size={13} style={{ color: 'var(--accent)' }} />,
 }
 
 function notifLink(n: Notification): string | null {
@@ -85,7 +92,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
         <span className="text-xs font-semibold" style={{ color: '#e0f2fe' }}>Notifications</span>
         <div className="flex items-center gap-3">
           {notifications.some((n) => !n.read) && (
-            <button onClick={markAll} className="text-[10px]" style={{ color: 'rgba(0,229,255,0.6)' }}>
+            <button onClick={markAll} className="text-[10px]" style={{ color: 'var(--accent)' }}>
               Mark all read
             </button>
           )}
@@ -109,7 +116,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
           >
             <div className="mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0"
               style={{ background: 'rgba(255,255,255,0.06)' }}>
-              {NOTIF_ICONS[n.type] ?? <Bell size={13} style={{ color: '#00e5ff' }} />}
+              {NOTIF_ICONS[n.type] ?? <Bell size={13} style={{ color: 'var(--accent)' }} />}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium leading-tight"
@@ -119,11 +126,16 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
             </div>
             {!n.read && (
               <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                style={{ background: '#00e5ff' }} />
+                style={{ background: 'var(--accent)' }} />
             )}
           </button>
         ))}
       </div>
+      <Link href="/notifications" onClick={onClose}
+        className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-all hover:bg-white/5"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(var(--accent-rgb),0.6)' }}>
+        View all notifications <ChevronRight size={12} />
+      </Link>
     </div>
   )
 }
@@ -188,9 +200,8 @@ function NavbarInner() {
         <div className="max-w-5xl mx-auto px-4 h-full flex items-center justify-between">
           {/* Logo */}
           <Link href="/discover" className="flex items-center gap-2 shrink-0">
-            <Zap size={16} fill="rgba(0,229,255,0.15)"
-              style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 5px rgba(0,229,255,0.6))' }} />
-            <span className="text-sm font-bold tracking-widest" style={{ color: '#00e5ff' }}>
+            <Zap size={16} style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 5px rgba(var(--accent-rgb),0.6))' }} />
+            <span className="text-sm font-bold tracking-widest" style={{ color: 'var(--accent)' }}>
               PARTYRADAR
             </span>
           </Link>
@@ -201,25 +212,25 @@ function NavbarInner() {
             className="flex items-center gap-1 rounded-lg px-2 py-1 transition-all duration-200 shrink-0"
             style={{
               background: isHost
-                ? 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.08) 100%)'
-                : 'rgba(0,229,255,0.06)',
-              border: isHost ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(0,229,255,0.15)',
+                ? 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(var(--accent-rgb),0.08) 100%)'
+                : 'rgba(var(--accent-rgb),0.06)',
+              border: isHost ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(var(--accent-rgb),0.15)',
             }}
           >
             <span
               className="text-[9px] font-black tracking-widest transition-all"
-              style={{ color: isHost ? 'rgba(168,85,247,0.5)' : 'rgba(0,229,255,0.4)' }}
+              style={{ color: isHost ? 'rgba(168,85,247,0.5)' : 'var(--accent)', opacity: isHost ? 1 : 0.5 }}
             >
               {isHost ? 'HOST' : 'ATTENDEE'}
             </span>
             {/* Sliding dot */}
             <div className="relative w-7 h-4 rounded-full flex items-center transition-all"
-              style={{ background: isHost ? 'rgba(168,85,247,0.2)' : 'rgba(0,229,255,0.08)', border: isHost ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(0,229,255,0.12)' }}>
+              style={{ background: isHost ? 'rgba(168,85,247,0.2)' : 'rgba(var(--accent-rgb),0.08)', border: isHost ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(var(--accent-rgb),0.12)' }}>
               <div className="absolute w-3 h-3 rounded-full transition-all duration-200"
                 style={{
-                  background: isHost ? '#a855f7' : '#00e5ff',
+                  background: isHost ? '#a855f7' : 'var(--accent)',
                   left: isHost ? '13px' : '1px',
-                  boxShadow: `0 0 6px ${isHost ? 'rgba(168,85,247,0.6)' : 'rgba(0,229,255,0.5)'}`,
+                  boxShadow: `0 0 6px ${isHost ? 'rgba(168,85,247,0.6)' : 'rgba(var(--accent-rgb),0.5)'}`,
                 }} />
             </div>
           </button>
@@ -263,7 +274,7 @@ function NavbarInner() {
                     <Link href="/events/create"
                       className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.1) 100%)',
+                        background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(var(--accent-rgb),0.1) 100%)',
                         border: '1px solid rgba(168,85,247,0.35)',
                         color: '#a855f7',
                       }}
@@ -278,8 +289,8 @@ function NavbarInner() {
                 <Link href="/earn"
                   className="p-2 rounded-lg transition-all duration-150"
                   style={{
-                    color: pathname.startsWith('/earn') ? '#00e5ff' : 'rgba(255,255,255,0.4)',
-                    background: pathname.startsWith('/earn') ? 'rgba(0,229,255,0.08)' : 'transparent',
+                    color: pathname.startsWith('/earn') ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/earn') ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                   }}
                 >
                   <TrendingUp size={16} />
@@ -296,12 +307,23 @@ function NavbarInner() {
                   <Gift size={16} />
                 </Link>
 
+                {/* Wallet */}
+                <Link href="/wallet"
+                  className="p-2 rounded-lg transition-all duration-150"
+                  style={{
+                    color: pathname.startsWith('/wallet') ? '#00ff88' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/wallet') ? 'rgba(0,255,136,0.08)' : 'transparent',
+                  }}
+                >
+                  <Wallet size={16} />
+                </Link>
+
                 {/* Messages */}
                 <Link href="/messages"
                   className="p-2 rounded-lg transition-all duration-150 relative"
                   style={{
-                    color: pathname.startsWith('/messages') ? '#00e5ff' : 'rgba(255,255,255,0.4)',
-                    background: pathname.startsWith('/messages') ? 'rgba(0,229,255,0.08)' : 'transparent',
+                    color: pathname.startsWith('/messages') ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
+                    background: pathname.startsWith('/messages') ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                   }}
                 >
                   <MessageCircle size={16} />
@@ -312,8 +334,8 @@ function NavbarInner() {
                   <button onClick={() => setNotifOpen((o) => !o)}
                     className="relative p-2 rounded-lg transition-all duration-150"
                     style={{
-                      color: notifOpen ? '#00e5ff' : 'rgba(255,255,255,0.4)',
-                      background: notifOpen ? 'rgba(0,229,255,0.08)' : 'transparent',
+                      color: notifOpen ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
+                      background: notifOpen ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
                     }}
                   >
                     <Bell size={16} />
@@ -344,7 +366,7 @@ function NavbarInner() {
                 </Link>
                 <Link href="/register"
                   className="text-sm px-3 py-1.5 rounded-lg font-semibold transition-all"
-                  style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
                   Sign up
                 </Link>
               </div>
@@ -364,15 +386,18 @@ function NavbarInner() {
         }}
       >
         <div className="flex items-stretch h-16">
-          {/* Discover */}
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {MOBILE_NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (
               <Link key={href} href={href}
-                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
-                style={{ color: active ? '#fff' : 'rgba(255,255,255,0.35)' }}>
-                <Icon size={18} strokeWidth={active ? 2 : 1.5} />
-                <span className="text-[9px] font-medium tracking-wide">{label}</span>
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
+                style={{ color: active ? 'var(--accent)' : 'rgba(255,255,255,0.35)' }}>
+                <Icon
+                  size={16}
+                  strokeWidth={active ? 2 : 1.5}
+                  style={active ? { filter: 'drop-shadow(0 0 6px rgba(var(--accent-rgb),0.6))' } : undefined}
+                />
+                <span className="text-[8px] font-medium tracking-tight leading-none">{label}</span>
               </Link>
             )
           })}
@@ -384,7 +409,7 @@ function NavbarInner() {
               <Link href={dbUser ? '/events/create' : '/login'}
                 className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(0,229,255,0.2) 100%)',
+                  background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(var(--accent-rgb),0.2) 100%)',
                   border: '1px solid rgba(168,85,247,0.5)',
                   boxShadow: '0 0 20px rgba(168,85,247,0.2)',
                 }}
@@ -394,37 +419,46 @@ function NavbarInner() {
             ) : (
               /* ATTENDEE: my tickets */
               <Link href={dbUser ? '/tickets' : '/login'}
-                className="flex flex-col items-center justify-center gap-1 transition-all"
+                className="flex flex-col items-center justify-center gap-0.5 transition-all"
                 style={{ color: pathname.startsWith('/tickets') ? '#fff' : 'rgba(255,255,255,0.35)' }}
               >
-                <Ticket size={18} strokeWidth={pathname.startsWith('/tickets') ? 2 : 1.5} />
-                <span className="text-[9px] font-medium tracking-wide">Tickets</span>
+                <Ticket size={16} strokeWidth={pathname.startsWith('/tickets') ? 2 : 1.5} />
+                <span className="text-[8px] font-medium tracking-tight leading-none">Tickets</span>
               </Link>
             )}
           </div>
 
           {/* Messages */}
           <Link href="/messages"
-            className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
-            style={{ color: pathname.startsWith('/messages') ? '#00e5ff' : 'rgba(255,255,255,0.35)' }}>
-            <MessageCircle size={18} strokeWidth={pathname.startsWith('/messages') ? 2 : 1.5} />
-            <span className="text-[9px] font-medium tracking-wide">Chats</span>
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
+            style={{ color: pathname.startsWith('/messages') ? 'var(--accent)' : 'rgba(255,255,255,0.35)' }}>
+            <MessageCircle size={16} strokeWidth={pathname.startsWith('/messages') ? 2 : 1.5} />
+            <span className="text-[8px] font-medium tracking-tight leading-none">Chats</span>
+          </Link>
+
+          {/* Wallet */}
+          <Link href={dbUser ? '/wallet' : '/login'}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
+            style={{ color: pathname.startsWith('/wallet') ? '#00ff88' : 'rgba(255,255,255,0.35)' }}>
+            <Wallet size={16} strokeWidth={pathname.startsWith('/wallet') ? 2 : 1.5}
+              style={pathname.startsWith('/wallet') ? { filter: 'drop-shadow(0 0 6px rgba(0,255,136,0.6))' } : undefined} />
+            <span className="text-[8px] font-medium tracking-tight leading-none">Wallet</span>
           </Link>
 
           {/* Profile */}
           <Link href={dbUser ? '/profile' : '/login'}
-            className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
             style={{ color: pathname.startsWith('/profile') ? '#fff' : 'rgba(255,255,255,0.35)' }}>
             <div className="relative">
               {dbUser?.photoUrl
-                ? <img src={dbUser.photoUrl} alt="" className="w-5 h-5 rounded-full object-cover" />
-                : <User size={18} strokeWidth={pathname.startsWith('/profile') ? 2 : 1.5} />}
+                ? <img src={dbUser.photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+                : <User size={16} strokeWidth={pathname.startsWith('/profile') ? 2 : 1.5} />}
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
                   style={{ background: '#00ff88' }} />
               )}
             </div>
-            <span className="text-[9px] font-medium tracking-wide">
+            <span className="text-[8px] font-medium tracking-tight leading-none">
               {dbUser ? 'Profile' : 'Sign in'}
             </span>
           </Link>

@@ -1,34 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight } from 'lucide-react'
+import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight, Loader2 } from 'lucide-react'
+
+import { api } from '@/lib/api'
 
 const EMOJI_OPTIONS = ['🎉', '🔥', '⚡', '🎶', '🍻', '💃', '🕺', '🌙', '🚀', '🎸', '💜', '🦄', '👾', '🎭', '🌈']
+
+interface SquadMember {
+  id: string
+  displayName: string
+  photoUrl: string | null
+  role: string
+}
 
 interface Squad {
   id: string
   emoji: string
   name: string
-  members: string[]
   createdAt: string
-}
-
-function generateId() {
-  return Math.random().toString(36).slice(2, 10)
-}
-
-function loadSquads(): Squad[] {
-  if (typeof window === 'undefined') return []
-  try {
-    return JSON.parse(localStorage.getItem('partyradar_squads') ?? '[]') as Squad[]
-  } catch {
-    return []
-  }
-}
-
-function saveSquads(squads: Squad[]) {
-  localStorage.setItem('partyradar_squads', JSON.stringify(squads))
+  isOwner: boolean
+  members: SquadMember[]
 }
 
 // ── Create Squad Modal ──────────────────────────────────────────────────────
@@ -39,17 +32,21 @@ function CreateSquadModal({ onClose, onCreate }: {
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('🎉')
   const [focused, setFocused] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleCreate() {
-    if (!name.trim()) return
-    const squad: Squad = {
-      id: generateId(),
-      emoji,
-      name: name.trim(),
-      members: ['You'],
-      createdAt: new Date().toISOString(),
+  async function handleCreate() {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      const json = await api.post<{ data: Squad }>('/squads', { name: name.trim(), emoji })
+      onCreate(json.data)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create squad')
+    } finally {
+      setSaving(false)
     }
-    onCreate(squad)
   }
 
   return (
@@ -62,17 +59,17 @@ function CreateSquadModal({ onClose, onCreate }: {
         className="w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-4"
         style={{
           background: 'rgba(7,7,26,0.98)',
-          border: '1px solid rgba(0,229,255,0.15)',
+          border: '1px solid rgba(var(--accent-rgb),0.15)',
           boxShadow: '0 0 60px rgba(0,0,0,0.8)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle */}
-        <div className="w-10 h-1 rounded-full mx-auto sm:hidden" style={{ background: 'rgba(0,229,255,0.2)' }} />
+        <div className="w-10 h-1 rounded-full mx-auto sm:hidden" style={{ background: 'rgba(var(--accent-rgb),0.2)' }} />
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <p className="text-sm font-black tracking-widest" style={{ color: '#00e5ff' }}>CREATE SQUAD</p>
+          <p className="text-sm font-black tracking-widest" style={{ color: 'var(--accent)' }}>CREATE SQUAD</p>
           <button onClick={onClose} style={{ color: 'rgba(74,96,128,0.6)' }}>
             <X size={16} />
           </button>
@@ -80,7 +77,7 @@ function CreateSquadModal({ onClose, onCreate }: {
 
         {/* Emoji picker */}
         <div>
-          <p className="text-[10px] font-bold tracking-[0.15em] mb-2" style={{ color: 'rgba(0,229,255,0.5)' }}>SQUAD EMOJI</p>
+          <p className="text-[10px] font-bold tracking-[0.15em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SQUAD EMOJI</p>
           <div className="flex flex-wrap gap-2">
             {EMOJI_OPTIONS.map((e) => (
               <button
@@ -88,9 +85,9 @@ function CreateSquadModal({ onClose, onCreate }: {
                 onClick={() => setEmoji(e)}
                 className="w-9 h-9 text-xl rounded-xl transition-all duration-150 flex items-center justify-center"
                 style={{
-                  background: emoji === e ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.04)',
-                  border: emoji === e ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-                  boxShadow: emoji === e ? '0 0 10px rgba(0,229,255,0.2)' : 'none',
+                  background: emoji === e ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--accent-rgb),0.04)',
+                  border: emoji === e ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                  boxShadow: emoji === e ? '0 0 10px rgba(var(--accent-rgb),0.2)' : 'none',
                 }}
               >
                 {e}
@@ -101,7 +98,7 @@ function CreateSquadModal({ onClose, onCreate }: {
 
         {/* Name input */}
         <div>
-          <label className="text-[10px] font-bold tracking-[0.15em] block mb-2" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          <label className="text-[10px] font-bold tracking-[0.15em] block mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             SQUAD NAME
           </label>
           <input
@@ -109,12 +106,13 @@ function CreateSquadModal({ onClose, onCreate }: {
             onChange={(e) => setName(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            maxLength={40}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
+            maxLength={60}
             placeholder="Name your crew..."
             className="w-full px-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all duration-200"
             style={{
-              background: 'rgba(0,229,255,0.04)',
-              border: focused ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)',
+              background: 'rgba(var(--accent-rgb),0.04)',
+              border: focused ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
               color: '#e0f2fe',
             }}
           />
@@ -124,29 +122,33 @@ function CreateSquadModal({ onClose, onCreate }: {
         {name.trim() && (
           <div
             className="flex items-center gap-3 p-3 rounded-xl"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}
           >
             <span className="text-2xl">{emoji}</span>
             <div>
               <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{name.trim()}</p>
-              <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>1 member</p>
+              <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>1 member</p>
             </div>
           </div>
+        )}
+
+        {error && (
+          <p className="text-[10px] font-bold" style={{ color: '#ff006e' }}>{error}</p>
         )}
 
         {/* Create button */}
         <button
           onClick={handleCreate}
-          disabled={!name.trim()}
-          className="w-full py-3 rounded-xl text-sm font-black transition-all duration-200 disabled:opacity-40"
+          disabled={!name.trim() || saving}
+          className="w-full py-3 rounded-xl text-sm font-black transition-all duration-200 disabled:opacity-40 flex items-center justify-center gap-2"
           style={{
-            background: name.trim() ? 'rgba(0,229,255,0.1)' : 'transparent',
-            border: name.trim() ? '1px solid rgba(0,229,255,0.4)' : '1px solid rgba(0,229,255,0.1)',
-            color: name.trim() ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+            background: name.trim() ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+            border: name.trim() ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+            color: name.trim() ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             letterSpacing: '0.1em',
           }}
         >
-          CREATE SQUAD →
+          {saving ? <Loader2 size={14} className="animate-spin" /> : 'CREATE SQUAD →'}
         </button>
       </div>
     </div>
@@ -257,24 +259,27 @@ function PlanTonightModal({ squad, onClose }: { squad: Squad; onClose: () => voi
 }
 
 // ── Squad Card ─────────────────────────────────────────────────────────────
-function SquadCard({ squad, onPlan, onDelete }: {
+function SquadCard({ squad, onPlan, onDelete, deleting }: {
   squad: Squad
   onPlan: () => void
   onDelete: () => void
+  deleting: boolean
 }) {
   return (
     <div
       className="rounded-2xl p-4 flex items-center gap-4"
       style={{
         background: 'rgba(24,24,27,0.95)',
-        border: '1px solid rgba(0,229,255,0.1)',
+        border: '1px solid rgba(var(--accent-rgb),0.1)',
         boxShadow: '0 2px 20px rgba(0,0,0,0.3)',
+        opacity: deleting ? 0.5 : 1,
+        transition: 'opacity 0.2s',
       }}
     >
       {/* Emoji */}
       <div
         className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
-        style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.12)' }}
+        style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}
       >
         {squad.emoji}
       </div>
@@ -302,13 +307,16 @@ function SquadCard({ squad, onPlan, onDelete }: {
         >
           PLAN TONIGHT <ArrowRight size={10} />
         </button>
-        <button
-          onClick={onDelete}
-          className="p-1.5 rounded-lg transition-all duration-200"
-          style={{ border: '1px solid rgba(255,0,110,0.15)', color: 'rgba(255,0,110,0.4)' }}
-        >
-          <X size={12} />
-        </button>
+        {squad.isOwner && (
+          <button
+            onClick={onDelete}
+            disabled={deleting}
+            className="p-1.5 rounded-lg transition-all duration-200 disabled:opacity-40"
+            style={{ border: '1px solid rgba(255,0,110,0.15)', color: 'rgba(255,0,110,0.4)' }}
+          >
+            {deleting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -317,24 +325,39 @@ function SquadCard({ squad, onPlan, onDelete }: {
 // ── Main Squad Page ─────────────────────────────────────────────────────────
 export default function SquadPage() {
   const [squads, setSquads] = useState<Squad[]>([])
+  const [loading, setLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [planSquad, setPlanSquad] = useState<Squad | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    setSquads(loadSquads())
+  const fetchSquads = useCallback(async () => {
+    try {
+      const json = await api.get<{ data: Squad[] }>('/squads')
+      setSquads(json?.data ?? [])
+    } catch {
+      setSquads([])
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
+  useEffect(() => { fetchSquads() }, [fetchSquads])
+
   function handleCreate(squad: Squad) {
-    const updated = [...squads, squad]
-    setSquads(updated)
-    saveSquads(updated)
+    setSquads((prev) => [...prev, squad])
     setCreateOpen(false)
   }
 
-  function handleDelete(id: string) {
-    const updated = squads.filter((s) => s.id !== id)
-    setSquads(updated)
-    saveSquads(updated)
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    try {
+      await api.delete(`/squads/${id}`)
+      setSquads((prev) => prev.filter((s) => s.id !== id))
+    } catch {
+      // leave in list on error
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
@@ -375,7 +398,11 @@ export default function SquadPage() {
 
       {/* Squad list */}
       <div className="max-w-xl mx-auto px-4 space-y-3">
-        {squads.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center py-20">
+            <Loader2 size={24} className="animate-spin" style={{ color: 'rgba(168,85,247,0.5)' }} />
+          </div>
+        ) : squads.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div
@@ -410,6 +437,7 @@ export default function SquadPage() {
               squad={squad}
               onPlan={() => setPlanSquad(squad)}
               onDelete={() => handleDelete(squad.id)}
+              deleting={deletingId === squad.id}
             />
           ))
         )}
@@ -420,14 +448,14 @@ export default function SquadPage() {
             href="/discover"
             className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
             style={{
-              background: 'rgba(0,229,255,0.03)',
-              border: '1px solid rgba(0,229,255,0.08)',
-              color: 'rgba(0,229,255,0.5)',
+              background: 'rgba(var(--accent-rgb),0.03)',
+              border: '1px solid rgba(var(--accent-rgb),0.08)',
+              color: 'rgba(var(--accent-rgb),0.5)',
             }}
           >
-            <Zap size={13} style={{ color: 'rgba(0,229,255,0.4)' }} />
+            <Zap size={13} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
             <span className="text-xs font-bold flex-1">Find events for tonight</span>
-            <ChevronRight size={13} style={{ color: 'rgba(0,229,255,0.3)' }} />
+            <ChevronRight size={13} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
           </Link>
         )}
       </div>

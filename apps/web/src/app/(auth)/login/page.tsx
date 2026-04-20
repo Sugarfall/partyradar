@@ -25,11 +25,35 @@ export default function LoginPage() {
     try {
       await signIn(email, password)
       router.push('/discover')
-    } catch {
-      setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
+    } catch (err: any) {
+      const code = err?.code ?? ''
+      if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-email') {
+        setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
+      } else if (code === 'auth/too-many-requests') {
+        setError('TOO MANY ATTEMPTS — WAIT A MOMENT AND TRY AGAIN')
+      } else if (code === 'auth/network-request-failed') {
+        setError('NETWORK ERROR — CHECK YOUR CONNECTION')
+      } else if (err?.message?.includes('Request failed') || err?.message?.includes('fetch')) {
+        setError('SERVER UNREACHABLE — TRY AGAIN IN A MOMENT')
+      } else {
+        setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
+      }
     } finally {
       setLoading(false)
     }
+  }
+
+  function parseAuthError(err: any): string {
+    const code = err?.code ?? ''
+    if (code === 'auth/unauthorized-domain') {
+      const domain = typeof window !== 'undefined' ? window.location.hostname : 'this domain'
+      return `Add "${domain}" to Firebase Console → Authentication → Authorised Domains`
+    }
+    if (code === 'auth/operation-not-allowed') return 'Google sign-in is not enabled — check Firebase Console → Sign-in method'
+    if (code === 'auth/popup-blocked') return 'Popup was blocked — allow popups for this site and try again'
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return ''
+    if (code === 'auth/account-exists-with-different-credential') return 'An account already exists with this email — try signing in with email/password'
+    return err?.message?.replace('Firebase: ', '').replace(/\s*\(auth\/[^)]+\)\.?/, '') ?? `Sign-in failed (${code || 'unknown'})`
   }
 
   async function handleGoogleLogin() {
@@ -38,8 +62,9 @@ export default function LoginPage() {
     try {
       await signInWithGoogle()
       router.push('/discover')
-    } catch {
-      setError('GOOGLE AUTH FAILED — TRY AGAIN')
+    } catch (err: any) {
+      const msg = parseAuthError(err)
+      if (msg) setError(msg)
     } finally {
       setGoogleLoading(false)
     }
@@ -51,8 +76,9 @@ export default function LoginPage() {
     try {
       await signInWithApple()
       router.push('/discover')
-    } catch {
-      setError('APPLE AUTH FAILED — TRY AGAIN')
+    } catch (err: any) {
+      const msg = parseAuthError(err)
+      if (msg) setError(msg)
     } finally {
       setAppleLoading(false)
     }
@@ -66,29 +92,29 @@ export default function LoginPage() {
       {/* Ambient glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(0,229,255,0.04) 0%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(circle, rgba(var(--accent-rgb),0.04) 0%, transparent 70%)' }} />
       </div>
 
       <div className="w-full max-w-sm relative">
         {/* Corner brackets */}
         <div className="absolute -top-3 -left-3 w-6 h-6"
-          style={{ borderTop: '2px solid rgba(0,229,255,0.4)', borderLeft: '2px solid rgba(0,229,255,0.4)' }} />
+          style={{ borderTop: '2px solid rgba(var(--accent-rgb),0.4)', borderLeft: '2px solid rgba(var(--accent-rgb),0.4)' }} />
         <div className="absolute -bottom-3 -right-3 w-6 h-6"
-          style={{ borderBottom: '2px solid rgba(0,229,255,0.4)', borderRight: '2px solid rgba(0,229,255,0.4)' }} />
+          style={{ borderBottom: '2px solid rgba(var(--accent-rgb),0.4)', borderRight: '2px solid rgba(var(--accent-rgb),0.4)' }} />
 
         {/* Header */}
         <div className="text-center mb-8">
-          <p className="text-[10px] font-bold tracking-[0.35em] mb-3" style={{ color: 'rgba(0,229,255,0.45)' }}>
+          <p className="text-[10px] font-bold tracking-[0.35em] mb-3" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
             PARTYRADAR // ACCESS TERMINAL
           </p>
           <h1
             className="text-3xl font-black tracking-wide"
-            style={{ color: '#00e5ff', textShadow: '0 0 30px rgba(0,229,255,0.5), 0 0 60px rgba(0,229,255,0.2)' }}
+            style={{ color: 'var(--accent)', textShadow: '0 0 30px rgba(var(--accent-rgb),0.5), 0 0 60px rgba(var(--accent-rgb),0.2)' }}
           >
             SIGN IN
           </h1>
           <div className="mt-2 h-px mx-auto w-24"
-            style={{ background: 'linear-gradient(90deg, transparent, #00e5ff, transparent)' }} />
+            style={{ background: 'linear-gradient(90deg, transparent, var(--accent), transparent)' }} />
         </div>
 
         {/* Card */}
@@ -96,8 +122,8 @@ export default function LoginPage() {
           className="p-6 rounded-2xl space-y-4"
           style={{
             background: 'rgba(7,7,26,0.9)',
-            border: '1px solid rgba(0,229,255,0.12)',
-            boxShadow: '0 0 40px rgba(0,0,0,0.4), inset 0 0 40px rgba(0,229,255,0.02)',
+            border: '1px solid rgba(var(--accent-rgb),0.12)',
+            boxShadow: '0 0 40px rgba(0,0,0,0.4), inset 0 0 40px rgba(var(--accent-rgb),0.02)',
           }}
         >
           {/* Google OAuth */}
@@ -153,16 +179,16 @@ export default function LoginPage() {
 
           {/* Divider */}
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.08)' }} />
-            <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.3)' }}>OR</span>
-            <div className="flex-1 h-px" style={{ background: 'rgba(0,229,255,0.08)' }} />
+            <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.08)' }} />
+            <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>OR</span>
+            <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.08)' }} />
           </div>
 
           {/* Email / Password form */}
           <form onSubmit={handleEmailLogin} className="space-y-3">
             {/* Email */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.55)' }}>
+              <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
                 EMAIL
               </label>
               <input
@@ -176,17 +202,17 @@ export default function LoginPage() {
                 required
                 className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
                 style={{
-                  background: 'rgba(0,229,255,0.04)',
-                  border: focused === 'email' ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)',
+                  background: 'rgba(var(--accent-rgb),0.04)',
+                  border: focused === 'email' ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
                   color: '#e0f2fe',
-                  boxShadow: focused === 'email' ? '0 0 12px rgba(0,229,255,0.1)' : 'none',
+                  boxShadow: focused === 'email' ? '0 0 12px rgba(var(--accent-rgb),0.1)' : 'none',
                 }}
               />
             </div>
 
             {/* Password */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(0,229,255,0.55)' }}>
+              <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
                 PASSWORD
               </label>
               <div className="relative">
@@ -201,10 +227,10 @@ export default function LoginPage() {
                   required
                   className="w-full px-3 py-2.5 pr-10 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
                   style={{
-                    background: 'rgba(0,229,255,0.04)',
-                    border: focused === 'pass' ? '1px solid rgba(0,229,255,0.5)' : '1px solid rgba(0,229,255,0.15)',
+                    background: 'rgba(var(--accent-rgb),0.04)',
+                    border: focused === 'pass' ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
                     color: '#e0f2fe',
-                    boxShadow: focused === 'pass' ? '0 0 12px rgba(0,229,255,0.1)' : 'none',
+                    boxShadow: focused === 'pass' ? '0 0 12px rgba(var(--accent-rgb),0.1)' : 'none',
                   }}
                 />
                 <button
@@ -214,8 +240,8 @@ export default function LoginPage() {
                   tabIndex={-1}
                 >
                   {showPass
-                    ? <EyeOff size={14} style={{ color: 'rgba(0,229,255,0.4)' }} />
-                    : <Eye size={14} style={{ color: 'rgba(0,229,255,0.4)' }} />
+                    ? <EyeOff size={14} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                    : <Eye size={14} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
                   }
                 </button>
               </div>
@@ -237,10 +263,10 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50 mt-1"
               style={{
-                background: 'linear-gradient(135deg, rgba(0,229,255,0.18), rgba(0,229,255,0.08))',
-                border: '1px solid rgba(0,229,255,0.5)',
-                color: '#00e5ff',
-                boxShadow: '0 0 24px rgba(0,229,255,0.15)',
+                background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.18), rgba(var(--accent-rgb),0.08))',
+                border: '1px solid rgba(var(--accent-rgb),0.5)',
+                color: 'var(--accent)',
+                boxShadow: '0 0 24px rgba(var(--accent-rgb),0.15)',
                 letterSpacing: '0.12em',
               }}
             >

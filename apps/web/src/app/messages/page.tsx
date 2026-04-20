@@ -7,9 +7,10 @@ import {
   Camera, Mic, Radio, Play, Square, ShieldCheck, Timer,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
-import { formatPrice } from '@/lib/currency'
+import { api } from '@/lib/api'
+import { uploadImage } from '@/lib/cloudinary'
 import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
+import { formatPrice } from '@/lib/currency'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ function Avatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: s
     <img src={user.photoUrl} alt="" className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />
   ) : (
     <div className="rounded-full flex items-center justify-center shrink-0 font-bold text-sm"
-      style={{ width: size, height: size, background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.3)', color: '#00e5ff' }}>
+      style={{ width: size, height: size, background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>
       {user.displayName[0]?.toUpperCase()}
     </div>
   )
@@ -115,8 +116,6 @@ function HostGroupDashboard({
   const [newPriceTier, setNewPriceTier] = useState('MICRO')
   const [creating, setCreating] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   const myGroups = groups.filter((g) => g.isOwner)
   const totalSubs = myGroups.reduce((sum, g) => sum + (g.isPaid ? g.memberCount : 0), 0)
   const paidGroups = myGroups.filter((g) => g.isPaid)
@@ -129,8 +128,6 @@ function HostGroupDashboard({
     if (newPrivate && !newPaid && newPassword.trim().length < 4) return
     setCreating(true)
     try {
-      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
       const body: Record<string, unknown> = {
         name: newName.trim(), description: newDesc.trim() || undefined,
         emoji: newEmoji, coverColor: newColor,
@@ -142,9 +139,8 @@ function HostGroupDashboard({
         body.isPrivate = true
         body.password = newPassword.trim()
       }
-      const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
-      const j = await r.json()
-      if (j.data) {
+      const j = await api.post<{ data: GroupChat }>('/groups', body)
+      if (j?.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#a855f7')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO')
@@ -176,7 +172,7 @@ function HostGroupDashboard({
           <button onClick={() => setShowCreate(true)}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-black tracking-widest transition-all"
             style={{
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(0,229,255,0.08) 100%)',
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(var(--accent-rgb),0.08) 100%)',
               border: '1px solid rgba(168,85,247,0.35)',
               color: '#a855f7',
             }}>
@@ -430,8 +426,6 @@ function GroupBrowser({
   const [newGroupType, setNewGroupType] = useState<'GENRE' | 'FESTIVAL' | 'TRIP'>('GENRE')
   const [creating, setCreating] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   const q = groupSearch.toLowerCase()
   const filteredGroups = q ? groups.filter((g) => g.name.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q)) : groups
   const genres = filteredGroups.filter((g) => g.type === 'GENRE')
@@ -455,8 +449,6 @@ function GroupBrowser({
     if (newPrivate && !newPaid && newPassword.trim().length < 4) return
     setCreating(true)
     try {
-      const hdrs: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
       const body: Record<string, unknown> = {
         name: newName.trim(), description: newDesc.trim() || undefined,
         emoji: newEmoji, coverColor: newColor,
@@ -469,9 +461,8 @@ function GroupBrowser({
         body.isPrivate = true
         body.password = newPassword.trim()
       }
-      const r = await fetch(`${API_URL}/groups`, { method: 'POST', headers: hdrs, body: JSON.stringify(body) })
-      const j = await r.json()
-      if (j.data) {
+      const j = await api.post<{ data: GroupChat }>('/groups', body)
+      if (j?.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO'); setNewGroupType('GENRE')
@@ -487,13 +478,13 @@ function GroupBrowser({
     <div className="pb-28">
       {/* Group search */}
       <div className="px-4 pb-3 relative">
-        <Search size={12} className="absolute left-7 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <Search size={12} className="absolute left-7 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
         <input
           value={groupSearch}
           onChange={(e) => setGroupSearch(e.target.value)}
           placeholder="Search groups..."
           className="w-full pl-8 pr-3 py-2 rounded-xl text-xs font-medium focus:outline-none"
-          style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', color: '#e0f2fe' }}
+          style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)', color: '#e0f2fe' }}
         />
       </div>
 
@@ -508,9 +499,9 @@ function GroupBrowser({
           <button key={key} onClick={() => setSub(key)}
             className="shrink-0 py-2 px-3 rounded-xl text-[11px] font-black tracking-widest transition-all"
             style={{
-              background: sub === key ? 'rgba(0,229,255,0.1)' : 'transparent',
-              border: `1px solid ${sub === key ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
-              color: sub === key ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: sub === key ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+              border: `1px solid ${sub === key ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.07)'}`,
+              color: sub === key ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             }}>
             {label}
           </button>
@@ -577,9 +568,9 @@ function GroupBrowser({
             ) : list.map((g) => (
               <button key={g.id} onClick={() => onOpen(g)}
                 className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all"
-                style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(0,229,255,0.07)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(0,229,255,0.07)')}>
+                style={{ background: 'rgba(7,7,26,0.85)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(var(--accent-rgb),0.2)')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(var(--accent-rgb),0.07)')}>
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
                   style={{ background: `${g.coverColor}18`, border: `1px solid ${g.coverColor}30` }}>
                   {g.emoji}
@@ -597,7 +588,7 @@ function GroupBrowser({
                       {g.lastMessage.senderName}: {g.lastMessage.text}
                     </p>
                   ) : (
-                    <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.25)' }}>No messages yet — be first!</p>
+                    <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.25)' }}>No messages yet — be first!</p>
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
@@ -621,7 +612,7 @@ function GroupBrowser({
         <div className="px-4 mt-4">
           <button onClick={() => setShowCreate(true)}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest transition-all"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px dashed rgba(0,229,255,0.2)', color: 'rgba(0,229,255,0.5)' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px dashed rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.5)' }}>
             + CREATE GROUP
           </button>
         </div>
@@ -633,12 +624,12 @@ function GroupBrowser({
           style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
           onClick={() => setShowCreate(false)}>
           <div className="w-full max-w-sm rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}
-            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)' }}>
-            <p className="text-xs font-black tracking-widest" style={{ color: '#00e5ff' }}>CREATE GROUP</p>
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+            <p className="text-xs font-black tracking-widest" style={{ color: 'var(--accent)' }}>CREATE GROUP</p>
 
             {/* Group type */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>TYPE</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>TYPE</p>
               <div className="grid grid-cols-3 gap-2">
                 {([
                   { id: 'GENRE', label: '🎵 Music', color: '#a855f7' },
@@ -648,8 +639,8 @@ function GroupBrowser({
                   <button key={t.id} onClick={() => setNewGroupType(t.id)}
                     className="py-2 rounded-xl text-center text-[10px] font-black transition-all"
                     style={{
-                      background: newGroupType === t.id ? `${t.color}18` : 'rgba(0,229,255,0.03)',
-                      border: `1px solid ${newGroupType === t.id ? `${t.color}50` : 'rgba(0,229,255,0.08)'}`,
+                      background: newGroupType === t.id ? `${t.color}18` : 'rgba(var(--accent-rgb),0.03)',
+                      border: `1px solid ${newGroupType === t.id ? `${t.color}50` : 'rgba(var(--accent-rgb),0.08)'}`,
                       color: newGroupType === t.id ? t.color : 'rgba(224,242,254,0.4)',
                     }}>
                     {t.label}
@@ -661,23 +652,23 @@ function GroupBrowser({
             <input type="text" placeholder="Group name" value={newName}
               onChange={(e) => setNewName(e.target.value.slice(0, 40))}
               className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-              style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
 
             <input type="text" placeholder="Description (optional)" value={newDesc}
               onChange={(e) => setNewDesc(e.target.value.slice(0, 200))}
               className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-              style={{ border: '1px solid rgba(0,229,255,0.1)', color: '#e0f2fe' }} />
+              style={{ border: '1px solid rgba(var(--accent-rgb),0.1)', color: '#e0f2fe' }} />
 
             {/* Emoji picker */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>EMOJI</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>EMOJI</p>
               <div className="flex flex-wrap gap-2">
                 {EMOJIS.map((e) => (
                   <button key={e} onClick={() => setNewEmoji(e)}
                     className="w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all"
                     style={{
-                      background: newEmoji === e ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.03)',
-                      border: `1px solid ${newEmoji === e ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                      background: newEmoji === e ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.03)',
+                      border: `1px solid ${newEmoji === e ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.08)'}`,
                     }}>{e}</button>
                 ))}
               </div>
@@ -685,7 +676,7 @@ function GroupBrowser({
 
             {/* Color picker */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>COLOR</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>COLOR</p>
               <div className="flex flex-wrap gap-2">
                 {COLORS.map((c) => (
                   <button key={c} onClick={() => setNewColor(c)}
@@ -701,7 +692,7 @@ function GroupBrowser({
 
             {/* Access type */}
             <div>
-              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.4)' }}>ACCESS</p>
+              <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>ACCESS</p>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: 'public', label: 'Public', icon: <Users size={14} />, active: !newPrivate && !newPaid },
@@ -715,9 +706,9 @@ function GroupBrowser({
                   }}
                     className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition-all"
                     style={{
-                      background: opt.active ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.03)',
-                      border: `1px solid ${opt.active ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.08)'}`,
-                      color: opt.active ? '#00e5ff' : 'rgba(224,242,254,0.35)',
+                      background: opt.active ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--accent-rgb),0.03)',
+                      border: `1px solid ${opt.active ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.08)'}`,
+                      color: opt.active ? 'var(--accent)' : 'rgba(224,242,254,0.35)',
                     }}>
                     {opt.icon}
                     <span className="text-[9px] font-bold tracking-wide">{opt.label}</span>
@@ -757,8 +748,8 @@ function GroupBrowser({
                       <button key={t.id} onClick={() => setNewPriceTier(t.id)}
                         className="py-2 rounded-xl text-center transition-all"
                         style={{
-                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.03)',
-                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(0,229,255,0.08)'}`,
+                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.03)',
+                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(var(--accent-rgb),0.08)'}`,
                         }}>
                         <p className="text-sm font-black" style={{ color: active ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>{t.price}<span className="text-[9px] font-normal">/mo</span></p>
                         <p className="text-[9px]" style={{ color: active ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>{t.label}</p>
@@ -789,9 +780,9 @@ function GroupBrowser({
               disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
-                background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.12)',
-                border: `1px solid ${newPaid ? 'rgba(255,214,0,0.35)' : 'rgba(0,229,255,0.35)'}`,
-                color: newPaid ? '#ffd600' : '#00e5ff',
+                background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.12)',
+                border: `1px solid ${newPaid ? 'rgba(255,214,0,0.35)' : 'rgba(var(--accent-rgb),0.35)'}`,
+                color: newPaid ? '#ffd600' : 'var(--accent)',
               }}>
               {creating ? 'CREATING...' : newPaid ? 'CREATE PAID GROUP' : 'CREATE GROUP'}
             </button>
@@ -839,14 +830,10 @@ function GroupChatView({
   const [crawlStops, setCrawlStops] = useState([{ name: '', address: '' }, { name: '', address: '' }])
   const [crawlCreating, setCrawlCreating] = useState(false)
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/messages`, { headers })
-      const j = await r.json()
+      const j = await api.get<{ data: { group: GroupChat; locked: boolean; messages: GroupMessage[] } }>(`/groups/${groupId}/messages`)
       if (j.data) {
         setGroup(j.data.group)
         if (j.data.locked) {
@@ -878,8 +865,7 @@ function GroupChatView({
   const loadCrawl = useCallback(async () => {
     setCrawlLoading(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, { headers })
-      const j = await r.json()
+      const j = await api.get<{ data: unknown }>(`/groups/${groupId}/pub-crawl`)
       setCrawl(j.data)
     } catch {}
     finally { setCrawlLoading(false) }
@@ -895,10 +881,7 @@ function GroupChatView({
     if (validStops.length < 2) return
     setCrawlCreating(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, {
-        method: 'POST', headers, body: JSON.stringify({ name: crawlName.trim(), stops: validStops }),
-      })
-      const j = await r.json()
+      const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, { name: crawlName.trim(), stops: validStops })
       if (j.data) { setCrawl(j.data); setShowCreateCrawl(false); setCrawlName(''); setCrawlStops([{ name: '', address: '' }, { name: '', address: '' }]) }
     } catch {}
     finally { setCrawlCreating(false) }
@@ -906,13 +889,13 @@ function GroupChatView({
 
   async function checkIn(stopId: string) {
     try {
-      await fetch(`${API_URL}/groups/${groupId}/pub-crawl/stops/${stopId}/checkin`, { method: 'POST', headers })
+      await api.post(`/groups/${groupId}/pub-crawl/stops/${stopId}/checkin`, {})
       await loadCrawl()
     } catch {}
   }
 
   async function endCrawl() {
-    await fetch(`${API_URL}/groups/${groupId}/pub-crawl`, { method: 'DELETE', headers }).catch(() => {})
+    await api.delete(`/groups/${groupId}/pub-crawl`).catch(() => {})
     setCrawl(null)
   }
 
@@ -932,10 +915,10 @@ function GroupChatView({
       return
     }
 
-    const r = await fetch(`${API_URL}/groups/${groupId}/${joined ? 'leave' : 'join'}`, {
-      method: joined ? 'DELETE' : 'POST', headers,
-    })
-    if (r.ok) {
+    try {
+      await (joined ? api.delete(`/groups/${groupId}/leave`) : api.post(`/groups/${groupId}/join`, {}))
+    } catch { return }
+    {
       const patch = {
         isJoined: !joined,
         memberCount: group.memberCount + (joined ? -1 : 1),
@@ -950,34 +933,27 @@ function GroupChatView({
   async function joinWithPassword() {
     if (!pwInput.trim()) return
     setPwError('')
-    const r = await fetch(`${API_URL}/groups/${groupId}/join`, {
-      method: 'POST', headers, body: JSON.stringify({ password: pwInput.trim() }),
-    })
-    if (r.ok) {
+    try {
+      await api.post(`/groups/${groupId}/join`, { password: pwInput.trim() })
       setShowPwModal(false); setPwInput('')
       const patch = { isJoined: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
       setGroup((g) => g ? { ...g, ...patch } : g)
       onGroupUpdate(groupId, patch)
       load()
-    } else {
-      const j = await r.json().catch(() => ({}))
-      setPwError(j.error ?? 'Incorrect password')
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Incorrect password')
     }
   }
 
   async function handleSubscribe() {
     setSubscribing(true)
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/subscribe`, {
-        method: 'POST', headers,
-      })
-      if (r.ok) {
-        setShowSubModal(false)
-        const patch = { isJoined: true, isSubscribed: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
-        setGroup((g) => g ? { ...g, ...patch } : g)
-        onGroupUpdate(groupId, patch)
-        load()
-      }
+      await api.post(`/groups/${groupId}/subscribe`, {})
+      setShowSubModal(false)
+      const patch = { isJoined: true, isSubscribed: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
+      setGroup((g) => g ? { ...g, ...patch } : g)
+      onGroupUpdate(groupId, patch)
+      load()
     } catch {}
     finally { setSubscribing(false) }
   }
@@ -985,9 +961,7 @@ function GroupChatView({
   async function toggleNotifications() {
     if (!group) return
     const enabled = !group.notificationsEnabled
-    await fetch(`${API_URL}/groups/${groupId}/notifications`, {
-      method: 'PUT', headers, body: JSON.stringify({ enabled }),
-    })
+    await api.put(`/groups/${groupId}/notifications`, { enabled })
     setGroup((g) => g ? { ...g, notificationsEnabled: enabled } : g)
   }
 
@@ -1012,10 +986,7 @@ function GroupChatView({
     setMessages((prev) => [...prev, optimisticMsg])
 
     try {
-      const r = await fetch(`${API_URL}/groups/${groupId}/messages`, {
-        method: 'POST', headers, body: JSON.stringify({ text: draft }),
-      })
-      const j = await r.json()
+      const j = await api.post<{ data: GroupMessage }>(`/groups/${groupId}/messages`, { text: draft })
       if (j.data) {
         // Replace optimistic message with the real server response
         setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
@@ -1042,29 +1013,8 @@ function GroupChatView({
     if (!dbUserId || !groupId || photoUploading) return
     setPhotoUploading(true)
     try {
-      const hdrs: Record<string, string> = {}
-      if (token) hdrs['Authorization'] = `Bearer ${token}`
-      hdrs['Content-Type'] = 'application/json'
-      const credRes = await fetch(`${API_URL}/uploads/image`, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify({ folder: 'group-snaps' }),
-      })
-      const credJson = await credRes.json()
-      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
-      const form = new FormData()
-      form.append('file', file)
-      form.append('timestamp', timestamp)
-      form.append('signature', signature)
-      form.append('api_key', apiKey)
-      form.append('folder', folder)
-      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: form })
-      const upJson = await upRes.json()
-      if (!upJson.secure_url) return
-      const msgRes = await fetch(`${API_URL}/groups/${groupId}/messages`, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify({ imageUrl: upJson.secure_url }),
-      })
-      const msgJson = await msgRes.json()
+      const imageUrl = await uploadImage(file, 'events')
+      const msgJson = await api.post<{ data: GroupMessage }>(`/groups/${groupId}/messages`, { imageUrl })
       if (msgJson.data) setMessages((prev) => [...prev, msgJson.data])
     } catch {}
     finally { setPhotoUploading(false) }
@@ -1073,32 +1023,31 @@ function GroupChatView({
   async function followUser(senderId: string) {
     if (!dbUserId || senderId === dbUserId) return
     const already = followingSet.has(senderId)
-    const method = already ? 'DELETE' : 'POST'
-    const r = await fetch(`${API_URL}/follow/${senderId}`, { method, headers })
-    if (r.ok || r.status === 409) {
+    try {
+      await (already ? api.delete(`/follow/${senderId}`) : api.post(`/follow/${senderId}`, {}))
       setFollowingSet((s) => {
         const next = new Set(s)
         already ? next.delete(senderId) : next.add(senderId)
         return next
       })
       setMessages((prev) => prev.map((m) => m.senderId === senderId ? { ...m, isFollowing: !already } : m))
-    }
+    } catch {}
     setUserPopup(null)
   }
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 rounded-full border-2 animate-spin"
-        style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+        style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
     </div>
   )
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem)', background: '#04040d' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem - 4rem)', background: '#04040d' }}>
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
-        style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
-        <button onClick={onBack} className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
+        style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)', backdropFilter: 'blur(12px)' }}>
+        <button onClick={onBack} className="p-1 rounded-lg" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
           <ArrowLeft size={18} />
         </button>
         {group && (
@@ -1109,7 +1058,7 @@ function GroupChatView({
         )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black truncate" style={{ color: '#e0f2fe' }}>{group?.name ?? '...'}</p>
-          <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+          <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
             {group?.memberCount ?? 0} members
           </p>
         </div>
@@ -1119,9 +1068,9 @@ function GroupChatView({
               <button onClick={toggleNotifications}
                 className="p-2 rounded-xl transition-all"
                 style={{
-                  background: group.notificationsEnabled ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.03)',
-                  border: `1px solid ${group.notificationsEnabled ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.1)'}`,
-                  color: group.notificationsEnabled ? '#00e5ff' : 'rgba(0,229,255,0.3)',
+                  background: group.notificationsEnabled ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.03)',
+                  border: `1px solid ${group.notificationsEnabled ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.1)'}`,
+                  color: group.notificationsEnabled ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)',
                 }}>
                 {group.notificationsEnabled ? <Bell size={13} /> : <BellOff size={13} />}
               </button>
@@ -1130,13 +1079,13 @@ function GroupChatView({
               className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
               style={{
                 background: group.isJoined
-                  ? 'rgba(0,229,255,0.06)'
+                  ? 'rgba(var(--accent-rgb),0.06)'
                   : group.isPaid ? 'rgba(255,214,0,0.12)' : `${group.coverColor}22`,
                 border: `1px solid ${group.isJoined
-                  ? 'rgba(0,229,255,0.2)'
+                  ? 'rgba(var(--accent-rgb),0.2)'
                   : group.isPaid ? 'rgba(255,214,0,0.4)' : group.coverColor + '60'}`,
                 color: group.isJoined
-                  ? 'rgba(0,229,255,0.6)'
+                  ? 'rgba(var(--accent-rgb),0.6)'
                   : group.isPaid ? '#ffd600' : group.coverColor,
               }}>
               {group.isJoined
@@ -1149,7 +1098,7 @@ function GroupChatView({
 
       {/* Chat / Pub Crawl tab bar */}
       <div className="flex-shrink-0 flex gap-1 px-4 py-2"
-        style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(0,229,255,0.07)' }}>
+        style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(var(--accent-rgb),0.07)' }}>
         {([
           { key: 'chat', label: '💬 Chat' },
           { key: 'crawl', label: '🍺 Pub Crawl' },
@@ -1157,9 +1106,9 @@ function GroupChatView({
           <button key={key} onClick={() => setActiveTab(key)}
             className="flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-wide transition-all"
             style={{
-              background: activeTab === key ? 'rgba(0,229,255,0.1)' : 'transparent',
-              border: `1px solid ${activeTab === key ? 'rgba(0,229,255,0.25)' : 'rgba(0,229,255,0.06)'}`,
-              color: activeTab === key ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: activeTab === key ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+              border: `1px solid ${activeTab === key ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(var(--accent-rgb),0.06)'}`,
+              color: activeTab === key ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             }}>
             {label}
           </button>
@@ -1360,7 +1309,7 @@ function GroupChatView({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-2">
-            <Hash size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+            <Hash size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
             <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
               {group ? `Be the first to post in #${group.name.toLowerCase()}` : 'No messages yet'}
             </p>
@@ -1376,14 +1325,14 @@ function GroupChatView({
               )}
               <div className="max-w-[72%]">
                 {!isMe && (
-                  <p className="text-[10px] mb-0.5 ml-1 font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                  <p className="text-[10px] mb-0.5 ml-1 font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                     {m.senderName}
                   </p>
                 )}
                 <div className={`rounded-2xl text-sm overflow-hidden ${m.text ? 'px-3 py-2' : ''}`}
                   style={isMe
-                    ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
-                    : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
+                    ? { background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
+                    : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(var(--accent-rgb),0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
                   {m.imageUrl && (
                     <img src={m.imageUrl} alt="" className="max-w-[220px] rounded-xl object-cover cursor-pointer"
                       style={{ maxHeight: 200, display: 'block' }}
@@ -1404,7 +1353,7 @@ function GroupChatView({
       {/* Input — only shown in chat tab */}
       {activeTab === 'chat' && dbUserId ? (
         <div className="flex-shrink-0 px-4 py-3 flex gap-2"
-          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           <input
             ref={photoInputRef}
             type="file"
@@ -1414,28 +1363,28 @@ function GroupChatView({
           />
           <button onClick={() => photoInputRef.current?.click()} disabled={photoUploading}
             className="p-2.5 rounded-xl transition-all"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: photoUploading ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.5)' }}>
-            {photoUploading ? <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: 'rgba(0,229,255,0.5)' }} /> : <Camera size={16} />}
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', color: photoUploading ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.5)' }}>
+            {photoUploading ? <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'rgba(var(--accent-rgb),0.5)' }} /> : <Camera size={16} />}
           </button>
           <input type="text" placeholder={`Message #${group?.name.toLowerCase() ?? 'group'}...`}
             value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
           <button onClick={sendMessage} disabled={!text.trim() || sending}
             className="p-2.5 rounded-xl transition-all"
             style={{
-              background: text.trim() ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.04)',
-              border: `1px solid ${text.trim() ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.1)'}`,
-              color: text.trim() ? '#00e5ff' : 'rgba(0,229,255,0.2)',
+              background: text.trim() ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+              border: `1px solid ${text.trim() ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.1)'}`,
+              color: text.trim() ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.2)',
             }}>
             <Send size={16} />
           </button>
         </div>
       ) : (
         <div className="flex-shrink-0 px-4 py-3 text-center"
-          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
-          <a href="/login" className="text-xs font-bold" style={{ color: 'rgba(0,229,255,0.5)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+          <a href="/login" className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             Log in to join the conversation
           </a>
         </div>
@@ -1447,13 +1396,13 @@ function GroupChatView({
           style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
           onClick={() => setUserPopup(null)}>
           <div className="w-full max-w-sm rounded-2xl p-5" onClick={(e) => e.stopPropagation()}
-            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.15)' }}>
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
             <div className="flex items-center gap-3 mb-4">
               <Avatar user={{ displayName: userPopup.senderName, photoUrl: userPopup.senderPhoto }} size={44} />
               <div>
                 <p className="font-black text-sm" style={{ color: '#e0f2fe' }}>{userPopup.senderName}</p>
                 {userPopup.senderUsername && (
-                  <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{userPopup.senderUsername}</p>
+                  <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{userPopup.senderUsername}</p>
                 )}
               </div>
             </div>
@@ -1461,9 +1410,9 @@ function GroupChatView({
               <button onClick={() => followUser(userPopup.senderId)}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
                 style={{
-                  background: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-                  border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.35)'}`,
-                  color: followingSet.has(userPopup.senderId) ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                  background: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+                  border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.2)' : 'rgba(var(--accent-rgb),0.35)'}`,
+                  color: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
                 }}>
                 {followingSet.has(userPopup.senderId)
                   ? <><UserCheck size={13} /> FOLLOWING</>
@@ -1566,32 +1515,27 @@ function VoiceMessagePlayer({ url }: { url: string }) {
   return (
     <button onClick={toggle}
       className="flex items-center gap-2 px-3 py-2 rounded-2xl"
-      style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', minWidth: 120 }}>
-      {playing ? <Square size={12} style={{ color: '#00e5ff' }} /> : <Play size={12} style={{ color: '#00e5ff' }} />}
+      style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)', minWidth: 120 }}>
+      {playing ? <Square size={12} style={{ color: 'var(--accent)' }} /> : <Play size={12} style={{ color: 'var(--accent)' }} />}
       <div className="flex items-end gap-0.5">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="rounded-full"
             style={{
-              width: 3, background: '#00e5ff',
+              width: 3, background: 'var(--accent)',
               height: playing ? `${6 + Math.sin(i * 1.3) * 5}px` : '4px',
               opacity: 0.6 + i * 0.04,
               transition: 'height 0.2s',
             }} />
         ))}
       </div>
-      <span className="text-[10px] font-bold" style={{ color: 'rgba(0,229,255,0.6)' }}>VOICE</span>
+      <span className="text-[10px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>VOICE</span>
     </button>
   )
 }
 
 // ── Walkie talkie button ───────────────────────────────────────────────────────
 
-function WalkieTalkieButton({
-  headers, onSend,
-}: {
-  headers: Record<string, string>
-  onSend: (voiceUrl: string) => void
-}) {
+function WalkieTalkieButton({ onSend }: { onSend: (voiceUrl: string) => void }) {
   const [recording, setRecording] = useState(false)
   const [uploading, setUploading] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -1610,8 +1554,7 @@ function WalkieTalkieButton({
         try {
           const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
           // Get signed upload credentials
-          const credRes = await fetch(`${API_URL}/uploads/audio`, { method: 'POST', headers })
-          const credJson = await credRes.json()
+          const credJson = await api.post<{ data: { timestamp: number; signature: string; cloudName: string; apiKey: string; folder: string } }>('/uploads/audio', {})
           const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
 
           const formData = new FormData()
@@ -1649,9 +1592,9 @@ function WalkieTalkieButton({
       disabled={uploading}
       className="p-2.5 rounded-xl transition-all select-none"
       style={{
-        background: recording ? 'rgba(255,0,110,0.2)' : uploading ? 'rgba(255,214,0,0.12)' : 'rgba(0,229,255,0.06)',
-        border: `1px solid ${recording ? 'rgba(255,0,110,0.5)' : uploading ? 'rgba(255,214,0,0.3)' : 'rgba(0,229,255,0.12)'}`,
-        color: recording ? '#ff006e' : uploading ? '#ffd600' : 'rgba(0,229,255,0.5)',
+        background: recording ? 'rgba(255,0,110,0.2)' : uploading ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.06)',
+        border: `1px solid ${recording ? 'rgba(255,0,110,0.5)' : uploading ? 'rgba(255,214,0,0.3)' : 'rgba(var(--accent-rgb),0.12)'}`,
+        color: recording ? '#ff006e' : uploading ? '#ffd600' : 'rgba(var(--accent-rgb),0.5)',
       }}>
       {uploading ? <Radio size={16} className="animate-pulse" /> : <Mic size={16} />}
     </button>
@@ -1661,12 +1604,10 @@ function WalkieTalkieButton({
 // ── Snap message bubble ────────────────────────────────────────────────────────
 
 function SnapMessageBubble({
-  message, isMe, headers, convoId,
-  onViewed,
+  message, isMe, convoId, onViewed,
 }: {
   message: DmMessage
   isMe: boolean
-  headers: Record<string, string>
   convoId: string
   onViewed: (msgId: string) => void
 }) {
@@ -1678,7 +1619,7 @@ function SnapMessageBubble({
     if (isMe || message.snapViewed || viewing) return
     // Mark as viewed on server
     try {
-      await fetch(`${API_URL}/dm/${convoId}/messages/${message.id}/view-snap`, { method: 'POST', headers })
+      await api.post(`/dm/${convoId}/messages/${message.id}/view-snap`, {})
     } catch {}
     setViewing(true)
     setSecondsLeft(10)
@@ -1747,14 +1688,13 @@ function SnapMessageBubble({
 
 // ── Follow button in DM header ─────────────────────────────────────────────────
 
-function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Record<string, string> }) {
+function FollowButtonDm({ targetId }: { targetId: string }) {
   const [following, setFollowing] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    fetch(`${API_URL}/follow/${targetId}`, { headers })
-      .then((r) => r.json())
-      .then((j) => setFollowing(j.data?.isFollowing ?? false))
+    api.get<{ data: { isFollowing: boolean } }>(`/follow/${targetId}`)
+      .then((j) => setFollowing(j?.data?.isFollowing ?? false))
       .catch(() => {})
   }, [targetId])
 
@@ -1763,9 +1703,9 @@ function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Reco
     setLoading(true)
     try {
       if (following) {
-        await fetch(`${API_URL}/follow/${targetId}`, { method: 'DELETE', headers })
+        await api.delete(`/follow/${targetId}`)
       } else {
-        await fetch(`${API_URL}/follow/${targetId}`, { method: 'POST', headers })
+        await api.post(`/follow/${targetId}`, {})
       }
       setFollowing(!following)
     } catch {}
@@ -1778,9 +1718,9 @@ function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Reco
     <button onClick={toggle} disabled={loading}
       className="flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all"
       style={{
-        background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-        border: `1px solid ${following ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.3)'}`,
-        color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+        background: following ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+        border: `1px solid ${following ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.3)'}`,
+        color: following ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
       }}>
       {following ? <UserCheck size={11} /> : <UserPlus size={11} />}
       <span className="text-[9px] font-black tracking-wide">{following ? 'FOLLOWING' : 'FOLLOW'}</span>
@@ -1790,9 +1730,8 @@ function FollowButtonDm({ targetId, headers }: { targetId: string; headers: Reco
 
 // ── DM Section ─────────────────────────────────────────────────────────────────
 
-function DmSection({ dbUser, headers }: {
+function DmSection({ dbUser }: {
   dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
-  headers: Record<string, string>
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [requestConvos, setRequestConvos] = useState<Conversation[]>([])
@@ -1821,7 +1760,7 @@ function DmSection({ dbUser, headers }: {
     if (!dbUser) return
     getOrCreateKeyPair().then(({ publicKeyJWK }) => {
       const pubStr = serializePublicKey(publicKeyJWK)
-      fetch(`${API_URL}/dm/public-key`, { method: 'PUT', headers, body: JSON.stringify({ publicKey: pubStr }) })
+      api.put('/dm/public-key', { publicKey: pubStr })
         .then(() => setE2eReady(true))
         .catch(() => setE2eReady(true))
     }).catch(() => {})
@@ -1830,13 +1769,12 @@ function DmSection({ dbUser, headers }: {
   const fetchConversations = useCallback(async () => {
     if (!dbUser) { setLoading(false); return }
     try {
-      const [inboxRes, reqRes] = await Promise.all([
-        fetch(`${API_URL}/dm`, { headers }),
-        fetch(`${API_URL}/dm?requests=true`, { headers }),
+      const [inboxJson, reqJson] = await Promise.all([
+        api.get<{ data: Conversation[] }>('/dm'),
+        api.get<{ data: Conversation[] }>('/dm?requests=true'),
       ])
-      const [inboxJson, reqJson] = await Promise.all([inboxRes.json(), reqRes.json()])
-      setConversations(inboxJson.data ?? [])
-      setRequestConvos(reqJson.data ?? [])
+      setConversations(inboxJson?.data ?? [])
+      setRequestConvos(reqJson?.data ?? [])
     } catch {}
     setLoading(false)
   }, [dbUser?.id])
@@ -1847,13 +1785,12 @@ function DmSection({ dbUser, headers }: {
     if (!activeConvo) return
     initialLoadRef.current = true
     setMsgsLoading(true)
-    fetch(`${API_URL}/dm/${activeConvo}`, { headers })
-      .then((r) => r.json())
+    api.get<{ data: { messages: DmMessage[]; other: OtherUser | null; otherPublicKey: string | null; isRequest: boolean } }>(`/dm/${activeConvo}`)
       .then((j) => {
-        setMessages(j.data?.messages ?? [])
-        setActiveOther(j.data?.other ?? null)
-        setOtherPublicKey(j.data?.otherPublicKey ?? null)
-        setActiveConvoIsRequest(j.data?.isRequest ?? false)
+        setMessages(j?.data?.messages ?? [])
+        setActiveOther(j?.data?.other ?? null)
+        setOtherPublicKey(j?.data?.otherPublicKey ?? null)
+        setActiveConvoIsRequest(j?.data?.isRequest ?? false)
       })
       .catch(() => {}).finally(() => setMsgsLoading(false))
   }, [activeConvo])
@@ -1888,31 +1825,30 @@ function DmSection({ dbUser, headers }: {
     if (!search.trim()) { setSearchResults([]); return }
     const t = setTimeout(() => {
       setSearching(true)
-      fetch(`${API_URL}/dm/users?q=${encodeURIComponent(search)}`, { headers })
-        .then((r) => r.json()).then((j) => setSearchResults(j.data ?? [])).catch(() => {}).finally(() => setSearching(false))
+      api.get<{ data: OtherUser[] }>(`/dm/users?q=${encodeURIComponent(search)}`)
+        .then((j) => setSearchResults(j?.data ?? [])).catch(() => {}).finally(() => setSearching(false))
     }, 300)
     return () => clearTimeout(t)
   }, [search])
 
   async function openOrCreateConvo(recipientId: string) {
-    const res = await fetch(`${API_URL}/dm`, { method: 'POST', headers, body: JSON.stringify({ recipientId }) })
-    const j = await res.json()
-    if (j.data?.id) {
-      setSearch(''); setSearchResults([])
-      setActiveConvo(j.data.id)
-      fetchConversations()
-    }
+    try {
+      const j = await api.post<{ data: { id: string } }>('/dm', { recipientId })
+      if (j?.data?.id) {
+        setSearch(''); setSearchResults([])
+        setActiveConvo(j.data.id)
+        fetchConversations()
+      }
+    } catch {}
   }
 
   async function acceptRequest() {
     if (!activeConvo || acceptingRequest) return
     setAcceptingRequest(true)
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}/accept`, { method: 'POST', headers })
-      if (res.ok) {
-        setActiveConvoIsRequest(false)
-        fetchConversations()
-      }
+      await api.post(`/dm/${activeConvo}/accept`, {})
+      setActiveConvoIsRequest(false)
+      fetchConversations()
     } catch {}
     finally { setAcceptingRequest(false) }
   }
@@ -1938,9 +1874,8 @@ function DmSection({ dbUser, headers }: {
     setDecrypted((prev) => ({ ...prev, [optimisticId]: draft }))
 
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: textToSend }) })
-      const j = await res.json()
-      if (j.data) {
+      const j = await api.post<{ data: DmMessage }>(`/dm/${activeConvo}`, { text: textToSend })
+      if (j?.data) {
         setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
         setDecrypted((prev) => { const n = { ...prev }; n[j.data.id] = draft; delete n[optimisticId]; return n })
       } else {
@@ -1965,9 +1900,8 @@ function DmSection({ dbUser, headers }: {
     }
     setMessages((prev) => [...prev, optimisticMsg])
     try {
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: voiceUrl }) })
-      const j = await res.json()
-      if (j.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+      const j = await api.post<{ data: DmMessage }>(`/dm/${activeConvo}`, { text: voiceUrl })
+      if (j?.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
       else setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
@@ -1977,22 +1911,8 @@ function DmSection({ dbUser, headers }: {
   async function sendSnap(file: File) {
     if (!activeConvo || !dbUser) return
     try {
-      const credRes = await fetch(`${API_URL}/uploads/image`, { method: 'POST', headers, body: JSON.stringify({ folder: 'events' }) })
-      const credJson = await credRes.json()
-      const { timestamp, signature, cloudName, apiKey, folder } = credJson.data
-
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('timestamp', String(timestamp))
-      formData.append('signature', signature)
-      formData.append('api_key', apiKey)
-      formData.append('folder', folder)
-
-      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData })
-      const upJson = await upRes.json()
-      if (!upJson.secure_url) return
-
-      const snapText = `[SNAP]${upJson.secure_url}`
+      const secureUrl = await uploadImage(file, 'events')
+      const snapText = `[SNAP]${secureUrl}`
       const optimisticId = `optimistic_${Date.now()}`
       const optimisticMsg: DmMessage = {
         id: optimisticId, senderId: dbUser.id, senderName: dbUser.displayName ?? '',
@@ -2000,10 +1920,8 @@ function DmSection({ dbUser, headers }: {
         createdAt: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, optimisticMsg])
-
-      const res = await fetch(`${API_URL}/dm/${activeConvo}`, { method: 'POST', headers, body: JSON.stringify({ text: snapText, isSnap: true }) })
-      const j = await res.json()
-      if (j.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
+      const j = await api.post<{ data: DmMessage }>(`/dm/${activeConvo}`, { text: snapText, isSnap: true })
+      if (j?.data) setMessages((prev) => prev.map((m) => m.id === optimisticId ? j.data : m))
       else setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
     } catch {}
   }
@@ -2023,9 +1941,9 @@ function DmSection({ dbUser, headers }: {
       <div style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 64, background: '#04040d', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
-          style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)', backdropFilter: 'blur(12px)' }}>
           <button onClick={() => { setActiveConvo(null); setMessages([]); setDecrypted({}); setOtherPublicKey(null); setActiveConvoIsRequest(false) }}
-            className="p-1 rounded-lg" style={{ color: 'rgba(0,229,255,0.6)' }}>
+            className="p-1 rounded-lg" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>
             <ArrowLeft size={18} />
           </button>
           {activeOther && (
@@ -2036,7 +1954,7 @@ function DmSection({ dbUser, headers }: {
           <div className="flex-1 min-w-0">
             <a href={activeOther?.username ? `/profile/${activeOther.username}` : '#'} className="block">
               <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{activeOther?.displayName ?? '...'}</p>
-              {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{activeOther.username}</p>}
+              {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{activeOther.username}</p>}
             </a>
           </div>
           {/* E2E badge */}
@@ -2047,7 +1965,7 @@ function DmSection({ dbUser, headers }: {
             </span>
           )}
           {/* Follow button */}
-          {activeOther && dbUser && <FollowButtonDm targetId={activeOther.id} headers={headers} />}
+          {activeOther && dbUser && <FollowButtonDm targetId={activeOther.id} />}
         </div>
 
         {/* Message request banner */}
@@ -2080,11 +1998,11 @@ function DmSection({ dbUser, headers }: {
           {msgsLoading ? (
             <div className="flex items-center justify-center h-32">
               <div className="w-6 h-6 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-2">
-              <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+              <MessageCircle size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
               <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Start the conversation</p>
             </div>
           ) : messages.map((m) => {
@@ -2099,14 +2017,14 @@ function DmSection({ dbUser, headers }: {
                     <VoiceMessagePlayer url={m.text.replace('[VOICE]', '')} />
                   ) : isSnap ? (
                     <SnapMessageBubble
-                      message={m} isMe={isMe} headers={headers}
+                      message={m} isMe={isMe}
                       convoId={activeConvo} onViewed={handleSnapViewed}
                     />
                   ) : (
                     <div className="px-3 py-2 rounded-2xl text-sm break-words"
                       style={isMe
-                        ? { background: 'rgba(0,229,255,0.15)', border: '1px solid rgba(0,229,255,0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
-                        : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(0,229,255,0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
+                        ? { background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: '#e0f2fe', borderBottomRightRadius: 4 }
+                        : { background: 'rgba(7,7,26,0.9)', border: '1px solid rgba(var(--accent-rgb),0.08)', color: '#e0f2fe', borderBottomLeftRadius: 4 }}>
                       {displayText(m)}
                     </div>
                   )}
@@ -2121,7 +2039,7 @@ function DmSection({ dbUser, headers }: {
 
         {/* Input bar */}
         <div className="flex-shrink-0 px-4 py-3 flex gap-2 items-center"
-          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           {/* Snap camera button */}
           <button onClick={() => snapInputRef.current?.click()}
             className="p-2.5 rounded-xl"
@@ -2135,18 +2053,18 @@ function DmSection({ dbUser, headers }: {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTextMessage() } }}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-            style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
 
           {/* Walkie talkie */}
-          <WalkieTalkieButton headers={headers} onSend={sendVoiceMessage} />
+          <WalkieTalkieButton onSend={sendVoiceMessage} />
 
           {/* Send */}
           <button onClick={sendTextMessage} disabled={!text.trim() || sending}
             className="p-2.5 rounded-xl transition-all"
             style={{
-              background: text.trim() ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.04)',
-              border: `1px solid ${text.trim() ? 'rgba(0,229,255,0.4)' : 'rgba(0,229,255,0.1)'}`,
-              color: text.trim() ? '#00e5ff' : 'rgba(0,229,255,0.2)',
+              background: text.trim() ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+              border: `1px solid ${text.trim() ? 'rgba(var(--accent-rgb),0.4)' : 'rgba(var(--accent-rgb),0.1)'}`,
+              color: text.trim() ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.2)',
             }}>
             <Send size={16} />
           </button>
@@ -2158,10 +2076,10 @@ function DmSection({ dbUser, headers }: {
   if (!dbUser) {
     return (
       <div className="py-16 flex flex-col items-center gap-3">
-        <MessageCircle size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+        <MessageCircle size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
         <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOG IN TO MESSAGE PEOPLE</p>
         <a href="/login" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
-          style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
           <LogIn size={11} /> LOG IN
         </a>
       </div>
@@ -2173,30 +2091,30 @@ function DmSection({ dbUser, headers }: {
   return (
     <div className="px-4 max-w-xl mx-auto pb-4">
       <div className="relative mb-3">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
         <input type="text" placeholder="Search users to message..." value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-8 pr-3 py-2.5 rounded-xl text-xs bg-transparent outline-none"
-          style={{ border: '1px solid rgba(0,229,255,0.15)', color: '#e0f2fe' }} />
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }} />
       </div>
       {search.trim() && (
         <div className="mb-3 rounded-xl overflow-hidden"
-          style={{ border: '1px solid rgba(0,229,255,0.12)', background: 'rgba(7,7,26,0.95)' }}>
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.12)', background: 'rgba(7,7,26,0.95)' }}>
           {searching ? (
             <div className="py-4 flex justify-center">
               <div className="w-4 h-4 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : searchResults.length === 0 ? (
             <div className="py-4 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No users found</div>
           ) : searchResults.map((u) => (
             <button key={u.id} onClick={() => openOrCreateConvo(u.id)}
               className="w-full flex items-center gap-3 px-4 py-3 text-left"
-              style={{ borderBottom: '1px solid rgba(0,229,255,0.06)' }}>
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
               <Avatar user={u} size={36} />
               <div>
                 <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                {u.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>}
+                {u.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>}
               </div>
             </button>
           ))}
@@ -2208,9 +2126,9 @@ function DmSection({ dbUser, headers }: {
         <button onClick={() => setDmSubTab('inbox')}
           className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
           style={{
-            background: dmSubTab === 'inbox' ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.02)',
-            border: `1px solid ${dmSubTab === 'inbox' ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.07)'}`,
-            color: dmSubTab === 'inbox' ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+            background: dmSubTab === 'inbox' ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.02)',
+            border: `1px solid ${dmSubTab === 'inbox' ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.07)'}`,
+            color: dmSubTab === 'inbox' ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
           }}>
           INBOX
         </button>
@@ -2228,12 +2146,12 @@ function DmSection({ dbUser, headers }: {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(0,229,255,0.04)' }} />
+            <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: 'rgba(var(--accent-rgb),0.04)' }} />
           ))}
         </div>
       ) : displayedConvos.length === 0 ? (
         <div className="py-16 flex flex-col items-center gap-3">
-          <User size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+          <User size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
           <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>
             {dmSubTab === 'requests' ? 'NO REQUESTS' : 'NO MESSAGES YET'}
           </p>
@@ -2248,12 +2166,12 @@ function DmSection({ dbUser, headers }: {
           className="w-full flex items-center gap-3 p-3 rounded-2xl text-left mb-2 transition-all"
           style={{
             background: c.isRequest ? 'rgba(255,214,0,0.03)' : 'rgba(7,7,26,0.8)',
-            border: `1px solid ${c.isRequest ? 'rgba(255,214,0,0.15)' : 'rgba(0,229,255,0.08)'}`,
+            border: `1px solid ${c.isRequest ? 'rgba(255,214,0,0.15)' : 'rgba(var(--accent-rgb),0.08)'}`,
           }}>
           {c.other ? <Avatar user={c.other} size={44} /> : (
             <div className="w-11 h-11 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
-              <User size={18} style={{ color: 'rgba(0,229,255,0.3)' }} />
+              style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+              <User size={18} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
             </div>
           )}
           <div className="flex-1 min-w-0">
@@ -2271,7 +2189,7 @@ function DmSection({ dbUser, headers }: {
                 {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}{c.lastMessage.text}
               </p>
             ) : (
-              <p className="text-[11px]" style={{ color: 'rgba(0,229,255,0.3)' }}>No messages yet</p>
+              <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>No messages yet</p>
             )}
           </div>
           {c.lastMessage && (
@@ -2297,7 +2215,7 @@ interface PersonResult {
   isFollowing: boolean
 }
 
-function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; dbUserId: string | null }) {
+function PeopleSearch({ dbUserId }: { dbUserId: string | null }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<PersonResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -2308,10 +2226,9 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
     if (!q.trim()) { setResults([]); return }
     const t = setTimeout(() => {
       setSearching(true)
-      fetch(`${API_URL}/users/search?q=${encodeURIComponent(q)}`, { headers })
-        .then((r) => r.json())
+      api.get<{ data: PersonResult[] }>(`/users/search?q=${encodeURIComponent(q)}`)
         .then((j) => {
-          const data = (j.data ?? []) as PersonResult[]
+          const data = (j?.data ?? []) as PersonResult[]
           setResults(data)
           const fs: Record<string, boolean> = {}
           data.forEach((u) => { fs[u.id] = u.isFollowing })
@@ -2328,10 +2245,11 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
     setFollowLoading((p) => ({ ...p, [userId]: true }))
     const isFollowing = followStates[userId]
     try {
-      await fetch(`${API_URL}/follow/${userId}`, {
-        method: isFollowing ? 'DELETE' : 'POST',
-        headers,
-      })
+      if (isFollowing) {
+        await api.delete(`/follow/${userId}`)
+      } else {
+        await api.post(`/follow/${userId}`, {})
+      }
       setFollowStates((p) => ({ ...p, [userId]: !isFollowing }))
     } catch {}
     finally { setFollowLoading((p) => ({ ...p, [userId]: false })) }
@@ -2341,7 +2259,7 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
     <div className="px-4 max-w-xl mx-auto pb-6">
       {/* Search input */}
       <div className="relative mb-4">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
         <input
           type="text"
           placeholder="Search by name or @username..."
@@ -2349,14 +2267,14 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
           onChange={(e) => setQ(e.target.value)}
           autoFocus
           className="w-full pl-8 pr-3 py-3 rounded-xl text-sm bg-transparent outline-none"
-          style={{ border: '1px solid rgba(0,229,255,0.2)', color: '#e0f2fe' }}
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: '#e0f2fe' }}
         />
       </div>
 
       {/* Empty state */}
       {!q.trim() && (
         <div className="py-16 flex flex-col items-center gap-3">
-          <Users size={28} style={{ color: 'rgba(0,229,255,0.15)' }} />
+          <Users size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
           <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>FIND PEOPLE TO FOLLOW</p>
           <p className="text-[11px] text-center" style={{ color: 'rgba(224,242,254,0.3)' }}>Search by name or username above</p>
         </div>
@@ -2365,7 +2283,7 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
       {/* Loading */}
       {searching && (
         <div className="flex justify-center py-8">
-          <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+          <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
         </div>
       )}
 
@@ -2383,14 +2301,14 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
         const loading = followLoading[u.id] ?? false
         return (
           <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl mb-2"
-            style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.08)' }}>
+            style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             <a href={`/profile/${u.username}`} className="shrink-0">
               <Avatar user={u} size={44} />
             </a>
             <div className="flex-1 min-w-0">
               <a href={`/profile/${u.username}`} className="block">
                 <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                {u.username && <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>}
+                {u.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>}
                 {u.bio && <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>{u.bio}</p>}
               </a>
             </div>
@@ -2401,9 +2319,9 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
                   disabled={loading}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
                   style={{
-                    background: following ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-                    border: `1px solid ${following ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.3)'}`,
-                    color: following ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                    background: following ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+                    border: `1px solid ${following ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.3)'}`,
+                    color: following ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
                   }}>
                   {following ? <UserCheck size={11} /> : <UserPlus size={11} />}
                   <span className="text-[9px] font-black tracking-wide">{loading ? '...' : following ? 'FOLLOWING' : 'FOLLOW'}</span>
@@ -2411,7 +2329,7 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
               )}
               <a href={`/profile/${u.username}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-center"
-                style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)', color: 'rgba(0,229,255,0.5)' }}>
+                style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', color: 'rgba(var(--accent-rgb),0.5)' }}>
                 <User size={11} />
                 <span className="text-[9px] font-black tracking-wide">PROFILE</span>
               </a>
@@ -2426,11 +2344,18 @@ function PeopleSearch({ headers, dbUserId }: { headers: Record<string, string>; 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MessagesPage() {
-  const { dbUser } = useAuth()
+  const { dbUser, firebaseUser } = useAuth()
   const [tab, setTab] = useState<'dms' | 'people' | 'community'>('dms')
   const [groups, setGroups] = useState<GroupChat[]>([])
   const [groupsLoading, setGroupsLoading] = useState(true)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
+  const [token, setToken] = useState('')
+
+  // Fetch a live Firebase ID token — used by GroupChatView
+  useEffect(() => {
+    if (!firebaseUser) return
+    firebaseUser.getIdToken().then(setToken).catch(() => {})
+  }, [firebaseUser])
 
   // Host/attendee mode (same pattern as Navbar)
   const [isHost, setIsHost] = useState(false)
@@ -2441,17 +2366,12 @@ export default function MessagesPage() {
     return () => window.removeEventListener('partyradar:mode-change', onModeChange)
   }, [])
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
   useEffect(() => {
     // Try to get user location for proximity-sorted venue groups
     function fetchGroups(lat?: number, lng?: number) {
       const params = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
-      fetch(`${API_URL}/groups${params}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-        .then((r) => r.json())
-        .then((j) => setGroups(j.data ?? []))
+      api.get<{ data: GroupChat[] }>(`/groups${params}`)
+        .then((j) => setGroups(j?.data ?? []))
         .catch(() => {})
         .finally(() => setGroupsLoading(false))
     }
@@ -2493,9 +2413,9 @@ export default function MessagesPage() {
           <button key={t} onClick={() => setTab(t)}
             className="flex-1 py-2.5 rounded-xl text-[11px] font-black tracking-widest transition-all"
             style={{
-              background: tab === t ? 'rgba(0,229,255,0.12)' : 'rgba(0,229,255,0.03)',
-              border: `1px solid ${tab === t ? 'rgba(0,229,255,0.35)' : 'rgba(0,229,255,0.08)'}`,
-              color: tab === t ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+              background: tab === t ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--accent-rgb),0.03)',
+              border: `1px solid ${tab === t ? 'rgba(var(--accent-rgb),0.35)' : 'rgba(var(--accent-rgb),0.08)'}`,
+              color: tab === t ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
             }}>
             {t === 'dms' ? '💬 DMs' : t === 'people' ? '👥 PEOPLE' : isHost ? '👑 GROUPS' : '🌐 COMMUNITY'}
           </button>
@@ -2503,11 +2423,11 @@ export default function MessagesPage() {
       </div>
 
       {tab === 'dms' && (
-        <DmSection dbUser={dbUser} headers={headers} />
+        <DmSection dbUser={dbUser} />
       )}
 
       {tab === 'people' && (
-        <PeopleSearch headers={headers} dbUserId={dbUser?.id ?? null} />
+        <PeopleSearch dbUserId={dbUser?.id ?? null} />
       )}
 
       {tab === 'community' && (
@@ -2515,7 +2435,7 @@ export default function MessagesPage() {
           {groupsLoading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-8 h-8 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : isHost ? (
             <HostGroupDashboard groups={groups} dbUserId={dbUser?.id ?? null}

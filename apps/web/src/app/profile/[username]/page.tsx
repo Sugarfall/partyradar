@@ -9,21 +9,16 @@ import {
   Bell, Sparkles, Eye, Crown, Star, ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
-import { auth } from '@/lib/firebase'
+import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
 
-async function getToken() {
-  try { return (await auth.currentUser?.getIdToken()) ?? '' } catch { return '' }
-}
-
 const TYPE_COLORS: Record<string, string> = {
-  HOME_PARTY: '#ff006e', CLUB_NIGHT: '#00e5ff', CONCERT: '#3d5afe', PUB_NIGHT: '#f59e0b',
+  HOME_PARTY: '#ff006e', CLUB_NIGHT: 'var(--accent)', CONCERT: '#3d5afe', PUB_NIGHT: '#f59e0b',
 }
 const TYPE_LABELS: Record<string, string> = {
   HOME_PARTY: 'HOUSE PARTY', CLUB_NIGHT: 'CLUB NIGHT', CONCERT: 'CONCERT', PUB_NIGHT: 'PUB NIGHT',
 }
-const INTEREST_COLORS = ['#ff006e', '#00e5ff', '#a855f7', '#00ff88', '#ffd600', '#f97316']
+const INTEREST_COLORS = ['#ff006e', 'var(--accent)', '#a855f7', '#00ff88', '#ffd600', '#f97316']
 
 interface ProfileEvent {
   id: string; name: string; type: string
@@ -73,24 +68,23 @@ function timeAgo(d: string) {
 
 function MiniAvatar({ user }: { user: { displayName: string; photoUrl?: string | null } }) {
   return user.photoUrl
-    ? <img src={user.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover" style={{ border: '1.5px solid rgba(0,229,255,0.2)' }} />
+    ? <img src={user.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover" style={{ border: '1.5px solid rgba(var(--accent-rgb),0.2)' }} />
     : <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black"
-        style={{ background: 'rgba(0,229,255,0.1)', color: '#00e5ff' }}>
+        style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
         {user.displayName[0]?.toUpperCase()}
       </div>
 }
 
 // ── Who Viewed Modal ────────────────────────────────────────────────────────────
-function ProfileViewersModal({ count, onClose, headers }: {
-  count: number; onClose: () => void; headers: Record<string, string>
+function ProfileViewersModal({ count, onClose }: {
+  count: number; onClose: () => void
 }) {
   const [data, setData] = useState<{ isPremium: boolean; viewers: ProfileViewer[] | null } | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`${API_URL}/users/me/profile-views`, { headers })
-      .then((r) => r.json())
-      .then((j) => setData(j.data))
+    api.get<{ data: { isPremium: boolean; viewers: ProfileViewer[] | null } }>('/users/me/profile-views')
+      .then((j) => setData(j?.data ?? null))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -100,22 +94,22 @@ function ProfileViewersModal({ count, onClose, headers }: {
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
       onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}
-        style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.12)' }}>
+        style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}>
 
         <div className="px-5 py-4 flex items-center justify-between"
-          style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           <div>
             <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>
               👀 {count} profile view{count !== 1 ? 's' : ''} this week
             </p>
-            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>People who checked you out</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>People who checked you out</p>
           </div>
           <button onClick={onClose} style={{ color: 'rgba(224,242,254,0.3)' }}>✕</button>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-10">
-            <Loader2 size={22} className="animate-spin" style={{ color: 'rgba(0,229,255,0.4)' }} />
+            <Loader2 size={22} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
           </div>
         ) : !data?.isPremium ? (
           <div className="px-5 py-6 flex flex-col items-center gap-4 text-center">
@@ -149,12 +143,12 @@ function ProfileViewersModal({ count, onClose, headers }: {
             ) : data.viewers?.map((v) => (
               <Link key={v.id} href={`/profile/${v.username}`}
                 className="flex items-center gap-3 px-4 py-3 transition-all"
-                style={{ borderBottom: '1px solid rgba(0,229,255,0.06)' }}
+                style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}
                 onClick={onClose}>
                 <MiniAvatar user={v} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{v.displayName}</p>
-                  <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{v.username}</p>
+                  <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{v.username}</p>
                 </div>
                 <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.25)' }}>{timeAgo(v.viewedAt)}</span>
               </Link>
@@ -167,9 +161,9 @@ function ProfileViewersModal({ count, onClose, headers }: {
 }
 
 // ── Followers / Following Modal ─────────────────────────────────────────────────
-function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
+function FollowListModal({ username, mode, onClose, myId }: {
   username: string; mode: 'followers' | 'following'
-  onClose: () => void; myHeaders: Record<string, string>; myId: string | null
+  onClose: () => void; myId: string | null
 }) {
   interface FollowUser {
     id: string; displayName: string; username: string; photoUrl?: string | null; isFollowing: boolean
@@ -179,10 +173,9 @@ function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetch(`${API_URL}/users/${username}/${mode}`, { headers: myHeaders })
-      .then((r) => r.json())
+    api.get<{ data: FollowUser[] }>(`/users/${username}/${mode}`)
       .then((j) => {
-        const data: FollowUser[] = j.data ?? []
+        const data: FollowUser[] = j?.data ?? []
         setUsers(data)
         setFollowingSet(new Set(data.filter((u) => u.isFollowing).map((u) => u.id)))
       })
@@ -194,7 +187,9 @@ function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
     if (!myId) return
     const isNowFollowing = followingSet.has(userId)
     setFollowingSet((s) => { const n = new Set(s); isNowFollowing ? n.delete(userId) : n.add(userId); return n })
-    await fetch(`${API_URL}/follow/${userId}`, { method: isNowFollowing ? 'DELETE' : 'POST', headers: myHeaders }).catch(() => {})
+    const method = isNowFollowing ? 'DELETE' : 'POST'
+    if (method === 'DELETE') { await api.delete(`/follow/${userId}`).catch(() => {}) }
+    else { await api.post(`/follow/${userId}`, {}).catch(() => {}) }
   }
 
   return (
@@ -202,36 +197,36 @@ function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
       onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}
-        style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,229,255,0.12)', maxHeight: '70vh' }}>
+        style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.12)', maxHeight: '70vh' }}>
         <div className="px-5 py-4 flex items-center justify-between"
-          style={{ borderBottom: '1px solid rgba(0,229,255,0.08)' }}>
+          style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{mode === 'followers' ? 'Followers' : 'Following'}</p>
           <button onClick={onClose} style={{ color: 'rgba(224,242,254,0.3)' }}>✕</button>
         </div>
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(70vh - 56px)' }}>
           {loading ? (
-            <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin" style={{ color: 'rgba(0,229,255,0.4)' }} /></div>
+            <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} /></div>
           ) : users.length === 0 ? (
             <p className="text-center text-xs py-8" style={{ color: 'rgba(224,242,254,0.3)' }}>Nobody here yet</p>
           ) : users.map((u) => (
             <div key={u.id} className="flex items-center gap-3 px-4 py-3"
-              style={{ borderBottom: '1px solid rgba(0,229,255,0.05)' }}>
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.05)' }}>
               <Link href={`/profile/${u.username}`} onClick={onClose}>
                 <MiniAvatar user={u} />
               </Link>
               <div className="flex-1 min-w-0">
                 <Link href={`/profile/${u.username}`} onClick={onClose}>
                   <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
-                  <p className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{u.username}</p>
+                  <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>
                 </Link>
               </div>
               {myId && u.id !== myId && (
                 <button onClick={() => toggleFollow(u.id)}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black"
                   style={{
-                    background: followingSet.has(u.id) ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.12)',
-                    border: `1px solid ${followingSet.has(u.id) ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.3)'}`,
-                    color: followingSet.has(u.id) ? 'rgba(0,229,255,0.5)' : '#00e5ff',
+                    background: followingSet.has(u.id) ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+                    border: `1px solid ${followingSet.has(u.id) ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.3)'}`,
+                    color: followingSet.has(u.id) ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
                   }}>
                   {followingSet.has(u.id) ? <UserCheck size={10} /> : <UserPlus size={10} />}
                   {followingSet.has(u.id) ? 'FOLLOWING' : 'FOLLOW'}
@@ -246,9 +241,9 @@ function FollowListModal({ username, mode, onClose, myHeaders, myId }: {
 }
 
 // ── Go Out Request Modal ────────────────────────────────────────────────────────
-function GoOutModal({ profile, onClose, onSent, headers }: {
+function GoOutModal({ profile, onClose, onSent }: {
   profile: PublicProfile; onClose: () => void
-  onSent: () => void; headers: Record<string, string>
+  onSent: () => void
 }) {
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -256,9 +251,7 @@ function GoOutModal({ profile, onClose, onSent, headers }: {
   async function send() {
     setSending(true)
     try {
-      await fetch(`${API_URL}/users/${profile.id}/ask-out`, {
-        method: 'POST', headers, body: JSON.stringify({ message: message.trim() || undefined }),
-      })
+      await api.post(`/users/${profile.id}/ask-out`, { message: message.trim() || undefined })
       onSent()
     } catch {}
     finally { setSending(false) }
@@ -321,20 +314,12 @@ export default function PublicProfilePage() {
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
   const [activeTab, setActiveTab] = useState<'events' | 'checkins'>('events')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const tok = await getToken()
-      const h: Record<string, string> = {}
-      if (tok) h['Authorization'] = `Bearer ${tok}`
-      const res = await fetch(`${API_URL}/users/${encodeURIComponent(username)}`, { headers: h })
-      if (res.status === 404) { setNotFound(true); return }
-      const json = await res.json()
-      const data: PublicProfile = json.data
+      const json = await api.get<{ data: PublicProfile }>(`/users/${encodeURIComponent(username)}`)
+      const data = json?.data
+      if (!data) { setNotFound(true); return }
       setProfile(data)
       setFollowing(data.isFollowing)
       setGoOutStatus(data.goOutStatus)
@@ -352,14 +337,12 @@ export default function PublicProfilePage() {
     if (!profile || followLoading || !dbUser) return
     setFollowLoading(true)
     try {
-      const tok = await getToken()
-      const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` }
       if (following) {
-        await fetch(`${API_URL}/follow/${profile.id}`, { method: 'DELETE', headers: h })
+        await api.delete(`/follow/${profile.id}`)
         setFollowing(false)
         setProfile((p) => p ? { ...p, followersCount: p.followersCount - 1 } : p)
       } else {
-        await fetch(`${API_URL}/follow/${profile.id}`, { method: 'POST', headers: h })
+        await api.post(`/follow/${profile.id}`, {})
         setFollowing(true)
         setProfile((p) => p ? { ...p, followersCount: p.followersCount + 1 } : p)
       }
@@ -371,12 +354,7 @@ export default function PublicProfilePage() {
     if (!profile || dmLoading || !dbUser) return
     setDmLoading(true)
     try {
-      const tok = await getToken()
-      await fetch(`${API_URL}/dm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ recipientId: profile.id }),
-      })
+      await api.post('/dm', { recipientId: profile.id })
       router.push('/messages')
     } catch {
       router.push('/messages')
@@ -387,11 +365,7 @@ export default function PublicProfilePage() {
     if (!profile || nudging || nudgeDone || !dbUser) return
     setNudging(true)
     try {
-      const tok = await getToken()
-      await fetch(`${API_URL}/users/${profile.id}/nudge`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-      })
+      await api.post(`/users/${profile.id}/nudge`, {})
       setNudgeDone(true)
     } catch {}
     finally { setNudging(false) }
@@ -400,7 +374,7 @@ export default function PublicProfilePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d', paddingTop: 56 }}>
-        <Loader2 size={28} className="animate-spin" style={{ color: 'rgba(0,229,255,0.4)' }} />
+        <Loader2 size={28} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
       </div>
     )
   }
@@ -408,11 +382,11 @@ export default function PublicProfilePage() {
   if (notFound || !profile) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#04040d', paddingTop: 56 }}>
-        <Users size={36} style={{ color: 'rgba(0,229,255,0.2)' }} />
-        <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>USER NOT FOUND</p>
+        <Users size={36} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
+        <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>USER NOT FOUND</p>
         <p className="text-xs" style={{ color: 'rgba(224,242,254,0.25)' }}>@{username} doesn't exist</p>
         <button onClick={() => router.back()} className="text-xs font-bold px-4 py-2 rounded-xl mt-2"
-          style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)', color: '#00e5ff' }}>
+          style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
           ← GO BACK
         </button>
       </div>
@@ -422,7 +396,7 @@ export default function PublicProfilePage() {
   const initials = profile.displayName.slice(0, 2).toUpperCase()
   const isPremium = profile.subscriptionTier === 'PREMIUM' || profile.subscriptionTier === 'VIP'
   const isHost = profile.accountMode === 'HOST'
-  const accent = profile.themeColor ?? '#00e5ff'
+  const accent = profile.themeColor ?? 'var(--accent)'
 
   return (
     <div className="min-h-screen" style={{ background: '#04040d', paddingTop: 56, paddingBottom: 96 }}>
@@ -447,15 +421,15 @@ export default function PublicProfilePage() {
         {(profile.isAdmin || isPremium || isHost) && (
           <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full z-10"
             style={{
-              background: profile.isAdmin ? 'rgba(255,214,0,0.15)' : isHost ? 'rgba(168,85,247,0.15)' : 'rgba(0,229,255,0.1)',
-              border: `1px solid ${profile.isAdmin ? 'rgba(255,214,0,0.4)' : isHost ? 'rgba(168,85,247,0.4)' : 'rgba(0,229,255,0.25)'}`,
+              background: profile.isAdmin ? 'rgba(255,214,0,0.15)' : isHost ? 'rgba(168,85,247,0.15)' : 'rgba(var(--accent-rgb),0.1)',
+              border: `1px solid ${profile.isAdmin ? 'rgba(255,214,0,0.4)' : isHost ? 'rgba(168,85,247,0.4)' : 'rgba(var(--accent-rgb),0.25)'}`,
               backdropFilter: 'blur(8px)',
             }}>
             {profile.isAdmin
               ? <><ShieldCheck size={10} style={{ color: '#ffd600' }} /><span className="text-[9px] font-black ml-1" style={{ color: '#ffd600' }}>OFFICIAL</span></>
               : isHost
               ? <><Crown size={10} style={{ color: '#a855f7' }} /><span className="text-[9px] font-black ml-1" style={{ color: '#a855f7' }}>HOST</span></>
-              : <><Star size={10} style={{ color: '#00e5ff' }} /><span className="text-[9px] font-black ml-1" style={{ color: '#00e5ff' }}>PREMIUM</span></>
+              : <><Star size={10} style={{ color: 'var(--accent)' }} /><span className="text-[9px] font-black ml-1" style={{ color: 'var(--accent)' }}>PREMIUM</span></>
             }
           </div>
         )}
@@ -467,9 +441,9 @@ export default function PublicProfilePage() {
           {profile.photoUrl
             ? <img src={profile.photoUrl} alt={profile.displayName}
                 className="w-24 h-24 rounded-2xl object-cover"
-                style={{ border: '3px solid #04040d', boxShadow: '0 0 24px rgba(0,229,255,0.2)' }} />
+                style={{ border: '3px solid #04040d', boxShadow: '0 0 24px rgba(var(--accent-rgb),0.2)' }} />
             : <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-3xl font-black"
-                style={{ background: 'rgba(0,229,255,0.1)', border: '3px solid #04040d', color: '#00e5ff', boxShadow: '0 0 24px rgba(0,229,255,0.1)' }}>
+                style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '3px solid #04040d', color: 'var(--accent)', boxShadow: '0 0 24px rgba(var(--accent-rgb),0.1)' }}>
                 {initials}
               </div>
           }
@@ -486,7 +460,7 @@ export default function PublicProfilePage() {
             <h1 className="text-xl font-black" style={{ color: '#e0f2fe' }}>{profile.displayName}</h1>
             {profile.isAdmin && <ShieldCheck size={16} style={{ color: '#ffd600' }} />}
           </div>
-          <p className="text-sm" style={{ color: 'rgba(0,229,255,0.5)' }}>@{profile.username}</p>
+          <p className="text-sm" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>@{profile.username}</p>
           {profile.bio && (
             <p className="text-sm mt-2 leading-relaxed" style={{ color: 'rgba(224,242,254,0.65)' }}>{profile.bio}</p>
           )}
@@ -506,16 +480,16 @@ export default function PublicProfilePage() {
             <button key={s.label} onClick={s.action ?? undefined}
               className="flex-1 text-center py-2.5 rounded-xl transition-all"
               style={{
-                background: s.action ? 'rgba(0,229,255,0.06)' : 'rgba(0,229,255,0.03)',
-                border: `1px solid ${s.action ? 'rgba(0,229,255,0.15)' : 'rgba(0,229,255,0.06)'}`,
+                background: s.action ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.03)',
+                border: `1px solid ${s.action ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.06)'}`,
               }}>
               <p className="text-base font-black" style={{ color: '#e0f2fe' }}>{s.value}</p>
-              <p className="text-[8px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.35)' }}>{s.label}</p>
+              <p className="text-[8px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>{s.label}</p>
             </button>
           ))}
           {/* Social score */}
           <div className="flex-1 text-center py-2.5 rounded-xl"
-            style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.06)' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
             <p className="text-base font-black" style={{ color: accent }}>{profile.socialScore ?? 0}</p>
             <p className="text-[8px] font-bold tracking-widest" style={{ color: 'rgba(224,242,254,0.4)' }}>SCORE</p>
           </div>
@@ -534,7 +508,7 @@ export default function PublicProfilePage() {
         {profile.isMe && profile.profileViewCount > 0 && (
           <button onClick={() => setShowViewers(true)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-4 transition-all"
-            style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)' }}>
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}>
             <div className="flex -space-x-1.5">
               {Array.from({ length: Math.min(profile.profileViewCount, 3) }).map((_, i) => (
                 <div key={i} className="w-7 h-7 rounded-full"
@@ -545,9 +519,9 @@ export default function PublicProfilePage() {
               <p className="text-xs font-black" style={{ color: '#e0f2fe' }}>
                 {profile.profileViewCount} {profile.profileViewCount === 1 ? 'person viewed' : 'people viewed'} your profile
               </p>
-              <p className="text-[9px]" style={{ color: 'rgba(0,229,255,0.4)' }}>this week · tap to see who 👑</p>
+              <p className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>this week · tap to see who 👑</p>
             </div>
-            <ChevronRight size={14} style={{ color: 'rgba(0,229,255,0.3)' }} />
+            <ChevronRight size={14} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
           </button>
         )}
 
@@ -575,13 +549,13 @@ export default function PublicProfilePage() {
               {dbUser ? (
                 <button onClick={openDm} disabled={dmLoading}
                   className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-60"
-                  style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.7)' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.7)' }}>
                   <MessageCircle size={14} />
                   {dmLoading ? '...' : 'MESSAGE'}
                 </button>
               ) : (
                 <Link href="/login" className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest"
-                  style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.7)' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.7)' }}>
                   <MessageCircle size={14} /> MESSAGE
                 </Link>
               )}
@@ -592,9 +566,9 @@ export default function PublicProfilePage() {
                 <button onClick={sendNudge} disabled={nudging || nudgeDone}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
                   style={{
-                    background: nudgeDone ? 'rgba(0,255,136,0.06)' : 'rgba(0,229,255,0.04)',
-                    border: `1px solid ${nudgeDone ? 'rgba(0,255,136,0.25)' : 'rgba(0,229,255,0.1)'}`,
-                    color: nudgeDone ? '#00ff88' : 'rgba(0,229,255,0.45)',
+                    background: nudgeDone ? 'rgba(0,255,136,0.06)' : 'rgba(var(--accent-rgb),0.04)',
+                    border: `1px solid ${nudgeDone ? 'rgba(0,255,136,0.25)' : 'rgba(var(--accent-rgb),0.1)'}`,
+                    color: nudgeDone ? '#00ff88' : 'rgba(var(--accent-rgb),0.45)',
                   }}>
                   <Bell size={13} />
                   {nudging ? '...' : nudgeDone ? 'NUDGED 👋' : 'NUDGE'}
@@ -639,7 +613,7 @@ export default function PublicProfilePage() {
         {/* ── Interests ── */}
         {profile.interests.length > 0 && (
           <div className="mb-4">
-            <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(0,229,255,0.3)' }}>INTERESTS</p>
+            <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>INTERESTS</p>
             <div className="flex flex-wrap gap-1.5">
               {profile.interests.map((interest, i) => {
                 const color = INTEREST_COLORS[i % INTEREST_COLORS.length]
@@ -660,9 +634,9 @@ export default function PublicProfilePage() {
             <button key={t} onClick={() => setActiveTab(t)}
               className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
               style={{
-                background: activeTab === t ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.02)',
-                border: `1px solid ${activeTab === t ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.06)'}`,
-                color: activeTab === t ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+                background: activeTab === t ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.02)',
+                border: `1px solid ${activeTab === t ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.06)'}`,
+                color: activeTab === t ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
               }}>
               {t === 'events' ? `🎉 EVENTS ${profile.eventsCount > 0 ? `(${profile.eventsCount})` : ''}` : '📍 CHECK-INS'}
             </button>
@@ -672,14 +646,14 @@ export default function PublicProfilePage() {
         {activeTab === 'events' && (
           profile.events.length === 0 ? (
             <div className="py-10 rounded-xl flex flex-col items-center gap-2"
-              style={{ background: 'rgba(0,229,255,0.02)', border: '1px solid rgba(0,229,255,0.05)' }}>
-              <Calendar size={24} style={{ color: 'rgba(0,229,255,0.12)' }} />
+              style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.05)' }}>
+              <Calendar size={24} style={{ color: 'rgba(var(--accent-rgb),0.12)' }} />
               <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.3)' }}>NO EVENTS YET</p>
             </div>
           ) : (
             <div className="space-y-2">
               {profile.events.map((ev) => {
-                const color = TYPE_COLORS[ev.type] ?? '#00e5ff'
+                const color = TYPE_COLORS[ev.type] ?? 'var(--accent)'
                 return (
                   <Link key={ev.id} href={`/events/${ev.id}`}
                     className="flex items-center gap-3 p-3 rounded-xl"
@@ -705,7 +679,7 @@ export default function PublicProfilePage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-xs font-bold" style={{ color: ev.price === 0 ? '#00ff88' : '#e0f2fe' }}>
-                        {ev.price === 0 ? 'FREE' : formatPrice(ev.price)}
+                        {formatPrice(ev.price)}
                       </p>
                       <p className="text-[9px] mt-0.5" style={{ color: 'rgba(224,242,254,0.25)' }}>{timeAgo(ev.startsAt)}</p>
                     </div>
@@ -719,18 +693,18 @@ export default function PublicProfilePage() {
         {activeTab === 'checkins' && (
           profile.recentCheckIns.length === 0 ? (
             <div className="py-10 rounded-xl flex flex-col items-center gap-2"
-              style={{ background: 'rgba(0,229,255,0.02)', border: '1px solid rgba(0,229,255,0.05)' }}>
-              <MapPin size={24} style={{ color: 'rgba(0,229,255,0.12)' }} />
+              style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.05)' }}>
+              <MapPin size={24} style={{ color: 'rgba(var(--accent-rgb),0.12)' }} />
               <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.3)' }}>NO CHECK-INS YET</p>
             </div>
           ) : (
             <div className="space-y-2">
               {profile.recentCheckIns.map((c) => (
                 <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl"
-                  style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(0,229,255,0.06)' }}>
+                  style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.12)' }}>
-                    <MapPin size={14} style={{ color: '#00e5ff' }} />
+                    style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}>
+                    <MapPin size={14} style={{ color: 'var(--accent)' }} />
                   </div>
                   <div className="flex-1 min-w-0">
                     {c.event ? (
@@ -751,14 +725,14 @@ export default function PublicProfilePage() {
 
       {/* ── Modals ── */}
       {showViewers && (
-        <ProfileViewersModal count={profile.profileViewCount} onClose={() => setShowViewers(false)} headers={headers} />
+        <ProfileViewersModal count={profile.profileViewCount} onClose={() => setShowViewers(false)} />
       )}
       {showFollowList && (
         <FollowListModal username={profile.username} mode={showFollowList}
-          onClose={() => setShowFollowList(null)} myHeaders={headers} myId={dbUser?.id ?? null} />
+          onClose={() => setShowFollowList(null)} myId={dbUser?.id ?? null} />
       )}
       {showGoOut && (
-        <GoOutModal profile={profile} headers={headers}
+        <GoOutModal profile={profile}
           onClose={() => setShowGoOut(false)}
           onSent={() => { setShowGoOut(false); setGoOutStatus('pending') }} />
       )}

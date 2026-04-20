@@ -9,10 +9,12 @@ cloudinary.config({
 
 export { cloudinary }
 
-export async function getSignedUploadUrl(folder: string) {
+export async function getSignedUploadUrl(folder: string, transformation?: string) {
   const timestamp = Math.round(Date.now() / 1000)
+  const params: Record<string, string | number> = { timestamp, folder }
+  if (transformation) params['transformation'] = transformation
   const signature = cloudinary.utils.api_sign_request(
-    { timestamp, folder },
+    params,
     process.env['CLOUDINARY_API_SECRET']!
   )
   return {
@@ -21,5 +23,6 @@ export async function getSignedUploadUrl(folder: string) {
     cloudName: process.env['CLOUDINARY_CLOUD_NAME'],
     apiKey: process.env['CLOUDINARY_API_KEY'],
     folder,
+    transformation: transformation ?? null,
   }
 }

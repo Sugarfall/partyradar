@@ -3,15 +3,9 @@
 import { useEffect } from 'react'
 import { Zap, RefreshCw } from 'lucide-react'
 
-export default function Error({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string }
-  reset: () => void
-}) {
+export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    console.error('[PartyRadar] Unhandled page error:', error)
+    console.error('[PartyRadar] Unhandled error:', error)
   }, [error])
 
   return (
@@ -20,14 +14,9 @@ export default function Error({
       style={{ background: '#04040d' }}
     >
       <div className="flex items-center gap-3 mb-8">
-        <Zap
-          size={26}
-          fill="rgba(0,229,255,0.2)"
-          style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 10px rgba(0,229,255,0.9))' }}
-        />
-        <span className="font-black text-xl tracking-[0.3em]" style={{ color: '#00e5ff' }}>
-          PARTYRADAR
-        </span>
+        <Zap size={26} fill="rgba(var(--accent-rgb),0.2)"
+          style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 10px rgba(var(--accent-rgb),0.9))' }} />
+        <span className="font-black text-xl tracking-[0.3em]" style={{ color: 'var(--accent)' }}>PARTYRADAR</span>
       </div>
 
       <div
@@ -42,16 +31,22 @@ export default function Error({
         <p className="text-xs font-black tracking-[0.2em] mb-3" style={{ color: 'rgba(255,0,110,0.7)' }}>
           SIGNAL LOST
         </p>
-        <p className="text-sm mb-6" style={{ color: 'rgba(224,242,254,0.5)' }}>
+        <p className="text-sm mb-2" style={{ color: 'rgba(224,242,254,0.5)' }}>
           Something went wrong loading the app. Tap retry to reconnect.
         </p>
+        {error?.message && (
+          <p className="text-[10px] mb-5 px-2 py-1.5 rounded font-mono break-all"
+            style={{ color: 'rgba(255,0,110,0.6)', background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.12)' }}>
+            {error.message}
+          </p>
+        )}
         <button
           onClick={reset}
           className="w-full py-3 rounded-lg font-black text-sm flex items-center justify-center gap-2 transition-all"
           style={{
-            background: 'linear-gradient(135deg, rgba(0,229,255,0.2), rgba(61,90,254,0.2))',
-            border: '1px solid rgba(0,229,255,0.55)',
-            color: '#00e5ff',
+            background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.2), rgba(61,90,254,0.2))',
+            border: '1px solid rgba(var(--accent-rgb),0.55)',
+            color: 'var(--accent)',
             letterSpacing: '0.14em',
           }}
         >

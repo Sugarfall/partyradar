@@ -56,8 +56,8 @@ export default function PWAInstallPrompt() {
       style={{
         bottom: 80, // above mobile nav
         background: 'rgba(4,4,13,0.97)',
-        border: '1px solid rgba(0,229,255,0.3)',
-        boxShadow: '0 0 30px rgba(0,229,255,0.15), 0 8px 32px rgba(0,0,0,0.8)',
+        border: '1px solid rgba(var(--accent-rgb),0.3)',
+        boxShadow: '0 0 30px rgba(var(--accent-rgb),0.15), 0 8px 32px rgba(0,0,0,0.8)',
         backdropFilter: 'blur(20px)',
         animation: 'slideUp 0.3s ease',
       }}
@@ -66,13 +66,13 @@ export default function PWAInstallPrompt() {
 
       {/* Icon */}
       <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-        style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)' }}>
-        <Zap size={18} style={{ color: '#00e5ff', filter: 'drop-shadow(0 0 6px rgba(0,229,255,0.8))' }} />
+        style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+        <Zap size={18} style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 6px rgba(var(--accent-rgb),0.8))' }} />
       </div>
 
       {/* Text */}
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-black tracking-widest" style={{ color: '#00e5ff' }}>ADD TO HOME SCREEN</p>
+        <p className="text-xs font-black tracking-widest" style={{ color: 'var(--accent)' }}>ADD TO HOME SCREEN</p>
         <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.5)' }}>Get the full app experience ⚡</p>
       </div>
 
@@ -80,7 +80,7 @@ export default function PWAInstallPrompt() {
       <button
         onClick={handleInstall}
         className="px-3 py-1.5 rounded-lg text-[11px] font-black tracking-wider shrink-0"
-        style={{ background: '#00e5ff', color: '#04040d' }}
+        style={{ background: 'var(--accent)', color: '#04040d' }}
       >
         INSTALL
       </button>

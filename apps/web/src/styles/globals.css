@@ -11,13 +11,14 @@
   --border: #1a1a40;
   --text-primary: #e0f2fe;
   --text-muted: #4a6080;
+
+  /* ── Accent colour — overridden by ThemeProvider per user ── */
   --accent: #00e5ff;
-  --accent-rgb: 0,229,255;
+  --accent-rgb: 0, 229, 255;
+
   --neon-green: #00ff88;
   --neon-blue: #3d5afe;
   --party-pink: #ff006e;
-  --club-cyan: #00e5ff;
-  --concert-blue: #3d5afe;
   --celebrity-gold: #ffd600;
 }
 
@@ -30,8 +31,8 @@ body {
   color: var(--text-primary);
   font-family: 'Inter', system-ui, sans-serif;
   background-image:
-    linear-gradient(rgba(0,229,255,0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,229,255,0.02) 1px, transparent 1px);
+    linear-gradient(rgba(var(--accent-rgb), 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--accent-rgb), 0.02) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 
@@ -74,8 +75,8 @@ body {
     0deg,
     transparent,
     transparent 3px,
-    rgba(0,229,255,0.012) 3px,
-    rgba(0,229,255,0.012) 4px
+    rgba(var(--accent-rgb), 0.012) 3px,
+    rgba(var(--accent-rgb), 0.012) 4px
   );
   pointer-events: none;
   border-radius: inherit;
@@ -91,7 +92,7 @@ body {
   position: absolute;
   width: 16px;
   height: 16px;
-  border-color: rgba(0,229,255,0.5);
+  border-color: rgba(var(--accent-rgb), 0.5);
   border-style: solid;
 }
 .cyber-corners::before {
@@ -110,10 +111,10 @@ body {
 .mapboxgl-popup-content {
   background: var(--bg-card);
   color: var(--text-primary);
-  border: 1px solid rgba(0,229,255,0.25);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
   border-radius: 12px;
   padding: 0;
-  box-shadow: 0 0 24px rgba(0,229,255,0.15);
+  box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.15);
 }
 .mapboxgl-popup-tip { display: none; }
 
@@ -121,7 +122,7 @@ body {
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0,229,255,0.25);
+  background: rgba(var(--accent-rgb), 0.25);
   border-radius: 2px;
 }
 
@@ -129,25 +130,25 @@ body {
 @layer utilities {
   .card {
     @apply bg-bg-card rounded-xl;
-    border: 1px solid rgba(0,229,255,0.1);
-    box-shadow: 0 0 30px rgba(0,229,255,0.04), inset 0 1px 0 rgba(0,229,255,0.06);
+    border: 1px solid rgba(var(--accent-rgb), 0.1);
+    box-shadow: 0 0 30px rgba(0,0,0,0.04), inset 0 1px 0 rgba(var(--accent-rgb), 0.06);
   }
   .card-elevated {
     @apply bg-bg-elevated rounded-xl;
-    border: 1px solid rgba(0,229,255,0.15);
-    box-shadow: 0 0 40px rgba(0,229,255,0.07), inset 0 1px 0 rgba(0,229,255,0.1);
+    border: 1px solid rgba(var(--accent-rgb), 0.15);
+    box-shadow: 0 0 40px rgba(var(--accent-rgb), 0.07), inset 0 1px 0 rgba(var(--accent-rgb), 0.1);
   }
   .neon-border {
-    border: 1px solid rgba(0,229,255,0.4);
-    box-shadow: 0 0 14px rgba(0,229,255,0.25), inset 0 0 14px rgba(0,229,255,0.04);
+    border: 1px solid rgba(var(--accent-rgb), 0.4);
+    box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.25), inset 0 0 14px rgba(var(--accent-rgb), 0.04);
   }
   .neon-border-green {
     border: 1px solid rgba(0,255,136,0.4);
     box-shadow: 0 0 14px rgba(0,255,136,0.25), inset 0 0 14px rgba(0,255,136,0.04);
   }
   .neon-text {
-    color: #00e5ff;
-    text-shadow: 0 0 16px rgba(0,229,255,0.9), 0 0 40px rgba(0,229,255,0.5);
+    color: var(--accent);
+    text-shadow: 0 0 16px rgba(var(--accent-rgb), 0.9), 0 0 40px rgba(var(--accent-rgb), 0.5);
   }
   .neon-text-green {
     color: #00ff88;
@@ -155,16 +156,16 @@ body {
   }
   .btn-primary {
     @apply font-semibold px-4 py-2 rounded-lg transition-all duration-200 inline-flex items-center justify-center gap-2;
-    background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(61,90,254,0.12));
-    border: 1px solid rgba(0,229,255,0.45);
-    color: #00e5ff;
-    box-shadow: 0 0 14px rgba(0,229,255,0.18);
+    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.12), rgba(61,90,254,0.12));
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
+    color: var(--accent);
+    box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.18);
     letter-spacing: 0.02em;
   }
   .btn-primary:hover {
-    background: linear-gradient(135deg, rgba(0,229,255,0.22), rgba(61,90,254,0.22));
-    box-shadow: 0 0 22px rgba(0,229,255,0.35);
-    border-color: rgba(0,229,255,0.7);
+    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.22), rgba(61,90,254,0.22));
+    box-shadow: 0 0 22px rgba(var(--accent-rgb), 0.35);
+    border-color: rgba(var(--accent-rgb), 0.7);
   }
   .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
   .btn-secondary {
@@ -175,19 +176,19 @@ body {
     letter-spacing: 0.02em;
   }
   .btn-secondary:hover {
-    border-color: rgba(0,229,255,0.3);
-    color: #00e5ff;
-    background: rgba(0,229,255,0.05);
+    border-color: rgba(var(--accent-rgb), 0.3);
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.05);
   }
   .input-field {
     @apply rounded-lg px-3 py-2 w-full focus:outline-none transition-all duration-200;
     background: rgba(7,7,26,0.9);
-    border: 1px solid rgba(0,229,255,0.15);
+    border: 1px solid rgba(var(--accent-rgb), 0.15);
     color: #e0f2fe;
   }
   .input-field::placeholder { color: rgba(74,96,128,0.8); }
   .input-field:focus {
-    border-color: rgba(0,229,255,0.5);
-    box-shadow: 0 0 0 3px rgba(0,229,255,0.07), 0 0 18px rgba(0,229,255,0.1);
+    border-color: rgba(var(--accent-rgb), 0.5);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.07), 0 0 18px rgba(var(--accent-rgb), 0.1);
   }
 }

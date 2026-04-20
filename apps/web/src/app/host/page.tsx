@@ -13,7 +13,7 @@ import type { Event } from '@partyradar/shared'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   live:       { label: 'LIVE',       color: '#00ff88', icon: CheckCircle2  },
-  upcoming:   { label: 'UPCOMING',   color: '#00e5ff', icon: Clock         },
+  upcoming:   { label: 'UPCOMING',   color: 'var(--accent)', icon: Clock         },
   cancelled:  { label: 'CANCELLED',  color: '#ff006e', icon: XCircle       },
   draft:      { label: 'DRAFT',      color: 'rgba(74,96,128,0.7)', icon: AlertCircle },
 }
@@ -34,8 +34,9 @@ function formatShortDate(d: string) {
 
 const TYPE_COLOR: Record<string, string> = {
   HOME_PARTY: '#ff006e',
-  CLUB_NIGHT: '#00e5ff',
+  CLUB_NIGHT: 'var(--accent)',
   CONCERT: '#3d5afe',
+  PUB_NIGHT: '#f59e0b',
 }
 
 export default function HostDashboard() {
@@ -62,7 +63,7 @@ export default function HostDashboard() {
   if (!dbUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#04040d' }}>
-        <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.5)' }}>SIGN IN TO HOST</p>
+        <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SIGN IN TO HOST</p>
         <Link href="/login" className="btn-primary text-xs px-6 py-2.5" style={{ letterSpacing: '0.1em' }}>SIGN IN</Link>
       </div>
     )
@@ -73,9 +74,9 @@ export default function HostDashboard() {
   return (
     <div className="min-h-screen pb-32" style={{ background: '#04040d' }}>
       {/* Header */}
-      <div className="pt-20 pb-6 px-4" style={{ borderBottom: '1px solid rgba(0,229,255,0.07)' }}>
+      <div className="pt-20 pb-6 px-4" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.07)' }}>
         <div className="max-w-2xl mx-auto">
-          <p className="text-[9px] font-bold tracking-[0.25em] mb-1" style={{ color: 'rgba(0,229,255,0.4)' }}>HOST DASHBOARD</p>
+          <p className="text-[9px] font-bold tracking-[0.25em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>HOST DASHBOARD</p>
           <h1 className="text-2xl font-black mb-1" style={{ color: '#e0f2fe' }}>
             {dbUser.displayName || dbUser.username}
           </h1>
@@ -114,14 +115,14 @@ export default function HostDashboard() {
 
         {/* Quick actions */}
         <div>
-          <p className="text-[9px] font-bold tracking-[0.2em] mb-3" style={{ color: 'rgba(0,229,255,0.4)' }}>QUICK ACTIONS</p>
+          <p className="text-[9px] font-bold tracking-[0.2em] mb-3" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>QUICK ACTIONS</p>
           <div className="grid grid-cols-2 gap-2">
             <Link href="/events/create"
               className="flex items-center gap-3 p-4 rounded-xl transition-all duration-200"
-              style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.2)' }}>
+              style={{ background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
               <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)' }}>
-                <Plus size={16} style={{ color: '#00e5ff' }} />
+                style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+                <Plus size={16} style={{ color: 'var(--accent)' }} />
               </div>
               <div>
                 <p className="text-xs font-black" style={{ color: '#e0f2fe' }}>NEW EVENT</p>
@@ -178,9 +179,9 @@ export default function HostDashboard() {
             { label: 'LIVE NOW', value: myEvents.filter((e) => getStatus(e) === 'live').length },
           ].map(({ label, value }) => (
             <div key={label} className="p-3 rounded-xl text-center"
-              style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.08)' }}>
+              style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
               <p className="text-xl font-black" style={{ color: '#e0f2fe' }}>{value}</p>
-              <p className="text-[8px] font-bold tracking-[0.18em] mt-0.5" style={{ color: 'rgba(0,229,255,0.4)' }}>{label}</p>
+              <p className="text-[8px] font-bold tracking-[0.18em] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>{label}</p>
             </div>
           ))}
         </div>
@@ -193,9 +194,9 @@ export default function HostDashboard() {
               <button key={t} onClick={() => setTab(t)}
                 className="px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
                 style={{
-                  background: tab === t ? 'rgba(0,229,255,0.1)' : 'transparent',
-                  border: `1px solid ${tab === t ? 'rgba(0,229,255,0.3)' : 'rgba(0,229,255,0.08)'}`,
-                  color: tab === t ? '#00e5ff' : 'rgba(74,96,128,0.6)',
+                  background: tab === t ? 'rgba(var(--accent-rgb),0.1)' : 'transparent',
+                  border: `1px solid ${tab === t ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.08)'}`,
+                  color: tab === t ? 'var(--accent)' : 'rgba(74,96,128,0.6)',
                 }}>
                 {t.toUpperCase()} ({t === 'upcoming' ? upcoming.length : past.length})
               </button>
@@ -205,7 +206,7 @@ export default function HostDashboard() {
           {eventsLoading ? (
             <div className="py-12 flex items-center justify-center">
               <div className="w-8 h-8 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(0,229,255,0.1)', borderTopColor: '#00e5ff' }} />
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
             </div>
           ) : displayed.length === 0 ? (
             <div className="py-12 text-center">
@@ -216,7 +217,7 @@ export default function HostDashboard() {
               {tab === 'upcoming' && (
                 <Link href="/events/create"
                   className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-xl text-xs font-black"
-                  style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff', letterSpacing: '0.1em' }}>
+                  style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)', letterSpacing: '0.1em' }}>
                   <Plus size={12} /> CREATE YOUR FIRST EVENT
                 </Link>
               )}
@@ -226,11 +227,11 @@ export default function HostDashboard() {
               {displayed.map((event) => {
                 const status = getStatus(event)
                 const sc = STATUS_CONFIG[status]!
-                const tc = TYPE_COLOR[event.type] ?? '#00e5ff'
+                const tc = TYPE_COLOR[event.type] ?? 'var(--accent)'
                 const StatusIcon = sc.icon
                 return (
                   <div key={event.id} className="rounded-2xl overflow-hidden"
-                    style={{ background: 'rgba(0,229,255,0.02)', border: '1px solid rgba(0,229,255,0.1)' }}>
+                    style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
                     {/* Top strip */}
                     <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${tc}, transparent)` }} />
 
@@ -256,7 +257,7 @@ export default function HostDashboard() {
 
                         <Link href={`/events/${event.id}`}
                           className="p-2 rounded-lg shrink-0 transition-all"
-                          style={{ border: '1px solid rgba(0,229,255,0.15)', color: 'rgba(0,229,255,0.5)' }}>
+                          style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.5)' }}>
                           <ChevronRight size={14} />
                         </Link>
                       </div>
@@ -265,14 +266,14 @@ export default function HostDashboard() {
                       <div className="mt-3">
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-1">
-                            <Users size={9} style={{ color: 'rgba(0,229,255,0.4)' }} />
-                            <span className="text-[9px] font-bold" style={{ color: 'rgba(0,229,255,0.4)' }}>GUESTS</span>
+                            <Users size={9} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                            <span className="text-[9px] font-bold" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>GUESTS</span>
                           </div>
                           <span className="text-[10px] font-black" style={{ color: '#e0f2fe' }}>
                             {event.guestCount ?? 0} / {event.capacity}
                           </span>
                         </div>
-                        <div className="h-1 rounded-full" style={{ background: 'rgba(0,229,255,0.07)' }}>
+                        <div className="h-1 rounded-full" style={{ background: 'rgba(var(--accent-rgb),0.07)' }}>
                           <div className="h-1 rounded-full transition-all"
                             style={{
                               width: `${Math.min(100, Math.round(((event.guestCount ?? 0) / event.capacity) * 100))}%`,
@@ -286,17 +287,17 @@ export default function HostDashboard() {
                       <div className="flex gap-2 mt-3 flex-wrap">
                         <Link href={`/events/${event.id}/scan`}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black transition-all"
-                          style={{ border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff', letterSpacing: '0.08em' }}>
+                          style={{ border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)', letterSpacing: '0.08em' }}>
                           <QrCode size={10} /> SCAN
                         </Link>
                         <Link href={`/events/${event.id}/edit`}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black transition-all"
-                          style={{ border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.55)', letterSpacing: '0.08em' }}>
+                          style={{ border: '1px solid rgba(var(--accent-rgb),0.12)', color: 'rgba(var(--accent-rgb),0.55)', letterSpacing: '0.08em' }}>
                           <Edit3 size={10} /> EDIT
                         </Link>
                         <Link href={`/events/${event.id}?tab=guests`}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black transition-all"
-                          style={{ border: '1px solid rgba(0,229,255,0.12)', color: 'rgba(0,229,255,0.55)', letterSpacing: '0.08em' }}>
+                          style={{ border: '1px solid rgba(var(--accent-rgb),0.12)', color: 'rgba(var(--accent-rgb),0.55)', letterSpacing: '0.08em' }}>
                           <Users size={10} /> GUESTS
                         </Link>
                         <Link href={`/events/${event.id}?blast=1`}

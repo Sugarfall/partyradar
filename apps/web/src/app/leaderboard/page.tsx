@@ -53,7 +53,7 @@ function RankBadge({ rank }: { rank: number }) {
   )
 }
 
-function Avatar({ name, photoUrl, color = '#00e5ff' }: { name: string; photoUrl?: string | null; color?: string }) {
+function Avatar({ name, photoUrl, color = 'var(--accent)' }: { name: string; photoUrl?: string | null; color?: string }) {
   if (photoUrl) {
     return (
       <img
@@ -161,21 +161,21 @@ function HostsTab({ hosts }: { hosts: ApiHost[] }) {
           className="flex items-center gap-3 rounded-xl px-3 py-3"
           style={{
             background: i < 3 ? 'rgba(255,214,0,0.03)' : 'rgba(7,7,26,0.6)',
-            border: i === 0 ? '1px solid rgba(255,214,0,0.2)' : '1px solid rgba(0,229,255,0.07)',
+            border: i === 0 ? '1px solid rgba(255,214,0,0.2)' : '1px solid rgba(var(--accent-rgb),0.07)',
           }}
         >
           <RankBadge rank={i + 1} />
-          <Avatar name={host.displayName ?? host.username ?? '?'} photoUrl={host.photoUrl} color="#00e5ff" />
+          <Avatar name={host.displayName ?? host.username ?? '?'} photoUrl={host.photoUrl} color="var(--accent)" />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-black truncate" style={{ color: '#e0f2fe' }}>
               {host.displayName ?? host.username ?? 'Unknown Host'}
             </p>
             {host.username && (
-              <p className="text-[9px]" style={{ color: 'rgba(0,229,255,0.4)' }}>@{host.username}</p>
+              <p className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{host.username}</p>
             )}
           </div>
           <div className="text-right shrink-0">
-            <p className="text-xs font-black" style={{ color: '#00e5ff' }}>{host.eventCount}</p>
+            <p className="text-xs font-black" style={{ color: 'var(--accent)' }}>{host.eventCount}</p>
             <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>events</p>
             {host.avgRating != null && (
               <p className="text-[9px] font-bold" style={{ color: '#ffd600' }}>★ {host.avgRating.toFixed(1)}</p>
@@ -202,13 +202,13 @@ function VenuesTab({ venues }: { venues: ApiVenue[] }) {
           className="flex items-center gap-3 rounded-xl px-3 py-3"
           style={{
             background: i < 3 ? 'rgba(255,214,0,0.03)' : 'rgba(7,7,26,0.6)',
-            border: i === 0 ? '1px solid rgba(255,214,0,0.2)' : '1px solid rgba(0,229,255,0.07)',
+            border: i === 0 ? '1px solid rgba(255,214,0,0.2)' : '1px solid rgba(var(--accent-rgb),0.07)',
           }}
         >
           <RankBadge rank={i + 1} />
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black shrink-0"
-            style={{ background: 'rgba(0,229,255,0.12)', border: '1px solid rgba(0,229,255,0.25)', color: '#00e5ff' }}
+            style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}
           >
             🏙️
           </div>
@@ -221,7 +221,7 @@ function VenuesTab({ venues }: { venues: ApiVenue[] }) {
             )}
           </div>
           <div className="text-right shrink-0">
-            <p className="text-xs font-black" style={{ color: '#00e5ff' }}>{venue.eventCount}</p>
+            <p className="text-xs font-black" style={{ color: 'var(--accent)' }}>{venue.eventCount}</p>
             <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>events</p>
             {venue.avgRating != null && (
               <p className="text-[9px] font-bold" style={{ color: '#ffd600' }}>★ {venue.avgRating.toFixed(1)}</p>
@@ -262,9 +262,9 @@ function PartygoersTab({ partygoers }: { partygoers: ApiPartygoer[] }) {
     <div className="space-y-2 px-4 py-3 pb-24">
       <div
         className="rounded-xl px-3 py-2.5 flex items-center gap-3 mb-3"
-        style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.1)' }}
+        style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
       >
-        <TrendingUp size={14} style={{ color: '#00e5ff' }} />
+        <TrendingUp size={14} style={{ color: 'var(--accent)' }} />
         <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.45)' }}>
           Ranked by confirmed events attended
         </p>
@@ -278,7 +278,7 @@ function PartygoersTab({ partygoers }: { partygoers: ApiPartygoer[] }) {
           className="flex items-center gap-3 rounded-xl px-3 py-3"
           style={{
             background: i < 3 ? 'rgba(255,214,0,0.03)' : 'rgba(7,7,26,0.6)',
-            border: i === 0 ? '1px solid rgba(255,214,0,0.2)' : '1px solid rgba(0,229,255,0.07)',
+            border: i === 0 ? '1px solid rgba(255,214,0,0.2)' : '1px solid rgba(var(--accent-rgb),0.07)',
           }}
         >
           <RankBadge rank={i + 1} />
@@ -300,17 +300,17 @@ function PartygoersTab({ partygoers }: { partygoers: ApiPartygoer[] }) {
 
       <div
         className="rounded-2xl p-4 text-center mt-4"
-        style={{ background: 'rgba(0,229,255,0.03)', border: '1px solid rgba(0,229,255,0.12)' }}
+        style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}
       >
-        <Zap size={20} className="mx-auto mb-2" style={{ color: '#00e5ff' }} />
-        <p className="text-xs font-black tracking-widest mb-1" style={{ color: '#00e5ff' }}>YOUR TURN</p>
+        <Zap size={20} className="mx-auto mb-2" style={{ color: 'var(--accent)' }} />
+        <p className="text-xs font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>YOUR TURN</p>
         <p className="text-[10px] mb-3" style={{ color: 'rgba(224,242,254,0.4)' }}>
           Start attending events to earn your place on the leaderboard.
         </p>
         <Link
           href="/discover"
           className="inline-block px-4 py-2 rounded-lg text-[10px] font-black"
-          style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.3)', color: '#00e5ff', letterSpacing: '0.1em' }}
+          style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)', letterSpacing: '0.1em' }}
         >
           FIND EVENTS →
         </Link>
@@ -346,7 +346,7 @@ function EarnersTab({ earners }: { earners: ApiEarner[] }) {
           className="flex items-center gap-3 rounded-xl px-3 py-3"
           style={{
             background: i < 3 ? 'rgba(0,255,136,0.03)' : 'rgba(7,7,26,0.6)',
-            border: i === 0 ? '1px solid rgba(0,255,136,0.2)' : '1px solid rgba(0,229,255,0.07)',
+            border: i === 0 ? '1px solid rgba(0,255,136,0.2)' : '1px solid rgba(var(--accent-rgb),0.07)',
           }}
         >
           <RankBadge rank={i + 1} />
@@ -419,7 +419,7 @@ export default function LeaderboardPage() {
       {/* Header */}
       <div
         className="flex-shrink-0 px-4 py-4"
-        style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(0,229,255,0.1)', backdropFilter: 'blur(12px)' }}
+        style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)', backdropFilter: 'blur(12px)' }}
       >
         <div className="flex items-center gap-3 mb-3">
           <Trophy size={16} style={{ color: '#ffd600', filter: 'drop-shadow(0 0 6px rgba(255,214,0,0.7))' }} />
@@ -439,7 +439,7 @@ export default function LeaderboardPage() {
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black transition-all duration-200"
                 style={{
                   background: active ? 'rgba(255,214,0,0.1)' : 'transparent',
-                  border: active ? '1px solid rgba(255,214,0,0.3)' : '1px solid rgba(0,229,255,0.08)',
+                  border: active ? '1px solid rgba(255,214,0,0.3)' : '1px solid rgba(var(--accent-rgb),0.08)',
                   color: active ? '#ffd600' : 'rgba(74,96,128,0.6)',
                   letterSpacing: '0.08em',
                   boxShadow: active ? '0 0 12px rgba(255,214,0,0.1)' : 'none',

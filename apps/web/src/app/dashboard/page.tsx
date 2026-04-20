@@ -9,7 +9,7 @@ import {
   ArrowLeft, MapPin, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api } from '@/lib/api'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -106,12 +106,12 @@ function fmtDate(dateStr: string) {
 function isFuture(dateStr: string) { return new Date(dateStr) > new Date() }
 
 const TYPE_COLORS: Record<string, string> = {
-  HOME_PARTY: '#ec4899', CLUB_NIGHT: '#a855f7', CONCERT: '#3b82f6',
+  HOME_PARTY: '#ec4899', CLUB_NIGHT: '#a855f7', CONCERT: '#3b82f6', PUB_NIGHT: '#f59e0b',
 }
 
 const BLAST_STATUS_STYLE: Record<string, { bg: string; border: string; color: string; label: string }> = {
   QUEUED: { bg: 'rgba(255,214,0,0.08)', border: 'rgba(255,214,0,0.25)', color: '#ffd600', label: 'QUEUED' },
-  SENDING: { bg: 'rgba(0,229,255,0.08)', border: 'rgba(0,229,255,0.25)', color: '#00e5ff', label: 'SENDING' },
+  SENDING: { bg: 'rgba(var(--accent-rgb),0.08)', border: 'rgba(var(--accent-rgb),0.25)', color: 'var(--accent)', label: 'SENDING' },
   SENT: { bg: 'rgba(0,255,136,0.08)', border: 'rgba(0,255,136,0.25)', color: '#00ff88', label: 'SENT' },
   FAILED: { bg: 'rgba(255,0,110,0.08)', border: 'rgba(255,0,110,0.25)', color: '#ff006e', label: 'FAILED' },
 }
@@ -147,13 +147,8 @@ function AttendeesModal({ eventId, eventName, onClose }: {
   const [loading, setLoading] = useState(true)
   const [removing, setRemoving] = useState<string | null>(null)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   useEffect(() => {
-    const headers: Record<string, string> = {}
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    fetch(`${API_URL}/dashboard/events/${eventId}/attendees`, { headers })
-      .then((r) => r.json())
+    api.get<{ data: EventAttendees }>(`/dashboard/events/${eventId}/attendees`)
       .then((j) => setData(j.data))
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -161,9 +156,7 @@ function AttendeesModal({ eventId, eventName, onClose }: {
 
   async function removeGuest(guestId: string) {
     setRemoving(guestId)
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    await fetch(`${API_URL}/dashboard/guests/${guestId}`, { method: 'DELETE', headers })
+    await api.delete(`/dashboard/guests/${guestId}`).catch(() => {})
     setData((d) => d ? {
       ...d,
       guests: d.guests.map((g) => g.id === guestId ? { ...g, status: 'REMOVED' } : g),
@@ -273,8 +266,8 @@ function AttendeesModal({ eventId, eventName, onClose }: {
                       </div>
                       <span className="text-[8px] font-black px-2 py-0.5 rounded-full shrink-0"
                         style={{
-                          background: t.scannedAt ? 'rgba(0,255,136,0.1)' : 'rgba(0,229,255,0.1)',
-                          color: t.scannedAt ? '#00ff88' : '#00e5ff',
+                          background: t.scannedAt ? 'rgba(0,255,136,0.1)' : 'rgba(var(--accent-rgb),0.1)',
+                          color: t.scannedAt ? '#00ff88' : 'var(--accent)',
                         }}>
                         {t.scannedAt ? 'SCANNED' : 'VALID'}
                       </span>
@@ -303,7 +296,6 @@ function BlastModal({ events, onClose }: {
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<{ checkoutUrl: string; queuePosition: number; estimatedSendTime: string } | null>(null)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
   const upcomingEvents = events.filter((e) => isFuture(e.startsAt) && !e.isCancelled)
   const tier = PUSH_BLAST_TIERS.find((t) => t.id === selectedTier)
 
@@ -311,16 +303,11 @@ function BlastModal({ events, onClose }: {
     if (!selectedEvent || !title.trim() || !body.trim() || sending) return
     setSending(true)
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) headers['Authorization'] = `Bearer ${token}`
-      const r = await fetch(`${API_URL}/dashboard/blast`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ eventId: selectedEvent, tierId: selectedTier, title: title.trim(), body: body.trim() }),
-      })
-      const j = await r.json()
-      if (j.data?.checkoutUrl) {
-        setResult(j.data)
-      }
+      const j = await api.post<{ data: { checkoutUrl: string; queuePosition: number; estimatedSendTime: string } }>(
+        '/dashboard/blast',
+        { eventId: selectedEvent, tierId: selectedTier, title: title.trim(), body: body.trim() },
+      )
+      if (j.data?.checkoutUrl) setResult(j.data)
     } catch {}
     finally { setSending(false) }
   }
@@ -464,25 +451,20 @@ export default function DashboardPage() {
   const [attendeeModal, setAttendeeModal] = useState<{ id: string; name: string } | null>(null)
   const [blastModal, setBlastModal] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('partyradar_token') ?? '' : ''
-
   const load = useCallback(async () => {
-    const headers: Record<string, string> = {}
-    if (token) headers['Authorization'] = `Bearer ${token}`
     try {
-      const r = await fetch(`${API_URL}/dashboard`, { headers })
-      const j = await r.json()
-      if (j.data) {
+      const j = await api.get<{ data: { stats: DashStats; events: DashEvent[]; groups: DashGroup[]; recentAttendees: DashAttendee[]; blasts: DashBlast[]; blastQueue?: { queuedAhead: number } } }>('/dashboard')
+      if (j?.data) {
         setStats(j.data.stats)
-        setEvents(j.data.events)
-        setGroups(j.data.groups)
-        setAttendees(j.data.recentAttendees)
-        setBlasts(j.data.blasts)
+        setEvents(j.data.events ?? [])
+        setGroups(j.data.groups ?? [])
+        setAttendees(j.data.recentAttendees ?? [])
+        setBlasts(j.data.blasts ?? [])
         setBlastQueue(j.data.blastQueue?.queuedAhead ?? 0)
       }
     } catch {}
     finally { setLoading(false) }
-  }, [token])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
@@ -533,7 +515,7 @@ export default function DashboardPage() {
           <button onClick={() => setBlastModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all"
             style={{
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,229,255,0.08) 100%)',
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(var(--accent-rgb),0.08) 100%)',
               border: '1px solid rgba(168,85,247,0.35)',
               color: '#a855f7',
             }}>
@@ -567,7 +549,7 @@ export default function DashboardPage() {
             {/* Revenue banner */}
             <div className="rounded-2xl p-5 relative overflow-hidden"
               style={{
-                background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(0,229,255,0.04) 100%)',
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(var(--accent-rgb),0.04) 100%)',
                 border: '1px solid rgba(168,85,247,0.2)',
               }}>
               <p className="text-[9px] font-black tracking-widest mb-1" style={{ color: 'rgba(168,85,247,0.5)' }}>TOTAL NET REVENUE</p>
@@ -581,7 +563,7 @@ export default function DashboardPage() {
                 <span className="text-[10px]" style={{ color: 'rgba(255,214,0,0.5)' }}>
                   Groups: £{stats.groupRevenue.toFixed(2)}
                 </span>
-                <span className="text-[10px]" style={{ color: 'rgba(0,229,255,0.4)' }}>
+                <span className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                   Referrals: £{stats.referralBalance.toFixed(2)}
                 </span>
               </div>
@@ -590,7 +572,7 @@ export default function DashboardPage() {
             {/* Stat grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <StatCard label="EVENTS" value={stats.totalEvents} icon={Calendar} color="#a855f7" />
-              <StatCard label="UPCOMING" value={stats.upcomingEvents} icon={Clock} color="#00e5ff" />
+              <StatCard label="UPCOMING" value={stats.upcomingEvents} icon={Clock} color="var(--accent)" />
               <StatCard label="TICKETS SOLD" value={stats.totalTicketsSold} icon={Ticket} color="#00ff88" />
               <StatCard label="SUBSCRIBERS" value={stats.totalSubscribers} icon={Crown} color="#ffd600" />
             </div>
@@ -609,7 +591,7 @@ export default function DashboardPage() {
                         <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{fmtDate(e.startsAt)}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] flex items-center gap-0.5" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                        <span className="text-[10px] flex items-center gap-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                           <Users size={9} /> {e.guestCount}
                         </span>
                         <button onClick={() => setAttendeeModal({ id: e.id, name: e.name })}
@@ -617,7 +599,7 @@ export default function DashboardPage() {
                           <Eye size={12} />
                         </button>
                         <Link href={`/events/${e.id}/edit`}
-                          className="p-1.5 rounded-lg" style={{ color: 'rgba(0,229,255,0.4)' }}>
+                          className="p-1.5 rounded-lg" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                           <Edit3 size={12} />
                         </Link>
                       </div>
@@ -705,7 +687,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mt-1.5">
-                        <span className="text-[10px]" style={{ color: 'rgba(0,229,255,0.5)' }}>
+                        <span className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
                           {e.guestCount} guests
                         </span>
                         <span className="text-[10px]" style={{ color: 'rgba(0,255,136,0.5)' }}>
@@ -729,7 +711,7 @@ export default function DashboardPage() {
                       </button>
                       <Link href={`/events/${e.id}/edit`}
                         className="p-2 rounded-lg transition-all"
-                        style={{ background: 'rgba(0,229,255,0.06)', color: 'rgba(0,229,255,0.5)' }}>
+                        style={{ background: 'rgba(var(--accent-rgb),0.06)', color: 'rgba(var(--accent-rgb),0.5)' }}>
                         <Edit3 size={13} />
                       </Link>
                     </div>
