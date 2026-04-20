@@ -12,7 +12,7 @@
   "dependencies": {
     "@partyradar/shared": "*",
     "@stripe/react-stripe-js": "^6.2.0",
-    "@stripe/stripe-js": "^5.3.0",
+    "@stripe/stripe-js": "^9.2.0",
     "@vercel/speed-insights": "^2.0.0",
     "firebase": "^11.1.0",
     "html5-qrcode": "^2.3.8",
