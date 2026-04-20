@@ -13,6 +13,7 @@ import type { EventType, Event } from '@partyradar/shared'
 import { AGE_RESTRICTION_LABELS, getTier } from '@partyradar/shared'
 import { useAuth } from '@/hooks/useAuth'
 import { api, API_URL } from '@/lib/api'
+import DiscoverFeedTab from '@/components/feed/DiscoverFeedTab'
 import { formatPrice, detectCurrency } from '@/lib/currency'
 
 // ── Country → currency mapping (for city search) ─────────────────────────────
@@ -1258,7 +1259,7 @@ export default function DiscoverPage() {
   const { dbUser } = useAuth()
   const userTier = dbUser?.subscriptionTier ?? 'FREE'
 
-  const [tab, setTab] = useState<'events' | 'venues'>('events')
+  const [tab, setTab] = useState<'events' | 'venues' | 'feed'>('events')
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
   const [searchOpen, setSearchOpen] = useState(false)
   // Use 0 as server-safe initial value to avoid SSR/client hydration mismatch.
@@ -1760,6 +1761,18 @@ export default function DiscoverPage() {
             >
               VENUES
             </button>
+            <button
+              onClick={() => setTab('feed')}
+              className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
+              style={{
+                background: tab === 'feed' ? 'rgba(236,72,153,0.12)' : 'transparent',
+                color: tab === 'feed' ? '#ec4899' : 'rgba(74,96,128,0.6)',
+                letterSpacing: '0.12em',
+                boxShadow: tab === 'feed' ? '0 0 8px rgba(236,72,153,0.15)' : 'none',
+              }}
+            >
+              FEED
+            </button>
           </div>
           {/* Live location tracking badge */}
           {isTracking && !aiSyncing && aiFound === null && (
@@ -1857,6 +1870,16 @@ export default function DiscoverPage() {
           )}
         </div>
       </div>
+
+      {/* ── Feed tab ── */}
+      {tab === 'feed' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <DiscoverFeedTab
+            dbUser={dbUser ? { id: dbUser.id, username: dbUser.username ?? '', displayName: dbUser.displayName ?? '', photoUrl: dbUser.photoUrl } : null}
+            isLoggedIn={!!dbUser}
+          />
+        </div>
+      )}
 
       {/* ── Venues tab — always mounted, hidden when not active to preserve discovery state ── */}
       <div style={{ display: tab === 'venues' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
