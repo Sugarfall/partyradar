@@ -47,6 +47,7 @@ interface PublicProfile {
   events: ProfileEvent[]
   recentCheckIns: CheckIn[]
   profileBg?: string | null
+  profileBgImage?: string | null
   themeColor?: string | null
   themeName?: string | null
   socialScore?: number
@@ -405,7 +406,9 @@ export default function PublicProfilePage() {
       <div className="relative" style={{ height: 130 }}>
         <div className="absolute inset-0"
           style={{
-            background: profile.profileBg
+            background: profile.profileBgImage
+              ? `url(${profile.profileBgImage}) center/cover no-repeat`
+              : profile.profileBg
               ? profile.profileBg
               : `linear-gradient(135deg,
                   ${profile.isAdmin ? 'rgba(255,214,0,0.3)' : isHost ? 'rgba(168,85,247,0.3)' : `${accent}30`} 0%,

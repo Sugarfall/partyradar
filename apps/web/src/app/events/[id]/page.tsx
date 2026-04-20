@@ -180,18 +180,44 @@ function CountdownTimer({ startsAt, endsAt, color }: { startsAt: string; endsAt?
 }
 
 function MiniLocationMap({ lat, lng, address, color }: { lat: number; lng: number; address: string; color: string }) {
-  const mapUrl = `https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-s+${color.replace('#', '')}(${lng},${lat})/${lng},${lat},14,0/400x200@2x?access_token=${process.env['NEXT_PUBLIC_MAPBOX_TOKEN']}`
+  const [imgFailed, setImgFailed] = useState(false)
+  const token = process.env['NEXT_PUBLIC_MAPBOX_TOKEN']
+  // Only use Mapbox if token is present and color is a hex (not a CSS variable)
+  const hexColor = color.startsWith('#') ? color.replace('#', '') : '8b5cf6'
+  const mapUrl = token && !imgFailed
+    ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-s+${hexColor}(${lng},${lat})/${lng},${lat},14,0/400x200@2x?access_token=${token}`
+    : null
+
+  const mapsHref = `https://maps.google.com/?q=${encodeURIComponent(address)}`
 
   return (
     <div className="mb-5 rounded-xl overflow-hidden" style={{ border: `1px solid ${color}20` }}>
-      <a href={`https://maps.google.com/?q=${encodeURIComponent(address)}`} target="_blank" rel="noopener noreferrer">
-        <img src={mapUrl} alt="Event location" className="w-full h-[140px] object-cover" style={{ filter: 'brightness(0.85) saturate(1.3)' }} />
-      </a>
+      {mapUrl ? (
+        <a href={mapsHref} target="_blank" rel="noopener noreferrer">
+          <img
+            src={mapUrl}
+            alt={address}
+            className="w-full h-[140px] object-cover"
+            style={{ filter: 'brightness(0.85) saturate(1.3)' }}
+            onError={() => setImgFailed(true)}
+          />
+        </a>
+      ) : (
+        /* Fallback: styled address block when map image can't load */
+        <a href={mapsHref} target="_blank" rel="noopener noreferrer"
+          className="w-full h-[80px] flex items-center justify-center gap-3 no-underline"
+          style={{ background: `${color}08` }}>
+          <MapPin size={20} style={{ color, opacity: 0.6 }} />
+          <div>
+            <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{address}</p>
+            <p className="text-[10px] font-bold tracking-widest" style={{ color: `${color}80` }}>TAP TO OPEN MAPS →</p>
+          </div>
+        </a>
+      )}
       <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: 'rgba(4,4,13,0.9)' }}>
         <Navigation size={11} style={{ color: `${color}80` }} />
         <span className="text-xs font-medium truncate" style={{ color: 'rgba(224,242,254,0.7)' }}>{address}</span>
-        <a href={`https://maps.google.com/?q=${encodeURIComponent(address)}`}
-          target="_blank" rel="noopener noreferrer"
+        <a href={mapsHref} target="_blank" rel="noopener noreferrer"
           className="ml-auto text-[9px] font-bold shrink-0 px-2 py-1 rounded"
           style={{ color, border: `1px solid ${color}40`, letterSpacing: '0.1em' }}>
           OPEN MAP

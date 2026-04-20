@@ -23,6 +23,7 @@ async function request<T>(
   const authHeader = await getAuthHeader()
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       ...authHeader,

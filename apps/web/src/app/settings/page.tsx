@@ -116,7 +116,7 @@ function InfoRow({ label, value, sublabel }: { label: string; value: string; sub
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { dbUser, loading } = useAuth()
+  const { dbUser, loading, refreshUser } = useAuth()
 
   // ── Notification prefs ─────────────────────────────────────────────────────
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({
@@ -164,6 +164,7 @@ export default function SettingsPage() {
     setSavingNotif(true)
     try {
       await api.put('/auth/profile', { notifPrefs: updated })
+      await refreshUser()
       setNotifSaved(true)
       setTimeout(() => setNotifSaved(false), 2000)
     } catch { /* silent */ } finally {
@@ -177,6 +178,7 @@ export default function SettingsPage() {
     setPrivacyPrefs(updated)
     try {
       await api.put('/auth/profile', { [key]: value })
+      await refreshUser()
     } catch {
       // revert
       setPrivacyPrefs(privacyPrefs)

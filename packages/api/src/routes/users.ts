@@ -19,6 +19,7 @@ const PUBLIC_USER_SELECT = {
   accountMode: true,
   subscriptionTier: true,
   profileBg: true,
+  profileBgImage: true,
   themeColor: true,
   themeName: true,
   socialScore: true,

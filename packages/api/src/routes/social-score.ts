@@ -60,12 +60,12 @@ router.post('/:userId/feedback', requireAuth, async (req: AuthRequest, res, next
       data: { fromUserId, toUserId, category, score, comment: comment?.trim().slice(0, 300) ?? null },
     })
 
-    // Recompute social score: avg of all scores * 20 (max 100)
+    // Recompute social score: sum of all scores * 10 (unbounded — acts as leaderboard)
     const allScores = await prisma.anonymousFeedback.aggregate({
       where: { toUserId, isHidden: false },
-      _avg: { score: true },
+      _sum: { score: true },
     })
-    const newScore = Math.round(((allScores._avg?.score) ?? 0) * 20)
+    const newScore = ((allScores._sum?.score) ?? 0) * 10
     await prisma.user.update({ where: { id: toUserId }, data: { socialScore: newScore } })
 
     res.status(201).json({ data: { ok: true } })

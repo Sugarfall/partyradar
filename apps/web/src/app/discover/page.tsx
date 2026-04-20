@@ -201,7 +201,12 @@ function EventListCard({ event, live, userTier, currency }: { event: Event; live
               {timeUntil(event.startsAt)}
             </span>
           )}
-          {event.vibeTags?.slice(0, 2).map(t => (
+          {(event.guestCount ?? 0) > 0 && (
+            <span className="text-[9px] font-bold" style={{ color: 'rgba(0,255,136,0.6)' }}>
+              👥 {event.guestCount} going
+            </span>
+          )}
+          {event.vibeTags?.slice(0, 1).map(t => (
             <span key={t} className="text-[9px]" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>#{t}</span>
           ))}
         </div>
@@ -216,6 +221,18 @@ function EventStage({ event, dir, userTier, currency }: { event: Event; dir: Sli
   const isFree = (event.price ?? 0) === 0
   const [interested, setInterested] = useState(false)
   const [requested, setRequested] = useState(false)
+  const [friendsGoing, setFriendsGoing] = useState<{
+    count: number
+    friends: Array<{ id: string; displayName: string; photoUrl?: string | null; username: string }>
+  }>({ count: 0, friends: [] })
+
+  useEffect(() => {
+    api.get<{ data: { count: number; friends: Array<{ id: string; displayName: string; photoUrl?: string | null; username: string }> } }>(
+      `/events/${event.id}/friends-going`
+    )
+      .then(r => { if (r?.data) setFriendsGoing(r.data) })
+      .catch(() => {})
+  }, [event.id])
 
   const isYachtLocked = event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties
 
@@ -401,10 +418,22 @@ function EventStage({ event, dir, userTier, currency }: { event: Event; dir: Sli
             className="rounded-lg p-3 space-y-1"
             style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CAPACITY</p>
-            <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>
-              {event.guestCount ?? 0} / {event.capacity}
-            </p>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>FRIENDS GOING</p>
+            <div className="flex items-center gap-1.5">
+              {friendsGoing.friends.slice(0, 3).map(f => (
+                f.photoUrl
+                  ? <img key={f.id} src={f.photoUrl} alt={f.displayName} className="w-5 h-5 rounded-full object-cover shrink-0" style={{ border: '1px solid rgba(var(--accent-rgb),0.2)' }} />
+                  : <div key={f.id} className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black shrink-0"
+                      style={{ background: 'rgba(var(--accent-rgb),0.15)', color: 'var(--accent)' }}>
+                      {f.displayName[0]?.toUpperCase()}
+                    </div>
+              ))}
+              <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>
+                {friendsGoing.count > 0
+                  ? `${friendsGoing.count} friend${friendsGoing.count !== 1 ? 's' : ''} · ${event.guestCount ?? 0} total`
+                  : `${event.guestCount ?? 0} going`}
+              </p>
+            </div>
           </div>
           <div
             className="rounded-lg p-3 space-y-1"
@@ -1658,7 +1687,7 @@ export default function DiscoverPage() {
                   </p>
                   <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>{partyAlert.name}</p>
                   <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.5)' }}>
-                    {partyAlert.neighbourhood} · {partyAlert.price === 0 ? 'Free entry' : `£${partyAlert.price}`} · {partyAlert.capacity - (partyAlert.guestCount ?? 0)} spots left
+                    {partyAlert.neighbourhood} · {partyAlert.price === 0 ? 'Free entry' : `£${partyAlert.price}`} · {partyAlert.guestCount ?? 0} going
                   </p>
                 </div>
                 <button onClick={() => setAlertDismissed(true)} style={{ color: 'rgba(74,96,128,0.5)', flexShrink: 0 }}>
