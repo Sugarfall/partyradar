@@ -86,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           syncingRef.current = true
           try { await syncUser(result.user) } catch {}
           syncingRef.current = false
+          setLoading(false) // Bug 20 fix: clear loading after redirect-result sync
         }
       }).catch(() => {})
     }
@@ -93,16 +94,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user)
       if (user) {
-        // Skip if signIn/signUp/Google already called syncUser to avoid double requests
+        // Skip if signIn/signUp/Google already called syncUser to avoid double requests.
+        // Bug 20 fix: when syncingRef is true, the concurrent signIn/signUp call will set
+        // dbUser and then setLoading(false) itself — don't fire setLoading(false) here yet,
+        // or components will briefly see loading:false + dbUser:null and redirect to /login.
         if (!syncingRef.current) {
           try { await syncUser(user) } catch {
             setDbUser(makeMockDbUser(user.email ?? 'demo@partyradar.app'))
           }
+          setLoading(false)
         }
+        // If syncingRef is true, loading will be cleared by the signIn/signUp finally block
       } else {
         setDbUser(null)
+        setLoading(false)
       }
-      setLoading(false)
     })
     return unsub
   }, [])

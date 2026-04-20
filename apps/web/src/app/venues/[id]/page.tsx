@@ -104,17 +104,34 @@ function OpeningHours({ hours }: { hours: unknown }) {
   if (!hours) return null
   const todayIdx = new Date().getDay()
 
-  // Normalise: accept object like { monday: "11:00-23:00" } or { 1: {...} } or array
   let entries: { day: string; times: string }[] = []
-  if (typeof hours === 'object' && !Array.isArray(hours)) {
+
+  // Google Places weekday_text stored as { weekday_text: [...] } object
+  if (typeof hours === 'object' && !Array.isArray(hours) && (hours as any).weekday_text) {
+    const texts: string[] = (hours as any).weekday_text
+    entries = texts.map((text: string) => {
+      const colonIdx = text.indexOf(':')
+      if (colonIdx === -1) return { day: text, times: 'Closed' }
+      return { day: text.slice(0, colonIdx).trim(), times: text.slice(colonIdx + 1).trim() }
+    })
+  // Google Places weekday_text stored as a plain string array: ["Monday: 9am-5pm", ...]
+  } else if (Array.isArray(hours) && hours.length > 0 && typeof hours[0] === 'string') {
+    entries = (hours as string[]).map((text) => {
+      const colonIdx = text.indexOf(':')
+      if (colonIdx === -1) return { day: text, times: 'Closed' }
+      return { day: text.slice(0, colonIdx).trim(), times: text.slice(colonIdx + 1).trim() }
+    })
+  // Array of period objects: [{ day: 0|"Monday", open: "18:00", close: "03:00" }]
+  } else if (Array.isArray(hours)) {
+    entries = (hours as any[]).map((h) => ({
+      day: typeof h.day === 'number' ? (DAY_NAMES[h.day] ?? String(h.day)) : String(h.day ?? ''),
+      times: h.open && h.close ? `${h.open} – ${h.close}` : h.times ?? 'Closed',
+    }))
+  // Plain key→value object: { monday: "11:00–23:00", tuesday: "Closed" }
+  } else if (typeof hours === 'object' && !Array.isArray(hours)) {
     entries = Object.entries(hours as Record<string, unknown>).map(([k, v]) => ({
       day: k.charAt(0).toUpperCase() + k.slice(1).toLowerCase(),
-      times: typeof v === 'string' ? v : typeof v === 'object' && v ? JSON.stringify(v) : 'Closed',
-    }))
-  } else if (Array.isArray(hours)) {
-    entries = hours.map((h: any) => ({
-      day: typeof h.day === 'number' ? DAY_NAMES[h.day] ?? String(h.day) : String(h.day),
-      times: h.open && h.close ? `${h.open} – ${h.close}` : h.times ?? 'Closed',
+      times: typeof v === 'string' ? v : 'Closed',
     }))
   }
 

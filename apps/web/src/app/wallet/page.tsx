@@ -97,6 +97,7 @@ export default function WalletPage() {
   const [wallet, setWallet]           = useState<WalletData | null>(null)
   const [transactions, setTransactions] = useState<WalletTransaction[]>([])
   const [loading, setLoading]         = useState(true)
+  const [loadError, setLoadError]     = useState<string | null>(null)
   const [topping, setTopping]         = useState<string | null>(null)
   const [topUpError, setTopUpError]   = useState<string | null>(null)
 
@@ -111,6 +112,9 @@ export default function WalletPage() {
           setWallet(walletData as WalletData)
           setTransactions(txs ?? [])
         }
+      } catch {
+        // Bug 8 fix: show error instead of silent blank page
+        setLoadError('Failed to load wallet — please try again')
       } finally {
         setLoading(false)
       }
@@ -163,6 +167,20 @@ export default function WalletPage() {
             LOG IN
           </a>
         </div>
+      </div>
+    )
+  }
+
+  // Bug 8 fix: show load error instead of a blank page
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#04040d' }}>
+        <p className="text-sm font-bold" style={{ color: 'rgba(255,0,110,0.7)' }}>{loadError}</p>
+        <button onClick={() => { setLoadError(null); setLoading(true) }}
+          className="text-xs font-black px-4 py-2 rounded-xl"
+          style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>
+          TRY AGAIN
+        </button>
       </div>
     )
   }

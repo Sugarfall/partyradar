@@ -38,7 +38,9 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
     })
 
     const freeDrinksAvailable = wallet.freeDrinksEarned - wallet.freeDrinksUsed
-    const pointsToNextDrink = WALLET_CONFIG.POINTS_PER_FREE_DRINK - (wallet.rewardPoints % WALLET_CONFIG.POINTS_PER_FREE_DRINK)
+    // Bug 17 fix: remainder of 0 means the user is exactly at a threshold (already earned a drink)
+    const remainder = wallet.rewardPoints % WALLET_CONFIG.POINTS_PER_FREE_DRINK
+    const pointsToNextDrink = remainder === 0 ? 0 : WALLET_CONFIG.POINTS_PER_FREE_DRINK - remainder
 
     res.json({
       data: {

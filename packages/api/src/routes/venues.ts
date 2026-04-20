@@ -5,6 +5,25 @@ import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
 
+const GOOGLE_API_KEY = process.env['GOOGLE_PLACES_API_KEY'] ?? ''
+
+/** Fetch opening hours from Google Places for a venue that has a googlePlaceId */
+async function fetchAndStoreHours(venueId: string, googlePlaceId: string): Promise<string[] | null> {
+  if (!GOOGLE_API_KEY) return null
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${googlePlaceId}&fields=opening_hours&key=${GOOGLE_API_KEY}`
+    const r = await fetch(url)
+    const data = await r.json() as { status: string; result?: { opening_hours?: { weekday_text?: string[] } } }
+    if (data.status !== 'OK' || !data.result?.opening_hours?.weekday_text) return null
+    const weekdayText = data.result.opening_hours.weekday_text
+    // Persist back to DB so next request is instant
+    await prisma.venue.update({ where: { id: venueId }, data: { openingHours: weekdayText } })
+    return weekdayText
+  } catch {
+    return null
+  }
+}
+
 const router = Router()
 
 const venueSchema = z.object({
@@ -24,6 +43,7 @@ const venueUpdateSchema = venueSchema.partial()
 
 const venueSelect = {
   id: true,
+  googlePlaceId: true,
   name: true,
   address: true,
   city: true,
@@ -159,7 +179,14 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
 
     if (!venue) throw new AppError('Venue not found', 404)
 
-    res.json({ data: venue })
+    // Auto-fetch opening hours from Google Places when missing
+    let openingHours = venue.openingHours
+    if (openingHours == null && venue.googlePlaceId) {
+      const fetched = await fetchAndStoreHours(venue.id, venue.googlePlaceId)
+      if (fetched) openingHours = fetched
+    }
+
+    res.json({ data: { ...venue, openingHours } })
   } catch (err) {
     next(err)
   }

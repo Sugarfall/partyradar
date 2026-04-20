@@ -358,7 +358,8 @@ export default function PublicProfilePage() {
       await api.post('/dm', { recipientId: profile.id })
       router.push('/messages')
     } catch {
-      router.push('/messages')
+      // Bug 9 fix: don't navigate on failure — DM may not have been created
+      console.error('[openDm] Failed to create DM conversation')
     } finally { setDmLoading(false) }
   }
 

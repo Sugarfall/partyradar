@@ -291,9 +291,11 @@ export default function ProfilePage() {
   const [savedOk, setSavedOk] = useState(false)
   const [focused, setFocused] = useState<string | null>(null)
 
-  const [localGender] = useState<string | null>(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('partyradar_gender') : null
-  )
+  // Bug 5 fix: useState initialiser runs once (server value = null), so use useEffect to hydrate
+  const [localGender, setLocalGender] = useState<string | null>(null)
+  useEffect(() => {
+    setLocalGender(localStorage.getItem('partyradar_gender'))
+  }, [])
 
   // Social counts — fetched from API
   const [followersCount, setFollowersCount] = useState(0)
@@ -881,7 +883,7 @@ export default function ProfilePage() {
 
         {/* ── Wants to go out? AI Suggester ── */}
         <button
-          onClick={handleGoOutAI}
+          onClick={() => handleGoOutAI()}
           className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all"
           style={{
             background: 'linear-gradient(135deg, rgba(255,0,110,0.08) 0%, rgba(var(--accent-rgb),0.06) 100%)',

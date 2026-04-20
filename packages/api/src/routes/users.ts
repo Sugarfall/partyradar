@@ -317,7 +317,10 @@ router.get('/:username/following', optionalAuth, async (req: AuthRequest, res, n
 })
 
 // ── GET /api/users/:username — main public profile ────────────────────────────
+// Bug 11 fix: guard against someone having registered the username "me" — that
+// would shadow the authenticated /me/* routes above via the wildcard /:username.
 router.get('/:username', optionalAuth, async (req: AuthRequest, res, next) => {
+  if (req.params['username'] === 'me') { res.status(404).json({ error: 'User not found' }); return }
   try {
     const { username } = req.params as { username: string }
     const currentUserId = req.user?.dbUser.id ?? null
@@ -385,6 +388,7 @@ router.get('/:username', optionalAuth, async (req: AuthRequest, res, next) => {
       hasNudged = !!nudge
 
       // Track profile view (fire and forget)
+      // Bug 18 fix: log errors instead of silently swallowing
       prisma.profileView.upsert({
         where: { viewerId_profileId: { viewerId: currentUserId, profileId: user.id } },
         create: { viewerId: currentUserId, profileId: user.id },
@@ -410,7 +414,7 @@ router.get('/:username', optionalAuth, async (req: AuthRequest, res, next) => {
             },
           }).catch(() => {})
         }
-      }).catch(() => {})
+      }).catch((err: unknown) => console.error('[ProfileView]', err))
     }
 
     // Profile view count for own profile

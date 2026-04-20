@@ -845,10 +845,22 @@ export async function syncExternalEvents(
   }
   lastSyncTime.set(key, Date.now())
 
-  // Resolve admin hostId from DB
-  const adminUser = await prisma.user.findFirst({ where: { isAdmin: true } })
-  if (!adminUser) return { imported: 0, skipped: 0, sources: [] }
-  const hostId = adminUser.id
+  // Use (or create) the dedicated PartyRadar Assistant system account as hostId for all
+  // externally-synced events — avoids mixing real admin accounts with bot-created content.
+  const systemUser = await prisma.user.upsert({
+    where: { firebaseUid: 'partyradar_system' },
+    create: {
+      firebaseUid: 'partyradar_system',
+      email: 'assistant@partyradar.app',
+      username: 'partyradar',
+      displayName: 'PartyRadar Assistant',
+      photoUrl: 'https://partyradar.app/icons/icon-192.png',
+      interests: [],
+      subscriptionTier: 'FREE',
+    },
+    update: { displayName: 'PartyRadar Assistant' },
+  })
+  const hostId = systemUser.id
 
   let totalImported = 0
   let totalSkipped = 0

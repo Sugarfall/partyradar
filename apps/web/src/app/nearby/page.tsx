@@ -252,15 +252,18 @@ export default function NearbyPage() {
   }, [])
 
   async function toggleFollow(userId: string, currentlyFollowing: boolean) {
-    setFollowing(prev => {
-      const next = new Set(prev)
-      currentlyFollowing ? next.delete(userId) : next.add(userId)
-      return next
-    })
+    // Bug 1 fix: optimistically flip isFollowing directly in the people array
+    // (the old delta-Set approach was a no-op when unfollowing already-followed people)
+    setPeople(prev => prev.map(p => p.id === userId ? { ...p, isFollowing: !currentlyFollowing } : p))
     if (currentlyFollowing) {
-      api.delete(`/follow/${userId}`).catch(() => {})
+      api.delete(`/follow/${userId}`).catch(() => {
+        // Revert on error
+        setPeople(prev => prev.map(p => p.id === userId ? { ...p, isFollowing: true } : p))
+      })
     } else {
-      api.post(`/follow/${userId}`, {}).catch(() => {})
+      api.post(`/follow/${userId}`, {}).catch(() => {
+        setPeople(prev => prev.map(p => p.id === userId ? { ...p, isFollowing: false } : p))
+      })
     }
   }
 
@@ -308,8 +311,12 @@ export default function NearbyPage() {
   async function swipe(profile: MatchProfile, liked: boolean, superLike = false) {
     if (swiping) return
     setSwiping(true)
-    setDeck(prev => prev.filter(p => p.id !== profile.id))
-    if (deck.length <= 1) setOutOfCards(true)
+    // Bug 3 fix: check remaining count inside the updater so we don't read stale deck.length
+    setDeck(prev => {
+      const next = prev.filter(p => p.id !== profile.id)
+      if (next.length === 0) setOutOfCards(true)
+      return next
+    })
     try {
       const j = await api.post<{ data: { match: boolean; conversationId?: string } }>('/match/swipe', { toUserId: profile.id, liked, superLike })
       if (j?.data?.match && liked) {
@@ -391,7 +398,7 @@ export default function NearbyPage() {
             </div>
           )}
           {people.map((person) => {
-            const isFollowing = following.has(person.id) ? !person.isFollowing : person.isFollowing
+            const isFollowing = person.isFollowing
             return (
               <div key={person.id} className="p-4 rounded-2xl flex items-center gap-3"
                 style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>

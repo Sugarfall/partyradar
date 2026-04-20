@@ -468,7 +468,8 @@ cron.schedule('*/30 * * * *', async () => {
   try {
     const hour = new Date().getHours()
     // Only post activity between 6pm and 4am (active nightlife hours)
-    if (hour < 18 && hour > 4) return
+    // Bug 16 fix: was `hour > 4` (skips 5-17 only), should be `hour >= 4` (also skips 4am)
+    if (hour >= 4 && hour < 18) return
 
     const eveningMessages = [
       'Doors open, early crowd filtering in 🚪',
@@ -606,6 +607,35 @@ cron.schedule('0 * * * *', async () => {
     })
     if (overseas.count > 0) {
       console.log(`[Startup] Unpublished ${overseas.count} out-of-region external events`)
+    }
+
+    // 3. Ensure the PartyRadar Assistant system account exists and reassign any external
+    //    events that are still pointing to an old "demo" admin user as host.
+    const systemUser = await prisma.user.upsert({
+      where: { firebaseUid: 'partyradar_system' },
+      create: {
+        firebaseUid: 'partyradar_system',
+        email: 'assistant@partyradar.app',
+        username: 'partyradar',
+        displayName: 'PartyRadar Assistant',
+        photoUrl: 'https://partyradar.app/icons/icon-192.png',
+        interests: [],
+        subscriptionTier: 'FREE',
+      },
+      update: { displayName: 'PartyRadar Assistant' },
+    })
+
+    // Migrate externally-synced events whose host displayName is still "demo" (legacy admin)
+    const migrated = await prisma.event.updateMany({
+      where: {
+        externalSource: { not: null },
+        host: { displayName: 'demo' },
+        hostId: { not: systemUser.id },
+      },
+      data: { hostId: systemUser.id },
+    })
+    if (migrated.count > 0) {
+      console.log(`[Startup] Reassigned ${migrated.count} external events from "demo" → PartyRadar Assistant`)
     }
   } catch (err) {
     console.error('[Startup] Cleanup error:', err)

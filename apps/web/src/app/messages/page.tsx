@@ -117,7 +117,8 @@ function HostGroupDashboard({
   const [creating, setCreating] = useState(false)
 
   const myGroups = groups.filter((g) => g.isOwner)
-  const totalSubs = myGroups.reduce((sum, g) => sum + (g.isPaid ? g.memberCount : 0), 0)
+  // Bug 13 fix: memberCount includes the owner — subtract 1 per paid group
+  const totalSubs = myGroups.reduce((sum, g) => sum + (g.isPaid ? Math.max(0, g.memberCount - 1) : 0), 0)
   const paidGroups = myGroups.filter((g) => g.isPaid)
 
   const COLORS = ['#a855f7', '#3b82f6', '#ec4899', '#10b981', '#f97316', '#ef4444', '#06b6d4', '#6366f1', '#eab308', '#f43f5e']

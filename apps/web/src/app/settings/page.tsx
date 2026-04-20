@@ -184,8 +184,8 @@ export default function SettingsPage() {
       await api.put('/auth/profile', { [key]: value })
       await refreshUser()
     } catch {
-      // revert
-      setPrivacyPrefs(privacyPrefs)
+      // Bug 7 fix: use functional update to avoid stale closure reverting a concurrent change
+      setPrivacyPrefs(prev => ({ ...prev, [key]: !value }))
     } finally {
       setSavingPrivacy(false)
     }
