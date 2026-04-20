@@ -45,13 +45,14 @@ export const GLASGOW_VENUES: DemoVenue[] = [
   { id: 'venue-g20', name: "King Tut's Wah Wah Hut", address: '272 St Vincent St, Glasgow G2 5RL', city: 'Glasgow', lat: 55.8624, lng: -4.2687, type: 'CONCERT_HALL', rating: 4.7, vibeTags: ['live music', 'indie', 'iconic', 'intimate'],  isClaimed: false },
 ]
 
-export function useEvents(query: EventDiscoverQuery = {}) {
+export function useEvents(query: EventDiscoverQuery = {}, skip = false) {
   const params = new URLSearchParams()
   Object.entries(query).forEach(([k, v]) => {
     if (v !== undefined) params.set(k, String(v))
   })
 
-  const swrKey = `/events?${params.toString()}`
+  // null key = SWR won't fetch (used to hold the request until GPS settles)
+  const swrKey = skip ? null : `/events?${params.toString()}`
 
   const { data, error, isLoading, isValidating, mutate } = useSWR<{ data: Event[]; total: number; hasMore: boolean }>(
     swrKey,
@@ -71,9 +72,9 @@ export function useEvents(query: EventDiscoverQuery = {}) {
   // Safety net: if SWR stalls for 3s force a fetch via api helper (includes auth)
   const retried = useRef(false)
   useEffect(() => {
-    if (data || retried.current) return
+    if (data || retried.current || !swrKey) return
     const timer = setTimeout(() => {
-      if (retried.current) return
+      if (retried.current || !swrKey) return
       retried.current = true
       api.get(swrKey)
         .then((j) => { if ((j as { data?: unknown })?.data) mutate(j as never, false) })
@@ -84,6 +85,7 @@ export function useEvents(query: EventDiscoverQuery = {}) {
 
   // Manual retry — bypasses SWR cache entirely
   const forceRetry = useCallback(async () => {
+    if (!swrKey) return
     try {
       const json = await api.get(swrKey)
       if ((json as { data?: unknown })?.data) mutate(json as never, false)

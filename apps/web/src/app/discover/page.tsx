@@ -12,7 +12,7 @@ import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
 import { AGE_RESTRICTION_LABELS, getTier } from '@partyradar/shared'
 import { useAuth } from '@/hooks/useAuth'
-import { API_URL } from '@/lib/api'
+import { api, API_URL } from '@/lib/api'
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
@@ -1170,6 +1170,13 @@ export default function DiscoverPage() {
   const [geoResolved, setGeoResolved] = useState(false)
   const [isTracking, setIsTracking] = useState(false)   // true when watchPosition is active
 
+  // AI event scan state — fires once when GPS provides first fix
+  const [aiSyncing, setAiSyncing] = useState(false)
+  const [aiCity, setAiCity] = useState<string | null>(null)
+  const [aiFound, setAiFound] = useState<number | null>(null)
+  const aiSyncedRef = useRef(false)
+  const aiFoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // ── Venue discovery state (lifted here so it survives tab switches) ──────────
   const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
   const [venueCity, setVenueCity] = useState<string | null>(null)
@@ -1199,6 +1206,8 @@ export default function DiscoverPage() {
         const { latitude: lat, longitude: lng } = pos.coords
         clearTimeout(fallback)
         setIsTracking(true)
+        // GPS settled — allow events fetch to start (gated on geoResolved)
+        setGeoResolved(true)
 
         const last = lastFetchedPos.current
         const moved = last ? haversineKm(last.lat, last.lng, lat, lng) : Infinity
@@ -1259,19 +1268,55 @@ export default function DiscoverPage() {
     }
   }
 
+  // Don't fetch events at all until GPS has settled (prevents global/Amsterdam events
+  // from showing during the geolocation resolution window)
   const { events, isLoading, mutate, forceRetry } = useEvents({
     ...filters,
     ...(filters.type === undefined ? { excludeTypes: 'CONCERT' } : {}),
     ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
     limit: 100,
-  })
+  }, !geoResolved)
 
-  // Clear the loading guard once we have a location fix and the first event fetch completes
+  // AI sync — fires once when we get the first GPS fix.
+  // Calls POST /api/events/ai-sync which runs Perplexity + Ticketmaster/Skiddle
+  // for the user's city, then revalidates the events list when done.
   useEffect(() => {
-    if (userLocation && !isLoading) setGeoResolved(true)
-    // Also clear if no location (denied) and events fetch finished
-    if (!userLocation && !isLoading) setGeoResolved(true)
-  }, [userLocation, isLoading])
+    if (!userLocation || aiSyncedRef.current) return
+    aiSyncedRef.current = true
+
+    const { lat, lng } = userLocation
+    setAiSyncing(true)
+    setAiFound(null)
+
+    // Resolve city name then run AI sync
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+      .then((r) => r.json())
+      .then((d: { address?: { city?: string; town?: string; county?: string } }) => {
+        const city =
+          d?.address?.city || d?.address?.town || d?.address?.county ||
+          `${lat.toFixed(2)},${lng.toFixed(2)}`
+        setAiCity(city)
+        return api.post<{ data: { imported: number; skipped: number; sources: string[] } }>(
+          '/events/ai-sync',
+          { city, lat, lng, force: true },
+        )
+      })
+      .then((res) => {
+        const found = res?.data?.imported ?? 0
+        setAiFound(found)
+        setAiSyncing(false)
+        // Revalidate events list so newly synced events appear
+        mutate()
+        // Hide the "found X events" badge after 5s
+        if (aiFoundTimerRef.current) clearTimeout(aiFoundTimerRef.current)
+        aiFoundTimerRef.current = setTimeout(() => setAiFound(null), 5000)
+      })
+      .catch(() => {
+        setAiSyncing(false)
+        mutate() // still revalidate on error — fire-and-forget may have persisted something
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation])
 
   // Auto-retry once when 0 events returned with a location — the first load triggers
   // the background sync; 4 s later events will be in the DB and a re-fetch will find them.
@@ -1457,11 +1502,30 @@ export default function DiscoverPage() {
             </button>
           </div>
           {/* Live location tracking badge */}
-          {isTracking && (
+          {isTracking && !aiSyncing && aiFound === null && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
               style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)' }}>
               <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#00ff88', boxShadow: '0 0 6px #00ff88' }} />
               <span className="text-[9px] font-black tracking-widest" style={{ color: '#00ff88' }}>LIVE</span>
+            </div>
+          )}
+          {/* AI event scan status badge */}
+          {aiSyncing && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.35)' }}>
+              <div className="w-2.5 h-2.5 rounded-full border border-t-transparent animate-spin shrink-0"
+                style={{ borderColor: 'rgba(139,92,246,0.3)', borderTopColor: '#8b5cf6' }} />
+              <span className="text-[9px] font-black tracking-widest whitespace-nowrap" style={{ color: '#8b5cf6' }}>
+                AI{aiCity ? ` · ${aiCity.toUpperCase()}` : ' SCANNING...'}
+              </span>
+            </div>
+          )}
+          {!aiSyncing && aiFound !== null && (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)' }}>
+              <span className="text-[9px] font-black tracking-widest whitespace-nowrap" style={{ color: '#00ff88' }}>
+                ✨ {aiFound > 0 ? `+${aiFound} EVENTS` : 'SCANNED'}
+              </span>
             </div>
           )}
         </div>

@@ -182,6 +182,29 @@ router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) =
   }
 })
 
+/** POST /api/events/ai-sync — explicitly trigger AI event discovery for a city */
+router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { city, lat, lng, force } = req.body as {
+      city?: string; lat?: number; lng?: number; force?: boolean
+    }
+    if (!city || lat == null || lng == null) {
+      throw new AppError('city, lat and lng are required', 400)
+    }
+
+    const { syncExternalEvents } = await import('../lib/eventSync')
+    // Run full sync (including Perplexity AI) and await results so the client
+    // knows when it's safe to re-fetch events.
+    const result = await syncExternalEvents(
+      String(city), Number(lat), Number(lng), 'user', force === true
+    )
+
+    res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** GET /api/events/:id */
 router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
