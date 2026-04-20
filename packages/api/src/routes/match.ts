@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, requireTier } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 
 const router = Router()
@@ -14,8 +14,8 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-// GET /api/match/deck — up to 20 candidate profiles
-router.get('/deck', requireAuth, async (req: AuthRequest, res, next) => {
+// GET /api/match/deck — up to 20 candidate profiles (BASIC+ required)
+router.get('/deck', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req: AuthRequest, res, next) => {
   try {
     const me = req.user!.dbUser
     const myUser = await prisma.user.findUnique({
@@ -24,10 +24,13 @@ router.get('/deck', requireAuth, async (req: AuthRequest, res, next) => {
     })
     if (!myUser) return res.status(404).json({ error: { message: 'User not found' } })
 
-    const targetGenders: string[] =
-      myUser.gender === 'MALE' ? ['FEMALE'] :
-      myUser.gender === 'FEMALE' ? ['MALE'] :
-      ['MALE', 'FEMALE', 'NON_BINARY']
+    // Require gender to be set — Matchmaking is Male↔Female only
+    if (!myUser.gender || (myUser.gender !== 'MALE' && myUser.gender !== 'FEMALE')) {
+      return res.status(422).json({ error: 'GENDER_REQUIRED', message: 'Set your gender in your profile to start matching' })
+    }
+
+    // Strict heterosexual matching: male sees females, female sees males
+    const targetGenders: string[] = myUser.gender === 'MALE' ? ['FEMALE'] : ['MALE']
 
     const alreadySwiped = await prisma.swipeLike.findMany({
       where: { fromUserId: me.id },
@@ -89,8 +92,8 @@ router.get('/deck', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-// POST /api/match/swipe — record a swipe, returns { match: boolean }
-router.post('/swipe', requireAuth, async (req: AuthRequest, res, next) => {
+// POST /api/match/swipe — record a swipe, returns { match: boolean } (BASIC+ required)
+router.post('/swipe', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req: AuthRequest, res, next) => {
   try {
     const me = req.user!.dbUser
     const { toUserId, liked } = req.body as { toUserId: string; liked: boolean }
@@ -147,8 +150,8 @@ router.post('/swipe', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-// GET /api/match/matches — get all mutual matches
-router.get('/matches', requireAuth, async (req: AuthRequest, res, next) => {
+// GET /api/match/matches — get all mutual matches (BASIC+ required)
+router.get('/matches', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req: AuthRequest, res, next) => {
   try {
     const me = req.user!.dbUser
 

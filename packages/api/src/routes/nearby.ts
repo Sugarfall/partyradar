@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth, optionalAuth } from '../middleware/auth'
+import { requireAuth, requireTier } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 
@@ -30,10 +30,10 @@ function distanceM(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-/** GET /api/nearby/people */
-router.get('/people', optionalAuth, async (req: AuthRequest, res, next) => {
+/** GET /api/nearby/people — BASIC+ required */
+router.get('/people', requireAuth, requireTier('BASIC', 'Nearby'), async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user?.dbUser.id ?? null
+    const userId = req.user!.dbUser.id
     const lat = Number(req.query['lat'])
     const lng = Number(req.query['lng'])
     if (isNaN(lat) || isNaN(lng)) throw new AppError('lat/lng required', 400)
@@ -46,7 +46,7 @@ router.get('/people', optionalAuth, async (req: AuthRequest, res, next) => {
         lastLat: { gte: lat - DELTA, lte: lat + DELTA },
         lastLng: { gte: lng - DELTA, lte: lng + DELTA },
         lastSeenAt: { gte: cutoff },
-        id: { not: userId ?? 'none' },
+        id: { not: userId },
         showInNearby: true,
       },
       select: {
@@ -56,12 +56,12 @@ router.get('/people', optionalAuth, async (req: AuthRequest, res, next) => {
       take: 30,
     })
 
-    const followedIds = userId ? new Set(
+    const followedIds = new Set(
       (await prisma.follow.findMany({
         where: { followerId: userId, followingId: { in: users.map(u => u.id) } },
         select: { followingId: true },
       })).map(f => f.followingId)
-    ) : new Set<string>()
+    )
 
     const data = users
       .map(u => ({

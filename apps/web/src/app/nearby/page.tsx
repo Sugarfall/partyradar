@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import Link from 'next/link'
-import { MapPin, Users, RefreshCw, Heart, X, MessageCircle, Star } from 'lucide-react'
+import { MapPin, Users, RefreshCw, Heart, X, MessageCircle, Star, Lock, UserCircle } from 'lucide-react'
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -37,6 +37,126 @@ function distanceLabel(m: number) {
   if (m < 100) return 'Here'
   if (m < 1000) return `${m}m`
   return `${(m / 1000).toFixed(1)}km`
+}
+
+// ─── Paywall gate ─────────────────────────────────────────────────────────────
+
+function PaidGate({ feature, icon, description }: {
+  feature: string
+  icon: React.ReactNode
+  description: string
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[70vh] gap-5 px-8 text-center">
+      <div
+        className="w-20 h-20 rounded-2xl flex items-center justify-center relative"
+        style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}
+      >
+        <div style={{ opacity: 0.25 }}>{icon}</div>
+        <div
+          className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center"
+          style={{ background: '#ff006e', border: '2px solid #07071a' }}
+        >
+          <Lock size={12} style={{ color: '#fff' }} />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="text-lg font-black tracking-widest" style={{ color: '#e0f2fe', letterSpacing: '0.1em' }}>
+          {feature}
+        </h2>
+        <p className="text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.45)', maxWidth: 260 }}>
+          {description}
+        </p>
+      </div>
+
+      {/* Feature highlights */}
+      <div className="w-full max-w-xs space-y-2">
+        {feature === 'NEARBY' ? (
+          <>
+            <FeatureRow>See who&apos;s within 2km of you live</FeatureRow>
+            <FeatureRow>Follow people you meet at events</FeatureRow>
+            <FeatureRow>Real-time location updates</FeatureRow>
+          </>
+        ) : (
+          <>
+            <FeatureRow>Tinder-style swipe matching</FeatureRow>
+            <FeatureRow>Mutual match notifications</FeatureRow>
+            <FeatureRow>Instant DM when you match</FeatureRow>
+          </>
+        )}
+      </div>
+
+      <Link
+        href="/pricing"
+        className="w-full max-w-xs flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black tracking-widest transition-all"
+        style={{
+          background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.2), rgba(var(--accent-rgb),0.08))',
+          border: '1px solid rgba(var(--accent-rgb),0.4)',
+          color: 'var(--accent)',
+          boxShadow: '0 0 20px rgba(var(--accent-rgb),0.1)',
+          letterSpacing: '0.15em',
+        }}
+      >
+        <Lock size={13} /> UNLOCK WITH BASIC — £4.99/mo
+      </Link>
+
+      <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
+        Cancel anytime · All features included
+      </p>
+    </div>
+  )
+}
+
+function FeatureRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left"
+      style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />
+      <span className="text-xs" style={{ color: 'rgba(224,242,254,0.55)' }}>{children}</span>
+    </div>
+  )
+}
+
+// ─── Gender setup prompt (needed before matchmaking) ─────────────────────────
+
+function GenderPrompt() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[70vh] gap-5 px-8 text-center">
+      <div
+        className="w-20 h-20 rounded-2xl flex items-center justify-center"
+        style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.15)' }}
+      >
+        <UserCircle size={40} style={{ color: 'rgba(255,0,110,0.4)' }} />
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="text-lg font-black" style={{ color: '#e0f2fe' }}>Set Your Gender First</h2>
+        <p className="text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.4)', maxWidth: 260 }}>
+          Matchmaking shows men to women and women to men. Add your gender to your profile to get started.
+        </p>
+      </div>
+
+      <div className="w-full max-w-xs space-y-2">
+        <FeatureRow>Male → sees females nearby</FeatureRow>
+        <FeatureRow>Female → sees males nearby</FeatureRow>
+        <FeatureRow>Swipe right to like · left to pass</FeatureRow>
+      </div>
+
+      <Link
+        href="/profile"
+        className="w-full max-w-xs flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black tracking-widest transition-all"
+        style={{
+          background: 'rgba(255,0,110,0.12)',
+          border: '1px solid rgba(255,0,110,0.4)',
+          color: '#ff006e',
+          letterSpacing: '0.15em',
+        }}
+      >
+        <UserCircle size={14} /> UPDATE PROFILE →
+      </Link>
+    </div>
+  )
 }
 
 // ─── Swipe card ───────────────────────────────────────────────────────────────
@@ -361,7 +481,16 @@ export default function NearbyPage() {
 
       {/* ── NEARBY tab ────────────────────────────────────────────────────── */}
       {tab === 'nearby' && (
-        <div className="max-w-lg mx-auto px-4 py-4 space-y-3">
+        <div className="max-w-lg mx-auto">
+          {/* Paywall: not logged in or FREE tier */}
+          {(!dbUser || dbUser.subscriptionTier === 'FREE') ? (
+            <PaidGate
+              feature="NEARBY"
+              icon={<Users size={40} />}
+              description="See who's around you at events and venues in real time. Available on Basic plan and above."
+            />
+          ) : (
+          <div className="px-4 py-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
               {coords ? 'People within 2km · live' : locationDenied ? 'Location access denied' : 'Getting your location…'}
@@ -391,12 +520,6 @@ export default function NearbyPage() {
               <p className="text-xs" style={{ color: 'rgba(224,242,254,0.25)' }}>Check back when more people are out</p>
             </div>
           )}
-          {!dbUser && people.length > 0 && (
-            <div className="px-4 py-3 rounded-xl text-center text-xs"
-              style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', color: 'rgba(224,242,254,0.4)' }}>
-              <Link href="/login" className="font-black" style={{ color: 'var(--accent)' }}>Log in</Link> to follow people
-            </div>
-          )}
           {people.map((person) => {
             const isFollowing = person.isFollowing
             return (
@@ -423,25 +546,26 @@ export default function NearbyPage() {
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#00ff88' }} />
                     {distanceLabel(person.distanceM)}
                   </div>
-                  {dbUser && (
-                    <button onClick={() => toggleFollow(person.id, isFollowing)}
-                      className="px-3 py-1 rounded-lg text-[10px] font-black"
-                      style={isFollowing
-                        ? { background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.4)' }
-                        : { background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}>
-                      {isFollowing ? 'FOLLOWING' : '+ FOLLOW'}
-                    </button>
-                  )}
+                  <button onClick={() => toggleFollow(person.id, isFollowing)}
+                    className="px-3 py-1 rounded-lg text-[10px] font-black"
+                    style={isFollowing
+                      ? { background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.4)' }
+                      : { background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}>
+                    {isFollowing ? 'FOLLOWING' : '+ FOLLOW'}
+                  </button>
                 </div>
               </div>
             )
           })}
+          </div>
+          )}
         </div>
       )}
 
       {/* ── MATCH tab ─────────────────────────────────────────────────────── */}
       {tab === 'match' && (
         <div>
+          {/* Not logged in */}
           {!dbUser ? (
             <div className="flex flex-col items-center justify-center h-96 gap-4 text-center px-6">
               <div className="text-5xl">💘</div>
@@ -452,6 +576,16 @@ export default function NearbyPage() {
                 LOG IN
               </Link>
             </div>
+          /* FREE tier paywall */
+          ) : dbUser.subscriptionTier === 'FREE' ? (
+            <PaidGate
+              feature="MATCHMAKING"
+              icon={<Heart size={40} />}
+              description="Tinder-style matching at nightlife events. Men see women, women see men — match and message instantly."
+            />
+          /* Gender not set */
+          ) : (dbUser.gender !== 'MALE' && dbUser.gender !== 'FEMALE') ? (
+            <GenderPrompt />
           ) : (
             <div className="max-w-lg mx-auto px-4 pt-3">
               {/* Match sub-tabs */}
