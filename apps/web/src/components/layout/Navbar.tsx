@@ -4,22 +4,20 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, Radio, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight } from 'lucide-react'
+import { Zap, Compass, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight, Menu } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import type { Notification } from '@partyradar/shared'
 
-// ── Desktop nav links ────────────────────────────────────────────────────────
+// ── Desktop nav links (Radar hidden for now) ─────────────────────────────────
 const NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
-  { href: '/radar',    label: 'Radar',    icon: Radio   },
   { href: '/nearby',   label: 'Nearby',   icon: Users   },
 ]
 
 // ── Mobile bottom tabs ───────────────────────────────────────────────────────
 const MOBILE_NAV = [
   { href: '/discover', label: 'Discover', icon: Compass },
-  { href: '/radar',    label: 'Radar',    icon: Radio   },
   { href: '/nearby',   label: 'Nearby',   icon: Users   },
 ]
 
@@ -170,6 +168,8 @@ function NavbarInner() {
   }
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const { data: notifData } = useSWR(
     dbUser ? '/notifications?limit=1' : null,
@@ -181,10 +181,11 @@ function NavbarInner() {
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
     }
-    if (notifOpen) document.addEventListener('mousedown', handler)
+    if (notifOpen || menuOpen) document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [notifOpen])
+  }, [notifOpen, menuOpen])
 
   return (
     <>
@@ -255,70 +256,11 @@ function NavbarInner() {
             })}
           </div>
 
-          {/* Right actions */}
-          <div className="flex items-center gap-2">
+          {/* Right actions — Bell always visible, everything else in Menu */}
+          <div className="flex items-center gap-1">
             {dbUser ? (
               <>
-                {/* Host buttons — only in HOST mode */}
-                {isHost && (
-                  <>
-                    <Link href="/dashboard"
-                      className="p-2 rounded-lg transition-all duration-150"
-                      style={{
-                        color: pathname.startsWith('/dashboard') ? '#a855f7' : 'rgba(255,255,255,0.4)',
-                        background: pathname.startsWith('/dashboard') ? 'rgba(168,85,247,0.08)' : 'transparent',
-                      }}
-                    >
-                      <BarChart3 size={16} />
-                    </Link>
-                    <Link href="/events/create"
-                      className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(var(--accent-rgb),0.1) 100%)',
-                        border: '1px solid rgba(168,85,247,0.35)',
-                        color: '#a855f7',
-                      }}
-                    >
-                      <Plus size={14} />
-                      Create
-                    </Link>
-                  </>
-                )}
-
-                {/* Earn */}
-                <Link href="/earn"
-                  className="p-2 rounded-lg transition-all duration-150"
-                  style={{
-                    color: pathname.startsWith('/earn') ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
-                    background: pathname.startsWith('/earn') ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
-                  }}
-                >
-                  <TrendingUp size={16} />
-                </Link>
-
-                {/* Referrals */}
-                <Link href="/referrals"
-                  className="p-2 rounded-lg transition-all duration-150"
-                  style={{
-                    color: pathname.startsWith('/referrals') ? '#00ff88' : 'rgba(255,255,255,0.4)',
-                    background: pathname.startsWith('/referrals') ? 'rgba(0,255,136,0.08)' : 'transparent',
-                  }}
-                >
-                  <Gift size={16} />
-                </Link>
-
-                {/* Wallet */}
-                <Link href="/wallet"
-                  className="p-2 rounded-lg transition-all duration-150"
-                  style={{
-                    color: pathname.startsWith('/wallet') ? '#00ff88' : 'rgba(255,255,255,0.4)',
-                    background: pathname.startsWith('/wallet') ? 'rgba(0,255,136,0.08)' : 'transparent',
-                  }}
-                >
-                  <Wallet size={16} />
-                </Link>
-
-                {/* Messages */}
+                {/* Messages shortcut */}
                 <Link href="/messages"
                   className="p-2 rounded-lg transition-all duration-150 relative"
                   style={{
@@ -329,9 +271,9 @@ function NavbarInner() {
                   <MessageCircle size={16} />
                 </Link>
 
-                {/* Bell */}
+                {/* Bell — always visible */}
                 <div ref={notifRef} className="relative">
-                  <button onClick={() => setNotifOpen((o) => !o)}
+                  <button onClick={() => { setNotifOpen((o) => !o); setMenuOpen(false) }}
                     className="relative p-2 rounded-lg transition-all duration-150"
                     style={{
                       color: notifOpen ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
@@ -349,13 +291,79 @@ function NavbarInner() {
 
                 {/* Avatar */}
                 <Link href="/profile"
-                  className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center transition-all"
+                  className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center transition-all mx-1"
                   style={{ border: '1px solid rgba(255,255,255,0.12)' }}
                 >
                   {dbUser.photoUrl
                     ? <img src={dbUser.photoUrl} alt="Profile" className="w-full h-full object-cover" />
                     : <User size={15} style={{ color: 'rgba(255,255,255,0.5)' }} />}
                 </Link>
+
+                {/* Hamburger Menu */}
+                <div ref={menuRef} className="relative">
+                  <button
+                    onClick={() => { setMenuOpen((o) => !o); setNotifOpen(false) }}
+                    className="p-2 rounded-lg transition-all duration-150"
+                    style={{
+                      color: menuOpen ? 'var(--accent)' : 'rgba(255,255,255,0.5)',
+                      background: menuOpen ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
+                      border: menuOpen ? '1px solid rgba(var(--accent-rgb),0.2)' : '1px solid transparent',
+                    }}
+                  >
+                    <Menu size={16} />
+                  </button>
+                  {menuOpen && (
+                    <div
+                      className="absolute top-full right-0 mt-2 w-52 rounded-2xl overflow-hidden z-50"
+                      style={{
+                        background: 'rgba(7,7,26,0.98)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        boxShadow: '0 8px 40px rgba(0,0,0,0.8)',
+                        backdropFilter: 'blur(20px)',
+                      }}
+                    >
+                      {isHost && (
+                        <>
+                          <Link href="/dashboard" onClick={() => setMenuOpen(false)}
+                            className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                            style={{ color: pathname.startsWith('/dashboard') ? '#a855f7' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <BarChart3 size={15} /> Dashboard
+                          </Link>
+                          <Link href="/events/create" onClick={() => setMenuOpen(false)}
+                            className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                            style={{ color: '#a855f7', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <Plus size={15} /> Create Event
+                          </Link>
+                        </>
+                      )}
+                      <Link href="/earn" onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                        style={{ color: pathname.startsWith('/earn') ? 'var(--accent)' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <TrendingUp size={15} /> Earn
+                      </Link>
+                      <Link href="/referrals" onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                        style={{ color: pathname.startsWith('/referrals') ? '#00ff88' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <Gift size={15} /> Referrals
+                      </Link>
+                      <Link href="/wallet" onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                        style={{ color: pathname.startsWith('/wallet') ? '#00ff88' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <Wallet size={15} /> Wallet
+                      </Link>
+                      <Link href="/leaderboard" onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                        style={{ color: pathname.startsWith('/leaderboard') ? '#ffd600' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <Star size={15} /> Leaderboard
+                      </Link>
+                      <Link href="/tickets" onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                        style={{ color: pathname.startsWith('/tickets') ? 'var(--accent)' : 'rgba(224,242,254,0.7)' }}>
+                        <Ticket size={15} /> My Tickets
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="flex items-center gap-2">

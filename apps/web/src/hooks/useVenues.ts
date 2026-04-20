@@ -20,12 +20,6 @@ export interface LiveVenue {
   checkInCount?: number
 }
 
-interface VenueDiscoverResult {
-  data: LiveVenue[]
-  source: 'google' | 'database' | 'google_places'
-  discovered: number
-}
-
 interface VenueCache {
   venues: LiveVenue[]
   source: 'google' | 'database' | 'google_places'
@@ -37,6 +31,8 @@ interface VenueCache {
 
 const CACHE_KEY = 'partyradar_venues_cache'
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+// Distance threshold (degrees) beyond which we consider it a different city (~50 km)
+const CITY_CHANGE_THRESHOLD = 0.45
 
 function loadCache(): VenueCache | null {
   if (typeof window === 'undefined') return null
@@ -54,14 +50,19 @@ function saveCache(c: VenueCache) {
   try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(c)) } catch {}
 }
 
+function clearCache() {
+  if (typeof window === 'undefined') return
+  try { sessionStorage.removeItem(CACHE_KEY) } catch {}
+}
+
 export function useVenueDiscover() {
-  // Use empty defaults for SSR; useEffect below hydrates from cache on the client
   const [venues, setVenues] = useState<LiveVenue[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // null = never fetched; 'google'/'database' = fetched (even if result was empty)
   const [source, setSource] = useState<'google' | 'database' | 'google_places' | null>(null)
 
-  // On first render, hydrate from cache if fresh
+  // Hydrate from cache on first render
   useEffect(() => {
     const c = loadCache()
     if (c) {
@@ -71,13 +72,14 @@ export function useVenueDiscover() {
   }, [])
 
   const discover = useCallback(async (lat: number, lng: number, radius = 5000) => {
-    // If we have a fresh cache for the same area (within ~1 km), skip the network call
     const existing = loadCache()
+
     if (existing) {
       const dLat = Math.abs(existing.lat - lat)
       const dLng = Math.abs(existing.lng - lng)
+
+      // Same area — serve from cache
       if (dLat < 0.01 && dLng < 0.01 && existing.radius >= radius) {
-        // Re-sort cached venues by distance to the (possibly slightly different) current position
         const sorted = existing.venues.slice().sort((a, b) =>
           Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
         )
@@ -85,26 +87,36 @@ export function useVenueDiscover() {
         setSource(existing.source)
         return
       }
+
+      // Different city — clear stale venues immediately so old city data doesn't linger
+      if (dLat > CITY_CHANGE_THRESHOLD || dLng > CITY_CHANGE_THRESHOLD) {
+        clearCache()
+        setVenues([])
+        setSource(null)
+      }
     }
 
     setLoading(true)
     setError(null)
     try {
       // Server returns { data: { venues: [...], source: '...', discovered: n } }
-      const result = await api.post<{ data: { venues: LiveVenue[]; source: 'google' | 'database' | 'google_places'; discovered: number } }>(
-        '/venues/discover', { lat, lng, radius }
-      )
+      const result = await api.post<{
+        data: { venues: LiveVenue[]; source: 'google' | 'database' | 'google_places'; discovered: number }
+      }>('/venues/discover', { lat, lng, radius })
+
       const inner = result.data
       const resultVenues = inner?.venues ?? []
       const resultSource = inner?.source ?? 'database'
+
       setVenues(resultVenues)
-      setSource(resultSource)
-      // Cache successful results
+      setSource(resultSource)   // always set source so we know a search was done
+
       if (resultVenues.length > 0) {
         saveCache({ venues: resultVenues, source: resultSource, lat, lng, radius, ts: Date.now() })
       }
     } catch (err: any) {
       setError(err.message ?? 'Failed to discover venues')
+      // Keep source as null on error so caller knows it failed
     } finally {
       setLoading(false)
     }

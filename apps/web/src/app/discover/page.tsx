@@ -652,13 +652,14 @@ interface VenuesListProps {
   liveVenues: LiveVenue[]
   venuesLoading: boolean
   venueCity: string | null
+  venueSource: 'google' | 'database' | 'google_places' | null   // null = never fetched yet
   mapCenter: { lat: number; lng: number } | null
   isTracking: boolean
   onCitySearch: (city: string, lat: number, lng: number, currency?: string) => void
   onWiderSearch: () => void
 }
 
-function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTracking, onCitySearch, onWiderSearch }: VenuesListProps) {
+function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCenter, isTracking, onCitySearch, onWiderSearch }: VenuesListProps) {
   const [venueSearch, setVenueSearch] = useState('')
   const [cityInput, setCityInput] = useState('')
   const [citySearching, setCitySearching] = useState(false)
@@ -668,9 +669,15 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
   const [showCitySearch, setShowCitySearch] = useState(!isTracking)
 
   const hasRealVenues = liveVenues.length > 0
-  // Fall back to Glasgow static venues so the list always has content
-  const displayVenues: LiveVenue[] = hasRealVenues ? liveVenues : (GLASGOW_VENUES as unknown as LiveVenue[])
-  const mapVenues = hasRealVenues ? liveVenues : GLASGOW_VENUES
+  // Only use the Glasgow static list as a very-first-paint fallback —
+  // once ANY location-based search has been done (venueSource !== null) we show
+  // real results only (or an empty/loading state). This prevents Glasgow venues
+  // appearing for Tokyo, New York, etc.
+  const useStaticFallback = !hasRealVenues && venueSource === null && !venuesLoading
+  const displayVenues: LiveVenue[] = hasRealVenues
+    ? liveVenues
+    : useStaticFallback ? (GLASGOW_VENUES as unknown as LiveVenue[]) : []
+  const mapVenues = hasRealVenues ? liveVenues : (useStaticFallback ? GLASGOW_VENUES : [])
 
   const filtered = venueSearch
     ? displayVenues.filter((v) =>
@@ -819,8 +826,8 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
           </div>
         ) : (
           <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
-            {filtered.length} VENUES
-            {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ' · RADAR ASSISTANT'}
+            {hasRealVenues ? `${filtered.length} VENUES` : 'NO VENUES'}
+            {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ''}
           </p>
         )}
         {hasRealVenues && !venuesLoading && (
@@ -842,27 +849,52 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
             <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>SCANNING NEARBY VENUES...</p>
           </div>
         )}
-        {/* Caption when showing default Glasgow venues (no live data yet) */}
-        {!venuesLoading && !hasRealVenues && (
-          <div className="flex items-center gap-2 px-4 py-2 mx-4 mt-2 rounded-xl"
-            style={{ background: 'rgba(255,214,0,0.05)', border: '1px solid rgba(255,214,0,0.12)' }}>
-            <span className="text-[10px]">🏙️</span>
-            <p className="text-[10px] flex-1" style={{ color: 'rgba(255,214,0,0.6)' }}>
-              {isTracking
-                ? 'Scanning your area for live venues…'
-                : 'Showing Glasgow venues. Search a city above or enable location for local results.'}
+        {/* No venues yet + not loading → location-aware empty state */}
+        {!venuesLoading && !hasRealVenues && venueSource === null && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
+            <span style={{ fontSize: 36 }}>📍</span>
+            <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(255,214,0,0.6)', letterSpacing: '0.15em' }}>
+              LOCATING YOU
+            </p>
+            <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.4)' }}>
+              Allow location access or search a city above to see nearby venues
             </p>
             {!isTracking && (
-              <button onClick={onWiderSearch} className="text-[10px] font-black underline shrink-0" style={{ color: '#ffd600' }}>
-                Use GPS
+              <button
+                onClick={onWiderSearch}
+                className="mt-1 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
+                style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}
+              >
+                USE MY LOCATION
               </button>
             )}
+          </div>
+        )}
+        {/* Searched but found nothing */}
+        {!venuesLoading && !hasRealVenues && venueSource !== null && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
+            <span style={{ fontSize: 36 }}>🔍</span>
+            <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.15em' }}>
+              NO VENUES FOUND
+            </p>
+            <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.35)' }}>
+              {venueCity
+                ? `No venues found in ${venueCity} yet — try a wider area or check back later.`
+                : 'No venues found nearby. Try expanding your search radius.'}
+            </p>
+            <button
+              onClick={onWiderSearch}
+              className="mt-1 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
+              style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}
+            >
+              WIDER SEARCH
+            </button>
           </div>
         )}
         {!venuesLoading && filtered.map((venue) => (
           <VenueCard key={venue.id} venue={venue} />
         ))}
-        {!venuesLoading && filtered.length === 0 && venueSearch && (
+        {!venuesLoading && hasRealVenues && filtered.length === 0 && venueSearch && (
           <div className="py-10 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
             No venues match &ldquo;{venueSearch}&rdquo;
           </div>
@@ -1792,6 +1824,7 @@ export default function DiscoverPage() {
           liveVenues={liveVenues}
           venuesLoading={venuesLoading}
           venueCity={venueCity}
+          venueSource={venueSource}
           mapCenter={mapCenter}
           isTracking={isTracking}
           onCitySearch={handleCitySearch}
