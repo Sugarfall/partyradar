@@ -556,6 +556,7 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   const [viewingStory, setViewingStory] = useState<Story | null>(null)
   const [composing, setComposing] = useState(false)
   const loadedRef = useRef(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -574,6 +575,17 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
     if (loadedRef.current) return
     loadedRef.current = true
     load()
+  }, [load])
+
+  // Silently refresh whenever the user navigates back to this tab
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible' && loadedRef.current) {
+        load(true)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [load])
 
   async function handleLike(postId: string) {
@@ -633,13 +645,12 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
     )
   }
 
-  const postItems = items.filter(i => i.type === 'POST')
-  const checkinItems = items.filter(i => i.type === 'CHECKIN')
-  const allItems = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  // Only show real posts — API now returns POST type only but guard here too
+  const allItems = items.filter(i => i.type === 'POST' && i.post)
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
-      <div className="flex-1 overflow-y-auto pb-20">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20">
 
         {/* ── Stories Row ─────────────────────────────────────────────────── */}
         {(stories.length > 0 || isLoggedIn) && (
@@ -685,18 +696,9 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
             style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.15)' }}
           >
             <span className="text-[10px] font-bold text-white/30">RECENT</span>
-            <div className="flex items-center gap-3 ml-auto">
-              {postItems.length > 0 && (
-                <span className="text-[10px] font-semibold text-white/25">
-                  📸 {postItems.length} post{postItems.length !== 1 ? 's' : ''}
-                </span>
-              )}
-              {checkinItems.length > 0 && (
-                <span className="text-[10px] font-semibold text-white/25">
-                  📍 {checkinItems.length} check-in{checkinItems.length !== 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
+            <span className="text-[10px] font-semibold text-white/20 ml-auto">
+              {allItems.length} post{allItems.length !== 1 ? 's' : ''}
+            </span>
           </div>
         )}
 
@@ -730,24 +732,16 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
             )}
           </div>
         ) : (
-          allItems.map((item, idx) => {
-            if (item.type === 'POST' && item.post) {
-              return (
-                <PostCard
-                  key={`${item.post.id}-${idx}`}
-                  item={item}
-                  liked={likedIds.has(item.post.id)}
-                  onLike={() => handleLike(item.post!.id)}
-                  reported={reportedIds.has(item.post.id)}
-                  onReport={() => handleReport(item.post!.id)}
-                />
-              )
-            }
-            if (item.type === 'CHECKIN') {
-              return <CheckinCard key={`checkin-${idx}`} item={item} />
-            }
-            return null
-          })
+          allItems.map((item, idx) => (
+            <PostCard
+              key={`${item.post!.id}-${idx}`}
+              item={item}
+              liked={likedIds.has(item.post!.id)}
+              onLike={() => handleLike(item.post!.id)}
+              reported={reportedIds.has(item.post!.id)}
+              onReport={() => handleReport(item.post!.id)}
+            />
+          ))
         )}
 
         {/* ── Live activity footer ─────────────────────────────────────────── */}
@@ -783,6 +777,8 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
         <ComposeModal
           onClose={() => setComposing(false)}
           onPosted={() => {
+            // Scroll to top immediately so the new post is visible when the reload completes
+            scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
             loadedRef.current = false
             load(true)
           }}

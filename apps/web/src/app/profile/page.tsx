@@ -92,7 +92,7 @@ function timeAgo(dateStr: string) {
   return Math.floor(s / 86400) + 'd ago'
 }
 
-type ProfileTab = 'activity' | 'reviews'
+type ProfileTab = 'activity' | 'reviews' | 'photos'
 
 const CROWD_COLORS: Record<string, string> = { QUIET: '#00ff88', BUSY: '#ffd600', RAMMED: '#ff006e' }
 
@@ -328,7 +328,20 @@ export default function ProfilePage() {
   const [inviteSentCount, setInviteSentCount] = useState(0)
 
   // Profile tabs
-  const [profileTab, setProfileTab] = useState<ProfileTab>('activity')
+  const [profileTab, setProfileTab] = useState<ProfileTab>('photos')
+  const [myPhotos, setMyPhotos] = useState<{ id: string; imageUrl: string; likesCount: number }[]>([])
+  const [photosLoading, setPhotosLoading] = useState(false)
+  const [photosFetched, setPhotosFetched] = useState(false)
+
+  // Fetch own photos when photos tab is first opened
+  useEffect(() => {
+    if (profileTab !== 'photos' || photosFetched || !dbUser?.username) return
+    setPhotosLoading(true)
+    api.get<{ data: { id: string; imageUrl: string; likesCount: number }[] }>(`/posts/user/${dbUser.username}`)
+      .then(j => { setMyPhotos(j?.data ?? []); setPhotosFetched(true) })
+      .catch(() => {})
+      .finally(() => setPhotosLoading(false))
+  }, [profileTab, photosFetched, dbUser?.username])
 
   // Follow list modal
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
@@ -951,11 +964,15 @@ export default function ProfilePage() {
           <Sparkles size={16} style={{ color: '#ff006e', opacity: 0.7 }} />
         </button>
 
-        {/* ── Activity / Reviews Tabs ── */}
+        {/* ── Activity / Reviews / Photos Tabs ── */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           {/* Tab headers */}
           <div className="flex" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
-            {([['activity', 'ACTIVITY'] as [ProfileTab, string], ['reviews', 'REVIEWS'] as [ProfileTab, string]]).map(([key, label]) => (
+            {([
+              ['photos', '📸 PHOTOS'] as [ProfileTab, string],
+              ['activity', 'ACTIVITY'] as [ProfileTab, string],
+              ['reviews', 'REVIEWS'] as [ProfileTab, string],
+            ]).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setProfileTab(key)}
@@ -1037,6 +1054,55 @@ export default function ProfilePage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Photos grid tab */}
+          {profileTab === 'photos' && (
+            photosLoading ? (
+              <div className="grid grid-cols-3 gap-0.5 p-0.5">
+                {[...Array(9)].map((_, i) => (
+                  <div key={i} className="aspect-square animate-pulse"
+                    style={{ background: 'rgba(var(--accent-rgb),0.04)' }} />
+                ))}
+              </div>
+            ) : myPhotos.length === 0 ? (
+              <div className="py-12 flex flex-col items-center gap-3">
+                <Camera size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+                <p className="text-[11px] font-black tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO PHOTOS YET</p>
+                <p className="text-[10px] text-center px-8" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                  Share moments from events and venues to build your photo grid
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-0.5">
+                {myPhotos.map((photo) => {
+                  const isVid = photo.imageUrl.includes('/video/upload/')
+                  return (
+                    <div key={photo.id} className="aspect-square overflow-hidden relative"
+                      style={{ background: 'rgba(7,7,26,0.8)' }}>
+                      {isVid ? (
+                        <video src={photo.imageUrl} className="w-full h-full object-cover" playsInline muted />
+                      ) : (
+                        <img src={photo.imageUrl} alt="" className="w-full h-full object-cover" />
+                      )}
+                      {isVid && (
+                        <div className="absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center"
+                          style={{ background: 'rgba(0,0,0,0.55)' }}>
+                          <span style={{ fontSize: 9, color: '#fff' }}>▶</span>
+                        </div>
+                      )}
+                      {photo.likesCount > 0 && (
+                        <div className="absolute bottom-1 left-1 flex items-center gap-0.5"
+                          style={{ background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '1px 4px' }}>
+                          <span style={{ fontSize: 8, color: '#ec4899' }}>♥</span>
+                          <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)' }}>{photo.likesCount}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
           )}
         </div>
 

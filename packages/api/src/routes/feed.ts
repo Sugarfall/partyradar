@@ -116,61 +116,49 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** GET /api/feed/discover — trending activity (no auth) from the past 7 days */
-router.get('/discover', optionalAuth, async (_req: AuthRequest, res, next) => {
+/** GET /api/feed/discover — real posts only, newest first, past 7 days */
+router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const viewerId = req.user?.dbUser?.id ?? null
 
-    const [recentCheckIns, recentPosts] = await Promise.all([
-      prisma.checkIn.findMany({
-        where: { createdAt: { gte: sevenDaysAgo } },
-        orderBy: { createdAt: 'desc' },
-        take: 40,
-        include: {
-          user: { select: userSelect },
-          event: { select: eventSelect },
-          venue: { select: venueSelect },
-        },
-      }),
-      prisma.post.findMany({
-        where: {
-          createdAt: { gte: sevenDaysAgo },
-          OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }],
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 40,
-        include: {
-          user: { select: userSelect },
-          event: { select: eventSelect },
-          venue: { select: venueSelect },
-        },
-      }),
-    ])
+    // Fetch all real posts (non-story, or active story) from the last 7 days
+    const posts = await prisma.post.findMany({
+      where: {
+        createdAt: { gte: sevenDaysAgo },
+        isStory: false,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+      include: {
+        user: { select: userSelect },
+        event: { select: eventSelect },
+        venue: { select: venueSelect },
+      },
+    })
 
-    const items = [
-      ...recentCheckIns.map((c) => ({
-        type: 'CHECKIN' as const,
-        user: c.user,
-        event: c.event,
-        venue: c.venue,
-        checkin: { id: c.id, crowdLevel: c.crowdLevel },
-        post: null,
-        createdAt: c.createdAt,
-      })),
-      ...recentPosts.map((p) => ({
-        type: 'POST' as const,
-        user: p.user,
-        event: p.event,
-        venue: p.venue,
-        post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount },
-        checkin: null,
-        createdAt: p.createdAt,
-      })),
+    // Prioritise: viewer's own posts + posts with media first, then text-only
+    const sorted = [
+      ...posts.filter(p => p.userId === viewerId),
+      ...posts.filter(p => p.userId !== viewerId && p.imageUrl),
+      ...posts.filter(p => p.userId !== viewerId && !p.imageUrl),
     ]
 
-    items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    // De-duplicate (own posts appear once)
+    const seen = new Set<string>()
+    const deduped = sorted.filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true })
 
-    res.json({ data: items.slice(0, 40) })
+    const items = deduped.map((p) => ({
+      type: 'POST' as const,
+      user: p.user,
+      event: p.event,
+      venue: p.venue,
+      post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount },
+      checkin: null,
+      createdAt: p.createdAt,
+    }))
+
+    res.json({ data: items })
   } catch (err) {
     next(err)
   }
