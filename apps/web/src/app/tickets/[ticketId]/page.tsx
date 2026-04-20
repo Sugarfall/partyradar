@@ -55,7 +55,7 @@ export default function TicketPage() {
         width: 220,
         margin: 2,
         color: {
-          dark: 'var(--accent)',
+          dark: '#7c3aed',   // accent purple — CSS vars don't resolve in canvas context
           light: '#04040d',
         },
       }).then(() => setQrGenerated(true))
