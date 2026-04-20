@@ -31,9 +31,15 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
         <p className="text-xs font-black tracking-[0.2em] mb-3" style={{ color: 'rgba(255,0,110,0.7)' }}>
           SIGNAL LOST
         </p>
-        <p className="text-sm mb-6" style={{ color: 'rgba(224,242,254,0.5)' }}>
+        <p className="text-sm mb-2" style={{ color: 'rgba(224,242,254,0.5)' }}>
           Something went wrong loading the app. Tap retry to reconnect.
         </p>
+        {error?.message && (
+          <p className="text-[10px] mb-5 px-2 py-1.5 rounded font-mono break-all"
+            style={{ color: 'rgba(255,0,110,0.6)', background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.12)' }}>
+            {error.message}
+          </p>
+        )}
         <button
           onClick={reset}
           className="w-full py-3 rounded-lg font-black text-sm flex items-center justify-center gap-2 transition-all"

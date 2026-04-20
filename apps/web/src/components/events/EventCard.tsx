@@ -55,7 +55,7 @@ interface EventCardProps {
 }
 
 export function EventCard({ event, compact = false }: EventCardProps) {
-  const isFree = event.price === 0
+  const isFree = (event.price ?? 0) === 0
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
   const countdown = useCountdown(event.startsAt)
   const showCountdown = countdown && (event as any).host?.subscriptionTier !== 'FREE'
@@ -152,14 +152,14 @@ export function EventCard({ event, compact = false }: EventCardProps) {
 
           {/* Host */}
           <div className="flex items-center gap-1.5 mb-2">
-            {event.host.photoUrl ? (
+            {event.host?.photoUrl ? (
               <img src={event.host.photoUrl} alt="" className="w-4 h-4 rounded object-cover" />
             ) : (
               <div className="w-4 h-4 rounded flex items-center justify-center" style={{ background: `${color}20` }}>
-                <span className="text-[8px] font-bold" style={{ color }}>{event.host.displayName[0]}</span>
+                <span className="text-[8px] font-bold" style={{ color }}>{event.host?.displayName?.[0] ?? '?'}</span>
               </div>
             )}
-            <span className="text-[11px] truncate" style={{ color: 'rgba(74,96,128,0.9)' }}>{event.host.displayName}</span>
+            <span className="text-[11px] truncate" style={{ color: 'rgba(74,96,128,0.9)' }}>{event.host?.displayName ?? 'Host'}</span>
             {event.hostRating && (
               <span className="text-[10px] flex items-center gap-0.5 ml-auto" style={{ color: '#ffd600' }}>
                 <Star size={8} fill="currentColor" /> {event.hostRating.toFixed(1)}
@@ -229,9 +229,9 @@ export function EventCard({ event, compact = false }: EventCardProps) {
           )}
 
           {/* Vibe tags */}
-          {event.vibeTags.length > 0 && !compact && (
+          {(event.vibeTags ?? []).length > 0 && !compact && (
             <div className="flex gap-1 flex-wrap mt-2">
-              {event.vibeTags.slice(0, 4).map((tag) => (
+              {(event.vibeTags ?? []).slice(0, 4).map((tag) => (
                 <span
                   key={tag}
                   className="text-[9px] font-bold px-2 py-0.5 rounded-full"

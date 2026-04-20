@@ -107,7 +107,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
   }
 
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
-  const isFree = event.price === 0
+  const isFree = (event.price ?? 0) === 0
 
   function timeUntil(dateStr: string) {
     const diff = new Date(dateStr).getTime() - Date.now()
@@ -148,7 +148,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="text-sm font-bold truncate leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
           <span className="shrink-0 text-sm font-bold" style={{ color: isFree ? '#00ff88' : '#e0f2fe' }}>
-            {isFree ? 'FREE' : `£${event.price.toFixed(2)}`}
+            {isFree ? 'FREE' : `£${(event.price ?? 0).toFixed(2)}`}
           </span>
         </div>
         <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
@@ -181,7 +181,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
 // ── Full-screen sequential event card ────────────────────────────────────────
 function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; userTier?: string }) {
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
-  const isFree = event.price === 0
+  const isFree = (event.price ?? 0) === 0
   const [interested, setInterested] = useState(false)
   const [requested, setRequested] = useState(false)
 
@@ -331,7 +331,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
               className="text-xl font-bold"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}
             >
-              {isFree ? 'FREE' : `£${event.price.toFixed(2)}`}
+              {isFree ? 'FREE' : `£${(event.price ?? 0).toFixed(2)}`}
             </p>
           </div>
         </div>
@@ -453,7 +453,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
             letterSpacing: '0.1em',
           }}
         >
-          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — £${event.price.toFixed(2)}`}
+          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — £${(event.price ?? 0).toFixed(2)}`}
         </Link>
 
         {/* Secondary actions */}
@@ -1168,6 +1168,10 @@ export default function DiscoverPage() {
   const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [geoResolved, setGeoResolved] = useState(false)
+  // locationReady = we have actual coordinates (GPS lock OR user searched a city).
+  // This is the ONLY gate for the events fetch — prevents global/Amsterdam events
+  // appearing when GPS times out without giving us a position.
+  const [locationReady, setLocationReady] = useState(false)
   const [isTracking, setIsTracking] = useState(false)   // true when watchPosition is active
 
   // AI event scan state — fires once when GPS provides first fix
@@ -1216,6 +1220,7 @@ export default function DiscoverPage() {
         if (moved > 0.5) {
           lastFetchedPos.current = { lat, lng }
           setUserLocation({ lat, lng })
+          setLocationReady(true)   // We now have real coordinates — unlock events fetch
           setMapCenter({ lat, lng })
           discover(lat, lng, 15000)
 
@@ -1240,15 +1245,18 @@ export default function DiscoverPage() {
     }
   }, [discover])
 
-  // City search from the Venues tab search bar — also refreshes events for that location
+  // City search from the Venues tab search bar — also refreshes events for that city
   function handleCitySearch(cityName: string, lat: number, lng: number) {
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
     discover(lat, lng, 15000)
     // Update userLocation so useEvents re-fetches for this city
     setUserLocation({ lat, lng })
-    // Allow auto-retry to fire again for the new city
+    setLocationReady(true)  // Unlock events fetch for this city
+    setGeoResolved(true)    // Mark geo as resolved even if GPS hasn't fired
+    // Allow auto-retry and AI sync to re-fire for the new city
     autoRetried.current = false
+    aiSyncedRef.current = false
     setSyncing(false)
   }
 
@@ -1268,14 +1276,15 @@ export default function DiscoverPage() {
     }
   }
 
-  // Don't fetch events at all until GPS has settled (prevents global/Amsterdam events
-  // from showing during the geolocation resolution window)
+  // Don't fetch events until we have real coordinates (GPS lock or manual city search).
+  // This prevents global/Amsterdam events appearing when GPS times out without a fix.
+  // userLocation is always set before locationReady, so lat/lng is always included.
   const { events, isLoading, mutate, forceRetry } = useEvents({
     ...filters,
     ...(filters.type === undefined ? { excludeTypes: 'CONCERT' } : {}),
     ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
     limit: 100,
-  }, !geoResolved)
+  }, !locationReady)
 
   // AI sync — fires once when we get the first GPS fix.
   // Calls POST /api/events/ai-sync which runs Perplexity + Ticketmaster/Skiddle
@@ -1318,13 +1327,13 @@ export default function DiscoverPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation])
 
-  // Auto-retry once when 0 events returned with a location — the first load triggers
-  // the background sync; 4 s later events will be in the DB and a re-fetch will find them.
+  // Auto-retry once when 0 events returned after getting location — the first
+  // fetch triggers the background sync; 4 s later events will be in the DB.
   const autoRetried = useRef(false)
   const [syncing, setSyncing] = useState(false)
   useEffect(() => {
     if (autoRetried.current) return
-    if (isLoading || !geoResolved || !userLocation || events.length > 0) return
+    if (isLoading || !locationReady || events.length > 0) return
     autoRetried.current = true
     setSyncing(true)
     const t = setTimeout(async () => {
@@ -1332,10 +1341,12 @@ export default function DiscoverPage() {
       setSyncing(false)
     }, 4000)
     return () => clearTimeout(t)
-  }, [isLoading, geoResolved, userLocation, events.length, forceRetry])
+  }, [isLoading, locationReady, events.length, forceRetry])
 
-  // locationLoading: spinner until geo is settled and we have event data
-  const locationLoading = !geoResolved || (isLoading && events.length === 0)
+  // locationLoading: spinner while we're waiting for coordinates OR the first event fetch
+  const locationLoading = !locationReady || (isLoading && events.length === 0)
+  // gpsDenied: GPS settled but no coordinates and user hasn't searched a city yet
+  const gpsDenied = geoResolved && !locationReady
 
   const [partyAlert, setPartyAlert] = useState<null | Event>(null)
   const [alertDismissed, setAlertDismissed] = useState(false)
@@ -1690,7 +1701,25 @@ export default function DiscoverPage() {
             </div>
           )}
 
-          {(isLoading || locationLoading) ? (
+          {gpsDenied ? (
+            /* GPS timed out with no fix — prompt user to search a city */
+            <div className="flex flex-col items-center justify-center py-20 gap-4 px-6 text-center">
+              <div className="text-4xl">📍</div>
+              <div>
+                <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>LOCATION NOT AVAILABLE</p>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
+                  Location access is off or unavailable. Switch to the <strong style={{ color: '#ffd600' }}>VENUES</strong> tab and search a city to load local events.
+                </p>
+              </div>
+              <button
+                onClick={() => setTab('venues')}
+                className="px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
+                style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600', letterSpacing: '0.12em' }}
+              >
+                🌍 SEARCH A CITY
+              </button>
+            </div>
+          ) : (isLoading || locationLoading) ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <div className="w-10 h-10 rounded-full border-2 animate-spin"
                 style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
@@ -1782,7 +1811,26 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {(isLoading || locationLoading) || events.length === 0 || !event ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} /> : <EventStage event={event} dir={slideDir} userTier={userTier} />}
+            {gpsDenied ? (
+              <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
+                <div className="text-4xl">📍</div>
+                <div>
+                  <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>LOCATION NOT AVAILABLE</p>
+                  <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
+                    Switch to <strong style={{ color: '#ffd600' }}>VENUES</strong> and search a city to load events near you.
+                  </p>
+                </div>
+                <button onClick={() => setTab('venues')}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
+                  style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}>
+                  🌍 SEARCH A CITY
+                </button>
+              </div>
+            ) : (isLoading || locationLoading) || events.length === 0 || !event ? (
+              <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
+            ) : (
+              <EventStage event={event} dir={slideDir} userTier={userTier} />
+            )}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
