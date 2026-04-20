@@ -1325,4 +1325,104 @@ router.post('/reclassify-club-events', async (_req, res, next) => {
   }
 })
 
+// ─── Moderation Queue ────────────────────────────────────────────────────────
+
+/** GET /api/admin/moderation-logs — view all auto-moderation logs */
+router.get('/moderation-logs', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
+  try {
+    const { page = '1', limit = '50', status } = req.query
+    const skip = (Number(page) - 1) * Number(limit)
+
+    const where: Record<string, unknown> = {}
+    if (status === 'pending') where['reviewedAt'] = null
+    if (status === 'reviewed') where['reviewedAt'] = { not: null }
+
+    const [logs, total] = await Promise.all([
+      (prisma as any).moderationLog.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { id: true, username: true, displayName: true, photoUrl: true, contentStrikes: true, isBanned: true } },
+        },
+      }),
+      (prisma as any).moderationLog.count({ where }),
+    ])
+
+    res.json({ data: logs, total, page: Number(page), limit: Number(limit), hasMore: skip + logs.length < total })
+  } catch (err) { next(err) }
+})
+
+/** PUT /api/admin/moderation-logs/:id/review — mark log as reviewed */
+router.put('/moderation-logs/:id/review', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
+  try {
+    const id = req.params['id'] as string
+    const { outcome } = req.body // 'APPROVED' | 'REMOVED'
+    if (!['APPROVED', 'REMOVED'].includes(outcome)) throw new AppError('outcome must be APPROVED or REMOVED', 400)
+
+    const reviewerId = req.user!.dbUser.id
+    const log = await (prisma as any).moderationLog.update({
+      where: { id },
+      data: { reviewedBy: reviewerId, reviewedAt: new Date(), action: outcome },
+    })
+    res.json({ data: log })
+  } catch (err) { next(err) }
+})
+
+/** GET /api/admin/content-reports — user-submitted content reports */
+router.get('/content-reports', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
+  try {
+    const { page = '1', limit = '50', status = 'PENDING' } = req.query
+    const skip = (Number(page) - 1) * Number(limit)
+
+    const where: Record<string, unknown> = {}
+    if (status && status !== 'all') where['status'] = status
+
+    const [reports, total] = await Promise.all([
+      (prisma as any).contentReport.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          reporter: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+        },
+      }),
+      (prisma as any).contentReport.count({ where }),
+    ])
+
+    res.json({ data: reports, total, page: Number(page), limit: Number(limit), hasMore: skip + reports.length < total })
+  } catch (err) { next(err) }
+})
+
+/** PUT /api/admin/content-reports/:id/review — action a user report */
+router.put('/content-reports/:id/review', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
+  try {
+    const id = req.params['id'] as string
+    const { status } = req.body // 'ACTIONED' | 'DISMISSED'
+    if (!['ACTIONED', 'DISMISSED'].includes(status)) throw new AppError('status must be ACTIONED or DISMISSED', 400)
+
+    const reviewerId = req.user!.dbUser.id
+    const report = await (prisma as any).contentReport.update({
+      where: { id },
+      data: { status, reviewedBy: reviewerId, reviewedAt: new Date() },
+    })
+    res.json({ data: report })
+  } catch (err) { next(err) }
+})
+
+/** PUT /api/admin/users/:id/clear-strikes — reset a user's content strike count */
+router.put('/users/:id/clear-strikes', requireAuth, requireAppRole('ADMIN'), async (req: AuthRequest, res, next) => {
+  try {
+    const id = req.params['id'] as string
+    const user = await prisma.user.update({
+      where: { id },
+      data: { contentStrikes: 0 },
+      select: { id: true, username: true, contentStrikes: true },
+    })
+    res.json({ data: user })
+  } catch (err) { next(err) }
+})
+
 export default router

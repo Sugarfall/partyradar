@@ -5,6 +5,7 @@ import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { GROUP_PRICE_TIERS, REFERRAL_CONFIG } from '@partyradar/shared'
 import { stripe } from '../lib/stripe'
+import { moderateContent, recordViolation } from '../lib/moderation'
 
 const router = Router()
 
@@ -559,6 +560,23 @@ router.post('/:id/messages', requireAuth, async (req: AuthRequest, res, next) =>
 
     const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
     if (!group) throw new AppError('Group not found', 404)
+
+    // ── Content moderation ──────────────────────────────────────────────────
+    const modResult = await moderateContent({ text: text ?? null, imageUrl: imageUrl ?? null })
+    if (!modResult.passed) {
+      await recordViolation({
+        userId,
+        contentType: 'group_message',
+        contentRef: group.id,
+        content: text ?? undefined,
+        contentUrl: imageUrl ?? undefined,
+        flagType: modResult.flagType ?? 'ILLEGAL',
+        confidence: modResult.confidence ?? 1,
+        reason: modResult.reason,
+        action: 'BLOCKED',
+      })
+      throw new AppError('Your message was blocked by our content filter.', 422)
+    }
 
     // Must be a member to message private groups
     const membership = await prisma.groupMembership.findUnique({

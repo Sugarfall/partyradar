@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
+import { moderateContent, recordViolation } from '../lib/moderation'
 
 const router = Router()
 
@@ -27,6 +28,22 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     if (!body.imageUrl && !body.text) {
       throw new AppError('Post must have either imageUrl or text', 400)
+    }
+
+    // ── Content moderation ──────────────────────────────────────────────────
+    const modResult = await moderateContent({ text: body.text, imageUrl: body.imageUrl })
+    if (!modResult.passed) {
+      await recordViolation({
+        userId,
+        contentType: 'post',
+        content: body.text ?? undefined,
+        contentUrl: body.imageUrl ?? undefined,
+        flagType: modResult.flagType ?? 'ILLEGAL',
+        confidence: modResult.confidence ?? 1,
+        reason: modResult.reason,
+        action: 'BLOCKED',
+      })
+      throw new AppError('Your post was blocked by our content filter. Repeated violations may result in account suspension.', 422)
     }
 
     const now = new Date()

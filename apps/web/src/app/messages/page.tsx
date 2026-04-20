@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
   Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff, X,
-  Camera, Mic, Radio, Play, Square, ShieldCheck, Timer,
+  Camera, Mic, Radio, Play, Square, ShieldCheck, Timer, Flag,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -814,6 +814,7 @@ function GroupChatView({
   const [photoUploading, setPhotoUploading] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [userPopup, setUserPopup] = useState<GroupMessage | null>(null)
+  const [reportedMsgId, setReportedMsgId] = useState<string | null>(null)
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
   const [locked, setLocked] = useState(false)
   const [showPwModal, setShowPwModal] = useState(false)
@@ -1032,6 +1033,14 @@ function GroupChatView({
         return next
       })
       setMessages((prev) => prev.map((m) => m.senderId === senderId ? { ...m, isFollowing: !already } : m))
+    } catch {}
+    setUserPopup(null)
+  }
+
+  async function reportMessage(msgId: string) {
+    try {
+      await api.post('/reports', { contentType: 'group_message', contentId: msgId, reason: 'OTHER' })
+      setReportedMsgId(msgId)
     } catch {}
     setUserPopup(null)
   }
@@ -1408,18 +1417,29 @@ function GroupChatView({
               </div>
             </div>
             {dbUserId && userPopup.senderId !== dbUserId && (
-              <button onClick={() => followUser(userPopup.senderId)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
-                style={{
-                  background: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
-                  border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.2)' : 'rgba(var(--accent-rgb),0.35)'}`,
-                  color: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
-                }}>
-                {followingSet.has(userPopup.senderId)
-                  ? <><UserCheck size={13} /> FOLLOWING</>
-                  : <><UserPlus size={13} /> FOLLOW</>
-                }
-              </button>
+              <div className="space-y-2">
+                <button onClick={() => followUser(userPopup.senderId)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
+                  style={{
+                    background: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.12)',
+                    border: `1px solid ${followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.2)' : 'rgba(var(--accent-rgb),0.35)'}`,
+                    color: followingSet.has(userPopup.senderId) ? 'rgba(var(--accent-rgb),0.5)' : 'var(--accent)',
+                  }}>
+                  {followingSet.has(userPopup.senderId)
+                    ? <><UserCheck size={13} /> FOLLOWING</>
+                    : <><UserPlus size={13} /> FOLLOW</>
+                  }
+                </button>
+                <button
+                  onClick={() => reportMessage(userPopup.id)}
+                  disabled={reportedMsgId === userPopup.id}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all disabled:opacity-50"
+                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}
+                >
+                  <Flag size={13} />
+                  {reportedMsgId === userPopup.id ? 'REPORTED' : 'REPORT MESSAGE'}
+                </button>
+              </div>
             )}
           </div>
         </div>

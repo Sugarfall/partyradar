@@ -5,6 +5,7 @@ import type { AuthRequest } from '../middleware/auth'
 import { auth } from '../lib/firebase-admin'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
+import { moderateText, recordViolation } from '../lib/moderation'
 
 const router = Router()
 
@@ -137,6 +138,24 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
     if (body.username) {
       const existing = await prisma.user.findUnique({ where: { username: body.username } })
       if (existing && existing.id !== userId) throw new AppError('Username already taken', 409)
+    }
+
+    // ── Content moderation for bio & displayName ──────────────────────────────
+    const textToCheck = [body.displayName, body.bio].filter(Boolean).join(' ')
+    if (textToCheck.trim()) {
+      const modResult = await moderateText(textToCheck)
+      if (!modResult.passed) {
+        await recordViolation({
+          userId,
+          contentType: 'bio',
+          content: textToCheck,
+          flagType: modResult.flagType ?? 'ILLEGAL',
+          confidence: modResult.confidence ?? 1,
+          reason: modResult.reason,
+          action: 'BLOCKED',
+        })
+        throw new AppError('Your profile contains content that violates our community guidelines.', 422)
+      }
     }
 
     const user = await prisma.user.update({ where: { id: userId }, data: body })

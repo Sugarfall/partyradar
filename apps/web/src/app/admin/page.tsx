@@ -7,7 +7,7 @@ import Link from 'next/link'
 import {
   Shield, ShieldAlert, ShieldCheck, Users, Calendar, MessageSquare,
   Flag, Search, Ban, ChevronDown, Trash2, BarChart3, Crown,
-  AlertTriangle, CheckCircle, X, Star, Eye
+  AlertTriangle, CheckCircle, X, Star, Eye, Bot, FileWarning
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,6 +76,34 @@ interface Stats {
   adminCount: number
 }
 
+interface ModerationLog {
+  id: string
+  contentType: string
+  contentRef?: string | null
+  content?: string | null
+  contentUrl?: string | null
+  flagType: string
+  confidence: number
+  action: string
+  autoAction: boolean
+  reviewedAt?: string | null
+  reviewedBy?: string | null
+  createdAt: string
+  user: { id: string; username: string; displayName: string; photoUrl?: string | null; contentStrikes: number; isBanned: boolean }
+}
+
+interface ContentReport {
+  id: string
+  contentType: string
+  contentId: string
+  reason: string
+  details?: string | null
+  status: string
+  reviewedAt?: string | null
+  createdAt: string
+  reporter: { id: string; username: string; displayName: string; photoUrl?: string | null }
+}
+
 // ─── Role badge ───────────────────────────────────────────────────────────────
 
 function RoleBadge({ role, isAdmin }: { role: string; isAdmin: boolean }) {
@@ -117,7 +145,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports'
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
@@ -125,6 +153,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'events', label: 'Events', icon: <Calendar size={14} /> },
   { id: 'groups', label: 'Groups', icon: <MessageSquare size={14} /> },
   { id: 'reports', label: 'Reports', icon: <Flag size={14} /> },
+  { id: 'moderation', label: 'Mod Queue', icon: <ShieldAlert size={14} /> },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -137,6 +166,9 @@ export default function AdminPage() {
   const [events, setEvents] = useState<AdminEvent[]>([])
   const [groups, setGroups] = useState<AdminGroup[]>([])
   const [reports, setReports] = useState<AdminReport[]>([])
+  const [modLogs, setModLogs] = useState<ModerationLog[]>([])
+  const [contentReports, setContentReports] = useState<ContentReport[]>([])
+  const [modSubTab, setModSubTab] = useState<'auto' | 'user'>('auto')
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -163,6 +195,9 @@ export default function AdminPage() {
       api.get<{ data: AdminGroup[] }>('/admin/groups').then((r) => setGroups(r.data)).catch(() => {})
     } else if (tab === 'reports') {
       api.get<{ data: AdminReport[] }>('/admin/reports').then((r) => setReports(r.data)).catch(() => {})
+    } else if (tab === 'moderation') {
+      api.get<{ data: ModerationLog[] }>('/admin/moderation-logs').then((r) => setModLogs(r.data)).catch(() => {})
+      api.get<{ data: ContentReport[] }>('/admin/content-reports').then((r) => setContentReports(r.data)).catch(() => {})
     }
   }, [tab, isStaff])
 
@@ -224,6 +259,32 @@ export default function AdminPage() {
       await api.put(`/admin/feedback/${reportId}/hide`, {})
       setReports((prev) => prev.map((r) => r.id === reportId ? { ...r, isHidden: true } : r))
       showToast('Feedback hidden')
+    } catch { showToast('Failed', false) }
+  }
+
+  const handleReviewLog = async (logId: string, outcome: 'APPROVED' | 'REMOVED') => {
+    try {
+      await api.put(`/admin/moderation-logs/${logId}/review`, { outcome })
+      setModLogs((prev) => prev.map((l) => l.id === logId ? { ...l, reviewedAt: new Date().toISOString(), action: outcome } : l))
+      showToast(outcome === 'APPROVED' ? 'Marked as approved (false positive)' : 'Content confirmed removed')
+    } catch { showToast('Failed', false) }
+  }
+
+  const handleReviewContentReport = async (reportId: string, status: 'ACTIONED' | 'DISMISSED') => {
+    try {
+      await api.put(`/admin/content-reports/${reportId}/review`, { status })
+      setContentReports((prev) => prev.map((r) => r.id === reportId ? { ...r, status } : r))
+      showToast(status === 'ACTIONED' ? 'Report actioned' : 'Report dismissed')
+    } catch { showToast('Failed', false) }
+  }
+
+  const handleClearStrikes = async (userId: string, username: string) => {
+    if (!isAdmin) { showToast('Admin access required', false); return }
+    if (!confirm(`Clear all content strikes for @${username}?`)) return
+    try {
+      await api.put(`/admin/users/${userId}/clear-strikes`, {})
+      setModLogs((prev) => prev.map((l) => l.user.id === userId ? { ...l, user: { ...l.user, contentStrikes: 0 } } : l))
+      showToast(`Strikes cleared for @${username}`)
     } catch { showToast('Failed', false) }
   }
 
@@ -569,6 +630,204 @@ export default function AdminPage() {
             ))}
             {groups.length === 0 && (
               <div className="text-center py-12 text-white/30 text-sm">Loading groups…</div>
+            )}
+          </div>
+        )}
+
+        {/* ── Moderation Queue tab ── */}
+        {tab === 'moderation' && (
+          <div className="space-y-4">
+            {/* Sub-tab switcher */}
+            <div className="flex gap-2">
+              {(['auto', 'user'] as const).map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setModSubTab(st)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all"
+                  style={modSubTab === st
+                    ? { background: '#a855f720', color: '#a855f7', border: '1px solid #a855f740' }
+                    : { background: 'transparent', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }
+                  }
+                >
+                  {st === 'auto' ? <><Bot size={12} /> Auto-blocked ({modLogs.length})</> : <><FileWarning size={12} /> User Reports ({contentReports.filter((r) => r.status === 'PENDING').length})</>}
+                </button>
+              ))}
+            </div>
+
+            {/* Auto-moderation logs */}
+            {modSubTab === 'auto' && (
+              <div className="space-y-2">
+                {modLogs.length === 0 && (
+                  <div className="text-center py-12 text-white/30 text-sm">No auto-moderation logs yet</div>
+                )}
+                {modLogs.map((log) => {
+                  const isReviewed = !!log.reviewedAt
+                  const flagColors: Record<string, string> = {
+                    SEXUAL: '#f59e0b', ILLEGAL: '#ef4444', VIOLENCE: '#ff006e',
+                    HATE: '#f97316', SPAM: '#8b5cf6', KEYWORD: '#06b6d4',
+                  }
+                  const flagColor = flagColors[log.flagType] ?? '#fff'
+                  return (
+                    <div
+                      key={log.id}
+                      className="rounded-2xl p-4"
+                      style={{
+                        background: isReviewed ? 'rgba(255,255,255,0.02)' : 'rgba(239,68,68,0.04)',
+                        border: `1px solid ${isReviewed ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.15)'}`,
+                        opacity: isReviewed ? 0.6 : 1,
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* User avatar */}
+                        <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                          {log.user.photoUrl
+                            ? <img src={log.user.photoUrl} alt="" className="w-full h-full object-cover" />
+                            : <div className="w-full h-full flex items-center justify-center text-white/30 text-xs font-bold">{log.user.displayName[0]}</div>
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {/* Header row */}
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-sm font-semibold text-white">@{log.user.username}</span>
+                            {log.user.isBanned && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#ff006e20', color: '#ff006e' }}>BANNED</span>
+                            )}
+                            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: `${flagColor}20`, color: flagColor, border: `1px solid ${flagColor}40` }}>
+                              {log.flagType}
+                            </span>
+                            <span className="text-xs text-white/30">{log.contentType}</span>
+                            <span className="text-xs text-white/20">{Math.round(log.confidence * 100)}% confidence</span>
+                          </div>
+                          {/* Content preview */}
+                          {log.content && (
+                            <p className="text-xs text-white/50 italic line-clamp-2 mb-1">"{log.content}"</p>
+                          )}
+                          {log.contentUrl && (
+                            <p className="text-xs text-white/40 truncate mb-1">🖼 {log.contentUrl}</p>
+                          )}
+                          {/* Strike count + date */}
+                          <div className="flex items-center gap-3 text-xs text-white/30">
+                            <span>⚡ {log.user.contentStrikes} strike{log.user.contentStrikes !== 1 ? 's' : ''}</span>
+                            <span>·</span>
+                            <span>{new Date(log.createdAt).toLocaleDateString()}</span>
+                            {isReviewed && <span className="text-white/20">· Reviewed: {log.action}</span>}
+                          </div>
+                        </div>
+                        {/* Actions */}
+                        {!isReviewed && (
+                          <div className="flex flex-col gap-1.5 flex-shrink-0">
+                            <button
+                              onClick={() => handleReviewLog(log.id, 'APPROVED')}
+                              className="px-2 py-1 rounded-lg text-xs font-semibold"
+                              style={{ background: '#10b98115', color: '#10b981', border: '1px solid #10b98130' }}
+                              title="False positive — approve content"
+                            >
+                              <CheckCircle size={12} />
+                            </button>
+                            <button
+                              onClick={() => handleReviewLog(log.id, 'REMOVED')}
+                              className="px-2 py-1 rounded-lg text-xs font-semibold"
+                              style={{ background: '#ef444415', color: '#ef4444', border: '1px solid #ef444430' }}
+                              title="Confirm removal"
+                            >
+                              <X size={12} />
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleClearStrikes(log.user.id, log.user.username)}
+                                className="px-2 py-1 rounded-lg text-xs font-semibold"
+                                style={{ background: '#a855f715', color: '#a855f7', border: '1px solid #a855f730' }}
+                                title="Clear strikes"
+                              >
+                                <ShieldCheck size={12} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* User-submitted content reports */}
+            {modSubTab === 'user' && (
+              <div className="space-y-2">
+                {contentReports.length === 0 && (
+                  <div className="text-center py-12 text-white/30 text-sm">No user reports yet</div>
+                )}
+                {contentReports.map((report) => {
+                  const isPending = report.status === 'PENDING'
+                  const reasonColors: Record<string, string> = {
+                    NUDITY: '#f59e0b', ILLEGAL: '#ef4444', SPAM: '#8b5cf6',
+                    HATE: '#f97316', VIOLENCE: '#ff006e', OTHER: '#6b7280',
+                  }
+                  const reasonColor = reasonColors[report.reason] ?? '#fff'
+                  return (
+                    <div
+                      key={report.id}
+                      className="rounded-2xl p-4"
+                      style={{
+                        background: isPending ? 'rgba(239,68,68,0.04)' : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${isPending ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)'}`,
+                        opacity: isPending ? 1 : 0.55,
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                          {report.reporter.photoUrl
+                            ? <img src={report.reporter.photoUrl} alt="" className="w-full h-full object-cover" />
+                            : <div className="w-full h-full flex items-center justify-center text-white/30 text-xs font-bold">{report.reporter.displayName[0]}</div>
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-sm font-semibold text-white">@{report.reporter.username}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: `${reasonColor}20`, color: reasonColor, border: `1px solid ${reasonColor}40` }}>
+                              {report.reason}
+                            </span>
+                            <span className="text-xs text-white/30">{report.contentType}</span>
+                            {!isPending && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)' }}>
+                                {report.status}
+                              </span>
+                            )}
+                          </div>
+                          {report.details && (
+                            <p className="text-xs text-white/50 italic line-clamp-2 mb-1">"{report.details}"</p>
+                          )}
+                          <div className="text-xs text-white/30">
+                            Content ID: <span className="font-mono text-white/20">{report.contentId.slice(0, 12)}…</span>
+                            <span className="mx-2">·</span>
+                            {new Date(report.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        {isPending && (
+                          <div className="flex flex-col gap-1.5 flex-shrink-0">
+                            <button
+                              onClick={() => handleReviewContentReport(report.id, 'ACTIONED')}
+                              className="px-2 py-1 rounded-lg text-xs font-semibold"
+                              style={{ background: '#ef444415', color: '#ef4444', border: '1px solid #ef444430' }}
+                              title="Action this report"
+                            >
+                              <X size={12} />
+                            </button>
+                            <button
+                              onClick={() => handleReviewContentReport(report.id, 'DISMISSED')}
+                              className="px-2 py-1 rounded-lg text-xs font-semibold"
+                              style={{ background: '#10b98115', color: '#10b981', border: '1px solid #10b98130' }}
+                              title="Dismiss (no action needed)"
+                            >
+                              <CheckCircle size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         )}

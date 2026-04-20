@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket } from 'lucide-react'
+import { Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket, Flag } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
@@ -187,10 +187,19 @@ function CheckInCard({ item }: { item: FeedItem }) {
 function PostCard({ item }: { item: FeedItem }) {
   const [liked, setLiked] = useState(false)
   const [likes, setLikes] = useState(item.likesCount ?? 0)
+  const [reported, setReported] = useState(false)
 
   function handleLike() {
     setLiked((v) => !v)
     setLikes((c) => c + (liked ? -1 : 1))
+  }
+
+  async function handleReport() {
+    if (!item.id || reported) return
+    try {
+      await api.post('/reports', { contentType: 'post', contentId: item.id, reason: 'OTHER' })
+      setReported(true)
+    } catch {}
   }
 
   return (
@@ -241,7 +250,17 @@ function PostCard({ item }: { item: FeedItem }) {
           />
           <span className="text-xs font-bold">{likes > 0 ? likes : ''}</span>
         </button>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {item.id && (
+            <button
+              onClick={handleReport}
+              disabled={reported}
+              title={reported ? 'Reported' : 'Report post'}
+              style={{ color: reported ? 'rgba(239,68,68,0.4)' : 'rgba(74,96,128,0.4)' }}
+            >
+              <Flag size={13} />
+            </button>
+          )}
           <Zap size={11} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
         </div>
       </div>

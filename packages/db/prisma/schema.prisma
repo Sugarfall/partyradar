@@ -130,6 +130,7 @@ model User {
   isBanned          Boolean          @default(false)
   isAdmin           Boolean          @default(false)
   appRole           AppRole          @default(USER)
+  contentStrikes    Int              @default(0)
   referralCode      String?          @unique
   referralBalance   Float            @default(0)
   referredBy        String?
@@ -185,6 +186,8 @@ model User {
   nearbyUpdates        NearbyUpdate[]
   swipesGiven    SwipeLike[] @relation("SwipesGiven")
   swipesReceived SwipeLike[] @relation("SwipesReceived")
+  moderationLogs ModerationLog[]
+  contentReports ContentReport[] @relation("ReportsMade")
 }
 
 model Event {
@@ -1049,6 +1052,47 @@ model BrandEntitlement {
   @@unique([brandId, userId])
   @@index([userId])
   @@index([brandId])
+}
+
+// ─── Content Moderation ──────────────────────────────────────────────────────
+
+model ModerationLog {
+  id          String    @id @default(cuid())
+  userId      String
+  contentType String    // 'text' | 'image' | 'bio' | 'group_message' | 'post' | 'event'
+  contentRef  String?   // groupId/postId/messageId for context
+  content     String?   @db.Text
+  contentUrl  String?
+  flagType    String    // 'SEXUAL' | 'VIOLENCE' | 'ILLEGAL' | 'HATE' | 'SPAM' | 'KEYWORD'
+  confidence  Float     @default(1.0)
+  action      String    @default("BLOCKED") // 'BLOCKED' | 'FLAGGED' | 'APPROVED' | 'REMOVED'
+  autoAction  Boolean   @default(true)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action, createdAt])
+  @@index([contentType, createdAt])
+}
+
+model ContentReport {
+  id          String   @id @default(cuid())
+  reporterId  String
+  contentType String   // 'post' | 'group_message' | 'group' | 'user' | 'event'
+  contentId   String
+  reason      String   // 'NUDITY' | 'ILLEGAL' | 'SPAM' | 'HATE' | 'VIOLENCE' | 'OTHER'
+  details     String?  @db.Text
+  status      String   @default("PENDING") // 'PENDING' | 'REVIEWED' | 'ACTION_TAKEN' | 'DISMISSED'
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime @default(now())
+  reporter    User     @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterId, contentType, contentId])
+  @@index([status, createdAt])
+  @@index([contentType, contentId])
 }
 
 model SwipeLike {
