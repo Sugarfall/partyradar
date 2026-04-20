@@ -1776,7 +1776,7 @@ export default function DiscoverPage() {
               <div className="w-2.5 h-2.5 rounded-full border border-t-transparent animate-spin shrink-0"
                 style={{ borderColor: 'rgba(139,92,246,0.3)', borderTopColor: '#8b5cf6' }} />
               <span className="text-[9px] font-black tracking-widest whitespace-nowrap" style={{ color: '#8b5cf6' }}>
-                AI{aiCity ? ` · ${aiCity.toUpperCase()}` : ' SCANNING...'}
+                SEARCHING{aiCity ? ` · ${aiCity.toUpperCase()}` : '...'}
               </span>
             </div>
           )}
