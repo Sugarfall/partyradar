@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Edit2, Check, X, LogOut, ShieldCheck, Ticket,
   Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare, Bookmark,
-  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye, Camera,
+  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye, Camera, Loader2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
@@ -305,6 +305,17 @@ export default function ProfilePage() {
     return localStorage.getItem('partyradar_going_out') === 'true'
   })
 
+  // "Wants to go out?" AI suggestion
+  const [showGoOutAI, setShowGoOutAI] = useState(false)
+  const [goOutLoading, setGoOutLoading] = useState(false)
+  const [goOutResult, setGoOutResult] = useState<{
+    suggestions: Array<{ name: string; type: string; reason: string }>
+    meetingTime: string
+    summary: string
+    city: string
+  } | null>(null)
+  const [goOutError, setGoOutError] = useState<string | null>(null)
+
   // Profile tabs
   const [profileTab, setProfileTab] = useState<ProfileTab>('activity')
 
@@ -389,6 +400,53 @@ export default function ProfilePage() {
     const next = !goingOut
     setGoingOut(next)
     localStorage.setItem('partyradar_going_out', String(next))
+  }
+
+  async function handleGoOutAI() {
+    setShowGoOutAI(true)
+    if (goOutResult && goOutResult.suggestions.length > 0) return  // already fetched
+    setGoOutLoading(true)
+    setGoOutError(null)
+    try {
+      // Get GPS location if available
+      const getLocation = (): Promise<{ lat: number; lng: number } | null> =>
+        new Promise(resolve => {
+          if (typeof navigator === 'undefined' || !navigator.geolocation) { resolve(null); return }
+          navigator.geolocation.getCurrentPosition(
+            p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+            () => resolve(null),
+            { timeout: 5000 }
+          )
+        })
+
+      const pos = await getLocation()
+
+      // Reverse-geocode city name
+      let city = 'your city'
+      if (pos) {
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.lat}&lon=${pos.lng}&format=json`)
+          const d = await r.json() as { address?: { city?: string; town?: string; county?: string } }
+          city = d?.address?.city || d?.address?.town || d?.address?.county || 'your city'
+        } catch {}
+      }
+
+      const res = await api.post<{
+        data: {
+          suggestions: Array<{ name: string; type: string; reason: string }>
+          meetingTime: string
+          summary: string
+          city: string
+        }
+      }>('/go-out/suggest', { lat: pos?.lat, lng: pos?.lng, city })
+
+      if (res?.data) setGoOutResult(res.data)
+      else setGoOutError('Could not generate suggestions — try again')
+    } catch {
+      setGoOutError('Something went wrong — check your connection')
+    } finally {
+      setGoOutLoading(false)
+    }
   }
 
   async function handlePhotoUpload(file: File) {
@@ -815,6 +873,28 @@ export default function ProfilePage() {
           />
         </div>
 
+        {/* ── Wants to go out? AI Suggester ── */}
+        <button
+          onClick={handleGoOutAI}
+          className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,0,110,0.08) 0%, rgba(var(--accent-rgb),0.06) 100%)',
+            border: '1px solid rgba(255,0,110,0.25)',
+          }}
+        >
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 text-xl"
+            style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.3)' }}>
+            🎉
+          </div>
+          <div className="flex-1 text-left">
+            <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>Wants to Go Out?</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.4)' }}>
+              AI picks the best bars &amp; clubs + suggests a meetup time
+            </p>
+          </div>
+          <Sparkles size={16} style={{ color: '#ff006e', opacity: 0.7 }} />
+        </button>
+
         {/* ── Activity / Reviews Tabs ── */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           {/* Tab headers */}
@@ -1081,6 +1161,117 @@ export default function ProfilePage() {
           mode={showFollowList}
           onClose={() => setShowFollowList(null)}
         />
+      )}
+
+      {/* ── Wants to go out? AI modal ── */}
+      {showGoOutAI && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
+          style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setShowGoOutAI(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(255,0,110,0.2)' }}
+          >
+            {/* Header */}
+            <div className="h-1" style={{ background: 'linear-gradient(90deg, #ff006e, var(--accent), #a855f7)' }} />
+            <div className="px-5 pt-4 pb-3 flex items-center justify-between"
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <div>
+                <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>🎉 Where To Tonight?</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>AI-powered nightlife suggestions</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {!goOutLoading && goOutResult && (
+                  <button
+                    onClick={() => { setGoOutResult(null); setGoOutLoading(true); handleGoOutAI() }}
+                    className="text-[9px] font-black px-2 py-1 rounded-lg"
+                    style={{ color: 'rgba(var(--accent-rgb),0.5)', border: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(var(--accent-rgb),0.04)' }}
+                  >
+                    ↻ REFRESH
+                  </button>
+                )}
+                <button onClick={() => setShowGoOutAI(false)} style={{ color: 'rgba(224,242,254,0.3)' }}>✕</button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5">
+              {goOutLoading ? (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <Loader2 size={28} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+                  <p className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>Finding tonight's best spots…</p>
+                </div>
+              ) : goOutError ? (
+                <div className="py-6 text-center">
+                  <p className="text-sm" style={{ color: 'rgba(255,0,110,0.7)' }}>{goOutError}</p>
+                  <button
+                    onClick={() => { setGoOutError(null); handleGoOutAI() }}
+                    className="mt-3 text-xs font-black px-4 py-2 rounded-xl"
+                    style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}
+                  >
+                    TRY AGAIN
+                  </button>
+                </div>
+              ) : goOutResult ? (
+                <div className="space-y-4">
+                  {/* Summary */}
+                  {goOutResult.summary && (
+                    <p className="text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.7)' }}>
+                      {goOutResult.summary}
+                    </p>
+                  )}
+
+                  {/* Meeting time */}
+                  {goOutResult.meetingTime && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                      style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
+                      <span style={{ fontSize: 14 }}>🕘</span>
+                      <div>
+                        <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,255,136,0.5)' }}>SUGGESTED MEET TIME</p>
+                        <p className="text-sm font-black" style={{ color: '#00ff88' }}>{goOutResult.meetingTime}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Venue suggestions */}
+                  <div className="space-y-2">
+                    {goOutResult.suggestions.map((s, i) => (
+                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
+                        style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                        <span className="text-lg shrink-0" style={{ lineHeight: 1 }}>
+                          {s.type?.toLowerCase().includes('club') ? '🎵'
+                            : s.type?.toLowerCase().includes('pub') ? '🍺'
+                            : s.type?.toLowerCase().includes('bar') ? '🍹'
+                            : '🎉'}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{s.name}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>{s.reason}</p>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0"
+                          style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+                          {s.type?.toUpperCase() ?? 'VENUE'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Share CTA */}
+                  <a
+                    href="/messages"
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,0,110,0.15) 0%, rgba(var(--accent-rgb),0.1) 100%)', border: '1px solid rgba(255,0,110,0.35)', color: '#ff006e' }}
+                  >
+                    ✨ INVITE FRIENDS TO COME
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
