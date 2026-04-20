@@ -47,7 +47,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     }
 
     const now = new Date()
-    const expiresAt = body.isStory ? new Date(now.getTime() + 24 * 60 * 60 * 1000) : null
+    const expiresAt = body.isStory ? new Date(now.getTime() + 25 * 60 * 60 * 1000) : null
 
     const post = await prisma.post.create({
       data: {
@@ -132,6 +132,32 @@ router.get('/my', requireAuth, async (req: AuthRequest, res, next) => {
       limit: Number(limit),
       hasMore: skip + posts.length < total,
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/posts/user/:username — public photo/video grid for a profile */
+router.get('/user/:username', async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { username: req.params['username'] },
+      select: { id: true },
+    })
+    if (!user) throw new AppError('User not found', 404)
+
+    const posts = await prisma.post.findMany({
+      where: {
+        userId: user.id,
+        isStory: false,
+        imageUrl: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+      select: { id: true, imageUrl: true, text: true, likesCount: true, createdAt: true },
+    })
+
+    res.json({ data: posts })
   } catch (err) {
     next(err)
   }

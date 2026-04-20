@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, UserPlus, UserCheck, MessageCircle,
   Calendar, MapPin, Users, ShieldCheck, Loader2,
-  Bell, Sparkles, Eye, Crown, Star, ChevronRight,
+  Bell, Sparkles, Eye, Crown, Star, ChevronRight, Camera,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -313,7 +313,9 @@ export default function PublicProfilePage() {
   const [goOutStatus, setGoOutStatus] = useState<string | null>(null)
   const [showViewers, setShowViewers] = useState(false)
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
-  const [activeTab, setActiveTab] = useState<'events' | 'checkins'>('events')
+  const [activeTab, setActiveTab] = useState<'events' | 'checkins' | 'photos'>('events')
+  const [profilePhotos, setProfilePhotos] = useState<{ id: string; imageUrl: string; likesCount: number }[]>([])
+  const [photosLoading, setPhotosLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -362,6 +364,15 @@ export default function PublicProfilePage() {
       console.error('[openDm] Failed to create DM conversation')
     } finally { setDmLoading(false) }
   }
+
+  useEffect(() => {
+    if (activeTab !== 'photos' || !profile || profilePhotos.length > 0) return
+    setPhotosLoading(true)
+    api.get<{ data: { id: string; imageUrl: string; likesCount: number }[] }>(`/posts/user/${profile.username}`)
+      .then(j => setProfilePhotos(j?.data ?? []))
+      .catch(() => {})
+      .finally(() => setPhotosLoading(false))
+  }, [activeTab, profile, profilePhotos.length])
 
   async function sendNudge() {
     if (!profile || nudging || nudgeDone || !dbUser) return
@@ -637,15 +648,19 @@ export default function PublicProfilePage() {
 
         {/* ── Tabs ── */}
         <div className="flex gap-2 mb-3">
-          {(['events', 'checkins'] as const).map((t) => (
-            <button key={t} onClick={() => setActiveTab(t)}
+          {([
+            { key: 'events', label: `🎉 EVENTS${profile.eventsCount > 0 ? ` (${profile.eventsCount})` : ''}` },
+            { key: 'checkins', label: '📍 CHECK-INS' },
+            { key: 'photos', label: '📸 PHOTOS' },
+          ] as const).map((t) => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
               className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
               style={{
-                background: activeTab === t ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.02)',
-                border: `1px solid ${activeTab === t ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.06)'}`,
-                color: activeTab === t ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
+                background: activeTab === t.key ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(var(--accent-rgb),0.02)',
+                border: `1px solid ${activeTab === t.key ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--accent-rgb),0.06)'}`,
+                color: activeTab === t.key ? 'var(--accent)' : 'rgba(74,96,128,0.5)',
               }}>
-              {t === 'events' ? `🎉 EVENTS ${profile.eventsCount > 0 ? `(${profile.eventsCount})` : ''}` : '📍 CHECK-INS'}
+              {t.label}
             </button>
           ))}
         </div>
@@ -725,6 +740,53 @@ export default function PublicProfilePage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )
+        )}
+
+        {/* ── Photos grid ── */}
+        {activeTab === 'photos' && (
+          photosLoading ? (
+            <div className="grid grid-cols-3 gap-0.5">
+              {[...Array(9)].map((_, i) => (
+                <div key={i} className="aspect-square animate-pulse"
+                  style={{ background: 'rgba(var(--accent-rgb),0.04)' }} />
+              ))}
+            </div>
+          ) : profilePhotos.length === 0 ? (
+            <div className="py-10 rounded-xl flex flex-col items-center gap-2"
+              style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.05)' }}>
+              <Camera size={24} style={{ color: 'rgba(var(--accent-rgb),0.12)' }} />
+              <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.3)' }}>NO PHOTOS YET</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-0.5 -mx-4">
+              {profilePhotos.map((photo) => {
+                const isVid = photo.imageUrl.includes('/video/upload/')
+                return (
+                  <div key={photo.id} className="aspect-square overflow-hidden relative"
+                    style={{ background: 'rgba(7,7,26,0.8)' }}>
+                    {isVid ? (
+                      <video src={photo.imageUrl} className="w-full h-full object-cover" playsInline muted />
+                    ) : (
+                      <img src={photo.imageUrl} alt="" className="w-full h-full object-cover" />
+                    )}
+                    {isVid && (
+                      <div className="absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center"
+                        style={{ background: 'rgba(0,0,0,0.55)' }}>
+                        <span style={{ fontSize: 9 }}>▶</span>
+                      </div>
+                    )}
+                    {photo.likesCount > 0 && (
+                      <div className="absolute bottom-1 left-1 flex items-center gap-0.5"
+                        style={{ background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '1px 4px' }}>
+                        <span style={{ fontSize: 8, color: '#ec4899' }}>♥</span>
+                        <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)' }}>{photo.likesCount}</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )
         )}

@@ -1259,7 +1259,7 @@ export default function DiscoverPage() {
   const { dbUser } = useAuth()
   const userTier = dbUser?.subscriptionTier ?? 'FREE'
 
-  const [tab, setTab] = useState<'events' | 'venues' | 'feed'>('events')
+  const [tab, setTab] = useState<'events' | 'venues' | 'feed'>('feed')
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
   const [searchOpen, setSearchOpen] = useState(false)
   // Use 0 as server-safe initial value to avoid SSR/client hydration mismatch.

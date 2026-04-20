@@ -116,16 +116,16 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** GET /api/feed/discover — trending activity (no auth) from the past 6 hours */
+/** GET /api/feed/discover — trending activity (no auth) from the past 7 days */
 router.get('/discover', optionalAuth, async (_req: AuthRequest, res, next) => {
   try {
-    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
     const [recentCheckIns, recentPosts] = await Promise.all([
       prisma.checkIn.findMany({
-        where: { createdAt: { gte: sixHoursAgo } },
+        where: { createdAt: { gte: sevenDaysAgo } },
         orderBy: { createdAt: 'desc' },
-        take: 30,
+        take: 40,
         include: {
           user: { select: userSelect },
           event: { select: eventSelect },
@@ -134,11 +134,11 @@ router.get('/discover', optionalAuth, async (_req: AuthRequest, res, next) => {
       }),
       prisma.post.findMany({
         where: {
-          createdAt: { gte: sixHoursAgo },
+          createdAt: { gte: sevenDaysAgo },
           OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }],
         },
         orderBy: { createdAt: 'desc' },
-        take: 30,
+        take: 40,
         include: {
           user: { select: userSelect },
           event: { select: eventSelect },

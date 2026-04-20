@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Heart, Flag, Camera, X, ImagePlus, MapPin, Calendar, Zap, Clock } from 'lucide-react'
+import { Heart, Flag, Camera, X, ImagePlus, MapPin, Calendar, Zap, Clock, Video } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import { uploadImage } from '@/lib/cloudinary'
+import { uploadImage, uploadVideo, isVideoUrl } from '@/lib/cloudinary'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,8 +122,10 @@ function StoryRing({ story, onClick }: { story: Story; onClick: () => void }) {
 
 function StoryViewer({ story, onClose }: { story: Story; onClose: () => void }) {
   const [progress, setProgress] = useState(0)
+  const isVideo = story.imageUrl ? isVideoUrl(story.imageUrl) : false
 
   useEffect(() => {
+    if (isVideo) return // videos auto-advance via onEnded
     const start = Date.now()
     const duration = 5000
     const tick = () => {
@@ -134,7 +136,7 @@ function StoryViewer({ story, onClose }: { story: Story; onClose: () => void }) 
     }
     const raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [onClose])
+  }, [onClose, isVideo])
 
   return (
     <div
@@ -162,7 +164,17 @@ function StoryViewer({ story, onClose }: { story: Story; onClose: () => void }) 
       </div>
 
       {/* Content */}
-      {story.imageUrl ? (
+      {story.imageUrl && isVideo ? (
+        <video
+          src={story.imageUrl}
+          className="w-full h-full object-cover"
+          autoPlay
+          playsInline
+          muted={false}
+          onEnded={onClose}
+          onClick={e => e.stopPropagation()}
+        />
+      ) : story.imageUrl ? (
         <img src={story.imageUrl} alt="" className="w-full h-full object-cover" />
       ) : (
         <div className="flex-1 flex items-center justify-center px-8">
@@ -207,6 +219,20 @@ function PostCard({
 }) {
   const post = item.post!
   const [imgLoaded, setImgLoaded] = useState(false)
+  const [showHeart, setShowHeart] = useState(false)
+  const lastTapRef = useRef(0)
+  const isVideo = post.imageUrl ? isVideoUrl(post.imageUrl) : false
+
+  function handleMediaTap() {
+    const now = Date.now()
+    if (now - lastTapRef.current < 350) {
+      // double tap → like
+      if (!liked) onLike()
+      setShowHeart(true)
+      setTimeout(() => setShowHeart(false), 800)
+    }
+    lastTapRef.current = now
+  }
 
   return (
     <div className="overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -227,6 +253,12 @@ function PostCard({
                 STORY
               </span>
             )}
+            {isVideo && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+                style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}>
+                <Video size={8} />VIDEO
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="text-[10px] text-white/30">{timeAgo(item.createdAt)}</span>
@@ -245,22 +277,48 @@ function PostCard({
             )}
           </div>
         </div>
-        <span className="text-[9px] text-white/20 shrink-0"><Clock size={9} className="inline mr-0.5" />{timeAgo(item.createdAt)}</span>
       </div>
 
-      {/* Image */}
+      {/* Media — image or video, double-tap to like */}
       {post.imageUrl && (
-        <div style={{ background: 'rgba(255,255,255,0.03)' }}>
-          <img
-            src={post.imageUrl} alt=""
-            className="w-full object-cover transition-opacity duration-300"
-            style={{ maxHeight: 320, opacity: imgLoaded ? 1 : 0 }}
-            onLoad={() => setImgLoaded(true)}
-          />
+        <div className="relative cursor-pointer" onClick={handleMediaTap}
+          style={{ background: 'rgba(0,0,0,0.4)' }}>
+          {isVideo ? (
+            <video
+              src={post.imageUrl}
+              controls
+              playsInline
+              className="w-full block"
+              style={{ maxHeight: 480, background: '#000' }}
+            />
+          ) : (
+            <img
+              src={post.imageUrl} alt=""
+              className="w-full object-cover block transition-opacity duration-300"
+              style={{ maxHeight: 480, opacity: imgLoaded ? 1 : 0 }}
+              onLoad={() => setImgLoaded(true)}
+            />
+          )}
+
+          {/* Double-tap heart flash */}
+          {showHeart && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <Heart
+                size={80}
+                fill="#ec4899"
+                style={{
+                  color: '#ec4899',
+                  filter: 'drop-shadow(0 0 20px rgba(236,72,153,0.9))',
+                  transform: 'scale(1.1)',
+                  transition: 'opacity 0.3s',
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Text */}
+      {/* Caption */}
       {post.text && (
         <p className="px-4 py-3 text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.85)' }}>
           {post.text}
@@ -271,7 +329,7 @@ function PostCard({
       <div className="flex items-center gap-4 px-4 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
         <button
           onClick={onLike}
-          className="flex items-center gap-1.5 transition-all duration-200"
+          className="flex items-center gap-1.5 transition-all duration-200 active:scale-110"
           style={{ color: liked ? '#ec4899' : 'rgba(255,255,255,0.25)' }}
         >
           <Heart size={16} fill={liked ? '#ec4899' : 'none'} style={{ filter: liked ? 'drop-shadow(0 0 5px rgba(236,72,153,0.7))' : 'none' }} />
@@ -337,27 +395,41 @@ function CheckinCard({ item }: { item: FeedItem }) {
 
 function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
   const [text, setText] = useState('')
-  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [mediaFile, setMediaFile] = useState<File | null>(null)
+  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [isStory, setIsStory] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+  function pickMedia(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setImageFile(file)
+    const isVid = file.type.startsWith('video/')
+    setMediaFile(file)
+    setMediaType(isVid ? 'video' : 'image')
     setPreview(URL.createObjectURL(file))
   }
 
+  function clearMedia() {
+    setMediaFile(null)
+    setMediaType(null)
+    setPreview(null)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
   async function submit() {
-    if (!text.trim() && !imageFile) { setError('Add a photo or write something'); return }
+    if (!text.trim() && !mediaFile) { setError('Add a photo, video or write something'); return }
     setUploading(true)
     setError('')
     try {
       let imageUrl: string | undefined
-      if (imageFile) imageUrl = await uploadImage(imageFile, 'sightings')
+      if (mediaFile) {
+        imageUrl = mediaType === 'video'
+          ? await uploadVideo(mediaFile, 'sightings')
+          : await uploadImage(mediaFile, 'sightings')
+      }
       await api.post('/posts', { text: text.trim() || undefined, imageUrl, isStory })
       onPosted()
       onClose()
@@ -390,12 +462,16 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
           <button onClick={onClose}><X size={18} style={{ color: 'rgba(255,255,255,0.4)' }} /></button>
         </div>
 
-        {/* Image preview */}
+        {/* Media preview */}
         {preview && (
-          <div className="relative mx-5 mb-4 rounded-2xl overflow-hidden" style={{ maxHeight: 220 }}>
-            <img src={preview} alt="" className="w-full object-cover" style={{ maxHeight: 220 }} />
+          <div className="relative mx-5 mb-4 rounded-2xl overflow-hidden bg-black" style={{ maxHeight: 260 }}>
+            {mediaType === 'video' ? (
+              <video src={preview} controls playsInline className="w-full block" style={{ maxHeight: 260 }} />
+            ) : (
+              <img src={preview} alt="" className="w-full object-cover" style={{ maxHeight: 260 }} />
+            )}
             <button
-              onClick={() => { setImageFile(null); setPreview(null) }}
+              onClick={clearMedia}
               className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
               style={{ background: 'rgba(0,0,0,0.6)' }}
             >
@@ -426,15 +502,15 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
 
         {/* Footer */}
         <div className="flex items-center gap-3 px-5 pb-6 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          {/* Image picker */}
+          {/* Media picker */}
           <button
             onClick={() => fileRef.current?.click()}
-            className="p-2.5 rounded-xl transition-all"
+            className="p-2.5 rounded-xl transition-all flex items-center gap-1.5"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
           >
             <ImagePlus size={16} style={{ color: 'rgba(255,255,255,0.5)' }} />
           </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickImage} />
+          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={pickMedia} />
 
           {/* Story toggle */}
           <button
@@ -446,17 +522,17 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
             }
           >
             <Clock size={12} />
-            24H STORY
+            25H STORY
           </button>
 
           {/* Post button */}
           <button
             onClick={submit}
-            disabled={uploading || (!text.trim() && !imageFile)}
+            disabled={uploading || (!text.trim() && !mediaFile)}
             className="ml-auto px-5 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
             style={{ background: 'linear-gradient(135deg, #ec4899, #f97316)', color: '#fff', boxShadow: '0 0 16px rgba(236,72,153,0.3)' }}
           >
-            {uploading ? '...' : 'POST'}
+            {uploading ? (mediaType === 'video' ? 'UPLOADING…' : '…') : 'POST'}
           </button>
         </div>
       </div>
@@ -528,11 +604,10 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
     } catch {}
   }
 
-  // ── Loading ──────────────────────────────────────────────────────────────────
+  // ── Loading skeleton ─────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex-1 overflow-y-auto">
-        {/* Skeleton stories */}
         <div className="flex gap-4 px-4 py-4 overflow-x-auto no-scrollbar" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           {[...Array(5)].map((_, i) => (
             <div key={i} className="flex flex-col items-center gap-1.5 shrink-0">
@@ -541,7 +616,6 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
             </div>
           ))}
         </div>
-        {/* Skeleton posts */}
         {[...Array(3)].map((_, i) => (
           <div key={i} className="px-4 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
             <div className="flex items-center gap-3 mb-3">
@@ -551,7 +625,7 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
                 <div className="h-2 w-16 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
               </div>
             </div>
-            {i === 0 && <div className="h-40 w-full rounded-xl animate-pulse mb-3" style={{ background: 'rgba(255,255,255,0.04)' }} />}
+            {i === 0 && <div className="h-48 w-full rounded-xl animate-pulse mb-3" style={{ background: 'rgba(255,255,255,0.04)' }} />}
             <div className="h-2.5 w-3/4 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
           </div>
         ))}
@@ -594,13 +668,12 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
               </button>
             )}
 
-            {/* Stories from others */}
             {stories.map(story => (
               <StoryRing key={story.id} story={story} onClick={() => setViewingStory(story)} />
             ))}
 
             {stories.length === 0 && isLoggedIn && (
-              <p className="text-[10px] text-white/20 italic ml-2">No stories yet — be the first to share 🎉</p>
+              <p className="text-[10px] text-white/20 italic ml-2">No stories yet — be the first 🎉</p>
             )}
           </div>
         )}
@@ -611,7 +684,7 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
             className="flex items-center gap-4 px-4 py-2"
             style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.15)' }}
           >
-            <span className="text-[10px] font-bold text-white/30">LAST 6 HOURS</span>
+            <span className="text-[10px] font-bold text-white/30">RECENT</span>
             <div className="flex items-center gap-3 ml-auto">
               {postItems.length > 0 && (
                 <span className="text-[10px] font-semibold text-white/25">
@@ -632,9 +705,9 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
           <div className="flex flex-col items-center justify-center py-20 px-8 text-center gap-5">
             <div className="text-5xl">🎉</div>
             <div>
-              <p className="font-black text-white text-base mb-1">The night hasn't started yet</p>
+              <p className="font-black text-white text-base mb-1">Nothing posted yet</p>
               <p className="text-sm text-white/35 leading-relaxed">
-                Posts from people at events and venues will appear here. Be the first to share your night.
+                Share photos and videos from events and venues. Be the first to post.
               </p>
             </div>
             {isLoggedIn && (
@@ -677,11 +750,11 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
           })
         )}
 
-        {/* ── Live activity footer ────────────────────────────────────────── */}
+        {/* ── Live activity footer ─────────────────────────────────────────── */}
         {allItems.length > 0 && (
           <div className="flex items-center justify-center gap-2 py-6">
             <Zap size={11} style={{ color: 'rgba(0,200,255,0.2)' }} />
-            <span className="text-[10px] text-white/20 font-semibold">Live activity from the last 6 hours</span>
+            <span className="text-[10px] text-white/20 font-semibold">Live activity</span>
           </div>
         )}
       </div>

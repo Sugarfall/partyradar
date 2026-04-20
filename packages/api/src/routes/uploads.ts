@@ -30,6 +30,16 @@ router.post('/image', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+/** POST /api/uploads/video — get a signed Cloudinary upload credential for video posts */
+router.post('/video', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const credentials = await getSignedUploadUrl('partyradar/sightings')
+    res.json({ data: credentials })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** POST /api/uploads/audio — get a signed Cloudinary upload credential for voice notes */
 router.post('/audio', requireAuth, async (req: AuthRequest, res, next) => {
   try {
