@@ -1283,6 +1283,10 @@ export default function DiscoverPage() {
   const [aiFound, setAiFound] = useState<number | null>(null)
   const aiSyncedRef = useRef(false)
   const aiFoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cap the full-screen "RADAR ASSISTANT SCANNING" UI at 3s for manual city changes.
+  // AI sync continues in the background; mutate() refreshes results when done.
+  const [aiScanTimedOut, setAiScanTimedOut] = useState(false)
+  const aiScanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Tracks whether real GPS has fired at least once.
   // On first GPS fix we always reset aiSyncedRef so the AI sync re-fires for the
   // correct city (IP geo can give the wrong city — e.g. London instead of Glasgow).
@@ -1482,6 +1486,10 @@ export default function DiscoverPage() {
     setAiSyncing(true)
     setAiCity(cityName)
     setAiFound(null)
+    // Cap the full-screen scanning UI — show it for 3s max, then show events/empty state
+    setAiScanTimedOut(false)
+    if (aiScanTimeoutRef.current) clearTimeout(aiScanTimeoutRef.current)
+    aiScanTimeoutRef.current = setTimeout(() => setAiScanTimedOut(true), 3000)
     api.post<{ data: { imported: number; skipped: number } }>(
       '/events/ai-sync',
       { city: cityName, lat, lng, force: true },
@@ -1995,8 +2003,8 @@ export default function DiscoverPage() {
                 {!locationReady ? 'LOCATING YOU...' : 'SCANNING AREA...'}
               </p>
             </div>
-          ) : events.length === 0 && aiSyncing ? (
-            /* AI sync running — show scanning state instead of empty */
+          ) : events.length === 0 && aiSyncing && !aiScanTimedOut ? (
+            /* AI sync running — show scanning state for max 3s on city change */
             <div className="flex flex-col items-center justify-center py-20 gap-4 px-6">
               <div className="w-12 h-12 rounded-full border-2 animate-spin"
                 style={{ borderColor: 'rgba(139,92,246,0.15)', borderTopColor: '#8b5cf6' }} />
