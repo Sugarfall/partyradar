@@ -227,7 +227,7 @@ export default function CreateEventPage() {
         try { coverImageUrl = await uploadImage(coverFile, 'events') } catch { /* skip upload in dev */ }
       }
       // Bug 14 fix: hostId is set server-side from the JWT — don't send it from client
-      const event = await createEvent({ ...form, coverImageUrl })
+      const event = await createEvent({ ...form, coverImageUrl } as CreateEventInput)
       setPublished(true)
       setTimeout(() => router.push(`/events/${event.id}`), 1500)
     } catch (err: unknown) {
