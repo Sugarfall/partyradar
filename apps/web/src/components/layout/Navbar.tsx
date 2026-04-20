@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Zap, Compass, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight, Menu } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
+import { useLanguage } from '@/contexts/LanguageContext'
 import type { Notification } from '@partyradar/shared'
 
 // ── Desktop nav links (Radar hidden for now) ─────────────────────────────────
@@ -148,6 +149,7 @@ export default function Navbar() {
 function NavbarInner() {
   const pathname = usePathname()
   const { dbUser } = useAuth()
+  const { t } = useLanguage()
 
   // Mode is localStorage-first so it works without login and reacts instantly
   const [isHost, setIsHost] = useState(false)
@@ -396,6 +398,7 @@ function NavbarInner() {
         <div className="flex items-stretch h-16">
           {MOBILE_NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
+            const translatedLabel = t(`nav.${label.toLowerCase()}`) || label
             return (
               <Link key={href} href={href}
                 className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all px-0.5"
@@ -405,7 +408,7 @@ function NavbarInner() {
                   strokeWidth={active ? 2 : 1.5}
                   style={active ? { filter: 'drop-shadow(0 0 6px rgba(var(--accent-rgb),0.6))' } : undefined}
                 />
-                <span className="text-[8px] font-medium tracking-tight leading-none">{label}</span>
+                <span className="text-[8px] font-medium tracking-tight leading-none">{translatedLabel}</span>
               </Link>
             )
           })}

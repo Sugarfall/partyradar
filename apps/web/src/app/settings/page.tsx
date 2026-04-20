@@ -3,10 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { useLanguage } from '@/contexts/LanguageContext'
+import { LANGUAGE_META } from '@/lib/i18n'
+import type { Language } from '@/lib/i18n'
 import { api } from '@/lib/api'
 import {
   Shield, Bell, Eye, User, ChevronRight,
-  AlertTriangle, Zap, ToggleLeft, ToggleRight,
+  AlertTriangle, Zap, ToggleLeft, ToggleRight, Globe,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -117,6 +120,7 @@ function InfoRow({ label, value, sublabel }: { label: string; value: string; sub
 export default function SettingsPage() {
   const router = useRouter()
   const { dbUser, loading, refreshUser } = useAuth()
+  const { lang, setLang, t } = useLanguage()
 
   // ── Notification prefs ─────────────────────────────────────────────────────
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({
@@ -428,6 +432,38 @@ export default function SettingsPage() {
               onChange={v => savePrivacyPref('allowGoOutFromStrangers', v)}
               saving={savingPrivacy}
             />
+          </SettingsCard>
+        </div>
+
+        {/* ── Language ─────────────────────────────────────────────────── */}
+        <div>
+          <SectionHeader icon={<Globe size={12} style={{ color: 'rgba(224,242,254,0.35)' }} />} label="LANGUAGE" />
+          <SettingsCard>
+            {(Object.entries(LANGUAGE_META) as [Language, typeof LANGUAGE_META[Language]][]).map(([code, meta], i) => (
+              <div key={code}>
+                {i > 0 && <Divider />}
+                <button
+                  onClick={() => setLang(code)}
+                  className="w-full flex items-center justify-between px-4 py-3.5"
+                >
+                  <div className="flex items-center gap-3">
+                    <span style={{ fontSize: 18 }}>{meta.flag}</span>
+                    <div className="text-left">
+                      <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>{meta.nativeName}</p>
+                      {meta.nativeName !== meta.name && (
+                        <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>{meta.name}</p>
+                      )}
+                    </div>
+                  </div>
+                  {lang === code && (
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                      style={{ background: 'var(--accent)' }}>
+                      <span className="text-[10px] font-black" style={{ color: '#04040d' }}>✓</span>
+                    </div>
+                  )}
+                </button>
+              </div>
+            ))}
           </SettingsCard>
         </div>
 
