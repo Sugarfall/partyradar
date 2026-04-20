@@ -307,7 +307,7 @@ export default function ProfilePage() {
     return localStorage.getItem('partyradar_going_out') === 'true'
   })
 
-  // "Wants to go out?" AI suggestion
+  // "Wants to go out?" suggester
   const [showGoOutAI, setShowGoOutAI] = useState(false)
   const [goOutLoading, setGoOutLoading] = useState(false)
   const [goOutResult, setGoOutResult] = useState<{
@@ -317,6 +317,15 @@ export default function ProfilePage() {
     city: string
   } | null>(null)
   const [goOutError, setGoOutError] = useState<string | null>(null)
+
+  // Friend invite sheet (shown after picking a venue)
+  const [inviteVenue, setInviteVenue] = useState<string | null>(null)
+  const [inviteMessage, setInviteMessage] = useState('')
+  const [friends, setFriends] = useState<Array<{ id: string; displayName: string; username: string; photoUrl?: string | null }>>([])
+  const [friendsLoading, setFriendsLoading] = useState(false)
+  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set())
+  const [inviteSending, setInviteSending] = useState(false)
+  const [inviteSentCount, setInviteSentCount] = useState(0)
 
   // Profile tabs
   const [profileTab, setProfileTab] = useState<ProfileTab>('activity')
@@ -449,6 +458,45 @@ export default function ProfilePage() {
     } finally {
       setGoOutLoading(false)
     }
+  }
+
+  async function handleOpenInvite(venueName: string) {
+    const meetTime = goOutResult?.meetingTime ? ` Meet at ${goOutResult.meetingTime}.` : ''
+    setInviteVenue(venueName)
+    setInviteMessage(`Hey! I'm heading to ${venueName} tonight 🎉 Want to come?${meetTime}`)
+    setSelectedFriends(new Set())
+    setInviteSentCount(0)
+    setFriendsLoading(true)
+    try {
+      const res = await api.get<{ data: Array<{ id: string; displayName: string; username: string; photoUrl?: string | null }> }>('/follow/following?limit=50')
+      setFriends(res?.data ?? [])
+    } catch {
+      setFriends([])
+    } finally {
+      setFriendsLoading(false)
+    }
+  }
+
+  async function handleSendInvites() {
+    if (selectedFriends.size === 0 || !inviteMessage.trim()) return
+    setInviteSending(true)
+    let sent = 0
+    for (const friendId of selectedFriends) {
+      try {
+        // Get or create DM conversation
+        const convoRes = await api.post<{ data: { id: string } }>('/dm', { recipientId: friendId })
+        const convoId = convoRes?.data?.id
+        if (!convoId) continue
+        // Send the invite message
+        await api.post(`/dm/${convoId}`, { text: inviteMessage.trim() })
+        sent++
+      } catch { /* skip if one fails */ }
+    }
+    setInviteSentCount(sent)
+    setInviteSending(false)
+    setSelectedFriends(new Set())
+    // Auto-close after 2s
+    setTimeout(() => { setInviteVenue(null); setInviteSentCount(0) }, 2000)
   }
 
   async function handlePhotoUpload(file: File) {
@@ -897,7 +945,7 @@ export default function ProfilePage() {
           <div className="flex-1 text-left">
             <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>Wants to Go Out?</p>
             <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.4)' }}>
-              AI picks the best bars &amp; clubs + suggests a meetup time
+              PartyRadar picks the best bars &amp; clubs + suggests a meetup time
             </p>
           </div>
           <Sparkles size={16} style={{ color: '#ff006e', opacity: 0.7 }} />
@@ -1171,7 +1219,119 @@ export default function ProfilePage() {
         />
       )}
 
-      {/* ── Wants to go out? AI modal ── */}
+      {/* ── Friend invite sheet ── */}
+      {inviteVenue && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center pb-6 px-4"
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)' }}
+          onClick={() => setInviteVenue(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'rgba(7,7,26,0.99)', border: '1px solid rgba(255,0,110,0.25)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+          >
+            <div className="h-1 shrink-0" style={{ background: 'linear-gradient(90deg, #ff006e, var(--accent))' }} />
+            {/* Header */}
+            <div className="px-5 pt-4 pb-3 flex items-center justify-between shrink-0"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div>
+                <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>🎉 Invite to {inviteVenue}</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,0,110,0.5)' }}>Choose friends to invite</p>
+              </div>
+              <button onClick={() => setInviteVenue(null)} style={{ color: 'rgba(224,242,254,0.3)' }}>✕</button>
+            </div>
+
+            {/* Success state */}
+            {inviteSentCount > 0 ? (
+              <div className="flex flex-col items-center gap-3 py-10 px-5">
+                <span className="text-4xl">🎉</span>
+                <p className="text-base font-black text-white">Invites Sent!</p>
+                <p className="text-sm text-white/50">Sent to {inviteSentCount} friend{inviteSentCount !== 1 ? 's' : ''}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col overflow-hidden">
+                {/* Editable message */}
+                <div className="px-4 pt-3 pb-2 shrink-0">
+                  <p className="text-[9px] font-black tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>MESSAGE</p>
+                  <textarea
+                    value={inviteMessage}
+                    onChange={e => setInviteMessage(e.target.value)}
+                    rows={2}
+                    className="w-full resize-none text-xs text-white/80 rounded-xl px-3 py-2.5 outline-none leading-relaxed"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  />
+                </div>
+
+                {/* Friend list */}
+                <div className="px-4 pb-1 shrink-0">
+                  <p className="text-[9px] font-black tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    SELECT FRIENDS {selectedFriends.size > 0 && <span style={{ color: '#ff006e' }}>· {selectedFriends.size} selected</span>}
+                  </p>
+                </div>
+                <div className="overflow-y-auto px-4 pb-4 space-y-1.5" style={{ maxHeight: 260 }}>
+                  {friendsLoading ? (
+                    <div className="py-6 text-center text-xs text-white/30">Loading friends…</div>
+                  ) : friends.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-white/30">Follow people to invite them here</div>
+                  ) : (
+                    friends.map((f) => {
+                      const checked = selectedFriends.has(f.id)
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => setSelectedFriends(prev => {
+                            const next = new Set(prev)
+                            checked ? next.delete(f.id) : next.add(f.id)
+                            return next
+                          })}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
+                          style={{
+                            background: checked ? 'rgba(255,0,110,0.1)' : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${checked ? 'rgba(255,0,110,0.35)' : 'rgba(255,255,255,0.06)'}`,
+                          }}
+                        >
+                          <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-bold"
+                            style={{ background: 'rgba(var(--accent-rgb),0.15)', color: 'var(--accent)' }}>
+                            {f.photoUrl
+                              ? <img src={f.photoUrl} alt="" className="w-full h-full object-cover" />
+                              : f.displayName[0]?.toUpperCase()}
+                          </div>
+                          <div className="flex-1 text-left min-w-0">
+                            <p className="text-sm font-semibold truncate" style={{ color: checked ? '#fff' : 'rgba(224,242,254,0.7)' }}>{f.displayName}</p>
+                            <p className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.3)' }}>@{f.username}</p>
+                          </div>
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all"
+                            style={{ background: checked ? '#ff006e' : 'rgba(255,255,255,0.06)', border: checked ? 'none' : '1px solid rgba(255,255,255,0.12)' }}>
+                            {checked && <span className="text-white text-[10px]">✓</span>}
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+
+                {/* Send button */}
+                <div className="px-4 pb-5 pt-2 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <button
+                    onClick={handleSendInvites}
+                    disabled={inviteSending || selectedFriends.size === 0}
+                    className="w-full py-3 rounded-xl text-sm font-black tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-40"
+                    style={{ background: 'linear-gradient(135deg, #ff006e, rgba(var(--accent-rgb),0.9))', color: '#fff' }}
+                  >
+                    {inviteSending
+                      ? <><span className="animate-spin">⟳</span> Sending…</>
+                      : <>🎉 SEND {selectedFriends.size > 0 ? `${selectedFriends.size} ` : ''}INVITE{selectedFriends.size !== 1 ? 'S' : ''}</>
+                    }
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Wants to go out? suggester modal ── */}
       {showGoOutAI && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
@@ -1189,7 +1349,7 @@ export default function ProfilePage() {
               style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
               <div>
                 <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>🎉 Where To Tonight?</p>
-                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>AI-powered nightlife suggestions</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>PartyRadar Recommended</p>
               </div>
               <div className="flex items-center gap-2">
                 {!goOutLoading && goOutResult && (
@@ -1247,34 +1407,35 @@ export default function ProfilePage() {
                   {/* Venue suggestions */}
                   <div className="space-y-2">
                     {goOutResult.suggestions.map((s, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
+                      <div key={i} className="rounded-xl overflow-hidden"
                         style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
-                        <span className="text-lg shrink-0" style={{ lineHeight: 1 }}>
-                          {s.type?.toLowerCase().includes('club') ? '🎵'
-                            : s.type?.toLowerCase().includes('pub') ? '🍺'
-                            : s.type?.toLowerCase().includes('bar') ? '🍹'
-                            : '🎉'}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{s.name}</p>
-                          <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>{s.reason}</p>
+                        <div className="flex items-start gap-3 p-3">
+                          <span className="text-lg shrink-0" style={{ lineHeight: 1 }}>
+                            {s.type?.toLowerCase().includes('club') ? '🎵'
+                              : s.type?.toLowerCase().includes('pub') ? '🍺'
+                              : s.type?.toLowerCase().includes('bar') ? '🍹'
+                              : '🎉'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{s.name}</p>
+                            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>{s.reason}</p>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0"
+                            style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+                            {s.type?.toUpperCase() ?? 'VENUE'}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0"
-                          style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
-                          {s.type?.toUpperCase() ?? 'VENUE'}
-                        </span>
+                        {/* Per-venue invite button */}
+                        <button
+                          onClick={() => handleOpenInvite(s.name)}
+                          className="w-full flex items-center justify-center gap-1.5 py-2 text-[10px] font-black tracking-widest transition-all"
+                          style={{ background: 'rgba(255,0,110,0.08)', borderTop: '1px solid rgba(255,0,110,0.12)', color: '#ff006e' }}
+                        >
+                          🎉 INVITE FRIENDS HERE
+                        </button>
                       </div>
                     ))}
                   </div>
-
-                  {/* Share CTA */}
-                  <a
-                    href="/messages"
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black tracking-widest"
-                    style={{ background: 'linear-gradient(135deg, rgba(255,0,110,0.15) 0%, rgba(var(--accent-rgb),0.1) 100%)', border: '1px solid rgba(255,0,110,0.35)', color: '#ff006e' }}
-                  >
-                    ✨ INVITE FRIENDS TO COME
-                  </a>
                 </div>
               ) : null}
             </div>
