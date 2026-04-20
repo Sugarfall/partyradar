@@ -32,6 +32,9 @@ const eventSchema = z.object({
   houseRules: z.string().max(1000).optional(),
   vibeTags: z.array(z.string()).max(8).default([]),
   isInviteOnly: z.boolean().default(false),
+  partySigns: z.array(z.string()).max(16).default([]),
+  lineup: z.string().max(500).optional(),
+  venueName: z.string().max(200).optional(),
   coverImageUrl: z.preprocess(
     (v) => (v === '' || v == null ? undefined : v),
     z.string().url().optional()
@@ -52,12 +55,14 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const search = q ?? searchParam
 
     const skip = (Number(page) - 1) * Number(limit)
-    const showAlcohol = req.user?.dbUser.showAlcoholEvents ?? false
+
+    // Include events that are currently in progress (started up to 8 h ago) as well as future ones
+    const eightHoursAgo = new Date(Date.now() - 8 * 3_600_000)
 
     const where: Record<string, unknown> = {
       isPublished: true,
       isCancelled: false,
-      startsAt: { gte: new Date() },
+      startsAt: { gte: eightHoursAgo },
     }
 
     if (tonight === 'true') {
@@ -85,11 +90,6 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         { neighbourhood: { contains: search as string, mode: 'insensitive' } },
         { type:          { contains: search as string, mode: 'insensitive' } },
       ]
-    }
-
-    // Hide alcohol events only for logged-in users who haven't enabled the toggle
-    if (req.user && !showAlcohol) {
-      where['alcoholPolicy'] = 'NONE'
     }
 
     // Geo filter
@@ -172,7 +172,7 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
 router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const event = await prisma.event.findUnique({
-      where: { inviteToken: req.params['token'] },
+      where: { inviteToken: String(req.params['token']) },
       include: { host: { select: userSelect }, _count: { select: { guests: true } } },
     })
     if (!event) throw new AppError('Invite link not found', 404)
@@ -186,7 +186,7 @@ router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) =
 router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const event = await prisma.event.findUnique({
-      where: { id: req.params['id'] },
+      where: { id: String(req.params['id']) },
       include: {
         host: { select: userSelect },
         _count: { select: { guests: { where: { status: 'CONFIRMED' } } } },
@@ -292,7 +292,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 /** PUT /api/events/:id */
 router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const event = await prisma.event.findUnique({ where: { id: req.params['id'] } })
+    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
@@ -313,6 +313,8 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         startsAt: rest.startsAt ? new Date(rest.startsAt) : undefined,
         endsAt: rest.endsAt ? new Date(rest.endsAt) : undefined,
         accentColor: accentColor !== undefined ? accentColor : undefined,
+        lineup: lineup !== undefined ? lineup : undefined,
+        partySigns: partySigns !== undefined ? partySigns : undefined,
       },
       include: { host: { select: userSelect } },
     })
@@ -326,7 +328,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 /** DELETE /api/events/:id — cancel event */
 router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const event = await prisma.event.findUnique({ where: { id: req.params['id'] } })
+    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 

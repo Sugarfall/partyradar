@@ -14,6 +14,7 @@ export interface AuthRequest extends Request {
       ageVerified: boolean
       isAdmin: boolean
       isBanned: boolean
+      showAlcoholEvents: boolean
     }
   }
 }
@@ -38,6 +39,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
         ageVerified: true,
         isAdmin: true,
         isBanned: true,
+        showAlcoholEvents: true,
       },
     })
 
@@ -98,7 +100,7 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
       select: {
         id: true, email: true, username: true, displayName: true,
         subscriptionTier: true, ageVerified: true,
-        isAdmin: true, isBanned: true,
+        isAdmin: true, isBanned: true, showAlcoholEvents: true,
       },
     })
     if (dbUser && !dbUser.isBanned) req.user = { firebaseUid: decoded.uid, dbUser }

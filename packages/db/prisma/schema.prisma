@@ -103,7 +103,7 @@ model User {
   ageVerified       Boolean          @default(false)
   alcoholFriendly   Boolean          @default(false)
   interests         String[]
-  showAlcoholEvents Boolean          @default(false)
+  showAlcoholEvents Boolean          @default(true)
   phoneNumber    String?   @unique
   phoneVerified  Boolean   @default(false)
   profileBg      String?   // hex colour or gradient string
@@ -211,6 +211,9 @@ model Event {
   isFeatured            Boolean        @default(false)
   coverImageUrl         String?
   accentColor           String?
+  partySigns            String[]
+  lineup                String?
+  venueName             String?
   stripeProductId       String?
   stripePriceId         String?
   hostRating            Float?

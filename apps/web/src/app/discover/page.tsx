@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart, Wine } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
@@ -10,7 +10,7 @@ import { useVenueDiscover } from '@/hooks/useVenues'
 import type { LiveVenue } from '@/hooks/useVenues'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
-import { AGE_RESTRICTION_LABELS, ALCOHOL_POLICY_LABELS, getTier } from '@partyradar/shared'
+import { AGE_RESTRICTION_LABELS, getTier } from '@partyradar/shared'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
 
@@ -301,7 +301,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ filter: isYachtLocked ? 'blur(6px)' : 'none', pointerEvents: isYachtLocked ? 'none' : undefined }}>
         {/* Host row */}
         <div className="flex items-center gap-3">
-          {event.host.photoUrl ? (
+          {event.host?.photoUrl ? (
             <img
               src={event.host.photoUrl}
               alt=""
@@ -313,12 +313,12 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
               className="w-8 h-8 rounded flex items-center justify-center text-sm font-bold"
               style={{ background: `${color}18`, border: `1px solid ${color}40`, color }}
             >
-              {event.host?.displayName?.[0]}
+              {event.host?.displayName?.[0] ?? '?'}
             </div>
           )}
           <div>
             <p className="text-xs font-bold" style={{ color: 'rgba(224,242,254,0.9)', letterSpacing: '0.05em' }}>
-              {event.host.displayName}
+              {event.host?.displayName ?? 'Host'}
             </p>
             {event.hostRating && (
               <p className="text-[10px] flex items-center gap-1" style={{ color: '#ffd600' }}>
@@ -420,13 +420,6 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
             </div>
           )
         })()}
-
-        {/* Alcohol */}
-        {event.alcoholPolicy !== 'NONE' && (
-          <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'rgba(224,242,254,0.4)' }}>
-            <Wine size={11} /> {ALCOHOL_POLICY_LABELS[event.alcoholPolicy]}
-          </p>
-        )}
 
         {/* Party signals (home party only) */}
         {event.type === 'HOME_PARTY' && (event as any).partySigns?.length > 0 && (
@@ -559,7 +552,7 @@ function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
         </div>
 
         {/* Vibe tags */}
-        {venue.vibeTags.length > 0 && (
+        {venue.vibeTags && venue.vibeTags.length > 0 && (
           <div className="flex gap-1 flex-wrap">
             {venue.vibeTags.slice(0, 5).map((tag) => (
               <span key={tag} className="text-[9px] font-bold px-2 py-0.5 rounded-full"
@@ -638,7 +631,7 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
   const filtered = venueSearch
     ? liveVenues.filter((v) =>
         v.name.toLowerCase().includes(venueSearch.toLowerCase()) ||
-        v.vibeTags.some((t) => t.toLowerCase().includes(venueSearch.toLowerCase())) ||
+        (v.vibeTags ?? []).some((t) => t.toLowerCase().includes(venueSearch.toLowerCase())) ||
         v.type.toLowerCase().includes(venueSearch.toLowerCase())
       )
     : liveVenues
@@ -1165,7 +1158,9 @@ export default function DiscoverPage() {
   const [tab, setTab] = useState<'events' | 'venues'>('events')
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [now, setNow] = useState(() => Date.now())
+  // Use 0 as server-safe initial value to avoid SSR/client hydration mismatch.
+  // useEffect sets the real timestamp on the client after hydration.
+  const [now, setNow] = useState(0)
   const [index, setIndex] = useState(0)
   const [slideDir, setSlideDir] = useState<SlideDir>(null)
   const [showMap, setShowMap] = useState(false)
@@ -1303,8 +1298,9 @@ export default function DiscoverPage() {
   // Reset index when events change
   useEffect(() => { setIndex(0) }, [events.length])
 
-  // Tick every 60s so LIVE/UPCOMING sections re-classify without page reload
+  // Set real timestamp on client after hydration, then tick every 60s
   useEffect(() => {
+    setNow(Date.now())
     const t = setInterval(() => setNow(Date.now()), 60000)
     return () => clearInterval(t)
   }, [])
@@ -1348,7 +1344,10 @@ export default function DiscoverPage() {
     return () => clearTimeout(t)
   }, [events, alertDismissed])
 
-  const event = events[index] ?? null
+  // Clamp index so a stale value never exceeds the new array length during the
+  // one render before the setIndex(0) useEffect fires on events.length change.
+  const safeIndex = events.length > 0 ? Math.min(index, events.length - 1) : 0
+  const event = events[safeIndex] ?? null
 
   return (
     <>
@@ -1719,7 +1718,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {(isLoading || locationLoading) || events.length === 0 ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} /> : <EventStage event={event!} dir={slideDir} userTier={userTier} />}
+            {(isLoading || locationLoading) || events.length === 0 || !event ? <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} /> : <EventStage event={event} dir={slideDir} userTier={userTier} />}
           </div>
           {events.length > 1 && (
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
