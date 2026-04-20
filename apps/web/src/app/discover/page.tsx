@@ -1430,12 +1430,15 @@ export default function DiscoverPage() {
             setSyncing(false)
           }
 
-          // Reverse-geocode for display label (throttled by the moved>500m guard)
+          // Reverse-geocode for display label + currency (throttled by the moved>500m guard)
           fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
             .then((r) => r.json())
             .then((d) => {
               const city = d?.address?.city || d?.address?.town || d?.address?.county || null
               setVenueCity(city)
+              // Update currency from GPS country
+              const displayName = d?.display_name ?? ''
+              if (displayName) setCurrentCurrency(currencyFromDisplayName(displayName))
               // Persist precise GPS location for instant results on next visit
               try { localStorage.setItem('pr_loc', JSON.stringify({ lat, lng, city, ts: Date.now() })) } catch {}
             })
@@ -1687,7 +1690,7 @@ export default function DiscoverPage() {
                   </p>
                   <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>{partyAlert.name}</p>
                   <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.5)' }}>
-                    {partyAlert.neighbourhood} · {partyAlert.price === 0 ? 'Free entry' : `£${partyAlert.price}`} · {partyAlert.guestCount ?? 0} going
+                    {partyAlert.neighbourhood} · {partyAlert.price === 0 ? 'Free entry' : formatPrice(partyAlert.price, currentCurrency)} · {partyAlert.guestCount ?? 0} going
                   </p>
                 </div>
                 <button onClick={() => setAlertDismissed(true)} style={{ color: 'rgba(74,96,128,0.5)', flexShrink: 0 }}>
