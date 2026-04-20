@@ -546,7 +546,7 @@ function GroupBrowser({
               </div>
               {g.lastMessage && (
                 <p className="text-[9px] mt-1.5 truncate" style={{ color: 'rgba(224,242,254,0.25)' }}>
-                  {g.lastMessage.senderName}: {g.lastMessage.text}
+                  {g.lastMessage.senderName}: {g.lastMessage.text.startsWith('[VOICE]') ? '🎤 Voice message' : g.lastMessage.text}
                 </p>
               )}
             </button>
@@ -585,7 +585,7 @@ function GroupBrowser({
                   </div>
                   {g.lastMessage ? (
                     <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
-                      {g.lastMessage.senderName}: {g.lastMessage.text}
+                      {g.lastMessage.senderName}: {g.lastMessage.text.startsWith('[VOICE]') ? '🎤 Voice message' : g.lastMessage.text}
                     </p>
                   ) : (
                     <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.25)' }}>No messages yet — be first!</p>
@@ -2186,7 +2186,8 @@ function DmSection({ dbUser }: {
             </div>
             {c.lastMessage ? (
               <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>
-                {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}{c.lastMessage.text}
+                {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}
+                {c.lastMessage.text.startsWith('[VOICE]') ? '🎤 Voice message' : c.lastMessage.text}
               </p>
             ) : (
               <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>No messages yet</p>

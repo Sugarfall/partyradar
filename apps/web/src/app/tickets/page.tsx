@@ -12,7 +12,7 @@ import { formatPrice } from '@/lib/currency'
 import type { Ticket as TicketType } from '@partyradar/shared'
 
 export default function TicketsPage() {
-  const { dbUser } = useAuth()
+  const { dbUser, loading } = useAuth()
   const router = useRouter()
 
   const { data, isLoading } = useSWR<{ data: (TicketType & { qrDataUrl: string })[] }>(
@@ -21,9 +21,10 @@ export default function TicketsPage() {
   )
 
   useEffect(() => {
-    if (!dbUser && typeof window !== 'undefined') router.push('/login')
-  }, [dbUser, router])
+    if (!loading && !dbUser && typeof window !== 'undefined') router.push('/login')
+  }, [dbUser, loading, router])
 
+  if (loading) return null
   if (!dbUser) return null
 
   const tickets = data?.data ?? []

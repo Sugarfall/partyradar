@@ -1061,6 +1061,46 @@ router.put('/cards/:id/status', requireAdmin, async (req, res, next) => {
  * One-time maintenance: cancel all non-nightlife external events already in DB.
  * No auth required (one-time cleanup only, only cancels events).
  */
+/** POST /api/admin/purge-non-uk-events — cancel events outside UK bounding box */
+router.post('/purge-non-uk-events', async (_req, res, next) => {
+  try {
+    // UK bounding box: lat 49.9–61.0, lng -10.0–2.0
+    const nonUkEvents = await prisma.event.findMany({
+      where: {
+        isPublished: true,
+        isCancelled: false,
+        OR: [
+          { lng: { gt: 2.0 } },
+          { lng: { lt: -10.0 } },
+          { lat: { lt: 49.0 } },
+          { lat: { gt: 61.0 } },
+        ],
+      },
+      select: { id: true, name: true, address: true, lat: true, lng: true },
+    })
+
+    if (nonUkEvents.length === 0) {
+      return res.json({ data: { purged: 0, message: 'No non-UK events found.' } })
+    }
+
+    const ids = nonUkEvents.map((e) => e.id)
+    await prisma.event.updateMany({
+      where: { id: { in: ids } },
+      data: { isCancelled: true, isPublished: false },
+    })
+
+    res.json({
+      data: {
+        purged: ids.length,
+        events: nonUkEvents.map((e) => `${e.name} (${e.address})`),
+        message: `Cancelled ${ids.length} non-UK events.`,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.post('/purge-bad-events-now', async (_req, res, next) => {
   try {
     const REJECT_KEYWORDS = [

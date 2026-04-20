@@ -116,7 +116,7 @@ function InfoRow({ label, value, sublabel }: { label: string; value: string; sub
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { dbUser } = useAuth()
+  const { dbUser, loading } = useAuth()
 
   // ── Notification prefs ─────────────────────────────────────────────────────
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({
@@ -193,6 +193,7 @@ export default function SettingsPage() {
   }
 
   // ── Auth gate ──────────────────────────────────────────────────────────────
+  if (loading) return null
   if (!dbUser) {
     if (typeof window !== 'undefined') router.push('/login')
     return null

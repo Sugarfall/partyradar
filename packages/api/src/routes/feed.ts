@@ -31,7 +31,11 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
     // Fetch RSVPs, check-ins, and posts in parallel
     const [rsvps, checkIns, posts] = await Promise.all([
       prisma.eventGuest.findMany({
-        where: { userId: { in: followingIds }, status: 'CONFIRMED' },
+        where: {
+          userId: { in: followingIds },
+          status: 'CONFIRMED',
+          event: { isCancelled: false, isPublished: true },
+        },
         orderBy: { invitedAt: 'desc' },
         take: 100,
         include: {
