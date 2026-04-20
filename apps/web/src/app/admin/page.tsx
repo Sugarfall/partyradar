@@ -7,7 +7,8 @@ import Link from 'next/link'
 import {
   Shield, ShieldAlert, ShieldCheck, Users, Calendar, MessageSquare,
   Flag, Search, Ban, ChevronDown, Trash2, BarChart3, Crown,
-  AlertTriangle, CheckCircle, X, Star, Eye, Bot, FileWarning
+  AlertTriangle, CheckCircle, X, Star, Eye, Bot, FileWarning,
+  Activity, Database, Wifi, WifiOff, RefreshCw, Zap, MapPin
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -92,6 +93,14 @@ interface ModerationLog {
   user: { id: string; username: string; displayName: string; photoUrl?: string | null; contentStrikes: number; isBanned: boolean }
 }
 
+interface EventDiagnostics {
+  counts: { total: number; live: number; upcoming: number }
+  bySource: Record<string, number>
+  byType: Record<string, number>
+  recentSynced: Array<{ id: string; name: string; type: string; externalSource: string | null; createdAt: string; startsAt: string; neighbourhood: string }>
+  apiKeys: { ticketmaster: boolean; skiddle: boolean; eventbrite: boolean; serpapi: boolean; perplexity: boolean }
+}
+
 interface ContentReport {
   id: string
   contentType: string
@@ -145,7 +154,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation'
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
@@ -154,6 +163,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'groups', label: 'Groups', icon: <MessageSquare size={14} /> },
   { id: 'reports', label: 'Reports', icon: <Flag size={14} /> },
   { id: 'moderation', label: 'Mod Queue', icon: <ShieldAlert size={14} /> },
+  { id: 'pipeline', label: 'Pipeline', icon: <Activity size={14} /> },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -169,6 +179,12 @@ export default function AdminPage() {
   const [modLogs, setModLogs] = useState<ModerationLog[]>([])
   const [contentReports, setContentReports] = useState<ContentReport[]>([])
   const [modSubTab, setModSubTab] = useState<'auto' | 'user'>('auto')
+  const [diagnostics, setDiagnostics] = useState<EventDiagnostics | null>(null)
+  const [syncCity, setSyncCity] = useState('')
+  const [syncLat, setSyncLat] = useState('')
+  const [syncLng, setSyncLng] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ imported: number; skipped: number; sources: string[] } | null>(null)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -198,6 +214,8 @@ export default function AdminPage() {
     } else if (tab === 'moderation') {
       api.get<{ data: ModerationLog[] }>('/admin/moderation-logs').then((r) => setModLogs(r.data)).catch(() => {})
       api.get<{ data: ContentReport[] }>('/admin/content-reports').then((r) => setContentReports(r.data)).catch(() => {})
+    } else if (tab === 'pipeline') {
+      api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((r) => setDiagnostics(r.data)).catch(() => {})
     }
   }, [tab, isStaff])
 
@@ -276,6 +294,27 @@ export default function AdminPage() {
       setContentReports((prev) => prev.map((r) => r.id === reportId ? { ...r, status } : r))
       showToast(status === 'ACTIONED' ? 'Report actioned' : 'Report dismissed')
     } catch { showToast('Failed', false) }
+  }
+
+  const handleManualSync = async () => {
+    if (!syncCity.trim() || !syncLat.trim() || !syncLng.trim()) {
+      showToast('City, lat and lng required', false); return
+    }
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const r = await api.post<{ data: { imported: number; skipped: number; sources: string[] } }>(
+        '/events/ai-sync', { city: syncCity.trim(), lat: parseFloat(syncLat), lng: parseFloat(syncLng), force: true }
+      )
+      setSyncResult(r.data)
+      showToast(`Sync done — ${r.data.imported} imported`)
+      // Refresh diagnostics
+      api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((d) => setDiagnostics(d.data)).catch(() => {})
+    } catch (e: any) {
+      showToast(e?.message ?? 'Sync failed', false)
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const handleClearStrikes = async (userId: string, username: string) => {
@@ -828,6 +867,199 @@ export default function AdminPage() {
                   )
                 })}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Pipeline tab ── */}
+        {tab === 'pipeline' && (
+          <div className="space-y-4">
+            {!diagnostics ? (
+              <div className="text-center py-12 text-white/30 text-sm">Loading pipeline diagnostics…</div>
+            ) : (
+              <>
+                {/* ── Verification 1: DB Event Counts ── */}
+                <div className="rounded-2xl p-4" style={{ background: 'rgba(0,200,255,0.04)', border: '1px solid rgba(0,200,255,0.12)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Database size={14} style={{ color: '#00c8ff' }} />
+                    <span className="text-xs font-black tracking-widest" style={{ color: '#00c8ff' }}>VERIFICATION 1 — DATABASE EVENTS</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    {[
+                      { label: 'Total in DB', value: diagnostics.counts.total, color: '#00c8ff' },
+                      { label: 'Live / Active', value: diagnostics.counts.live, color: '#10b981' },
+                      { label: 'Upcoming', value: diagnostics.counts.upcoming, color: '#a855f7' },
+                    ].map((c) => (
+                      <div key={c.label} className="rounded-xl p-3 text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <div className="text-2xl font-black" style={{ color: c.color }}>{c.value.toLocaleString()}</div>
+                        <div className="text-[10px] text-white/40 mt-0.5 font-semibold uppercase tracking-wider">{c.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* By source */}
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mb-2">Live events by source</p>
+                  <div className="space-y-1.5">
+                    {(['eventbrite', 'serpapi', 'perplexity', 'ticketmaster', 'skiddle', 'manual'] as const).map((src) => {
+                      const count = diagnostics.bySource[src] ?? 0
+                      const total = diagnostics.counts.live || 1
+                      const pct = Math.round((count / total) * 100)
+                      const colors: Record<string, string> = { eventbrite: '#f97316', serpapi: '#3b82f6', perplexity: '#8b5cf6', ticketmaster: '#06b6d4', skiddle: '#10b981', manual: '#f59e0b' }
+                      const color = colors[src] ?? '#fff'
+                      return (
+                        <div key={src} className="flex items-center gap-2">
+                          <span className="text-[10px] font-semibold w-20 text-right capitalize" style={{ color: 'rgba(255,255,255,0.5)' }}>{src}</span>
+                          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                          </div>
+                          <span className="text-[10px] font-bold w-8" style={{ color }}>{count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {/* By type */}
+                  {Object.keys(diagnostics.byType).length > 0 && (
+                    <>
+                      <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mt-3 mb-2">Live events by type</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(diagnostics.byType).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                          <span key={type} className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            {type.replace('_', ' ')} <span style={{ color: '#a855f7' }}>{count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* ── Verification 2: API Source Status ── */}
+                <div className="rounded-2xl p-4" style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.12)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Wifi size={14} style={{ color: '#a855f7' }} />
+                    <span className="text-xs font-black tracking-widest" style={{ color: '#a855f7' }}>VERIFICATION 2 — DATA SOURCE CONNECTIVITY</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {([
+                      { key: 'eventbrite', label: 'Eventbrite', desc: 'Music & Nightlife categories', color: '#f97316' },
+                      { key: 'serpapi', label: 'SerpAPI (Google Events)', desc: 'Real-time Google nightlife search', color: '#3b82f6' },
+                      { key: 'perplexity', label: 'Perplexity AI', desc: 'AI-powered event discovery (sonar-pro)', color: '#8b5cf6' },
+                      { key: 'ticketmaster', label: 'Ticketmaster', desc: 'Large venue concerts & shows', color: '#06b6d4' },
+                      { key: 'skiddle', label: 'Skiddle', desc: 'UK nightlife events API', color: '#10b981' },
+                    ] as { key: keyof EventDiagnostics['apiKeys']; label: string; desc: string; color: string }[]).map(({ key, label, desc, color }) => {
+                      const active = diagnostics.apiKeys[key]
+                      const count = diagnostics.bySource[key] ?? 0
+                      return (
+                        <div key={key} className="flex items-center gap-3 rounded-xl p-3" style={{ background: active ? `${color}08` : 'rgba(255,255,255,0.02)', border: `1px solid ${active ? `${color}25` : 'rgba(255,255,255,0.05)'}` }}>
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: active ? `${color}20` : 'rgba(255,255,255,0.04)' }}>
+                            {active ? <Wifi size={13} style={{ color }} /> : <WifiOff size={13} style={{ color: 'rgba(255,255,255,0.2)' }} />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold" style={{ color: active ? '#fff' : 'rgba(255,255,255,0.3)' }}>{label}</span>
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: active ? `${color}20` : 'rgba(255,255,255,0.04)', color: active ? color : 'rgba(255,255,255,0.2)' }}>
+                                {active ? '● ACTIVE' : '○ NO KEY'}
+                              </span>
+                              {active && count > 0 && (
+                                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{count} events live</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{desc}</p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Recent synced events ── */}
+                {diagnostics.recentSynced.length > 0 && (
+                  <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mb-2">Last 5 synced events</p>
+                    <div className="space-y-2">
+                      {diagnostics.recentSynced.map((ev) => (
+                        <div key={ev.id} className="flex items-center gap-2 text-xs">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded capitalize" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.35)' }}>
+                            {ev.externalSource ?? 'manual'}
+                          </span>
+                          <span className="text-white/70 font-medium truncate flex-1">{ev.name}</span>
+                          <span className="text-white/30 flex-shrink-0 flex items-center gap-1">
+                            <MapPin size={9} />{ev.neighbourhood}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Manual sync trigger ── */}
+                <div className="rounded-2xl p-4" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.12)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Zap size={14} style={{ color: '#10b981' }} />
+                    <span className="text-xs font-black tracking-widest" style={{ color: '#10b981' }}>MANUAL SYNC TRIGGER</span>
+                  </div>
+                  <p className="text-xs text-white/40 mb-3">Force-sync all active sources for a city (bypasses 30-min throttle)</p>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <input
+                      value={syncCity} onChange={(e) => setSyncCity(e.target.value)}
+                      placeholder="City (e.g. Glasgow)"
+                      className="col-span-3 px-3 py-2 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <input
+                      value={syncLat} onChange={(e) => setSyncLat(e.target.value)}
+                      placeholder="Latitude"
+                      className="px-3 py-2 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <input
+                      value={syncLng} onChange={(e) => setSyncLng(e.target.value)}
+                      placeholder="Longitude"
+                      className="px-3 py-2 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <button
+                      onClick={handleManualSync}
+                      disabled={syncing}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold disabled:opacity-50"
+                      style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b98140' }}
+                    >
+                      {syncing ? <RefreshCw size={13} className="animate-spin" /> : <Zap size={13} />}
+                      {syncing ? 'Syncing…' : 'Run Sync'}
+                    </button>
+                  </div>
+                  {/* Quick-fill Glasgow */}
+                  <button
+                    onClick={() => { setSyncCity('Glasgow'); setSyncLat('55.8642'); setSyncLng('-4.2518') }}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-lg mr-2"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    📍 Glasgow
+                  </button>
+                  <button
+                    onClick={() => { setSyncCity('London'); setSyncLat('51.5074'); setSyncLng('-0.1278') }}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-lg mr-2"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    📍 London
+                  </button>
+                  <button
+                    onClick={() => { setSyncCity('Manchester'); setSyncLat('53.4808'); setSyncLng('-2.2426') }}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-lg"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    📍 Manchester
+                  </button>
+                  {syncResult && (
+                    <div className="mt-3 rounded-xl p-3 flex items-center gap-3" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                      <CheckCircle size={14} style={{ color: '#10b981' }} />
+                      <div className="text-xs">
+                        <span className="text-white font-semibold">{syncResult.imported} imported</span>
+                        <span className="text-white/40"> · {syncResult.skipped} skipped</span>
+                        <span className="text-white/30"> · sources: {syncResult.sources.join(', ') || 'none'}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}

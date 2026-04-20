@@ -185,6 +185,77 @@ router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) =
   }
 })
 
+/** GET /api/events/diagnostics — pipeline health check for admin panel */
+router.get('/diagnostics', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!.dbUser
+    if (user.appRole !== 'ADMIN' && user.appRole !== 'MODERATOR' && !user.isAdmin) {
+      throw new AppError('Admin or Moderator access required', 403)
+    }
+
+    const now = new Date()
+    const eightHoursAgo = new Date(Date.now() - 8 * 3_600_000)
+
+    // 1. Total event counts
+    const [totalEvents, liveEvents, upcomingEvents] = await Promise.all([
+      prisma.event.count({ where: { isCancelled: false } }),
+      prisma.event.count({ where: { isCancelled: false, isPublished: true, startsAt: { gte: eightHoursAgo } } }),
+      prisma.event.count({ where: { isCancelled: false, isPublished: true, startsAt: { gte: now } } }),
+    ])
+
+    // 2. Event count by external source
+    const sourceGroups = await prisma.event.groupBy({
+      by: ['externalSource'],
+      _count: { _all: true },
+      where: { isCancelled: false, isPublished: true, startsAt: { gte: eightHoursAgo } },
+    })
+    const bySource: Record<string, number> = {}
+    for (const sg of sourceGroups) {
+      bySource[sg.externalSource ?? 'manual'] = sg._count._all
+    }
+
+    // 3. Events by type
+    const typeGroups = await prisma.event.groupBy({
+      by: ['type'],
+      _count: { _all: true },
+      where: { isCancelled: false, isPublished: true, startsAt: { gte: eightHoursAgo } },
+    })
+    const byType: Record<string, number> = {}
+    for (const tg of typeGroups) {
+      byType[tg.type] = tg._count._all
+    }
+
+    // 4. Most recently synced events (last 5)
+    const recentEvents = await prisma.event.findMany({
+      where: { isCancelled: false, externalSource: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { id: true, name: true, type: true, externalSource: true, createdAt: true, startsAt: true, neighbourhood: true },
+    })
+
+    // 5. API key presence (never expose the actual keys)
+    const apiKeys = {
+      ticketmaster: !!process.env['TICKETMASTER_API_KEY'],
+      skiddle: !!process.env['SKIDDLE_API_KEY'],
+      eventbrite: !!process.env['EVENTBRITE_PRIVATE_TOKEN'],
+      serpapi: !!process.env['SERPAPI_KEY'],
+      perplexity: !!process.env['PERPLEXITY_API_KEY'],
+    }
+
+    res.json({
+      data: {
+        counts: { total: totalEvents, live: liveEvents, upcoming: upcomingEvents },
+        bySource,
+        byType,
+        recentSynced: recentEvents,
+        apiKeys,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** POST /api/events/ai-sync — explicitly trigger AI event discovery for a city */
 router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
