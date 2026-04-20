@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Wi
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEvents, DEMO_EVENTS } from '@/hooks/useEvents'
+import { formatPrice } from '@/lib/currency'
 import { EventFilters } from '@/components/events/EventFilters'
 import type { EventType, Event } from '@partyradar/shared'
 import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS } from '@partyradar/shared'
@@ -87,7 +88,7 @@ function EventListCard({ event, live }: { event: Event; live?: boolean }) {
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="text-sm font-bold truncate leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
           <span className="shrink-0 text-sm font-bold" style={{ color: isFree ? '#00ff88' : '#e0f2fe' }}>
-            {isFree ? 'FREE' : `£${event.price.toFixed(2)}`}
+            {isFree ? 'FREE' : formatPrice(event.price)}
           </span>
         </div>
         <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
@@ -242,7 +243,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
               className="text-xl font-bold"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}
             >
-              {isFree ? 'FREE' : `£${event.price.toFixed(2)}`}
+              {isFree ? 'FREE' : formatPrice(event.price)}
             </p>
           </div>
         </div>
@@ -371,7 +372,7 @@ function EventStage({ event, dir }: { event: Event; dir: SlideDir }) {
             letterSpacing: '0.1em',
           }}
         >
-          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — £${event.price.toFixed(2)}`}
+          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — ${formatPrice(event.price)}`}
         </Link>
 
         {/* Secondary actions */}

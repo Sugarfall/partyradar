@@ -7,6 +7,7 @@ import { ArrowLeft, Calendar, MapPin, Download, Share2, Check, Zap } from 'lucid
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import type { Ticket } from '@partyradar/shared'
+import { formatPrice } from '@/lib/currency'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-GB', {
@@ -214,7 +215,7 @@ export default function TicketPage() {
             <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(0,229,255,0.4)' }}>PAID</span>
             <span className="text-lg font-black"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.5)' : 'none' }}>
-              {isFree ? 'FREE' : `£${ticket!.pricePaid.toFixed(2)}`}
+              {isFree ? 'FREE' : formatPrice(ticket!.pricePaid)}
             </span>
           </div>
         </div>

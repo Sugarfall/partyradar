@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
@@ -8,7 +8,7 @@ import { Music, Zap } from 'lucide-react'
 
 const CREDIT_COST = 50
 
-export default function DjRequestPage() {
+function DjRequestInner() {
   const { dbUser, firebaseUser } = useAuth()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -115,5 +115,13 @@ export default function DjRequestPage() {
         </button>
       </div>
     </div>
+  )
+}
+
+export default function DjRequestPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen" style={{ background: '#04040d' }} />}>
+      <DjRequestInner />
+    </Suspense>
   )
 }

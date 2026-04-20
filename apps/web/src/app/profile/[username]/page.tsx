@@ -11,6 +11,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { API_URL } from '@/lib/api'
 import { auth } from '@/lib/firebase'
+import { formatPrice } from '@/lib/currency'
 
 async function getToken() {
   try { return (await auth.currentUser?.getIdToken()) ?? '' } catch { return '' }
@@ -704,7 +705,7 @@ export default function PublicProfilePage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-xs font-bold" style={{ color: ev.price === 0 ? '#00ff88' : '#e0f2fe' }}>
-                        {ev.price === 0 ? 'FREE' : `£${ev.price.toFixed(2)}`}
+                        {ev.price === 0 ? 'FREE' : formatPrice(ev.price)}
                       </p>
                       <p className="text-[9px] mt-0.5" style={{ color: 'rgba(224,242,254,0.25)' }}>{timeAgo(ev.startsAt)}</p>
                     </div>

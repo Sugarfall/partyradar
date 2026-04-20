@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 
 import { API_URL as API_BASE } from '@/lib/api'
+import { formatPrice } from '@/lib/currency'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -94,9 +95,6 @@ function formatDate(d: string) {
   })
 }
 
-function formatPrice(price: number) {
-  return price === 0 ? 'Free' : `£${price.toFixed(2)}`
-}
 
 // ─── Claim Modal ──────────────────────────────────────────────────────────────
 
