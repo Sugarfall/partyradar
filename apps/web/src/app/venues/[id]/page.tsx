@@ -1,18 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Map, { Marker } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import {
   ArrowLeft, MapPin, Phone, Globe, Tag, Calendar, Ticket,
   CheckCircle, Building2, Loader2, AlertTriangle, X,
-  ImageIcon, Send, Heart, Clock
+  ImageIcon, Send, Heart, Clock, Music2, Unlink2,
 } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
+import NowPlayingWidget from '@/components/spotify/NowPlayingWidget'
+import { useAuth } from '@/hooks/useAuth'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,6 +51,8 @@ interface Venue {
   claimedBy?: { id: string; username: string; displayName: string; photoUrl?: string }
   events: UpcomingEvent[]
   createdAt: string
+  spotifyConnected?: boolean
+  spotifyDisplayName?: string
 }
 
 interface VenuePost {
@@ -203,7 +207,20 @@ function ClaimModal({ venueName, onClose }: { venueName: string; onClose: () => 
 export default function VenueDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const id = params['id'] as string
+  const { dbUser } = useAuth()
+  const [spotifyToast, setSpotifyToast] = useState<string | null>(
+    searchParams.get('spotify') === 'connected' ? '✅ Spotify connected!' :
+    searchParams.get('spotify_error') ? '❌ Spotify connection failed' : null
+  )
+
+  // Clear toast and query param after showing
+  useEffect(() => {
+    if (!spotifyToast) return
+    const t = setTimeout(() => setSpotifyToast(null), 4000)
+    return () => clearTimeout(t)
+  }, [spotifyToast])
 
   const [venue, setVenue] = useState<Venue | null>(null)
   const [loading, setLoading] = useState(true)
@@ -214,6 +231,8 @@ export default function VenueDetailPage() {
   const [postsLoading, setPostsLoading] = useState(false)
   const [postText, setPostText] = useState('')
   const [posting, setPosting] = useState(false)
+  const [spotifyConnecting, setSpotifyConnecting] = useState(false)
+  const [spotifyDisconnecting, setSpotifyDisconnecting] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -263,6 +282,27 @@ export default function VenueDetailPage() {
   }
 
   const color = TYPE_COLORS[venue.type]
+  const isOwner = !!(dbUser && venue.claimedById && dbUser.id === venue.claimedById)
+
+  async function connectSpotify() {
+    if (!isOwner || spotifyConnecting) return
+    setSpotifyConnecting(true)
+    try {
+      const json = await api.get<{ data: { url: string } }>(`/spotify/connect-url/${id}`)
+      if (json?.data?.url) window.location.href = json.data.url
+    } catch {}
+    finally { setSpotifyConnecting(false) }
+  }
+
+  async function disconnectSpotify() {
+    if (!isOwner || spotifyDisconnecting) return
+    setSpotifyDisconnecting(true)
+    try {
+      await api.delete(`/spotify/connect/${id}`)
+      setVenue((v) => v ? { ...v, spotifyConnected: false, spotifyDisplayName: undefined } : v)
+    } catch {}
+    finally { setSpotifyDisconnecting(false) }
+  }
 
   async function submitPost() {
     if (!postText.trim()) return
@@ -281,6 +321,14 @@ export default function VenueDetailPage() {
     <div className="min-h-screen" style={{ background: '#0d0d0f', paddingTop: 56, paddingBottom: 88 }}>
 
       {claimOpen && <ClaimModal venueName={venue.name} onClose={() => setClaimOpen(false)} />}
+
+      {/* ─── Spotify toast ─── */}
+      {spotifyToast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-xs font-bold shadow-xl"
+          style={{ background: 'rgba(7,7,26,0.95)', border: '1px solid rgba(30,215,96,0.3)', color: '#e0f2fe', backdropFilter: 'blur(12px)' }}>
+          {spotifyToast}
+        </div>
+      )}
 
       {/* ─── Hero ─── */}
       <div className="relative h-52 md:h-72">
@@ -378,6 +426,64 @@ export default function VenueDetailPage() {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ─── Now Playing ─── */}
+        {venue.spotifyConnected && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Music2 size={13} style={{ color: 'rgba(30,215,96,0.5)' }} />
+              <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(30,215,96,0.4)' }}>MUSIC</p>
+            </div>
+            <NowPlayingWidget venueId={id} />
+          </div>
+        )}
+
+        {/* ─── Spotify connect (owner only) ─── */}
+        {isOwner && (
+          <div className="rounded-xl p-4" style={{ background: 'rgba(30,215,96,0.03)', border: '1px solid rgba(30,215,96,0.12)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <Music2 size={13} style={{ color: 'rgba(30,215,96,0.5)' }} />
+              <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(30,215,96,0.4)' }}>SPOTIFY</p>
+            </div>
+            {venue.spotifyConnected ? (
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>
+                    Connected as <span style={{ color: '#1ed760' }}>{venue.spotifyDisplayName ?? 'Spotify user'}</span>
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                    Live now-playing is public on this venue page
+                  </p>
+                </div>
+                <button
+                  onClick={disconnectSpotify}
+                  disabled={spotifyDisconnecting}
+                  className="flex items-center gap-1.5 shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-lg disabled:opacity-40"
+                  style={{ background: 'rgba(255,0,110,0.07)', color: 'rgba(255,0,110,0.6)', border: '1px solid rgba(255,0,110,0.2)' }}
+                >
+                  <Unlink2 size={10} /> {spotifyDisconnecting ? '...' : 'DISCONNECT'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>Connect Spotify</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                    Show live now-playing to everyone at your venue
+                  </p>
+                </div>
+                <button
+                  onClick={connectSpotify}
+                  disabled={spotifyConnecting}
+                  className="flex items-center gap-1.5 shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-lg disabled:opacity-40"
+                  style={{ background: 'rgba(30,215,96,0.1)', color: '#1ed760', border: '1px solid rgba(30,215,96,0.25)' }}
+                >
+                  <Music2 size={10} /> {spotifyConnecting ? 'CONNECTING...' : 'CONNECT'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

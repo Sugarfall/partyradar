@@ -60,6 +60,8 @@ const venueSelect = {
   claimedById: true,
   createdAt: true,
   updatedAt: true,
+  spotifyConnected: true,
+  spotifyDisplayName: true,
 }
 
 /** GET /api/venues — list/search venues */

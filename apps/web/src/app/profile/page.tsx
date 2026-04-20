@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Edit2, Check, X, LogOut, ShieldCheck, Ticket,
   Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare, Bookmark,
-  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye, Camera, Loader2,
+  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye, Camera, Loader2, Music2, Unlink2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
@@ -333,6 +333,27 @@ export default function ProfilePage() {
   const [photosLoading, setPhotosLoading] = useState(false)
   const [photosFetched, setPhotosFetched] = useState(false)
 
+  // Spotify artist state
+  const [spotifyArtistUrl, setSpotifyArtistUrl] = useState('')
+  const [spotifyArtistData, setSpotifyArtistData] = useState<{
+    id: string; name: string; followers: number; genres: string[]
+    imageUrl: string | null; spotifyUrl: string | null
+    topTracks: Array<{ id: string; name: string; albumArt: string | null; previewUrl: string | null; durationMs: number }>
+  } | null>(null)
+  const [spotifyArtistLoading, setSpotifyArtistLoading] = useState(false)
+  const [spotifyArtistError, setSpotifyArtistError] = useState<string | null>(null)
+  const [spotifyArtistDisconnecting, setSpotifyArtistDisconnecting] = useState(false)
+  const [spotifyArtistFetched, setSpotifyArtistFetched] = useState(false)
+
+  // Load existing Spotify artist data on mount
+  useEffect(() => {
+    if (!dbUser || spotifyArtistFetched) return
+    setSpotifyArtistFetched(true)
+    api.get<{ data: typeof spotifyArtistData }>(`/spotify/artist/${dbUser.id}`)
+      .then((j) => { if (j?.data) setSpotifyArtistData(j.data) })
+      .catch(() => {})
+  }, [dbUser, spotifyArtistFetched])
+
   // Fetch own photos when photos tab is first opened
   useEffect(() => {
     if (profileTab !== 'photos' || photosFetched || !dbUser?.username) return
@@ -548,6 +569,30 @@ export default function ProfilePage() {
       setProfileBgImage(null)
       await refreshUser()
     } catch {}
+  }
+
+  async function connectSpotifyArtist() {
+    if (!spotifyArtistUrl.trim() || spotifyArtistLoading) return
+    setSpotifyArtistLoading(true)
+    setSpotifyArtistError(null)
+    try {
+      const json = await api.post<{ data: typeof spotifyArtistData }>('/spotify/artist', { spotifyUrl: spotifyArtistUrl.trim() })
+      if (json?.data) { setSpotifyArtistData(json.data); setSpotifyArtistUrl('') }
+    } catch (err: any) {
+      setSpotifyArtistError(err?.message ?? 'Could not link artist — check the URL')
+    } finally {
+      setSpotifyArtistLoading(false)
+    }
+  }
+
+  async function disconnectSpotifyArtist() {
+    if (spotifyArtistDisconnecting) return
+    setSpotifyArtistDisconnecting(true)
+    try {
+      await api.delete('/spotify/artist')
+      setSpotifyArtistData(null)
+    } catch {}
+    finally { setSpotifyArtistDisconnecting(false) }
   }
 
   if (authLoading) {
@@ -1112,6 +1157,103 @@ export default function ProfilePage() {
                 })}
               </div>
             )
+          )}
+        </div>
+
+        {/* ── Spotify Artist ── */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(30,215,96,0.12)' }}>
+          <div className="px-4 py-2.5 flex items-center gap-2"
+            style={{ background: 'rgba(30,215,96,0.03)', borderBottom: '1px solid rgba(30,215,96,0.08)' }}>
+            <Music2 size={12} style={{ color: 'rgba(30,215,96,0.5)' }} />
+            <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(30,215,96,0.5)' }}>SPOTIFY ARTIST</p>
+          </div>
+
+          {spotifyArtistData ? (
+            /* Connected state */
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                {spotifyArtistData.imageUrl ? (
+                  <img src={spotifyArtistData.imageUrl} alt={spotifyArtistData.name}
+                    className="w-14 h-14 rounded-xl object-cover shrink-0"
+                    style={{ border: '1px solid rgba(30,215,96,0.2)' }} />
+                ) : (
+                  <div className="w-14 h-14 rounded-xl shrink-0 flex items-center justify-center text-2xl"
+                    style={{ background: 'rgba(30,215,96,0.07)' }}>🎤</div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{spotifyArtistData.name}</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(30,215,96,0.6)' }}>
+                    {spotifyArtistData.followers.toLocaleString()} followers
+                  </p>
+                  {spotifyArtistData.genres.length > 0 && (
+                    <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                      {spotifyArtistData.genres.slice(0, 3).join(' · ')}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  {spotifyArtistData.spotifyUrl && (
+                    <a href={spotifyArtistData.spotifyUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-center w-8 h-8 rounded-full"
+                      style={{ background: 'rgba(30,215,96,0.1)', border: '1px solid rgba(30,215,96,0.25)' }}>
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="#1ed760">
+                        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.623.623 0 01-.858.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 11-.277-1.215c3.809-.87 7.076-.496 9.713 1.115a.623.623 0 01.207.857zm1.223-2.722a.78.78 0 01-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 01-.973-.519.781.781 0 01.519-.972c3.632-1.102 8.147-.568 11.234 1.328a.78.78 0 01.257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 11-.543-1.794c3.532-1.072 9.404-.865 13.115 1.338a.937.937 0 01-1.055 1.613z"/>
+                      </svg>
+                    </a>
+                  )}
+                  <button onClick={disconnectSpotifyArtist} disabled={spotifyArtistDisconnecting}
+                    className="flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-lg disabled:opacity-40"
+                    style={{ background: 'rgba(255,0,110,0.06)', color: 'rgba(255,0,110,0.55)', border: '1px solid rgba(255,0,110,0.15)' }}>
+                    <Unlink2 size={9} /> {spotifyArtistDisconnecting ? '...' : 'UNLINK'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Top tracks preview */}
+              {spotifyArtistData.topTracks.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(30,215,96,0.4)' }}>TOP TRACKS</p>
+                  {spotifyArtistData.topTracks.slice(0, 5).map((t, i) => (
+                    <div key={t.id} className="flex items-center gap-2.5 py-1">
+                      <span className="text-[10px] w-4 text-center shrink-0" style={{ color: 'rgba(224,242,254,0.25)' }}>{i + 1}</span>
+                      {t.albumArt && <img src={t.albumArt} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0" />}
+                      <span className="text-xs flex-1 truncate" style={{ color: 'rgba(224,242,254,0.7)' }}>{t.name}</span>
+                      <span className="text-[10px] shrink-0" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                        {Math.floor(t.durationMs / 60000)}:{String(Math.floor((t.durationMs % 60000) / 1000)).padStart(2, '0')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Connect state */
+            <div className="p-4 space-y-3">
+              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.45)' }}>
+                Paste your Spotify artist page URL to link your profile. Your top tracks will show publicly.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={spotifyArtistUrl}
+                  onChange={(e) => setSpotifyArtistUrl(e.target.value)}
+                  placeholder="https://open.spotify.com/artist/..."
+                  className="flex-1 px-3 py-2 rounded-xl text-xs bg-transparent outline-none"
+                  style={{ border: '1px solid rgba(30,215,96,0.2)', color: '#e0f2fe' }}
+                  onKeyDown={(e) => e.key === 'Enter' && connectSpotifyArtist()}
+                />
+                <button onClick={connectSpotifyArtist} disabled={spotifyArtistLoading || !spotifyArtistUrl.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black disabled:opacity-40"
+                  style={{ background: 'rgba(30,215,96,0.1)', color: '#1ed760', border: '1px solid rgba(30,215,96,0.25)' }}>
+                  {spotifyArtistLoading
+                    ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    : <Music2 size={10} />}
+                  {spotifyArtistLoading ? 'LINKING...' : 'LINK'}
+                </button>
+              </div>
+              {spotifyArtistError && (
+                <p className="text-[10px]" style={{ color: '#ff006e' }}>⚠ {spotifyArtistError}</p>
+              )}
+            </div>
           )}
         </div>
 

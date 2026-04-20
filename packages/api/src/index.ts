@@ -49,6 +49,7 @@ import matchRouter from './routes/match'
 import squadsRouter from './routes/squads'
 import goOutRouter from './routes/go-out'
 import reportsRouter from './routes/reports'
+import spotifyRouter from './routes/spotify'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -353,6 +354,7 @@ app.use('/api/match', matchRouter)
 app.use('/api/squads', squadsRouter)
 app.use('/api/go-out', goOutRouter)
 app.use('/api/reports', reportsRouter)
+app.use('/api/spotify', spotifyRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

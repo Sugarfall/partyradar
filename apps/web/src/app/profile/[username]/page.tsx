@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, UserPlus, UserCheck, MessageCircle,
   Calendar, MapPin, Users, ShieldCheck, Loader2,
-  Bell, Sparkles, Eye, Crown, Star, ChevronRight, Camera,
+  Bell, Sparkles, Eye, Crown, Star, ChevronRight, Camera, Music2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -316,6 +316,11 @@ export default function PublicProfilePage() {
   const [activeTab, setActiveTab] = useState<'events' | 'checkins' | 'photos'>('events')
   const [profilePhotos, setProfilePhotos] = useState<{ id: string; imageUrl: string; likesCount: number; viewCount: number }[]>([])
   const [photosLoading, setPhotosLoading] = useState(false)
+  const [profileSpotifyArtist, setProfileSpotifyArtist] = useState<{
+    id: string; name: string; followers: number; genres: string[]
+    imageUrl: string | null; spotifyUrl: string | null
+    topTracks: Array<{ id: string; name: string; albumArt: string | null; previewUrl: string | null; durationMs: number }>
+  } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -327,6 +332,10 @@ export default function PublicProfilePage() {
       setFollowing(data.isFollowing)
       setGoOutStatus(data.goOutStatus)
       setNudgeDone(data.hasNudged)
+      // Fetch Spotify artist data for this user
+      api.get<{ data: typeof profileSpotifyArtist }>(`/spotify/artist/${data.id}`)
+        .then((j) => { if (j?.data) setProfileSpotifyArtist(j.data) })
+        .catch(() => {})
     } catch {
       setNotFound(true)
     } finally {
@@ -642,6 +651,67 @@ export default function PublicProfilePage() {
                   </span>
                 )
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Spotify Artist Card ── */}
+        {profileSpotifyArtist && (
+          <div className="mb-4 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(30,215,96,0.12)' }}>
+            <div className="flex items-center gap-2 px-4 py-2.5"
+              style={{ background: 'rgba(30,215,96,0.03)', borderBottom: '1px solid rgba(30,215,96,0.08)' }}>
+              <Music2 size={12} style={{ color: 'rgba(30,215,96,0.5)' }} />
+              <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(30,215,96,0.5)' }}>SPOTIFY ARTIST</p>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                {profileSpotifyArtist.imageUrl ? (
+                  <img src={profileSpotifyArtist.imageUrl} alt={profileSpotifyArtist.name}
+                    className="w-14 h-14 rounded-xl object-cover shrink-0"
+                    style={{ border: '1px solid rgba(30,215,96,0.2)' }} />
+                ) : (
+                  <div className="w-14 h-14 rounded-xl shrink-0 flex items-center justify-center text-2xl"
+                    style={{ background: 'rgba(30,215,96,0.07)' }}>🎤</div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{profileSpotifyArtist.name}</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(30,215,96,0.6)' }}>
+                    {profileSpotifyArtist.followers.toLocaleString()} followers on Spotify
+                  </p>
+                  {profileSpotifyArtist.genres.length > 0 && (
+                    <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                      {profileSpotifyArtist.genres.slice(0, 3).join(' · ')}
+                    </p>
+                  )}
+                </div>
+                {profileSpotifyArtist.spotifyUrl && (
+                  <a href={profileSpotifyArtist.spotifyUrl} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center w-9 h-9 rounded-full shrink-0"
+                    style={{ background: 'rgba(30,215,96,0.1)', border: '1px solid rgba(30,215,96,0.25)' }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="#1ed760">
+                      <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.623.623 0 01-.858.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 11-.277-1.215c3.809-.87 7.076-.496 9.713 1.115a.623.623 0 01.207.857zm1.223-2.722a.78.78 0 01-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 01-.973-.519.781.781 0 01.519-.972c3.632-1.102 8.147-.568 11.234 1.328a.78.78 0 01.257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 11-.543-1.794c3.532-1.072 9.404-.865 13.115 1.338a.937.937 0 01-1.055 1.613z"/>
+                    </svg>
+                  </a>
+                )}
+              </div>
+
+              {/* Top tracks preview */}
+              {profileSpotifyArtist.topTracks.length > 0 && (
+                <div className="space-y-0.5">
+                  <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(30,215,96,0.4)' }}>TOP TRACKS</p>
+                  {profileSpotifyArtist.topTracks.slice(0, 5).map((t, i) => (
+                    <div key={t.id} className="flex items-center gap-2.5 py-1.5 rounded-lg px-2"
+                      style={{ background: 'rgba(30,215,96,0.02)' }}>
+                      <span className="text-[10px] w-4 text-center shrink-0" style={{ color: 'rgba(224,242,254,0.25)' }}>{i + 1}</span>
+                      {t.albumArt && <img src={t.albumArt} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0" />}
+                      <span className="text-xs flex-1 truncate" style={{ color: 'rgba(224,242,254,0.7)' }}>{t.name}</span>
+                      <span className="text-[10px] shrink-0" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                        {Math.floor(t.durationMs / 60000)}:{String(Math.floor((t.durationMs % 60000) / 1000)).padStart(2, '0')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
