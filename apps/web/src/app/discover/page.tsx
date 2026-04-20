@@ -151,9 +151,14 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
             {isFree ? 'FREE' : `£${(event.price ?? 0).toFixed(2)}`}
           </span>
         </div>
-        <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
-          <MapPin size={9} className="inline mr-0.5" />{event.neighbourhood ?? event.address}
+        <p className="text-[10px] truncate mb-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
+          <MapPin size={9} className="inline mr-0.5" />{event.neighbourhood ?? event.address?.split(',')[0]}
         </p>
+        {event.address && event.address !== event.neighbourhood && (
+          <p className="text-[9px] truncate mb-1" style={{ color: 'rgba(224,242,254,0.25)' }}>
+            {event.address}
+          </p>
+        )}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
             style={{ color, background: `${color}12`, border: `1px solid ${color}30`, letterSpacing: '0.1em' }}>
@@ -348,13 +353,23 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
             <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>DATE &amp; TIME</p>
             <p className="text-xs font-medium" style={{ color: '#e0f2fe' }}>{formatDate(event.startsAt)}</p>
           </div>
-          <div
-            className="rounded-lg p-3 space-y-1"
-            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
+          <a
+            href={`https://maps.google.com/?q=${encodeURIComponent(event.address ?? event.neighbourhood ?? '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg p-3 space-y-1 block"
+            style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', textDecoration: 'none' }}
           >
-            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>LOCATION</p>
-            <p className="text-xs font-medium truncate" style={{ color: '#e0f2fe' }}>{event.neighbourhood}</p>
-          </div>
+            <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>📍 LOCATION</p>
+            <p className="text-xs font-medium leading-snug" style={{ color: '#e0f2fe' }}>
+              {event.neighbourhood ?? event.address?.split(',')[0]}
+            </p>
+            {event.address && (
+              <p className="text-[9px] leading-snug" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
+                {event.address}
+              </p>
+            )}
+          </a>
           <div
             className="rounded-lg p-3 space-y-1"
             style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
@@ -626,15 +641,17 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
   const [showCitySearch, setShowCitySearch] = useState(!isTracking)
 
   const hasRealVenues = liveVenues.length > 0
+  // Fall back to Glasgow static venues so the list always has content
+  const displayVenues: LiveVenue[] = hasRealVenues ? liveVenues : (GLASGOW_VENUES as unknown as LiveVenue[])
   const mapVenues = hasRealVenues ? liveVenues : GLASGOW_VENUES
 
   const filtered = venueSearch
-    ? liveVenues.filter((v) =>
+    ? displayVenues.filter((v) =>
         v.name.toLowerCase().includes(venueSearch.toLowerCase()) ||
         (v.vibeTags ?? []).some((t) => t.toLowerCase().includes(venueSearch.toLowerCase())) ||
         v.type.toLowerCase().includes(venueSearch.toLowerCase())
       )
-    : liveVenues
+    : displayVenues
 
   async function handleCitySearch(e: React.FormEvent) {
     e.preventDefault()
@@ -775,7 +792,7 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
         ) : (
           <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
             {filtered.length} VENUES
-            {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ' · GLASGOW (DEMO)'}
+            {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ' · RADAR ASSISTANT'}
           </p>
         )}
         {hasRealVenues && !venuesLoading && (
@@ -797,32 +814,29 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
             <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>SCANNING NEARBY VENUES...</p>
           </div>
         )}
-        {!venuesLoading && filtered.map((venue) => (
-          <VenueCard key={venue.id} venue={venue} />
-        ))}
+        {/* Caption when showing default Glasgow venues (no live data yet) */}
         {!venuesLoading && !hasRealVenues && (
-          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-4">
-            <span style={{ fontSize: 36 }}>🌍</span>
-            <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(255,214,0,0.6)' }}>EXPLORE VENUES WORLDWIDE</p>
-            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.3)', maxWidth: 280 }}>
+          <div className="flex items-center gap-2 px-4 py-2 mx-4 mt-2 rounded-xl"
+            style={{ background: 'rgba(255,214,0,0.05)', border: '1px solid rgba(255,214,0,0.12)' }}>
+            <span className="text-[10px]">🏙️</span>
+            <p className="text-[10px] flex-1" style={{ color: 'rgba(255,214,0,0.6)' }}>
               {isTracking
-                ? 'Scanning for venues near you — this may take a moment.'
-                : 'Allow location access to auto-discover venues around you, or type any city above — London, Berlin, Tokyo, New York.'}
+                ? 'Scanning your area for live venues…'
+                : 'Showing Glasgow venues. Search a city above or enable location for local results.'}
             </p>
             {!isTracking && (
-              <button
-                onClick={onWiderSearch}
-                className="mt-1 px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all"
-                style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}
-              >
-                📍 USE MY LOCATION
+              <button onClick={onWiderSearch} className="text-[10px] font-black underline shrink-0" style={{ color: '#ffd600' }}>
+                Use GPS
               </button>
             )}
           </div>
         )}
-        {!venuesLoading && hasRealVenues && filtered.length === 0 && (
+        {!venuesLoading && filtered.map((venue) => (
+          <VenueCard key={venue.id} venue={venue} />
+        ))}
+        {!venuesLoading && filtered.length === 0 && venueSearch && (
           <div className="py-10 text-center text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
-            No venues match "{venueSearch}"
+            No venues match &ldquo;{venueSearch}&rdquo;
           </div>
         )}
       </div>
@@ -851,9 +865,9 @@ function EmptyState({ loading, onRetry, onSearch, onCreateEvent }: {
   const [retrying, setRetrying] = useState(false)
   const [anyEvents, setAnyEvents] = useState<{ id: string; name: string; type: string; startsAt: string; neighbourhood?: string }[]>([])
 
-  // On mount, fetch any events from anywhere as suggestions
+  // On mount, fetch UK events as suggestions (Glasgow-centric, 400mi radius covers all UK)
   useEffect(() => {
-    fetch(`${API_URL}/events?limit=6&published=true`)
+    fetch(`${API_URL}/events?limit=6&lat=55.86&lng=-4.25&radius=400`)
       .then(r => r.json())
       .then(j => { if (Array.isArray(j?.data)) setAnyEvents(j.data) })
       .catch(() => {})
@@ -1180,6 +1194,10 @@ export default function DiscoverPage() {
   const [aiFound, setAiFound] = useState<number | null>(null)
   const aiSyncedRef = useRef(false)
   const aiFoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Tracks whether real GPS has fired at least once.
+  // On first GPS fix we always reset aiSyncedRef so the AI sync re-fires for the
+  // correct city (IP geo can give the wrong city — e.g. London instead of Glasgow).
+  const gpsFirstFix = useRef(false)
 
   // ── Venue discovery state (lifted here so it survives tab switches) ──────────
   const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
@@ -1188,6 +1206,91 @@ export default function DiscoverPage() {
 
   // Track the last position we fetched for, to avoid re-fetching on tiny GPS jitter
   const lastFetchedPos = useRef<{ lat: number; lng: number } | null>(null)
+
+  // Ref so async geo callbacks can check locationReady without stale closure
+  const locationReadyRef = useRef(false)
+  useEffect(() => { locationReadyRef.current = locationReady }, [locationReady])
+
+  // ── Robust geolocation bootstrap ─────────────────────────────────────────────
+  // Priority order:
+  //   1. localStorage cached location (instant, works on repeat visits)
+  //   2. HTTPS IP-geo services (ip-api.com is HTTP-only → blocked by browsers on HTTPS)
+  //   3. Glasgow fallback after 5 s (app's home city — prevents global/Amsterdam events)
+  //   GPS watchPosition always overrides all of the above when it fires.
+  useEffect(() => {
+    function applyLocation(lat: number, lng: number, city: string | null, persist = false) {
+      if (locationReadyRef.current) return   // GPS already beat us to it
+      lastFetchedPos.current = { lat, lng }
+      setUserLocation({ lat, lng })
+      setLocationReady(true)
+      setGeoResolved(true)
+      setMapCenter({ lat, lng })
+      setVenueCity(city)
+      discover(lat, lng, 15000)
+      if (persist) {
+        try {
+          localStorage.setItem('pr_loc', JSON.stringify({ lat, lng, city, ts: Date.now() }))
+        } catch {}
+      }
+    }
+
+    // 1 — localStorage cache (12-hour TTL)
+    try {
+      const raw = localStorage.getItem('pr_loc')
+      if (raw) {
+        const s = JSON.parse(raw) as { lat: number; lng: number; city: string | null; ts: number }
+        if (s.lat && s.lng && Date.now() - s.ts < 12 * 3_600_000) {
+          applyLocation(s.lat, s.lng, s.city, false)
+        }
+      }
+    } catch {}
+
+    // 2 — HTTPS IP-geo services (tried in order, 3 s timeout each)
+    function fetchJson(url: string, timeoutMs: number) {
+      const ctrl = new AbortController()
+      const tid = setTimeout(() => ctrl.abort(), timeoutMs)
+      return fetch(url, { signal: ctrl.signal })
+        .then((r) => r.json())
+        .finally(() => clearTimeout(tid))
+    }
+
+    const ipGeoServices: Array<() => Promise<{ lat: number; lng: number; city: string | null }>> = [
+      () =>
+        fetchJson('https://freeipapi.com/api/json', 3000)
+          .then((d: { latitude?: number; longitude?: number; cityName?: string }) => {
+            if (!d.latitude || !d.longitude) throw new Error('no coords')
+            return { lat: Number(d.latitude), lng: Number(d.longitude), city: d.cityName ?? null }
+          }),
+      () =>
+        fetchJson('https://ipapi.co/json/', 3000)
+          .then((d: { latitude?: number; longitude?: number; city?: string }) => {
+            if (!d.latitude || !d.longitude) throw new Error('no coords')
+            return { lat: Number(d.latitude), lng: Number(d.longitude), city: d.city ?? null }
+          }),
+    ]
+
+    let ipResolved = false
+    ;(async () => {
+      for (const svc of ipGeoServices) {
+        if (ipResolved || locationReadyRef.current) break
+        try {
+          const { lat, lng, city } = await svc()
+          if (ipResolved || locationReadyRef.current) break
+          ipResolved = true
+          applyLocation(lat, lng, city, true)
+        } catch { /* try next service */ }
+      }
+    })()
+
+    // 3 — Glasgow fallback after 5 s (prevents Amsterdam / global events)
+    const glasgowTimer = setTimeout(() => {
+      if (locationReadyRef.current) return
+      ipResolved = true
+      applyLocation(55.8617, -4.2583, 'Glasgow', false)
+    }, 5000)
+
+    return () => clearTimeout(glasgowTimer)
+  }, [discover])
 
   // Haversine distance in km between two coords
   function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -1221,13 +1324,30 @@ export default function DiscoverPage() {
           lastFetchedPos.current = { lat, lng }
           setUserLocation({ lat, lng })
           setLocationReady(true)   // We now have real coordinates — unlock events fetch
+          locationReadyRef.current = true
           setMapCenter({ lat, lng })
           discover(lat, lng, 15000)
+
+          // CRITICAL: First GPS fix always overrides IP geo.
+          // IP geo often returns the wrong city (e.g. London for someone in Glasgow
+          // because the ISP's IP is routed through London). Reset the AI sync ref
+          // so syncPerplexity/Ticketmaster fires for the REAL GPS city, not IP geo city.
+          if (!gpsFirstFix.current) {
+            gpsFirstFix.current = true
+            aiSyncedRef.current = false   // force AI re-sync for GPS city
+            autoRetried.current = false   // allow retry mechanism to fire again
+            setSyncing(false)
+          }
 
           // Reverse-geocode for display label (throttled by the moved>500m guard)
           fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
             .then((r) => r.json())
-            .then((d) => setVenueCity(d?.address?.city || d?.address?.town || d?.address?.county || null))
+            .then((d) => {
+              const city = d?.address?.city || d?.address?.town || d?.address?.county || null
+              setVenueCity(city)
+              // Persist precise GPS location for instant results on next visit
+              try { localStorage.setItem('pr_loc', JSON.stringify({ lat, lng, city, ts: Date.now() })) } catch {}
+            })
             .catch(() => {})
         }
       },
@@ -1245,20 +1365,46 @@ export default function DiscoverPage() {
     }
   }, [discover])
 
-  // City search from the Venues tab search bar — also refreshes events for that city
+  // Shared city-change logic (used by Venues search bar and city quick-select)
   function handleCitySearch(cityName: string, lat: number, lng: number) {
+    // Clear old city's events immediately so stale data doesn't linger
+    mutate(undefined, false)
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
     discover(lat, lng, 15000)
-    // Update userLocation so useEvents re-fetches for this city
     setUserLocation({ lat, lng })
-    setLocationReady(true)  // Unlock events fetch for this city
-    setGeoResolved(true)    // Mark geo as resolved even if GPS hasn't fired
-    // Allow auto-retry and AI sync to re-fire for the new city
+    setLocationReady(true)
+    setGeoResolved(true)
+    locationReadyRef.current = true
+    // Persist so next visit opens on correct city
+    try { localStorage.setItem('pr_loc', JSON.stringify({ lat, lng, city: cityName, ts: Date.now() })) } catch {}
+    // Reset AI sync + auto-retry so they fire for the new city
     autoRetried.current = false
     aiSyncedRef.current = false
     setSyncing(false)
+    // Kick off AI sync immediately for the new city (bypass throttle with force=true)
+    // — don't wait for the useEffect, fire it right now so events arrive faster
+    setAiSyncing(true)
+    setAiCity(cityName)
+    setAiFound(null)
+    api.post<{ data: { imported: number; skipped: number } }>(
+      '/events/ai-sync',
+      { city: cityName, lat, lng, force: true },
+    ).then((res) => {
+      const found = res?.data?.imported ?? 0
+      setAiFound(found)
+      setAiSyncing(false)
+      mutate()  // revalidate to show new city events
+      aiSyncedRef.current = true  // mark done so the useEffect doesn't double-fire
+      if (aiFoundTimerRef.current) clearTimeout(aiFoundTimerRef.current)
+      aiFoundTimerRef.current = setTimeout(() => setAiFound(null), 5000)
+    }).catch(() => {
+      setAiSyncing(false)
+      mutate()
+      aiSyncedRef.current = true
+    })
   }
+
 
   // "Use my location" / "Wider area"
   function handleVenueWiderSearch() {
@@ -1276,12 +1422,11 @@ export default function DiscoverPage() {
     }
   }
 
-  // Don't fetch events until we have real coordinates (GPS lock or manual city search).
-  // This prevents global/Amsterdam events appearing when GPS times out without a fix.
-  // userLocation is always set before locationReady, so lat/lng is always included.
+  // Events ONLY fetch once we have real coordinates (GPS, IP geo, or Glasgow fallback).
+  // skip=!locationReady ensures Amsterdam / global events never bleed in.
+  // userLocation is always set before locationReady, so lat/lng is always present in the query.
   const { events, isLoading, mutate, forceRetry } = useEvents({
     ...filters,
-    ...(filters.type === undefined ? { excludeTypes: 'CONCERT' } : {}),
     ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
     limit: 100,
   }, !locationReady)
@@ -1327,13 +1472,13 @@ export default function DiscoverPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation])
 
-  // Auto-retry once when 0 events returned after getting location — the first
-  // fetch triggers the background sync; 4 s later events will be in the DB.
+  // Auto-retry once when 0 events returned after getting location.
+  // Don't fire while AI sync is running — it will call mutate() when done.
   const autoRetried = useRef(false)
   const [syncing, setSyncing] = useState(false)
   useEffect(() => {
     if (autoRetried.current) return
-    if (isLoading || !locationReady || events.length > 0) return
+    if (isLoading || !locationReady || events.length > 0 || aiSyncing) return
     autoRetried.current = true
     setSyncing(true)
     const t = setTimeout(async () => {
@@ -1341,11 +1486,12 @@ export default function DiscoverPage() {
       setSyncing(false)
     }, 4000)
     return () => clearTimeout(t)
-  }, [isLoading, locationReady, events.length, forceRetry])
+  }, [isLoading, locationReady, events.length, aiSyncing, forceRetry])
 
-  // locationLoading: spinner while we're waiting for coordinates OR the first event fetch
+  // locationLoading: spinner while waiting for coordinates OR initial events fetch
   const locationLoading = !locationReady || (isLoading && events.length === 0)
-  // gpsDenied: GPS settled but no coordinates and user hasn't searched a city yet
+  // gpsDenied: only true when GPS settled AND IP geo also failed AND no localStorage cache
+  // (rare: means all three geo methods failed — we'll show Glasgow fallback within 5 s anyway)
   const gpsDenied = geoResolved && !locationReady
 
   const [partyAlert, setPartyAlert] = useState<null | Event>(null)
@@ -1625,6 +1771,38 @@ export default function DiscoverPage() {
       {/* ── Events tab content ── */}
       {tab === 'events' && <>
 
+      {/* ── Thin location bar — just shows detected city, tap to search ── */}
+      <div className="flex-shrink-0" style={{ background: 'rgba(4,4,13,0.92)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+        <div className="flex items-center justify-between px-4 py-1.5">
+          {/* Left: location pill */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-1.5"
+          >
+            {(isTracking || locationReady) ? (
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isTracking ? '#00ff88' : 'rgba(var(--accent-rgb),0.5)', boxShadow: isTracking ? '0 0 4px #00ff88' : 'none' }} />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0" style={{ background: '#ffd600', boxShadow: '0 0 4px #ffd600' }} />
+            )}
+            <span className="text-[10px] font-bold" style={{ color: locationReady ? 'rgba(224,242,254,0.7)' : 'rgba(255,214,0,0.6)' }}>
+              {venueCity
+                ? venueCity.toUpperCase()
+                : locationReady
+                  ? 'NEARBY'
+                  : 'LOCATING...'}
+            </span>
+          </button>
+          {/* Right: search-city button */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-1 text-[9px] font-black tracking-widest"
+            style={{ color: 'rgba(var(--accent-rgb),0.4)' }}
+          >
+            <Search size={9} /> SEARCH
+          </button>
+        </div>
+      </div>
+
       {/* ── Event type filter pills (always visible) ── */}
       <div
         className="flex-shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar"
@@ -1701,39 +1879,64 @@ export default function DiscoverPage() {
             </div>
           )}
 
-          {gpsDenied ? (
-            /* GPS timed out with no fix — prompt user to search a city */
-            <div className="flex flex-col items-center justify-center py-20 gap-4 px-6 text-center">
-              <div className="text-4xl">📍</div>
-              <div>
-                <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>LOCATION NOT AVAILABLE</p>
-                <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
-                  Location access is off or unavailable. Switch to the <strong style={{ color: '#ffd600' }}>VENUES</strong> tab and search a city to load local events.
-                </p>
-              </div>
-              <button
-                onClick={() => setTab('venues')}
-                className="px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
-                style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600', letterSpacing: '0.12em' }}
-              >
-                🌍 SEARCH A CITY
-              </button>
+          {/* GPS denied banner — rare (shows only if GPS + IP geo + localStorage all fail) */}
+          {gpsDenied && (
+            <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0"
+              style={{ background: 'rgba(255,214,0,0.06)', borderBottom: '1px solid rgba(255,214,0,0.15)' }}>
+              <span className="text-[10px]">📍</span>
+              <p className="text-[10px] flex-1" style={{ color: 'rgba(255,214,0,0.7)' }}>
+                Detecting your location…{' '}
+                <button onClick={() => setTab('venues')} className="underline font-bold" style={{ color: '#ffd600' }}>Search a city</button>
+                {' '}to load local events now.
+              </p>
             </div>
-          ) : (isLoading || locationLoading) ? (
+          )}
+          {(isLoading || locationLoading) ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <div className="w-10 h-10 rounded-full border-2 animate-spin"
                 style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
-              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SCANNING AREA...</p>
+              <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                {!locationReady ? 'LOCATING YOU...' : 'SCANNING AREA...'}
+              </p>
+            </div>
+          ) : events.length === 0 && aiSyncing ? (
+            /* AI sync running — show scanning state instead of empty */
+            <div className="flex flex-col items-center justify-center py-20 gap-4 px-6">
+              <div className="w-12 h-12 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(139,92,246,0.15)', borderTopColor: '#8b5cf6' }} />
+              <div className="text-center">
+                <p className="text-xs font-black tracking-widest mb-1" style={{ color: '#8b5cf6' }}>
+                  RADAR ASSISTANT SCANNING
+                </p>
+                <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                  Searching {aiCity ? aiCity : 'your area'} for club nights, concerts &amp; bar events…
+                </p>
+              </div>
+              <div className="flex gap-2 flex-wrap justify-center mt-1">
+                {['🎧 RA', '🎟 Dice.fm', '🎵 Skiddle', '📍 Local'].map(s => (
+                  <span key={s} className="text-[9px] font-bold px-2.5 py-1 rounded-full"
+                    style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'rgba(139,92,246,0.6)', letterSpacing: '0.08em' }}>
+                    {s}
+                  </span>
+                ))}
+              </div>
             </div>
           ) : events.length === 0 ? (
             <EmptyState loading={syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
           ) : (() => {
+            const TYPE_PRIORITY: Record<string, number> = { HOME_PARTY: 0, CLUB_NIGHT: 1, PUB_NIGHT: 2 }
+            const byTypeThenDate = (a: (typeof events)[0], b: (typeof events)[0]) => {
+              const pa = TYPE_PRIORITY[a.type] ?? 3
+              const pb = TYPE_PRIORITY[b.type] ?? 3
+              if (pa !== pb) return pa - pb
+              return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+            }
             const liveEvents = events.filter(e => {
               const start = new Date(e.startsAt).getTime()
               const end = e.endsAt ? new Date(e.endsAt).getTime() : start + 6 * 3600000
               return start <= now && now <= end
-            })
-            const upcomingEvents = events.filter(e => new Date(e.startsAt).getTime() > now)
+            }).sort(byTypeThenDate)
+            const upcomingEvents = events.filter(e => new Date(e.startsAt).getTime() > now).sort(byTypeThenDate)
 
             return (
               <div className="px-4 py-4 space-y-6">
@@ -1811,22 +2014,7 @@ export default function DiscoverPage() {
             </div>
           )}
           <div className="flex-1 overflow-hidden">
-            {gpsDenied ? (
-              <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
-                <div className="text-4xl">📍</div>
-                <div>
-                  <p className="text-sm font-black tracking-widest mb-1" style={{ color: 'var(--accent)' }}>LOCATION NOT AVAILABLE</p>
-                  <p className="text-xs leading-relaxed" style={{ color: 'rgba(74,96,128,0.7)', maxWidth: 260 }}>
-                    Switch to <strong style={{ color: '#ffd600' }}>VENUES</strong> and search a city to load events near you.
-                  </p>
-                </div>
-                <button onClick={() => setTab('venues')}
-                  className="px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
-                  style={{ background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}>
-                  🌍 SEARCH A CITY
-                </button>
-              </div>
-            ) : (isLoading || locationLoading) || events.length === 0 || !event ? (
+            {(isLoading || locationLoading) || events.length === 0 || !event ? (
               <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
             ) : (
               <EventStage event={event} dir={slideDir} userTier={userTier} />

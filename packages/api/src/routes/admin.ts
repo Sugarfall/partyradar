@@ -1128,6 +1128,9 @@ router.post('/purge-bad-events-now', async (_req, res, next) => {
       'dog show', 'horse show', 'equestrian', 'agricultural show',
       'antiques fair', 'collectors fair',
       'comedy brunch', 'brunch', 'boozy brush', 'paint', 'life drawing',
+      // Ticketmaster ticket-upgrade listings
+      'venue premium', 'comfort seats', 'parking permit', 'vip package',
+      'hospitality package', 'platinum seats', 'accessible tickets',
     ]
 
     const externalEvents = await prisma.event.findMany({

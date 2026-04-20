@@ -74,10 +74,12 @@ const REJECT_KEYWORDS = [
   // Other
   'dog show', 'horse show', 'equestrian', 'agricultural show',
   'antiques fair', 'collectors fair',
-  // Casino, gambling & irrelevant social events
-  'casino', 'gambling', 'poker night', 'bingo', 'quiz night', 'trivia night',
-  'karaoke night only', 'afternoon tea', 'baby shower', 'wedding', 'funeral',
-  'corporate event',
+  // Non-nightlife social events only (keep pub events like quiz/karaoke/bingo)
+  'casino night', 'gambling event', 'afternoon tea', 'baby shower', 'wedding reception',
+  'funeral', 'corporate event', 'corporate dinner', 'awards ceremony',
+  // Ticketmaster ticket-upgrade listings (not real separate events)
+  'venue premium', 'comfort seats', 'parking permit', 'vip package', 'hospitality package',
+  'platinum seats', 'accessible tickets', 'wheelchair',
 ]
 
 /**
@@ -276,8 +278,10 @@ interface SkiddleResponse {
 function mapSkiddleEventType(genres: Array<{ name?: string }> | undefined): EventTypeName {
   if (!genres) return 'CLUB_NIGHT'
   const names = genres.map((g) => g.name ?? '').join(' ').toLowerCase()
-  if (names.includes('live') || names.includes('acoustic') || names.includes('singer')) return 'CONCERT'
-  if (names.includes('pub') || names.includes('bar') || names.includes('quiz')) return 'PUB_NIGHT'
+  if (names.includes('pub') || names.includes('bar') || names.includes('quiz') ||
+      names.includes('karaoke') || names.includes('comedy') || names.includes('open mic') ||
+      names.includes('acoustic') || names.includes('drag') || names.includes('bingo')) return 'PUB_NIGHT'
+  if (names.includes('live') || names.includes('singer') || names.includes('band') || names.includes('concert')) return 'CONCERT'
   return 'CLUB_NIGHT'
 }
 
@@ -297,8 +301,9 @@ async function syncSkiddle(
   url.searchParams.set('limit', '50')
   url.searchParams.set('order', 'date')
   url.searchParams.set('description', '1')
-  // Filter to nightlife event types only (CLUB=Club night, LIVE=Live music, FEST=Festival, GRDN=Garden party, PARK=Park event)
-  url.searchParams.set('eventcode', 'CLUB,LIVE,FEST,GRDN,PARK')
+  // Include all nightlife codes: CLUB=Club night, LIVE=Live music, FEST=Festival,
+  // GRDN=Garden party, PARK=Park event, COMEDY=Comedy, KARAOKE=Karaoke, BARPUB=Bar/Pub night
+  url.searchParams.set('eventcode', 'CLUB,LIVE,FEST,GRDN,PARK,COMEDY,KARAOKE,BARPUB')
 
   const res = await fetch(url.toString())
   if (!res.ok) throw new Error(`Skiddle API error: ${res.status}`)
@@ -557,7 +562,14 @@ function mapSerpEventType(title: string, description: string): EventTypeName | n
   const text = `${title} ${description}`.toLowerCase()
   if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes(' tour')) return 'CONCERT'
   if (text.includes('club night') || text.includes('nightclub') || text.includes(' dj ') || text.includes('rave') || text.includes('techno') || text.includes('dance night') || text.includes('club event')) return 'CLUB_NIGHT'
-  if (text.includes(' pub ') || text.includes('bar night') || text.includes('pub quiz') || text.includes('open mic') || text.includes('tavern') || text.includes('pub crawl')) return 'PUB_NIGHT'
+  if (
+    text.includes(' pub ') || text.includes('pub night') || text.includes('bar night') ||
+    text.includes('pub quiz') || text.includes('quiz night') || text.includes('trivia night') ||
+    text.includes('open mic') || text.includes('karaoke') || text.includes('comedy night') ||
+    text.includes('drag night') || text.includes('drag show') || text.includes('bingo night') ||
+    text.includes('speed dating') || text.includes('pub crawl') || text.includes('tavern') ||
+    text.includes('live band') || text.includes('acoustic night') || text.includes('open stage')
+  ) return 'PUB_NIGHT'
   if (text.includes('beach party') || text.includes('pool party')) return 'BEACH_PARTY'
   if (text.includes('yacht') || text.includes('boat party')) return 'YACHT_PARTY'
   if (text.includes('house party') || text.includes('home party')) return 'HOME_PARTY'
@@ -577,7 +589,7 @@ async function syncSerpApi(
   const url = new URL('https://serpapi.com/search.json')
   url.searchParams.set('engine', 'google_events')
   // Explicit nightlife query — avoids returning aquariums, fairs, family events etc.
-  url.searchParams.set('q', `concerts club nights nightlife parties bars pubs live music ${city}`)
+  url.searchParams.set('q', `nightlife events clubs pubs bars karaoke quiz night open mic comedy night concerts live music ${city} this weekend site:ra.co OR site:dice.fm OR site:skiddle.com OR site:ents24.com OR site:eventbrite.co.uk OR site:facebook.com/events`)
   url.searchParams.set('api_key', apiKey)
   url.searchParams.set('hl', 'en')
 
@@ -663,26 +675,51 @@ async function syncPerplexity(
   const today = new Date().toISOString().split('T')[0]
   const twoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
+  const citySlug = city.toLowerCase().replace(/\s+/g, '-')
   const prompt =
-    `Find upcoming NIGHTLIFE events only in ${city} between ${today} and ${twoWeeks}. ` +
-    `Include ONLY: concerts, live music gigs, club nights, DJ nights, raves, pub nights, bar events, open mic nights, pub quizzes, house parties, beach parties, boat parties. ` +
-    `DO NOT include: aquariums, zoos, museums, tourist attractions, family events, kids events, Easter events, Christmas events, funfairs, theme parks, sports events, yoga, fitness classes, conferences, workshops, exhibitions, cinema, theatre, church events, craft fairs, farmers markets, car boot sales, or anything non-nightlife. ` +
-    `Search across Facebook Events, Resident Advisor, Skiddle, venue websites, and local listings. ` +
-    `Return ONLY a valid JSON array with no markdown, no explanation, in this exact format:\n` +
-    `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"","address":"","price":0,"type":"CONCERT","description":"","url":"","imageUrl":""}]\n` +
-    `type must be one of: CONCERT, CLUB_NIGHT, HOME_PARTY, PUB_NIGHT, BEACH_PARTY, YACHT_PARTY. price is 0 if free or unknown. Only include events that are clearly nightlife/music.`
+    `You have live internet access. Search RIGHT NOW for ALL upcoming nightlife events in ${city} ` +
+    `from ${today} to ${twoWeeks}. Find EVERY type of nightlife event:\n\n` +
+    `CLUB NIGHTS: DJ sets, raves, techno/house/drum & bass/garage/jungle nights\n` +
+    `PUB NIGHTS: karaoke, pub quiz / quiz nights, open mic, comedy nights, drag shows, bingo nights, ` +
+    `speed dating, live acoustic sessions, pub crawls, open stage nights\n` +
+    `BAR EVENTS: themed nights, cocktail events, bottomless brunches with DJs, rooftop parties\n` +
+    `LIVE MUSIC: gigs, concerts, bands playing live at venues\n` +
+    `CONCERTS & FESTIVALS: ticketed shows at larger venues\n\n` +
+    `Search these URLs for ${city}:\n` +
+    `- https://ra.co/events/uk/${citySlug}\n` +
+    `- https://dice.fm (search "${city} events")\n` +
+    `- https://www.skiddle.com/whats-on/${citySlug}/\n` +
+    `- https://www.ents24.com/${citySlug}/\n` +
+    `- https://www.eventbrite.co.uk/d/united-kingdom--${citySlug}/nightlife/\n` +
+    `- Google: "karaoke ${city}", "quiz night ${city}", "open mic ${city}", "comedy night ${city}", ` +
+    `"drag night ${city}", "club night ${city} this weekend"\n\n` +
+    `Find 25+ events minimum. Include a good MIX — some pub/bar events AND club nights AND concerts.\n` +
+    `DO NOT include: family events, kids events, sports, fitness, theatre, cinema, exhibitions, ` +
+    `craft fairs, church, conferences, funerals, weddings, or corporate events.\n\n` +
+    `Return ONLY a valid JSON array (no markdown, no prose):\n` +
+    `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"exact venue name","address":"full address, ${city}","price":0,"type":"PUB_NIGHT","description":"what happens — music/host/atmosphere","url":"direct link","imageUrl":""}]\n` +
+    `type must be one of: CONCERT | CLUB_NIGHT | PUB_NIGHT | HOME_PARTY | BEACH_PARTY | YACHT_PARTY\n` +
+    `price is a number (0 if free). Only REAL future events with real venue names — no placeholders.`
 
   const res = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'sonar',
+      model: 'sonar-pro',
       messages: [
-        { role: 'system', content: 'You are an event aggregator. Respond only with valid JSON — no markdown, no prose.' },
+        {
+          role: 'system',
+          content:
+            'You are a nightlife event aggregator with live internet access. ' +
+            'Find ALL types of nightlife: club nights, DJ events, raves, live music, pub nights, ' +
+            'karaoke, quiz nights, open mic, comedy nights, drag shows, bingo nights, bar events. ' +
+            'Browse Resident Advisor, Dice.fm, Skiddle, Ents24, Eventbrite, and Google to find real events. ' +
+            'Return ONLY a valid JSON array — no markdown, no prose, no extra text.',
+        },
         { role: 'user', content: prompt },
       ],
       temperature: 0.1,
-      max_tokens: 4000,
+      max_tokens: 8000,
     }),
   })
 
