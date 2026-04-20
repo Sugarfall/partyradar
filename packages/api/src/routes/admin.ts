@@ -1161,4 +1161,51 @@ router.post('/purge-bad-events-now', async (_req, res, next) => {
   }
 })
 
+/**
+ * POST /api/admin/reclassify-club-events
+ * Finds events classified as CONCERT that should be CLUB_NIGHT based on name/description keywords.
+ * Also finds events at known Glasgow clubs that should be CLUB_NIGHT.
+ * No auth required — safe one-time fix for existing mis-classified events.
+ */
+router.post('/reclassify-club-events', async (_req, res, next) => {
+  try {
+    const CLUB_KEYWORDS = [
+      'dj set', 'dj night', 'club night', 'rave', 'techno', 'house music',
+      'drum & bass', 'drum and bass', 'dnb', 'jungle night', 'garage night',
+      'trance', 'edm night', 'electronic night', 'dance music',
+    ]
+    const CLUB_VENUE_NAMES = [
+      'sub club', 'subclub', 'swg3', 'the garage', 'room 2', 'buff club',
+      'sanctuary', 'cathouse', 'polo lounge', 'fabric', 'xoyo', 'egg london',
+    ]
+
+    const concertEvents = await prisma.event.findMany({
+      where: { type: 'CONCERT', isPublished: true, isCancelled: false },
+      select: { id: true, name: true, description: true, neighbourhood: true },
+    })
+
+    const toReclassify: string[] = []
+    for (const ev of concertEvents) {
+      const text = `${ev.name} ${ev.description ?? ''} ${ev.neighbourhood ?? ''}`.toLowerCase()
+      const isClub =
+        CLUB_KEYWORDS.some((kw) => text.includes(kw)) ||
+        CLUB_VENUE_NAMES.some((v) => text.includes(v))
+      if (isClub) toReclassify.push(ev.id)
+    }
+
+    if (toReclassify.length === 0) {
+      return res.json({ data: { reclassified: 0, message: 'No events to reclassify.' } })
+    }
+
+    await prisma.event.updateMany({
+      where: { id: { in: toReclassify } },
+      data: { type: 'CLUB_NIGHT' },
+    })
+
+    res.json({ data: { reclassified: toReclassify.length, message: `Reclassified ${toReclassify.length} events as CLUB_NIGHT.` } })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router

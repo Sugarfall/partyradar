@@ -13,6 +13,33 @@ import type { EventType, Event } from '@partyradar/shared'
 import { AGE_RESTRICTION_LABELS, getTier } from '@partyradar/shared'
 import { useAuth } from '@/hooks/useAuth'
 import { api, API_URL } from '@/lib/api'
+import { formatPrice, detectCurrency } from '@/lib/currency'
+
+// ── Country → currency mapping (for city search) ─────────────────────────────
+const COUNTRY_CURRENCY_MAP: Record<string, string> = {
+  'United Kingdom': 'GBP', 'England': 'GBP', 'Scotland': 'GBP', 'Wales': 'GBP',
+  'Northern Ireland': 'GBP',
+  'Ireland': 'EUR', 'Netherlands': 'EUR', 'France': 'EUR', 'Germany': 'EUR',
+  'Spain': 'EUR', 'Italy': 'EUR', 'Belgium': 'EUR', 'Portugal': 'EUR',
+  'Greece': 'EUR', 'Austria': 'EUR', 'Finland': 'EUR',
+  'United States': 'USD',
+  'Canada': 'CAD',
+  'Australia': 'AUD', 'New Zealand': 'NZD',
+  'Japan': 'JPY', 'Singapore': 'SGD', 'Hong Kong': 'HKD',
+  'United Arab Emirates': 'AED', 'Switzerland': 'CHF',
+  'Sweden': 'SEK', 'Norway': 'NOK', 'Denmark': 'DKK',
+  'Poland': 'PLN', 'Mexico': 'MXN', 'Brazil': 'BRL',
+  'South Africa': 'ZAR', 'India': 'INR', 'Thailand': 'THB',
+}
+
+function currencyFromDisplayName(displayName: string): string {
+  const parts = displayName.split(',')
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const country = parts[i]!.trim()
+    if (COUNTRY_CURRENCY_MAP[country]) return COUNTRY_CURRENCY_MAP[country]!
+  }
+  return detectCurrency()
+}
 
 const EventMap = dynamic(() => import('@/components/events/EventMap').then((m) => m.EventMap), {
   ssr: false,
@@ -100,7 +127,7 @@ function LockedEventListCard({ event }: { event: Event }) {
 }
 
 // ── Compact list card for list view ──────────────────────────────────────────
-function EventListCard({ event, live, userTier }: { event: Event; live?: boolean; userTier?: string }) {
+function EventListCard({ event, live, userTier, currency }: { event: Event; live?: boolean; userTier?: string; currency?: string }) {
   // Gate YACHT_PARTY for FREE users
   if (event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties) {
     return <LockedEventListCard event={event} />
@@ -148,7 +175,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="text-sm font-bold truncate leading-tight" style={{ color: '#e0f2fe' }}>{event.name}</p>
           <span className="shrink-0 text-sm font-bold" style={{ color: isFree ? '#00ff88' : '#e0f2fe' }}>
-            {isFree ? 'FREE' : `£${(event.price ?? 0).toFixed(2)}`}
+            {isFree ? 'FREE' : formatPrice(event.price ?? 0, currency)}
           </span>
         </div>
         <p className="text-[10px] truncate mb-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
@@ -184,7 +211,7 @@ function EventListCard({ event, live, userTier }: { event: Event; live?: boolean
 }
 
 // ── Full-screen sequential event card ────────────────────────────────────────
-function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; userTier?: string }) {
+function EventStage({ event, dir, userTier, currency }: { event: Event; dir: SlideDir; userTier?: string; currency?: string }) {
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
   const isFree = (event.price ?? 0) === 0
   const [interested, setInterested] = useState(false)
@@ -336,7 +363,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
               className="text-xl font-bold"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}
             >
-              {isFree ? 'FREE' : `£${(event.price ?? 0).toFixed(2)}`}
+              {isFree ? 'FREE' : formatPrice(event.price ?? 0, currency)}
             </p>
           </div>
         </div>
@@ -468,7 +495,7 @@ function EventStage({ event, dir, userTier }: { event: Event; dir: SlideDir; use
             letterSpacing: '0.1em',
           }}
         >
-          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — £${(event.price ?? 0).toFixed(2)}`}
+          {event.isInviteOnly ? '🔒 REQUEST TO JOIN' : isFree ? '⚡ RSVP FREE' : `🎟 BUY TICKET — ${formatPrice(event.price ?? 0, currency)}`}
         </Link>
 
         {/* Secondary actions */}
@@ -627,7 +654,7 @@ interface VenuesListProps {
   venueCity: string | null
   mapCenter: { lat: number; lng: number } | null
   isTracking: boolean
-  onCitySearch: (city: string, lat: number, lng: number) => void
+  onCitySearch: (city: string, lat: number, lng: number, currency?: string) => void
   onWiderSearch: () => void
 }
 
@@ -668,7 +695,8 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, mapCenter, isTrackin
       if (!results.length) { setCityError('City not found — try a different name'); return }
       const { lat, lon, display_name } = results[0]!
       const cityName = display_name.split(',')[0]!.trim()
-      onCitySearch(cityName, parseFloat(lat), parseFloat(lon))
+      const currency = currencyFromDisplayName(display_name)
+      onCitySearch(cityName, parseFloat(lat), parseFloat(lon), currency)
       setCityInput('')
     } catch {
       setCityError('Search failed — check your connection')
@@ -1203,6 +1231,8 @@ export default function DiscoverPage() {
   const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
   const [venueCity, setVenueCity] = useState<string | null>(null)
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
+  // Currency for the currently viewed city — defaults to user's own timezone currency
+  const [currentCurrency, setCurrentCurrency] = useState(() => detectCurrency())
 
   // Track the last position we fetched for, to avoid re-fetching on tiny GPS jitter
   const lastFetchedPos = useRef<{ lat: number; lng: number } | null>(null)
@@ -1366,11 +1396,12 @@ export default function DiscoverPage() {
   }, [discover])
 
   // Shared city-change logic (used by Venues search bar and city quick-select)
-  function handleCitySearch(cityName: string, lat: number, lng: number) {
+  function handleCitySearch(cityName: string, lat: number, lng: number, currency?: string) {
     // Clear old city's events immediately so stale data doesn't linger
     mutate(undefined, false)
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
+    if (currency) setCurrentCurrency(currency)
     discover(lat, lng, 15000)
     setUserLocation({ lat, lng })
     setLocationReady(true)
@@ -1952,7 +1983,7 @@ export default function DiscoverPage() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live userTier={userTier} />)}
+                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live userTier={userTier} currency={currentCurrency} />)}
                     </div>
                   </div>
                 )}
@@ -1969,7 +2000,7 @@ export default function DiscoverPage() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} userTier={userTier} />)}
+                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} userTier={userTier} currency={currentCurrency} />)}
                     </div>
                   </div>
                 )}
@@ -2017,7 +2048,7 @@ export default function DiscoverPage() {
             {(isLoading || locationLoading) || events.length === 0 || !event ? (
               <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
             ) : (
-              <EventStage event={event} dir={slideDir} userTier={userTier} />
+              <EventStage event={event} dir={slideDir} userTier={userTier} currency={currentCurrency} />
             )}
           </div>
           {events.length > 1 && (

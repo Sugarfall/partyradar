@@ -90,9 +90,13 @@ export function useVenueDiscover() {
     setLoading(true)
     setError(null)
     try {
-      const result = await api.post<VenueDiscoverResult>('/venues/discover', { lat, lng, radius })
-      const resultVenues = result.data ?? []
-      const resultSource = result.source ?? 'database'
+      // Server returns { data: { venues: [...], source: '...', discovered: n } }
+      const result = await api.post<{ data: { venues: LiveVenue[]; source: 'google' | 'database' | 'google_places'; discovered: number } }>(
+        '/venues/discover', { lat, lng, radius }
+      )
+      const inner = result.data
+      const resultVenues = inner?.venues ?? []
+      const resultSource = inner?.source ?? 'database'
       setVenues(resultVenues)
       setSource(resultSource)
       // Cache successful results

@@ -147,6 +147,14 @@ function mapTMEventType(classifications: TMClassification[] | undefined): EventT
     .join(' ')
     .toLowerCase()
   if (names.includes('nightlife') || names.includes('club') || names.includes('dj')) return 'CLUB_NIGHT'
+  // Electronic/Dance genres are typically club nights, not concerts
+  if (
+    names.includes('electronic') || names.includes('dance') || names.includes('techno') ||
+    names.includes('house') || names.includes('drum') || names.includes('bass') ||
+    names.includes('trance') || names.includes('rave') || names.includes('edm') ||
+    names.includes('jungle') || names.includes('garage') || names.includes('dubstep') ||
+    names.includes('ambient') || names.includes('electronica')
+  ) return 'CLUB_NIGHT'
   if (names.includes('pub') || names.includes('bar') || names.includes('tavern')) return 'PUB_NIGHT'
   return 'CONCERT'
 }
@@ -558,10 +566,31 @@ function parseSerpDate(when: string | undefined, startDate: string | undefined):
   return new Date()
 }
 
+// Known nightclub venues — events at these venues are always CLUB_NIGHT even if title lacks keywords
+const KNOWN_CLUB_VENUES = [
+  // Glasgow
+  'sub club', 'subclub', 'swg3', 'the garage', 'garage glasgow', 'room 2', 'room2',
+  'buff club', 'sanctuary', 'cathouse', 'sauchiehall', 'polo lounge', 'bamboo',
+  // UK
+  'fabric', 'xoyo', 'corsica studios', 'egg london', 'printworks', 'rave cave',
+  'studio 338', 'oval space', 'fold', 'heaven', 'ministry of sound',
+  'warehouse project', 'hidden', 'albert hall', 'junction 2',
+  // International
+  'berghain', 'tresor', 'watergate', 'about blank', 'kater blau',
+  'amnesia', 'pacha', 'dc10', 'privilege', 'ushuaia',
+]
+
 function mapSerpEventType(title: string, description: string): EventTypeName | null {
   const text = `${title} ${description}`.toLowerCase()
   if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes(' tour')) return 'CONCERT'
-  if (text.includes('club night') || text.includes('nightclub') || text.includes(' dj ') || text.includes('rave') || text.includes('techno') || text.includes('dance night') || text.includes('club event')) return 'CLUB_NIGHT'
+  if (
+    text.includes('club night') || text.includes('nightclub') || text.includes(' dj ') ||
+    text.includes('dj set') || text.includes('rave') || text.includes('techno') ||
+    text.includes('dance night') || text.includes('club event') ||
+    text.includes('electronic') || text.includes('house music') || text.includes('drum & bass') ||
+    text.includes('drum and bass') || text.includes('dnb') || text.includes('garage night') ||
+    KNOWN_CLUB_VENUES.some(v => text.includes(v))
+  ) return 'CLUB_NIGHT'
   if (
     text.includes(' pub ') || text.includes('pub night') || text.includes('bar night') ||
     text.includes('pub quiz') || text.includes('quiz night') || text.includes('trivia night') ||
@@ -573,8 +602,9 @@ function mapSerpEventType(title: string, description: string): EventTypeName | n
   if (text.includes('beach party') || text.includes('pool party')) return 'BEACH_PARTY'
   if (text.includes('yacht') || text.includes('boat party')) return 'YACHT_PARTY'
   if (text.includes('house party') || text.includes('home party')) return 'HOME_PARTY'
-  // If none of the nightlife keywords match, don't import
-  return null
+  // For nightlife-queried events that don't match specific types, default to CONCERT
+  // (rather than null/skip — SerpAPI query already filters for nightlife)
+  return 'CONCERT'
 }
 
 async function syncSerpApi(
@@ -589,7 +619,7 @@ async function syncSerpApi(
   const url = new URL('https://serpapi.com/search.json')
   url.searchParams.set('engine', 'google_events')
   // Explicit nightlife query — avoids returning aquariums, fairs, family events etc.
-  url.searchParams.set('q', `nightlife events clubs pubs bars karaoke quiz night open mic comedy night concerts live music ${city} this weekend site:ra.co OR site:dice.fm OR site:skiddle.com OR site:ents24.com OR site:eventbrite.co.uk OR site:facebook.com/events`)
+  url.searchParams.set('q', `nightlife events clubs DJ nights raves techno house pubs bars karaoke quiz night open mic comedy night concerts live music ${city} this weekend site:ra.co OR site:dice.fm OR site:skiddle.com OR site:ents24.com OR site:eventbrite.co.uk OR site:facebook.com/events`)
   url.searchParams.set('api_key', apiKey)
   url.searchParams.set('hl', 'en')
 
@@ -676,15 +706,25 @@ async function syncPerplexity(
   const twoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   const citySlug = city.toLowerCase().replace(/\s+/g, '-')
+
+  // City-specific venue hints to help AI find the right events
+  const isGlasgow = city.toLowerCase().includes('glasgow')
+  const venueHint = isGlasgow
+    ? `\nKey Glasgow CLUB venues to search: Sub Club, SWG3, The Garage, Room 2, Buff Club, Sanctuary, Cathouse, Polo Lounge, Bamboo Glasgow, AXM Glasgow, Kushion.\n` +
+      `Key Glasgow PUB/BAR venues: Nice N Sleazy, Broadcast, The Hug and Pint, Admiral Bar, Stereo, Drygate, Oran Mor, Brel, Bloc+ Bar, The Horseshoe Bar, The Ben Nevis, Solid Rock Café, The State Bar, King Tut's Wah Wah Hut, Òran Mór.\n` +
+      `Check these specific sites: https://ra.co/events/uk/glasgow, https://www.skiddle.com/whats-on/glasgow/, https://dice.fm (search "Glasgow"), https://www.ents24.com/glasgow/\n`
+    : ''
+
   const prompt =
     `You have live internet access. Search RIGHT NOW for ALL upcoming nightlife events in ${city} ` +
     `from ${today} to ${twoWeeks}. Find EVERY type of nightlife event:\n\n` +
-    `CLUB NIGHTS: DJ sets, raves, techno/house/drum & bass/garage/jungle nights\n` +
+    `CLUB NIGHTS: DJ sets, raves, techno/house/drum & bass/garage/jungle/electronic nights at nightclubs\n` +
     `PUB NIGHTS: karaoke, pub quiz / quiz nights, open mic, comedy nights, drag shows, bingo nights, ` +
-    `speed dating, live acoustic sessions, pub crawls, open stage nights\n` +
+    `speed dating, live acoustic sessions, pub crawls, open stage nights at pubs and bars\n` +
     `BAR EVENTS: themed nights, cocktail events, bottomless brunches with DJs, rooftop parties\n` +
     `LIVE MUSIC: gigs, concerts, bands playing live at venues\n` +
     `CONCERTS & FESTIVALS: ticketed shows at larger venues\n\n` +
+    venueHint +
     `Search these URLs for ${city}:\n` +
     `- https://ra.co/events/uk/${citySlug}\n` +
     `- https://dice.fm (search "${city} events")\n` +
@@ -692,8 +732,9 @@ async function syncPerplexity(
     `- https://www.ents24.com/${citySlug}/\n` +
     `- https://www.eventbrite.co.uk/d/united-kingdom--${citySlug}/nightlife/\n` +
     `- Google: "karaoke ${city}", "quiz night ${city}", "open mic ${city}", "comedy night ${city}", ` +
-    `"drag night ${city}", "club night ${city} this weekend"\n\n` +
+    `"drag night ${city}", "club night ${city} this weekend", "DJ night ${city}"\n\n` +
     `Find 25+ events minimum. Include a good MIX — some pub/bar events AND club nights AND concerts.\n` +
+    `IMPORTANT: Club nights (DJ/rave/techno/house) must use type "CLUB_NIGHT". Pub events (quiz/karaoke/open mic) must use type "PUB_NIGHT".\n` +
     `DO NOT include: family events, kids events, sports, fitness, theatre, cinema, exhibitions, ` +
     `craft fairs, church, conferences, funerals, weddings, or corporate events.\n\n` +
     `Return ONLY a valid JSON array (no markdown, no prose):\n` +
