@@ -49,6 +49,13 @@ router.post('/stripe', async (req: Request, res: Response) => {
         await handleSubscriptionDeleted(sub)
         break
       }
+      case 'payment_intent.succeeded': {
+        const pi = event.data.object as Stripe.PaymentIntent
+        if (pi.metadata?.type === 'wallet_topup') {
+          await handleWalletTopUpFromIntent(pi)
+        }
+        break
+      }
     }
 
     res.json({ received: true })
@@ -236,6 +243,10 @@ async function handleWalletTopUp(session: Stripe.Checkout.Session) {
   const { userId, walletId, topUpAmount, bonusPercent } = session.metadata ?? {}
   if (!userId || !walletId || !topUpAmount) return
 
+  // Idempotency: skip if this session was already processed
+  const existing = await prisma.walletTransaction.findFirst({ where: { stripeSessionId: session.id } })
+  if (existing) return
+
   const amount = Number(topUpAmount)
   const bonus = Number(bonusPercent ?? 0)
   const bonusAmount = Number((amount * bonus / 100).toFixed(2))
@@ -266,6 +277,59 @@ async function handleWalletTopUp(session: Stripe.Checkout.Session) {
         : `Top-up £${amount}`,
       stripePaymentId: session.payment_intent as string,
       stripeSessionId: session.id,
+    },
+  })
+
+  // Record platform revenue (we hold the float)
+  await prisma.platformRevenue.create({
+    data: {
+      source: 'wallet_topup',
+      amount,
+      referenceId: userId,
+      description: `Wallet top-up £${amount}`,
+    },
+  })
+}
+
+// ─── Wallet Top-Up from PaymentIntent (Payment Elements flow) ────────────────
+
+async function handleWalletTopUpFromIntent(pi: Stripe.PaymentIntent) {
+  const { userId, walletId, topUpAmount, bonusPercent } = pi.metadata ?? {}
+  if (!userId || !walletId || !topUpAmount) return
+
+  // Idempotency: skip if this PaymentIntent was already processed
+  const existing = await prisma.walletTransaction.findFirst({ where: { stripePaymentId: pi.id } })
+  if (existing) return
+
+  const amount = Number(topUpAmount)
+  const bonus = Number(bonusPercent ?? 0)
+  const bonusAmount = Number((amount * bonus / 100).toFixed(2))
+  const totalCredit = amount + bonusAmount
+
+  const wallet = await prisma.wallet.findUnique({ where: { id: walletId } })
+  if (!wallet) return
+
+  const newBalance = Number((wallet.balance + totalCredit).toFixed(2))
+
+  await prisma.wallet.update({
+    where: { id: walletId },
+    data: {
+      balance: newBalance,
+      lifetimeTopUp: { increment: amount },
+    },
+  })
+
+  // Main top-up transaction
+  await prisma.walletTransaction.create({
+    data: {
+      walletId,
+      type: 'TOP_UP',
+      amount: totalCredit,
+      balanceAfter: newBalance,
+      description: bonusAmount > 0
+        ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
+        : `Top-up £${amount}`,
+      stripePaymentId: pi.id,
     },
   })
 

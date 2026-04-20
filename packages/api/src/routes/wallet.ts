@@ -141,6 +141,83 @@ router.post('/top-up', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+// ─── POST /api/wallet/payment-intent — create Stripe PaymentIntent for in-app Payment Elements ───
+
+router.post('/payment-intent', requireAuth, async (req: AuthRequest, res, next) => {
+  const schema = z.object({
+    tierId: z.string().optional(),
+    amount: z.number().min(WALLET_CONFIG.MIN_TOP_UP).max(WALLET_CONFIG.MAX_TOP_UP).optional(),
+  })
+  try {
+    const body = schema.parse(req.body)
+    const userId = req.user!.dbUser.id
+    const wallet = await getOrCreateWallet(userId)
+
+    // Determine amount
+    let topUpAmount: number
+    let bonusPercent = 0
+
+    if (body.tierId) {
+      const tier = WALLET_TOP_UP_TIERS.find((t) => t.id === body.tierId)
+      if (!tier) throw new AppError('Invalid top-up tier', 400)
+      topUpAmount = tier.amount
+      bonusPercent = tier.bonusPercent
+    } else if (body.amount) {
+      topUpAmount = body.amount
+    } else {
+      throw new AppError('Provide tierId or amount', 400)
+    }
+
+    // Check max balance
+    if (wallet.balance + topUpAmount > WALLET_CONFIG.MAX_BALANCE) {
+      throw new AppError(`Wallet balance cannot exceed £${WALLET_CONFIG.MAX_BALANCE}`, 400)
+    }
+
+    // Get or create Stripe customer
+    let stripeCustomerId = wallet.stripeCustomerId
+    if (!stripeCustomerId) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, stripeCustomerId: true } })
+      stripeCustomerId = user?.stripeCustomerId ?? null
+
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({ email: user!.email })
+        stripeCustomerId = customer.id
+        await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } })
+      }
+      await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId } })
+    }
+
+    const bonusAmount = Number((topUpAmount * bonusPercent / 100).toFixed(2))
+
+    const intent = await stripe.paymentIntents.create({
+      amount: Math.round(topUpAmount * 100),
+      currency: 'gbp',
+      customer: stripeCustomerId,
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        type: 'wallet_topup',
+        userId,
+        walletId: wallet.id,
+        topUpAmount: String(topUpAmount),
+        bonusPercent: String(bonusPercent),
+      },
+      description: `PartyRadar Wallet Top-Up — £${topUpAmount}`,
+    })
+
+    res.json({
+      data: {
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+        amount: topUpAmount,
+        bonusPercent,
+        totalCredit: topUpAmount + bonusAmount,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // ─── POST /api/wallet/spend — spend wallet at venue (QR code scanned) ────────
 
 router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
@@ -10,6 +10,7 @@ import {
   Wallet, CreditCard, Gift, TrendingUp,
   ArrowUp, ArrowDown, Zap, Star, CheckCircle,
 } from 'lucide-react'
+import { TopUpModal } from '@/components/wallet/TopUpModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,8 +100,7 @@ export default function WalletPage() {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([])
   const [loading, setLoading]         = useState(true)
   const [loadError, setLoadError]     = useState<string | null>(null)
-  const [topping, setTopping]         = useState<string | null>(null)
-  const [topUpError, setTopUpError]   = useState<string | null>(null)
+  const [topUpTierId, setTopUpTierId] = useState<string | null>(null)   // which tier modal is open for
   const [topUpSuccess, setTopUpSuccess] = useState(false)
 
   async function load() {
@@ -137,18 +137,13 @@ export default function WalletPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbUser])
 
-  async function handleTopUp(tierId: string) {
-    setTopping(tierId)
-    setTopUpError(null)
-    try {
-      const res = await api.post<{ data: { url: string } }>('/wallet/top-up', { tierId })
-      if (res?.data?.url) {
-        window.location.href = res.data.url
-      }
-    } catch (err) {
-      setTopUpError(err instanceof Error ? err.message : 'Top-up failed. Please try again.')
-      setTopping(null)
-    }
+  function handleTopUpSuccess() {
+    setTopUpTierId(null)
+    setTopUpSuccess(true)
+    const t = setTimeout(() => setTopUpSuccess(false), 6000)
+    // Reload wallet so new balance appears immediately
+    load()
+    return () => clearTimeout(t)
   }
 
   // ── Auth gate ──────────────────────────────────────────────────────────────
@@ -374,53 +369,45 @@ export default function WalletPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              {WALLET_TOP_UP_TIERS.map(tier => {
-                const isLoading = topping === tier.id
-                return (
-                  <button
-                    key={tier.id}
-                    onClick={() => handleTopUp(tier.id)}
-                    disabled={topping !== null}
-                    className="rounded-xl px-3 py-3 text-left transition-all duration-150 disabled:opacity-50"
-                    style={{
-                      background: isLoading
-                        ? 'rgba(var(--accent-rgb),0.12)'
-                        : 'rgba(var(--accent-rgb),0.05)',
-                      border: isLoading
-                        ? '1px solid rgba(var(--accent-rgb),0.4)'
-                        : '1px solid rgba(var(--accent-rgb),0.12)',
-                    }}
-                  >
-                    <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>
-                      £{tier.amount}
+              {WALLET_TOP_UP_TIERS.map(tier => (
+                <button
+                  key={tier.id}
+                  onClick={() => setTopUpTierId(tier.id)}
+                  className="rounded-xl px-3 py-3 text-left transition-all duration-150 active:scale-[0.97]"
+                  style={{
+                    background: 'rgba(var(--accent-rgb),0.05)',
+                    border: '1px solid rgba(var(--accent-rgb),0.12)',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.1)'
+                    e.currentTarget.style.borderColor = 'rgba(var(--accent-rgb),0.3)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.05)'
+                    e.currentTarget.style.borderColor = 'rgba(var(--accent-rgb),0.12)'
+                  }}
+                >
+                  <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>
+                    £{tier.amount}
+                  </p>
+                  {tier.bonusPercent > 0 ? (
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: 'var(--accent)' }}>
+                      +{tier.bonusPercent}% bonus 🎁
                     </p>
-                    {tier.bonusPercent > 0 ? (
-                      <p className="text-[9px] font-bold mt-0.5" style={{ color: 'var(--accent)' }}>
-                        +{tier.bonusPercent}% bonus
-                      </p>
-                    ) : (
-                      <p className="text-[9px] mt-0.5" style={{ color: 'rgba(224,242,254,0.25)' }}>
-                        no bonus
-                      </p>
-                    )}
-                    {isLoading && (
-                      <p className="text-[9px] font-bold mt-1" style={{ color: 'var(--accent)' }}>
-                        redirecting…
-                      </p>
-                    )}
-                  </button>
-                )
-              })}
+                  ) : (
+                    <p className="text-[9px] mt-0.5" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                      no bonus
+                    </p>
+                  )}
+                  <p className="text-[9px] mt-1" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>
+                    TAP TO PAY →
+                  </p>
+                </button>
+              ))}
             </div>
 
-            {topUpError && (
-              <p className="text-[10px] font-bold mt-2" style={{ color: '#ff006e' }}>
-                {topUpError}
-              </p>
-            )}
-
             <p className="text-[9px] mt-3" style={{ color: 'rgba(224,242,254,0.25)' }}>
-              Powered by Stripe · Funds added instantly after payment
+              🔒 Pay in-app via Stripe · Funds added instantly after payment
             </p>
           </SectionCard>
 
@@ -510,6 +497,13 @@ export default function WalletPage() {
 
         </div>
       )}
+
+      {/* ── Payment Elements modal ─────────────────────────────────────────── */}
+      <TopUpModal
+        tierId={topUpTierId}
+        onClose={() => setTopUpTierId(null)}
+        onSuccess={handleTopUpSuccess}
+      />
     </div>
   )
 }
