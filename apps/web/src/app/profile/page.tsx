@@ -349,8 +349,10 @@ export default function ProfilePage() {
     async function loadFollowCounts() {
       try {
         const res = await api.get<{ data: { isFollowing: boolean; followersCount: number; followingCount: number } }>(`/follow/${dbUser!.id}`)
-        setFollowersCount(res.data.followersCount)
-        setFollowingCount(res.data.followingCount)
+        if (res?.data) {
+          setFollowersCount(res.data.followersCount ?? 0)
+          setFollowingCount(res.data.followingCount ?? 0)
+        }
       } catch {
         // On failure keep 0 — no demo fallback values
       }
@@ -461,9 +463,11 @@ export default function ProfilePage() {
 
   function applyMode(next: 'ATTENDEE' | 'HOST') {
     setAccountMode(next)
-    localStorage.setItem('partyradar_account_mode', next)
-    // Notify Navbar and any other listeners in the same tab
-    window.dispatchEvent(new CustomEvent('partyradar:mode-change', { detail: next }))
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('partyradar_account_mode', next)
+      // Notify Navbar and any other listeners in the same tab
+      window.dispatchEvent(new CustomEvent('partyradar:mode-change', { detail: next }))
+    }
     // Best-effort API sync — doesn't block the UI
     api.put('/auth/mode', { accountMode: next }).catch(() => {})
   }
