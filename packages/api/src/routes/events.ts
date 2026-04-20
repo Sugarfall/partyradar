@@ -66,10 +66,12 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     }
 
     if (tonight === 'true') {
-      const now = new Date()
-      const midnight = new Date(now)
+      // Use the same 8-hour lookback as the base filter so in-progress events
+      // (e.g. a concert that started at 7pm viewed at 9pm) still show up.
+      const tonightStart = new Date(Date.now() - 8 * 3_600_000)
+      const midnight = new Date()
       midnight.setHours(23, 59, 59, 999)
-      where['startsAt'] = { gte: now, lte: midnight }
+      where['startsAt'] = { gte: tonightStart, lte: midnight }
     }
 
     if (type) {

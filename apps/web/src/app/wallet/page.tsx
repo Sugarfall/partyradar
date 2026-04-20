@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
 import { WALLET_TOP_UP_TIERS } from '@partyradar/shared'
 import {
   Wallet, CreditCard, Gift, TrendingUp,
-  ArrowUp, ArrowDown, Zap, Star,
+  ArrowUp, ArrowDown, Zap, Star, CheckCircle,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -93,6 +93,7 @@ function SectionCard({ children, className = '' }: { children: React.ReactNode; 
 export default function WalletPage() {
   const { dbUser } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [wallet, setWallet]           = useState<WalletData | null>(null)
   const [transactions, setTransactions] = useState<WalletTransaction[]>([])
@@ -100,26 +101,40 @@ export default function WalletPage() {
   const [loadError, setLoadError]     = useState<string | null>(null)
   const [topping, setTopping]         = useState<string | null>(null)
   const [topUpError, setTopUpError]   = useState<string | null>(null)
+  const [topUpSuccess, setTopUpSuccess] = useState(false)
+
+  async function load() {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const res = await api.get<{ data: WalletData & { transactions: WalletTransaction[] } }>('/wallet')
+      if (res?.data) {
+        const { transactions: txs, ...walletData } = res.data
+        setWallet(walletData as WalletData)
+        setTransactions(txs ?? [])
+      }
+    } catch {
+      // Bug 8 fix: show error instead of silent blank page
+      setLoadError('Failed to load wallet — please try again')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!dbUser) return
-    async function load() {
-      setLoading(true)
-      try {
-        const res = await api.get<{ data: WalletData & { transactions: WalletTransaction[] } }>('/wallet')
-        if (res?.data) {
-          const { transactions: txs, ...walletData } = res.data
-          setWallet(walletData as WalletData)
-          setTransactions(txs ?? [])
-        }
-      } catch {
-        // Bug 8 fix: show error instead of silent blank page
-        setLoadError('Failed to load wallet — please try again')
-      } finally {
-        setLoading(false)
-      }
-    }
     load()
+
+    // Handle ?success=true redirect from Stripe Checkout
+    if (searchParams.get('success') === 'true') {
+      setTopUpSuccess(true)
+      // Clean the query param without a full page reload
+      window.history.replaceState({}, '', '/wallet')
+      // Auto-hide success banner after 6 s
+      const t = setTimeout(() => setTopUpSuccess(false), 6000)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbUser])
 
   async function handleTopUp(tierId: string) {
@@ -176,7 +191,7 @@ export default function WalletPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#04040d' }}>
         <p className="text-sm font-bold" style={{ color: 'rgba(255,0,110,0.7)' }}>{loadError}</p>
-        <button onClick={() => { setLoadError(null); setLoading(true) }}
+        <button onClick={load}
           className="text-xs font-black px-4 py-2 rounded-xl"
           style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>
           TRY AGAIN
@@ -210,6 +225,27 @@ export default function WalletPage() {
           </h1>
         </div>
       </div>
+
+      {/* ── Top-up success banner (Stripe redirect) ────────────────────── */}
+      {topUpSuccess && (
+        <div
+          className="mx-4 mt-4 flex items-center gap-3 p-4 rounded-2xl"
+          style={{
+            background: 'rgba(0,255,136,0.08)',
+            border: '1px solid rgba(0,255,136,0.3)',
+            boxShadow: '0 0 20px rgba(0,255,136,0.1)',
+          }}
+        >
+          <CheckCircle size={20} style={{ color: '#00ff88', flexShrink: 0 }} />
+          <div className="flex-1">
+            <p className="text-xs font-black" style={{ color: '#00ff88' }}>TOP-UP SUCCESSFUL!</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(0,255,136,0.6)' }}>
+              Funds added to your wallet — ready to spend at partner venues.
+            </p>
+          </div>
+          <button onClick={() => setTopUpSuccess(false)} style={{ color: 'rgba(0,255,136,0.4)', flexShrink: 0 }}>✕</button>
+        </div>
+      )}
 
       {loading ? (
         <Spinner />
