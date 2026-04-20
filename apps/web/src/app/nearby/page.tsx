@@ -305,13 +305,13 @@ export default function NearbyPage() {
     }
   }, [tab, dbUser?.id])
 
-  async function swipe(profile: MatchProfile, liked: boolean) {
+  async function swipe(profile: MatchProfile, liked: boolean, superLike = false) {
     if (swiping) return
     setSwiping(true)
     setDeck(prev => prev.filter(p => p.id !== profile.id))
     if (deck.length <= 1) setOutOfCards(true)
     try {
-      const j = await api.post<{ data: { match: boolean; conversationId?: string } }>('/match/swipe', { toUserId: profile.id, liked })
+      const j = await api.post<{ data: { match: boolean; conversationId?: string } }>('/match/swipe', { toUserId: profile.id, liked, superLike })
       if (j?.data?.match && liked) {
         setMatchedProfile(profile)
         setMatchConvoId(j.data?.conversationId ?? null)
@@ -507,7 +507,7 @@ export default function NearbyPage() {
                           style={{ background: 'rgba(255,0,110,0.15)', border: '2px solid rgba(255,0,110,0.5)', boxShadow: '0 0 30px rgba(255,0,110,0.25)' }}>
                           <Heart size={30} fill="rgba(255,0,110,0.4)" style={{ color: '#ff006e' }} />
                         </button>
-                        <button onClick={() => deck[0] && swipe(deck[0], true)}
+                        <button onClick={() => deck[0] && swipe(deck[0], true, true)}
                           disabled={swiping || deck.length === 0}
                           className="w-16 h-16 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-40"
                           style={{ background: 'rgba(255,214,0,0.08)', border: '2px solid rgba(255,214,0,0.3)', boxShadow: '0 0 20px rgba(255,214,0,0.1)' }}>

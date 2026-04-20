@@ -31,8 +31,17 @@ async function request<T>(
     },
   })
 
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? 'Request failed')
+  // Bug 1 fix: guard against non-JSON bodies (e.g. Railway/Cloudflare 502 HTML pages)
+  const text = await res.text()
+  let data: any
+  try { data = JSON.parse(text) } catch { data = { error: text || 'Request failed' } }
+
+  if (!res.ok) {
+    // Bug 2 fix: tier-gated errors return { error: { message, code, requiredTier } }
+    const errVal = data?.error
+    const msg = typeof errVal === 'string' ? errVal : errVal?.message ?? 'Request failed'
+    throw new Error(msg)
+  }
   return data
 }
 
@@ -48,9 +57,17 @@ export const api = {
 export async function fetcher(path: string) {
   const authHeader = await getAuthHeader()
   const res = await fetch(`${API_URL}${path}`, {
+    // Bug 10 fix: disable browser cache so SWR always gets fresh data (e.g. scanned tickets)
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json', ...authHeader },
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? 'Fetch failed')
+  const text = await res.text()
+  let data: any
+  try { data = JSON.parse(text) } catch { data = { error: text || 'Fetch failed' } }
+  if (!res.ok) {
+    const errVal = data?.error
+    const msg = typeof errVal === 'string' ? errVal : errVal?.message ?? 'Fetch failed'
+    throw new Error(msg)
+  }
   return data
 }

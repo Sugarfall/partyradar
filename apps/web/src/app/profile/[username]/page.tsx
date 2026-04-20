@@ -450,8 +450,11 @@ export default function PublicProfilePage() {
                 {initials}
               </div>
           }
-          <div className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full"
-            style={{ background: '#00ff88', border: '2px solid #04040d', boxShadow: '0 0 6px rgba(0,255,136,0.6)' }} />
+          {/* Bug 7 fix: only show online dot when user is actively going out */}
+          {profile.goOutStatus === 'active' && (
+            <div className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full"
+              style={{ background: '#00ff88', border: '2px solid #04040d', boxShadow: '0 0 6px rgba(0,255,136,0.6)' }} />
+          )}
         </div>
       </div>
 

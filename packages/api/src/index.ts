@@ -218,7 +218,9 @@ io.on('connection', (socket) => {
 
     if (roomOnlineCount[room] && socket.data['userId']) {
       roomOnlineCount[room]!.delete(socket.data['userId'] as string)
-      io.to(room).emit('online-count', roomOnlineCount[room]!.size)
+      // Bug 16 fix: delete empty Sets to prevent unbounded memory growth
+      if (roomOnlineCount[room]!.size === 0) delete roomOnlineCount[room]
+      else io.to(room).emit('online-count', roomOnlineCount[room]!.size)
     }
   })
 
@@ -228,7 +230,9 @@ io.on('connection', (socket) => {
     for (const [room, members] of Object.entries(roomOnlineCount)) {
       if (socket.data['userId'] && members.has(socket.data['userId'] as string)) {
         members.delete(socket.data['userId'] as string)
-        io.to(room).emit('online-count', members.size)
+        // Bug 16 fix: prune empty Sets
+        if (members.size === 0) delete roomOnlineCount[room]
+        else io.to(room).emit('online-count', members.size)
       }
     }
     console.log(`[Socket] Disconnected: ${socket.id}`)
@@ -555,7 +559,11 @@ cron.schedule('0 * * * *', async () => {
       : railwayDomain
         ? `https://${railwayDomain}`
         : `http://localhost:${port}`
-    await fetch(`${baseUrl}/api/admin/seed-activity`, { method: 'POST' })
+    // Bug 17 fix: include internal API key so requireAdmin middleware lets the cron through
+    await fetch(`${baseUrl}/api/admin/seed-activity`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env['INTERNAL_API_KEY'] ?? ''}` },
+    })
     console.log('[Cron] Reseed complete')
   } catch (err) {
     console.error('[Cron] Error auto-reseeding events:', err)

@@ -37,16 +37,36 @@ router.post('/sync', async (req, res, next) => {
         username = `${baseUsername}${attempt}`
       }
 
-      user = await prisma.user.create({
-        data: {
-          firebaseUid: uid,
-          email,
-          username,
-          displayName: name ?? username,
-          photoUrl: picture ?? null,
-          isAdmin: shouldBeAdmin,
-        },
-      })
+      // Bug 12 fix: catch P2002 unique-constraint violation from concurrent registrations
+      try {
+        user = await prisma.user.create({
+          data: {
+            firebaseUid: uid,
+            email,
+            username,
+            displayName: name ?? username,
+            photoUrl: picture ?? null,
+            isAdmin: shouldBeAdmin,
+          },
+        })
+      } catch (createErr: any) {
+        if (createErr?.code === 'P2002') {
+          // Another request created a user with this username between our check and create.
+          // Fall back to uid-suffixed username to guarantee uniqueness.
+          user = await prisma.user.create({
+            data: {
+              firebaseUid: uid,
+              email,
+              username: `${baseUsername}${uid.slice(-4)}`,
+              displayName: name ?? username,
+              photoUrl: picture ?? null,
+              isAdmin: shouldBeAdmin,
+            },
+          })
+        } else {
+          throw createErr
+        }
+      }
 
       // Auto-follow all admin accounts + @Trippyboy so new users see official content
       const toFollow: string[] = []

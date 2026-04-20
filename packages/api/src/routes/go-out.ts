@@ -26,10 +26,12 @@ router.post('/suggest', requireAuth, async (req: AuthRequest, res, next) => {
     // Fetch nearby venues from DB (within ~15 km)
     const latDelta = 0.135  // ~15 km
     const lngDelta = 0.18
+    // Bug 15 fix: use explicit null check — lat/lng of 0 are valid coordinates
+    const hasLocation = lat != null && lng != null
     const venues = await prisma.venue.findMany({
       where: {
-        lat: lat ? { gte: lat - latDelta, lte: lat + latDelta } : undefined,
-        lng: lng ? { gte: lng - lngDelta, lte: lng + lngDelta } : undefined,
+        lat: hasLocation ? { gte: lat - latDelta, lte: lat + latDelta } : undefined,
+        lng: hasLocation ? { gte: lng - lngDelta, lte: lng + lngDelta } : undefined,
       },
       select: { name: true, type: true, vibeTags: true, rating: true },
       take: 20,
@@ -45,7 +47,7 @@ router.post('/suggest', requireAuth, async (req: AuthRequest, res, next) => {
         isPublished: true,
         isCancelled: false,
         startsAt: { gte: now, lte: midnight },
-        ...(lat ? {
+        ...(hasLocation ? {
           venue: {
             lat: { gte: lat - latDelta, lte: lat + latDelta },
             lng: { gte: lng - lngDelta, lte: lng + lngDelta },

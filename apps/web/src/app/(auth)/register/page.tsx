@@ -116,6 +116,7 @@ export default function RegisterPage() {
     } catch (err: any) {
       const msg = parseAuthError(err)
       if (msg) setError(msg)
+    } finally {
       setGoogleLoading(false)
     }
   }
@@ -129,6 +130,7 @@ export default function RegisterPage() {
     } catch (err: any) {
       const msg = parseAuthError(err)
       if (msg) setError(msg)
+    } finally {
       setAppleLoading(false)
     }
   }

@@ -95,8 +95,9 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     // Geo filter
     if (lat && lng) {
       const latN = Number(lat), lngN = Number(lng), radN = Number(radius)
-      const latDelta = radN / 69
-      const lngDelta = radN / (69 * Math.cos((latN * Math.PI) / 180))
+      // Bug 13 fix: 111 km per degree latitude (was 69, which is miles — radius is in km)
+      const latDelta = radN / 111
+      const lngDelta = radN / (111 * Math.cos((latN * Math.PI) / 180))
       where['lat'] = { gte: latN - latDelta, lte: latN + latDelta }
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }

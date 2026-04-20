@@ -402,9 +402,9 @@ export default function ProfilePage() {
     localStorage.setItem('partyradar_going_out', String(next))
   }
 
-  async function handleGoOutAI() {
+  async function handleGoOutAI(force = false) {
     setShowGoOutAI(true)
-    if (goOutResult && goOutResult.suggestions.length > 0) return  // already fetched
+    if (!force && goOutResult && goOutResult.suggestions.length > 0) return  // already fetched
     setGoOutLoading(true)
     setGoOutError(null)
     try {
@@ -487,13 +487,19 @@ export default function ProfilePage() {
     } catch {}
   }
 
-  if (authLoading || !dbUser) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 rounded-full border-2 animate-spin"
           style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
       </div>
     )
+  }
+
+  // Bug 5 fix: don't render an infinite spinner for logged-out users — redirect to login
+  if (!dbUser) {
+    if (typeof window !== 'undefined') window.location.href = '/login'
+    return null
   }
 
   const tier = TIER_CONFIG[dbUser.subscriptionTier] ?? TIER_CONFIG.FREE
@@ -1186,7 +1192,7 @@ export default function ProfilePage() {
               <div className="flex items-center gap-2">
                 {!goOutLoading && goOutResult && (
                   <button
-                    onClick={() => { setGoOutResult(null); setGoOutLoading(true); handleGoOutAI() }}
+                    onClick={() => { setGoOutResult(null); handleGoOutAI(true) }}
                     className="text-[9px] font-black px-2 py-1 rounded-lg"
                     style={{ color: 'rgba(var(--accent-rgb),0.5)', border: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(var(--accent-rgb),0.04)' }}
                   >

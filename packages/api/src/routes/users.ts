@@ -77,11 +77,26 @@ router.get('/search', optionalAuth, async (req: AuthRequest, res, next) => {
 
 // ── GET /api/users/me/profile-views ────────────────────────────────────────────
 // Returns how many people viewed your profile this week.
-// PRO+ users get the full viewer list.
-router.get('/me/profile-views', requireAuth, requireTier('PRO', 'Profile View History'), async (req: AuthRequest, res, next) => {
+// PRO+ users get the full viewer list; others get count only.
+// Bug 14 fix: removed requireTier middleware — return isPremium:false for sub-PRO
+// instead of 403, so the frontend can show an upgrade CTA gracefully.
+router.get('/me/profile-views', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
+    const tier = req.user!.dbUser.subscriptionTier ?? 'FREE'
+    const tierOrder: Record<string, number> = { FREE: 0, BASIC: 1, PRO: 2, PREMIUM: 3 }
+    const isPremium = (tierOrder[tier] ?? 0) >= tierOrder['PRO']!
+
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // last 7 days
+
+    if (!isPremium) {
+      // Non-PRO: just return the count so the profile page can show "X views — upgrade to see who"
+      const count = await prisma.profileView.count({
+        where: { profileId: userId, viewerId: { not: userId }, updatedAt: { gte: since } },
+      })
+      res.json({ data: { count, isPremium: false, viewers: [] } })
+      return
+    }
 
     const views = await prisma.profileView.findMany({
       where: { profileId: userId, viewerId: { not: userId }, updatedAt: { gte: since } },

@@ -90,7 +90,7 @@ export default function TicketsPage() {
                 </div>
 
                 <p className="text-center text-xs text-zinc-600 mt-2">
-                  {formatPrice(ticket.pricePaid)} · {ticket.qrCode.slice(0, 8)}...
+                  {formatPrice(ticket.pricePaid)} · {ticket.qrCode?.slice(0, 8) ?? '--------'}...
                 </p>
               </div>
             </div>

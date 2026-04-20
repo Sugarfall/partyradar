@@ -61,6 +61,12 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
 }
 
 export async function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  // Bug 17 fix: allow internal service-to-service calls via INTERNAL_API_KEY
+  const internalKey = process.env['INTERNAL_API_KEY']
+  if (internalKey && req.headers.authorization === `Bearer ${internalKey}`) {
+    next()
+    return
+  }
   await requireAuth(req, res, () => {
     if (!req.user?.dbUser.isAdmin) {
       res.status(403).json({ error: 'Admin access required' })
@@ -74,15 +80,14 @@ export function requireTier(minTier: 'BASIC' | 'PRO' | 'PREMIUM', featureName: s
   const order: Record<string, number> = { FREE: 0, BASIC: 1, PRO: 2, PREMIUM: 3 }
   return async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthRequest
-    if (!authReq.user) return res.status(401).json({ error: { message: 'Authentication required' } })
+    // Bug 11 fix: use flat error string so frontend can read data.error directly
+    if (!authReq.user) return res.status(401).json({ error: 'Authentication required' })
     const userTier = authReq.user.dbUser.subscriptionTier ?? 'FREE'
     if ((order[userTier] ?? 0) < (order[minTier] ?? 0)) {
       return res.status(403).json({
-        error: {
-          message: `${featureName} requires ${minTier} subscription or higher`,
-          code: 'TIER_REQUIRED',
-          requiredTier: minTier,
-        },
+        error: `${featureName} requires ${minTier} subscription or higher`,
+        code: 'TIER_REQUIRED',
+        requiredTier: minTier,
       })
     }
     next()
