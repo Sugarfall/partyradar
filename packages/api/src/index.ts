@@ -468,55 +468,7 @@ cron.schedule('*/30 * * * *', async () => {
   }
 })
 
-// Every 30 minutes: inject fresh venue activity posts to keep feed live
-cron.schedule('*/30 * * * *', async () => {
-  try {
-    const hour = new Date().getHours()
-    // Only post activity between 6pm and 4am (active nightlife hours)
-    // Bug 16 fix: was `hour > 4` (skips 5-17 only), should be `hour >= 4` (also skips 4am)
-    if (hour >= 4 && hour < 18) return
-
-    const eveningMessages = [
-      'Doors open, early crowd filtering in 🚪',
-      'Sound check done — tonight is going to go off 🎵',
-      'Bar just opened, get here early for the queue 🍺',
-      'Tickets still available on the door 🎟️',
-    ]
-    const nightMessages = [
-      'Floor is absolutely rammed 🔥',
-      'Best crowd we\'ve had all month 🙌',
-      'DJ just dropped a monster set 💥',
-      'Vibes in here are genuinely immaculate tonight ✨',
-      'Queue moving fast — worth the wait 🖤',
-      'This is what Glasgow nightlife is about 🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-      'Sound system absolutely thumping tonight 🎧',
-    ]
-    const msgs = (hour >= 22 || hour < 4) ? nightMessages : eveningMessages
-
-    const demoUsers = await prisma.user.findMany({
-      where: { firebaseUid: { startsWith: 'demo_user' } },
-      select: { id: true },
-    })
-    const venues = await prisma.venue.findMany({
-      where: { city: 'Glasgow' },
-      select: { id: true, name: true },
-      take: 18,
-    })
-    if (demoUsers.length === 0 || venues.length === 0) return
-
-    // Post to 1-2 random venues
-    const count = Math.random() > 0.5 ? 2 : 1
-    const picked = venues.sort(() => Math.random() - 0.5).slice(0, count)
-    for (const venue of picked) {
-      const user = demoUsers[Math.floor(Math.random() * demoUsers.length)]!
-      const text = msgs[Math.floor(Math.random() * msgs.length)]!
-      await prisma.post.create({ data: { userId: user.id, venueId: venue.id, text } })
-      console.log(`[Cron] Live post at ${venue.name}: "${text}"`)
-    }
-  } catch (err) {
-    console.error('[Cron] Error refreshing activity:', err)
-  }
-})
+// Bot-post cron removed — feed shows real users only
 
 // ─── Auto-reseed events when they all expire ──────────────────────────────────
 // Every hour: if no future published events remain, delete stale ones and re-seed
@@ -641,6 +593,21 @@ cron.schedule('0 * * * *', async () => {
     })
     if (migrated.count > 0) {
       console.log(`[Startup] Reassigned ${migrated.count} external events from "demo" → PartyRadar Assistant`)
+    }
+
+    // Delete all posts created by demo/bot accounts — feed shows real users only
+    const botUsers = await prisma.user.findMany({
+      where: { firebaseUid: { startsWith: 'demo_' } },
+      select: { id: true },
+    })
+    if (botUsers.length > 0) {
+      const botIds = botUsers.map((u) => u.id)
+      const deletedPosts = await prisma.post.deleteMany({
+        where: { userId: { in: botIds } },
+      })
+      if (deletedPosts.count > 0) {
+        console.log(`[Startup] Deleted ${deletedPosts.count} bot post(s) from demo accounts`)
+      }
     }
   } catch (err) {
     console.error('[Startup] Cleanup error:', err)

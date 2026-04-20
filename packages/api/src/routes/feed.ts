@@ -54,7 +54,11 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         },
       }),
       prisma.post.findMany({
-        where: { userId: { in: followingIds }, OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }] },
+        where: {
+          userId: { in: followingIds },
+          OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }],
+          user: { firebaseUid: { not: { startsWith: 'demo_' } } },
+        },
         orderBy: { createdAt: 'desc' },
         take: 100,
         include: {
@@ -127,6 +131,7 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
       where: {
         createdAt: { gte: sevenDaysAgo },
         isStory: false,
+        user: { firebaseUid: { not: { startsWith: 'demo_' } } },
       },
       orderBy: { createdAt: 'desc' },
       take: 60,
