@@ -150,6 +150,69 @@ router.post('/swipe', requireAuth, requireTier('BASIC', 'Matchmaking'), async (r
   }
 })
 
+// POST /api/match/setup-test — seed a test liker for the calling user (dev/QA)
+router.post('/setup-test', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const me = req.user!.dbUser
+
+    // 1. Ensure calling user has gender=MALE + subscription=BASIC so deck works
+    await prisma.user.update({
+      where: { id: me.id },
+      data: {
+        gender: 'MALE',
+        subscriptionTier: 'BASIC',
+        lastKnownLat:  55.8617,
+        lastKnownLng: -4.2583,
+        lastSeenAt:   new Date(),
+      },
+    })
+
+    // 2. Upsert a realistic test "liker" (female, photo, Glasgow coords)
+    const testUid = 'test_liker_female_01'
+    const tester = await prisma.user.upsert({
+      where:  { firebaseUid: testUid },
+      create: {
+        firebaseUid:    testUid,
+        email:          'zara.test@partyradar.dev',
+        username:       'zara_radar',
+        displayName:    'Zara',
+        gender:         'FEMALE',
+        subscriptionTier: 'BASIC',
+        photoUrl:       'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop&crop=face',
+        bio:            'Love live music and late nights 🎶',
+        interests:      ['Music', 'Nightlife', 'Festivals'],
+        lastKnownLat:   55.8617,
+        lastKnownLng:  -4.2583,
+        lastSeenAt:     new Date(),
+      },
+      update: {
+        photoUrl:    'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop&crop=face',
+        gender:      'FEMALE',
+        subscriptionTier: 'BASIC',
+        lastKnownLat:  55.8617,
+        lastKnownLng: -4.2583,
+        lastSeenAt:   new Date(),
+      },
+    })
+
+    // 3. Zara has already swiped right on the calling user
+    await prisma.swipeLike.upsert({
+      where:  { fromUserId_toUserId: { fromUserId: tester.id, toUserId: me.id } },
+      create: { fromUserId: tester.id, toUserId: me.id, liked: true },
+      update: { liked: true },
+    })
+
+    // 4. Clear any prior swipe from calling user → Zara so she appears in deck
+    await prisma.swipeLike.deleteMany({
+      where: { fromUserId: me.id, toUserId: tester.id },
+    })
+
+    res.json({ data: { testUserId: tester.id, displayName: tester.displayName, message: 'Test liker ready — refresh your deck!' } })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // GET /api/match/matches — get all mutual matches (BASIC+ required)
 router.get('/matches', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req: AuthRequest, res, next) => {
   try {
