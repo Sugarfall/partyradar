@@ -89,6 +89,12 @@ enum GroupType {
   TRIP
 }
 
+enum AppRole {
+  USER
+  MODERATOR
+  ADMIN
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -123,6 +129,7 @@ model User {
   lastSeenAt        DateTime?
   isBanned          Boolean          @default(false)
   isAdmin           Boolean          @default(false)
+  appRole           AppRole          @default(USER)
   referralCode      String?          @unique
   referralBalance   Float            @default(0)
   referredBy        String?

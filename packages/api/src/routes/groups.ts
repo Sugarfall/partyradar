@@ -208,8 +208,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       },
     })
 
-    // Auto-join creator (free — they own it)
-    await prisma.groupMembership.create({ data: { groupId: group.id, userId } })
+    // Auto-join creator as OWNER
+    await (prisma.groupMembership as any).create({ data: { groupId: group.id, userId, role: 'OWNER' } })
     await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: 1 } })
 
     res.status(201).json({
@@ -296,6 +296,9 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
           memberCount: group.memberCount,
           isPrivate: group.isPrivate,
           isOwner: group.createdById === userId,
+          myRole: group.createdById === userId
+            ? 'OWNER'
+            : ((membership as any)?.role ?? (membership ? 'MEMBER' : null)),
           isJoined: !!membership,
           notificationsEnabled: membership?.notificationsEnabled ?? false,
         },
@@ -814,6 +817,87 @@ router.delete('/:groupId/pub-crawl', requireAuth, async (req: AuthRequest, res, 
   } catch (err) {
     next(err)
   }
+})
+
+// ─── Group Settings & Admin ───────────────────────────────────────────────────
+
+/** PUT /api/groups/:id/settings — edit group name/desc/emoji/color (OWNER or MOD) */
+router.put('/:id/settings', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const groupId = req.params['id'] as string
+    const { name, description, emoji, coverColor } = req.body as {
+      name?: string; description?: string; emoji?: string; coverColor?: string
+    }
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId } })
+    if (!group) throw new AppError('Group not found', 404)
+
+    const membership = await (prisma.groupMembership as any).findUnique({
+      where: { groupId_userId: { groupId: group.id, userId } },
+      select: { role: true },
+    })
+    const isOwner = group.createdById === userId
+    const isMod = membership?.role === 'MOD' || membership?.role === 'OWNER'
+    if (!isOwner && !isMod) throw new AppError('Only group admins and moderators can edit settings', 403)
+
+    const updated = await prisma.groupChat.update({
+      where: { id: group.id },
+      data: {
+        ...(name?.trim() ? { name: name.trim().slice(0, 40) } : {}),
+        ...(description !== undefined ? { description: description?.trim()?.slice(0, 200) ?? null } : {}),
+        ...(emoji?.trim() ? { emoji: emoji.trim() } : {}),
+        ...(coverColor ? { coverColor } : {}),
+      },
+    })
+    res.json({
+      data: {
+        id: updated.id,
+        name: updated.name,
+        description: updated.description,
+        emoji: updated.emoji,
+        coverColor: updated.coverColor,
+      },
+    })
+  } catch (err) { next(err) }
+})
+
+/** DELETE /api/groups/:id — delete group (OWNER only) */
+router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const groupId = req.params['id'] as string
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId } })
+    if (!group) throw new AppError('Group not found', 404)
+    if (group.createdById !== userId) throw new AppError('Only the group owner can delete this group', 403)
+    await prisma.groupChat.delete({ where: { id: groupId } })
+    res.json({ data: { deleted: true } })
+  } catch (err) { next(err) }
+})
+
+/** DELETE /api/groups/:id/messages/:messageId — delete a message (OWNER or MOD) */
+router.delete('/:id/messages/:messageId', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { id: groupId, messageId } = req.params as { id: string; messageId: string }
+
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { createdById: true } })
+    if (!group) throw new AppError('Group not found', 404)
+
+    const membership = await (prisma.groupMembership as any).findUnique({
+      where: { groupId_userId: { groupId, userId } },
+      select: { role: true },
+    })
+
+    const isOwner = group.createdById === userId
+    const isMod = membership?.role === 'MOD' || membership?.role === 'OWNER'
+    if (!isOwner && !isMod) throw new AppError('Only group admins and moderators can delete messages', 403)
+
+    const msg = await prisma.groupMessage.findUnique({ where: { id: messageId } })
+    if (!msg || msg.groupId !== groupId) throw new AppError('Message not found', 404)
+
+    await prisma.groupMessage.delete({ where: { id: messageId } })
+    res.json({ data: { deleted: true } })
+  } catch (err) { next(err) }
 })
 
 export default router

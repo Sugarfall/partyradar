@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAdmin } from '../middleware/auth'
+import { requireAdmin, requireAuth, requireAppRole } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { stripe } from '../lib/stripe'
@@ -164,15 +164,23 @@ router.delete('/sightings/:id', requireAdmin, async (req, res, next) => {
 })
 
 /** GET /api/admin/users */
-router.get('/users', requireAdmin, async (_req, res, next) => {
+router.get('/users', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
   try {
+    const search = req.query['q'] ? String(req.query['q']).trim() : undefined
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
+      where: search ? {
+        OR: [
+          { username: { contains: search, mode: 'insensitive' } },
+          { displayName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ],
+      } : undefined,
       select: {
-        id: true, email: true, username: true, displayName: true,
+        id: true, email: true, username: true, displayName: true, photoUrl: true,
         subscriptionTier: true, ageVerified: true, isBanned: true,
-        isAdmin: true, createdAt: true,
-        _count: { select: { hostedEvents: true, tickets: true } },
+        isAdmin: true, appRole: true, createdAt: true, gender: true,
+        _count: { select: { hostedEvents: true, tickets: true, groupMemberships: true } },
       },
       take: 200,
     })
@@ -182,11 +190,18 @@ router.get('/users', requireAdmin, async (_req, res, next) => {
   }
 })
 
-/** PUT /api/admin/users/:id/ban */
-router.put('/users/:id/ban', requireAdmin, async (req, res, next) => {
+/** PUT /api/admin/users/:id/ban — MODERATOR+ can ban */
+router.put('/users/:id/ban', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.params['id'] } })
     if (!user) throw new AppError('User not found', 404)
+    // Moderators cannot ban other admins/moderators
+    const callerRole = req.user!.dbUser.appRole
+    if (callerRole !== 'ADMIN' && !req.user!.dbUser.isAdmin) {
+      if (user.appRole === 'ADMIN' || user.appRole === 'MODERATOR' || user.isAdmin) {
+        throw new AppError('Moderators cannot ban platform staff', 403)
+      }
+    }
     const updated = await prisma.user.update({
       where: { id: user.id },
       data: { isBanned: !user.isBanned },
@@ -195,6 +210,108 @@ router.put('/users/:id/ban', requireAdmin, async (req, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+/** PUT /api/admin/users/:id/app-role — assign platform role (ADMIN only) */
+router.put('/users/:id/app-role', requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const id = req.params['id'] as string
+    const { role } = req.body as { role: string }
+    if (!['USER', 'MODERATOR', 'ADMIN'].includes(role)) {
+      throw new AppError('Invalid role. Must be USER, MODERATOR or ADMIN', 400)
+    }
+    const target = await prisma.user.findUnique({ where: { id } })
+    if (!target) throw new AppError('User not found', 404)
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { appRole: role as any },
+      select: { id: true, username: true, displayName: true, appRole: true, email: true },
+    })
+    res.json({ data: updated })
+  } catch (err) { next(err) }
+})
+
+/** GET /api/admin/groups — list all groups (MODERATOR+) */
+router.get('/groups', requireAuth, requireAppRole('MODERATOR'), async (_req, res, next) => {
+  try {
+    const groups = await prisma.groupChat.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: { select: { memberships: true, messages: true } },
+      },
+      take: 200,
+    })
+    // Enrich with creator info
+    const creatorIds = groups.map((g) => g.createdById).filter(Boolean) as string[]
+    const creators = creatorIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: creatorIds } },
+          select: { id: true, username: true, displayName: true, appRole: true },
+        })
+      : []
+    const creatorMap = new Map(creators.map((c) => [c.id, c]))
+    res.json({
+      data: groups.map((g) => ({
+        ...g,
+        creator: g.createdById ? creatorMap.get(g.createdById) ?? null : null,
+      })),
+    })
+  } catch (err) { next(err) }
+})
+
+/** DELETE /api/admin/groups/:id — force-delete group (ADMIN only) */
+router.delete('/groups/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const id = req.params['id'] as string
+    const group = await prisma.groupChat.findUnique({ where: { id } })
+    if (!group) throw new AppError('Group not found', 404)
+    await prisma.groupChat.delete({ where: { id } })
+    res.json({ data: { deleted: true, name: group.name } })
+  } catch (err) { next(err) }
+})
+
+/** GET /api/admin/stats — platform overview stats (MODERATOR+) */
+router.get('/stats', requireAuth, requireAppRole('MODERATOR'), async (_req, res, next) => {
+  try {
+    const [userCount, eventCount, groupCount, bannedCount, reportCount, modCount, adminCount] = await Promise.all([
+      prisma.user.count({ where: { isBanned: false } }),
+      prisma.event.count({ where: { isPublished: true, isCancelled: false } }),
+      prisma.groupChat.count(),
+      prisma.user.count({ where: { isBanned: true } }),
+      prisma.anonymousFeedback.count({ where: { reportCount: { gte: 1 } } }),
+      prisma.user.count({ where: { appRole: 'MODERATOR' } }),
+      prisma.user.count({ where: { OR: [{ appRole: 'ADMIN' }, { isAdmin: true }] } }),
+    ])
+    res.json({ data: { userCount, eventCount, groupCount, bannedCount, reportCount, modCount, adminCount } })
+  } catch (err) { next(err) }
+})
+
+/** GET /api/admin/reports — flagged feedback (MODERATOR+) */
+router.get('/reports', requireAuth, requireAppRole('MODERATOR'), async (_req, res, next) => {
+  try {
+    const reports = await prisma.anonymousFeedback.findMany({
+      where: { reportCount: { gte: 1 } },
+      orderBy: { reportCount: 'desc' },
+      include: {
+        fromUser: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+        toUser: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+      },
+      take: 100,
+    })
+    res.json({ data: reports })
+  } catch (err) { next(err) }
+})
+
+/** PUT /api/admin/feedback/:id/hide — hide reported feedback (MODERATOR+) */
+router.put('/feedback/:id/hide', requireAuth, requireAppRole('MODERATOR'), async (req, res, next) => {
+  try {
+    const id = req.params['id'] as string
+    const updated = await prisma.anonymousFeedback.update({
+      where: { id },
+      data: { isHidden: true },
+    })
+    res.json({ data: { id: updated.id, isHidden: updated.isHidden } })
+  } catch (err) { next(err) }
 })
 
 /** GET /api/admin/revenue */

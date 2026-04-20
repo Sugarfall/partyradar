@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight, Menu } from 'lucide-react'
+import { Zap, Compass, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight, Menu, Shield } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -324,6 +324,14 @@ function NavbarInner() {
                         backdropFilter: 'blur(20px)',
                       }}
                     >
+                      {/* Admin / Mod panel link — staff only */}
+                      {(dbUser?.appRole === 'ADMIN' || dbUser?.appRole === 'MODERATOR' || dbUser?.isAdmin) && (
+                        <Link href="/admin" onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                          style={{ color: pathname.startsWith('/admin') ? '#ff006e' : 'rgba(255,0,110,0.8)', borderBottom: '1px solid rgba(255,0,110,0.12)', background: 'rgba(255,0,110,0.04)' }}>
+                          <Shield size={15} /> {dbUser?.appRole === 'ADMIN' || dbUser?.isAdmin ? 'Admin Panel' : 'Mod Panel'}
+                        </Link>
+                      )}
                       {isHost && (
                         <>
                           <Link href="/dashboard" onClick={() => setMenuOpen(false)}

@@ -13,6 +13,7 @@ export interface AuthRequest extends Request {
       subscriptionTier: string
       ageVerified: boolean
       isAdmin: boolean
+      appRole: string
       isBanned: boolean
       showAlcoholEvents: boolean
     }
@@ -38,6 +39,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
         subscriptionTier: true,
         ageVerified: true,
         isAdmin: true,
+        appRole: true,
         isBanned: true,
         showAlcoholEvents: true,
       },
@@ -53,7 +55,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
       return
     }
 
-    req.user = { firebaseUid: decoded.uid, dbUser }
+    req.user = { firebaseUid: decoded.uid, dbUser: { ...dbUser, appRole: dbUser.appRole as string } }
     next()
   } catch {
     res.status(401).json({ error: 'Invalid token' })
@@ -68,12 +70,33 @@ export async function requireAdmin(req: AuthRequest, res: Response, next: NextFu
     return
   }
   await requireAuth(req, res, () => {
-    if (!req.user?.dbUser.isAdmin) {
+    const user = req.user?.dbUser
+    if (!user?.isAdmin && user?.appRole !== 'ADMIN') {
       res.status(403).json({ error: 'Admin access required' })
       return
     }
     next()
   })
+}
+
+/** requireAppRole — platform-level MODERATOR or ADMIN gate */
+export function requireAppRole(minRole: 'MODERATOR' | 'ADMIN') {
+  const order: Record<string, number> = { USER: 0, MODERATOR: 1, ADMIN: 2 }
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const authReq = req as AuthRequest
+    if (!authReq.user) return res.status(401).json({ error: 'Authentication required' })
+    const role = (authReq.user.dbUser.appRole as string) ?? 'USER'
+    // legacy isAdmin maps to ADMIN
+    const effectiveOrder = authReq.user.dbUser.isAdmin ? 2 : (order[role] ?? 0)
+    if (effectiveOrder < (order[minRole] ?? 0)) {
+      return res.status(403).json({
+        error: `This action requires ${minRole} access or higher`,
+        code: 'ROLE_REQUIRED',
+        requiredRole: minRole,
+      })
+    }
+    next()
+  }
 }
 
 export function requireTier(minTier: 'BASIC' | 'PRO' | 'PREMIUM', featureName: string) {
@@ -105,10 +128,10 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
       select: {
         id: true, email: true, username: true, displayName: true,
         subscriptionTier: true, ageVerified: true,
-        isAdmin: true, isBanned: true, showAlcoholEvents: true,
+        isAdmin: true, appRole: true, isBanned: true, showAlcoholEvents: true,
       },
     })
-    if (dbUser && !dbUser.isBanned) req.user = { firebaseUid: decoded.uid, dbUser }
+    if (dbUser && !dbUser.isBanned) req.user = { firebaseUid: decoded.uid, dbUser: { ...dbUser, appRole: dbUser.appRole as string } }
   } catch {
     // token invalid or expired — proceed unauthenticated
   }

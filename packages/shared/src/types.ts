@@ -7,6 +7,7 @@ export type RSVPStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMOVED' | 'WA
 export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY' | 'PREFER_NOT_TO_SAY'
 export type SubscriptionTier = 'FREE' | 'BASIC' | 'PRO' | 'PREMIUM'
 export type AccountMode = 'ATTENDEE' | 'HOST'
+export type AppRole = 'USER' | 'MODERATOR' | 'ADMIN'
 export type NotificationType =
   | 'RSVP_CONFIRMED'
   | 'INVITE_RECEIVED'
@@ -45,6 +46,8 @@ export interface User {
   lastSeenAt?: string | null
   subscriptionTier: SubscriptionTier
   accountMode: AccountMode
+  appRole?: AppRole
+  isAdmin?: boolean
   stripeCustomerId?: string | null
   createdAt: string
 }

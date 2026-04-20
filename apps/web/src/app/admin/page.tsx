@@ -1,0 +1,634 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { api } from '@/lib/api'
+import Link from 'next/link'
+import {
+  Shield, ShieldAlert, ShieldCheck, Users, Calendar, MessageSquare,
+  Flag, Search, Ban, ChevronDown, Trash2, BarChart3, Crown,
+  AlertTriangle, CheckCircle, X, Star, Eye
+} from 'lucide-react'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface AdminUser {
+  id: string
+  email: string
+  username: string
+  displayName: string
+  photoUrl?: string | null
+  subscriptionTier: string
+  appRole: string
+  isAdmin: boolean
+  isBanned: boolean
+  createdAt: string
+  gender?: string | null
+  _count: { hostedEvents: number; tickets: number; groupMemberships: number }
+}
+
+interface AdminEvent {
+  id: string
+  name: string
+  type: string
+  startsAt: string
+  isPublished: boolean
+  isFeatured: boolean
+  isCancelled: boolean
+  host: { id: string; username: string; displayName: string }
+  _count: { guests: number; tickets: number }
+}
+
+interface AdminGroup {
+  id: string
+  slug: string
+  name: string
+  type: string
+  emoji: string
+  coverColor: string
+  isPrivate: boolean
+  isPaid: boolean
+  memberCount: number
+  createdAt: string
+  creator?: { id: string; username: string; displayName: string; appRole: string } | null
+  _count: { memberships: number; messages: number }
+}
+
+interface AdminReport {
+  id: string
+  fromUser: { id: string; username: string; displayName: string; photoUrl?: string | null }
+  toUser: { id: string; username: string; displayName: string; photoUrl?: string | null }
+  category: string
+  score: number
+  comment?: string | null
+  reportCount: number
+  isHidden: boolean
+  createdAt: string
+}
+
+interface Stats {
+  userCount: number
+  eventCount: number
+  groupCount: number
+  bannedCount: number
+  reportCount: number
+  modCount: number
+  adminCount: number
+}
+
+// ─── Role badge ───────────────────────────────────────────────────────────────
+
+function RoleBadge({ role, isAdmin }: { role: string; isAdmin: boolean }) {
+  const effective = isAdmin || role === 'ADMIN' ? 'ADMIN' : role
+  const cfg: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+    ADMIN: { label: 'Admin', color: '#ff006e', icon: <Crown size={10} /> },
+    MODERATOR: { label: 'Mod', color: '#00c8ff', icon: <ShieldCheck size={10} /> },
+    USER: { label: 'User', color: '#555', icon: null },
+  }
+  const c = cfg[effective] ?? cfg['USER']!
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
+      style={{ background: `${c.color}20`, color: c.color, border: `1px solid ${c.color}40` }}
+    >
+      {c.icon} {c.label}
+    </span>
+  )
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
+  return (
+    <div
+      className="rounded-2xl p-5 flex flex-col gap-3"
+      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-white/40 uppercase tracking-widest font-semibold">{label}</span>
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${color}15`, color }}>
+          {icon}
+        </div>
+      </div>
+      <div className="text-3xl font-black" style={{ color }}>{value.toLocaleString()}</div>
+    </div>
+  )
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports'
+
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
+  { id: 'users', label: 'Users', icon: <Users size={14} /> },
+  { id: 'events', label: 'Events', icon: <Calendar size={14} /> },
+  { id: 'groups', label: 'Groups', icon: <MessageSquare size={14} /> },
+  { id: 'reports', label: 'Reports', icon: <Flag size={14} /> },
+]
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function AdminPage() {
+  const { dbUser, loading } = useAuth()
+  const [tab, setTab] = useState<Tab>('stats')
+  const [stats, setStats] = useState<Stats | null>(null)
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [events, setEvents] = useState<AdminEvent[]>([])
+  const [groups, setGroups] = useState<AdminGroup[]>([])
+  const [reports, setReports] = useState<AdminReport[]>([])
+  const [search, setSearch] = useState('')
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [roleMenuOpen, setRoleMenuOpen] = useState<string | null>(null)
+
+  const showToast = useCallback((msg: string, ok = true) => {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 3000)
+  }, [])
+
+  const isStaff = dbUser?.appRole === 'ADMIN' || dbUser?.appRole === 'MODERATOR' || dbUser?.isAdmin
+  const isAdmin = dbUser?.appRole === 'ADMIN' || dbUser?.isAdmin
+
+  // Load data per tab
+  useEffect(() => {
+    if (!isStaff) return
+    if (tab === 'stats') {
+      api.get<{ data: Stats }>('/admin/stats').then((r) => setStats(r.data)).catch(() => {})
+    } else if (tab === 'users') {
+      api.get<{ data: AdminUser[] }>('/admin/users').then((r) => setUsers(r.data)).catch(() => {})
+    } else if (tab === 'events') {
+      api.get<{ data: AdminEvent[] }>('/admin/events').then((r) => setEvents(r.data)).catch(() => {})
+    } else if (tab === 'groups') {
+      api.get<{ data: AdminGroup[] }>('/admin/groups').then((r) => setGroups(r.data)).catch(() => {})
+    } else if (tab === 'reports') {
+      api.get<{ data: AdminReport[] }>('/admin/reports').then((r) => setReports(r.data)).catch(() => {})
+    }
+  }, [tab, isStaff])
+
+  // ─── Actions ────────────────────────────────────────────────────────────────
+
+  const handleBanToggle = async (userId: string, currentlyBanned: boolean) => {
+    setBusy(true)
+    try {
+      await api.put(`/admin/users/${userId}/ban`, {})
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, isBanned: !currentlyBanned } : u))
+      showToast(currentlyBanned ? 'User unbanned' : 'User banned')
+    } catch (e: any) {
+      showToast(e?.message ?? 'Failed', false)
+    } finally { setBusy(false) }
+  }
+
+  const handleSetRole = async (userId: string, role: string) => {
+    if (!isAdmin) { showToast('Admin access required', false); return }
+    setBusy(true)
+    setRoleMenuOpen(null)
+    try {
+      await api.put(`/admin/users/${userId}/app-role`, { role })
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, appRole: role } : u))
+      showToast(`Role updated to ${role}`)
+    } catch (e: any) {
+      showToast(e?.message ?? 'Failed', false)
+    } finally { setBusy(false) }
+  }
+
+  const handleFeatureEvent = async (eventId: string) => {
+    try {
+      await api.put(`/admin/events/${eventId}/feature`, {})
+      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, isFeatured: !e.isFeatured } : e))
+      showToast('Feature status updated')
+    } catch { showToast('Failed', false) }
+  }
+
+  const handleCancelEvent = async (eventId: string) => {
+    if (!confirm('Cancel this event?')) return
+    try {
+      await api.delete(`/admin/events/${eventId}`)
+      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, isCancelled: true, isPublished: false } : e))
+      showToast('Event cancelled')
+    } catch { showToast('Failed', false) }
+  }
+
+  const handleDeleteGroup = async (groupId: string, groupName: string) => {
+    if (!isAdmin) { showToast('Admin access required', false); return }
+    if (!confirm(`Permanently delete "${groupName}" and all its messages? This cannot be undone.`)) return
+    try {
+      await api.delete(`/admin/groups/${groupId}`)
+      setGroups((prev) => prev.filter((g) => g.id !== groupId))
+      showToast(`Group "${groupName}" deleted`)
+    } catch { showToast('Failed', false) }
+  }
+
+  const handleHideFeedback = async (reportId: string) => {
+    try {
+      await api.put(`/admin/feedback/${reportId}/hide`, {})
+      setReports((prev) => prev.map((r) => r.id === reportId ? { ...r, isHidden: true } : r))
+      showToast('Feedback hidden')
+    } catch { showToast('Failed', false) }
+  }
+
+  // ─── Loading / access guard ──────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#00c8ff', borderTopColor: 'transparent' }} />
+      </div>
+    )
+  }
+
+  if (!isStaff) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-8">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-2" style={{ background: '#ff006e20', border: '1px solid #ff006e40' }}>
+          <ShieldAlert size={28} style={{ color: '#ff006e' }} />
+        </div>
+        <h1 className="text-xl font-bold text-white">Access Denied</h1>
+        <p className="text-white/50 text-sm max-w-xs">You need Admin or Moderator access to view this panel.</p>
+        <Link href="/" className="text-sm font-semibold mt-2" style={{ color: '#00c8ff' }}>← Back to app</Link>
+      </div>
+    )
+  }
+
+  // Filtered users
+  const filteredUsers = search.trim()
+    ? users.filter((u) =>
+        u.username.toLowerCase().includes(search.toLowerCase()) ||
+        u.displayName.toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase())
+      )
+    : users
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: '#07071a' }}>
+      {/* Header */}
+      <div className="sticky top-0 z-40 px-4 pt-4 pb-3" style={{ background: 'rgba(7,7,26,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: isAdmin ? '#ff006e20' : '#00c8ff20' }}>
+              {isAdmin ? <Crown size={18} style={{ color: '#ff006e' }} /> : <Shield size={18} style={{ color: '#00c8ff' }} />}
+            </div>
+            <div>
+              <h1 className="text-white font-bold text-lg leading-none">
+                {isAdmin ? 'Admin Panel' : 'Moderator Panel'}
+              </h1>
+              <p className="text-xs mt-0.5" style={{ color: isAdmin ? '#ff006e' : '#00c8ff' }}>
+                {isAdmin ? 'Full platform control' : 'Content & user moderation'}
+              </p>
+            </div>
+          </div>
+          {/* Tabs */}
+          <div className="flex gap-1 overflow-x-auto no-scrollbar">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all"
+                style={tab === t.id
+                  ? { background: '#00c8ff20', color: '#00c8ff', border: '1px solid #00c8ff40' }
+                  : { background: 'transparent', color: 'rgba(255,255,255,0.4)', border: '1px solid transparent' }
+                }
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold shadow-2xl"
+          style={{ background: toast.ok ? '#00c8ff20' : '#ff006e20', color: toast.ok ? '#00c8ff' : '#ff006e', border: `1px solid ${toast.ok ? '#00c8ff40' : '#ff006e40'}` }}
+        >
+          {toast.ok ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+          {toast.msg}
+        </div>
+      )}
+
+      <div className="max-w-4xl mx-auto px-4 pt-5">
+
+        {/* ── Stats tab ── */}
+        {tab === 'stats' && stats && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <StatCard label="Active Users" value={stats.userCount} icon={<Users size={16} />} color="#00c8ff" />
+              <StatCard label="Live Events" value={stats.eventCount} icon={<Calendar size={16} />} color="#a855f7" />
+              <StatCard label="Groups" value={stats.groupCount} icon={<MessageSquare size={16} />} color="#f59e0b" />
+              <StatCard label="Banned" value={stats.bannedCount} icon={<Ban size={16} />} color="#ff006e" />
+              <StatCard label="Reports" value={stats.reportCount} icon={<Flag size={16} />} color="#ef4444" />
+              <StatCard label="Moderators" value={stats.modCount} icon={<ShieldCheck size={16} />} color="#10b981" />
+            </div>
+            {isAdmin && (
+              <div className="rounded-2xl p-4" style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.12)' }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Crown size={14} style={{ color: '#ff006e' }} />
+                  <span className="text-xs font-bold" style={{ color: '#ff006e' }}>ADMIN QUICK ACTIONS</span>
+                </div>
+                <p className="text-xs text-white/40 mb-3">Platform-level controls</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setTab('users')} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{ background: '#ff006e15', color: '#ff006e', border: '1px solid #ff006e30' }}>
+                    Manage Roles
+                  </button>
+                  <button onClick={() => setTab('groups')} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{ background: '#a855f715', color: '#a855f7', border: '1px solid #a855f730' }}>
+                    Manage Groups
+                  </button>
+                  <button onClick={() => setTab('reports')} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{ background: '#ef444415', color: '#ef4444', border: '1px solid #ef444430' }}>
+                    Review Reports
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Users tab ── */}
+        {tab === 'users' && (
+          <div className="space-y-3">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.3)' }} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by username, name or email..."
+                className="w-full pl-9 pr-4 py-3 rounded-2xl text-sm outline-none text-white placeholder-white/30"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+              />
+            </div>
+            <div className="space-y-2">
+              {filteredUsers.map((u) => (
+                <div
+                  key={u.id}
+                  className="rounded-2xl p-4"
+                  style={{
+                    background: u.isBanned ? 'rgba(255,0,110,0.04)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${u.isBanned ? 'rgba(255,0,110,0.15)' : 'rgba(255,255,255,0.07)'}`,
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    {/* Avatar */}
+                    <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      {u.photoUrl
+                        ? <img src={u.photoUrl} alt="" className="w-full h-full object-cover" />
+                        : <div className="w-full h-full flex items-center justify-center text-white/30 text-xs font-bold">{u.displayName[0]}</div>
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-white text-sm truncate">{u.displayName}</span>
+                        <RoleBadge role={u.appRole} isAdmin={u.isAdmin} />
+                        {u.isBanned && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#ff006e20', color: '#ff006e', border: '1px solid #ff006e40' }}>
+                            BANNED
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-white/40 truncate">@{u.username} · {u.email}</div>
+                      <div className="flex gap-3 mt-1 text-xs text-white/30">
+                        <span>{u.subscriptionTier}</span>
+                        <span>·</span>
+                        <span>{u._count.hostedEvents} events</span>
+                        <span>·</span>
+                        <span>{u._count.groupMemberships} groups</span>
+                      </div>
+                    </div>
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Role picker — admin only */}
+                      {isAdmin && (
+                        <div className="relative">
+                          <button
+                            onClick={() => setRoleMenuOpen(roleMenuOpen === u.id ? null : u.id)}
+                            disabled={busy}
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.1)' }}
+                            title="Change role"
+                          >
+                            <Shield size={12} /> <ChevronDown size={10} />
+                          </button>
+                          {roleMenuOpen === u.id && (
+                            <div
+                              className="absolute right-0 top-full mt-1 z-50 rounded-xl overflow-hidden shadow-2xl"
+                              style={{ background: '#12122a', border: '1px solid rgba(255,255,255,0.1)', minWidth: '130px' }}
+                            >
+                              {['USER', 'MODERATOR', 'ADMIN'].map((role) => (
+                                <button
+                                  key={role}
+                                  onClick={() => handleSetRole(u.id, role)}
+                                  className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-white/5 transition-colors"
+                                  style={{ color: role === 'ADMIN' ? '#ff006e' : role === 'MODERATOR' ? '#00c8ff' : 'rgba(255,255,255,0.6)' }}
+                                >
+                                  {role === 'ADMIN' ? '👑 Admin' : role === 'MODERATOR' ? '🛡️ Moderator' : '👤 User'}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Ban button */}
+                      <button
+                        onClick={() => handleBanToggle(u.id, u.isBanned)}
+                        disabled={busy}
+                        className="p-2 rounded-xl transition-all"
+                        style={u.isBanned
+                          ? { background: '#00c8ff15', color: '#00c8ff', border: '1px solid #00c8ff30' }
+                          : { background: '#ff006e15', color: '#ff006e', border: '1px solid #ff006e30' }
+                        }
+                        title={u.isBanned ? 'Unban user' : 'Ban user'}
+                      >
+                        {u.isBanned ? <CheckCircle size={14} /> : <Ban size={14} />}
+                      </button>
+                      <Link
+                        href={`/profile/${u.username}`}
+                        className="p-2 rounded-xl transition-all"
+                        style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        title="View profile"
+                      >
+                        <Eye size={14} />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {filteredUsers.length === 0 && (
+                <div className="text-center py-12 text-white/30 text-sm">
+                  {search ? 'No users match your search' : 'Loading users…'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Events tab ── */}
+        {tab === 'events' && (
+          <div className="space-y-2">
+            {events.map((e) => (
+              <div
+                key={e.id}
+                className="rounded-2xl p-4"
+                style={{
+                  background: e.isCancelled ? 'rgba(239,68,68,0.04)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${e.isCancelled ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.07)'}`,
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-white text-sm truncate">{e.name}</span>
+                      {e.isFeatured && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }}>
+                          ⭐ Featured
+                        </span>
+                      )}
+                      {e.isCancelled && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#ef444420', color: '#ef4444', border: '1px solid #ef444440' }}>
+                          Cancelled
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-white/40 mt-0.5">
+                      by @{e.host.username} · {e.type.replace(/_/g, ' ')} · {new Date(e.startsAt).toLocaleDateString()}
+                    </div>
+                    <div className="text-xs text-white/30 mt-0.5">{e._count.guests} RSVPs · {e._count.tickets} tickets</div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleFeatureEvent(e.id)}
+                      className="p-2 rounded-xl transition-all"
+                      style={e.isFeatured
+                        ? { background: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }
+                        : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }
+                      }
+                      title="Toggle featured"
+                    >
+                      <Star size={14} />
+                    </button>
+                    {!e.isCancelled && (
+                      <button
+                        onClick={() => handleCancelEvent(e.id)}
+                        className="p-2 rounded-xl"
+                        style={{ background: '#ef444415', color: '#ef4444', border: '1px solid #ef444430' }}
+                        title="Cancel event"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {events.length === 0 && (
+              <div className="text-center py-12 text-white/30 text-sm">Loading events…</div>
+            )}
+          </div>
+        )}
+
+        {/* ── Groups tab ── */}
+        {tab === 'groups' && (
+          <div className="space-y-2">
+            {groups.map((g) => (
+              <div
+                key={g.id}
+                className="rounded-2xl p-4"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                    style={{ background: `${g.coverColor}20` }}
+                  >
+                    {g.emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-white text-sm">{g.name}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                        {g.type}
+                      </span>
+                      {g.isPrivate && <span className="text-xs text-white/30">🔒 Private</span>}
+                      {g.isPaid && <span className="text-xs text-white/30">💳 Paid</span>}
+                    </div>
+                    <div className="text-xs text-white/40 mt-0.5">
+                      {g.memberCount} members · {g._count.messages} messages
+                      {g.creator && ` · by @${g.creator.username}`}
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleDeleteGroup(g.id, g.name)}
+                      className="p-2 rounded-xl flex-shrink-0"
+                      style={{ background: '#ef444415', color: '#ef4444', border: '1px solid #ef444430' }}
+                      title="Force delete group"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {groups.length === 0 && (
+              <div className="text-center py-12 text-white/30 text-sm">Loading groups…</div>
+            )}
+          </div>
+        )}
+
+        {/* ── Reports tab ── */}
+        {tab === 'reports' && (
+          <div className="space-y-2">
+            {reports.length === 0 && (
+              <div className="text-center py-12 text-white/30 text-sm">No reports yet — all clear ✅</div>
+            )}
+            {reports.map((r) => (
+              <div
+                key={r.id}
+                className="rounded-2xl p-4"
+                style={{
+                  background: r.isHidden ? 'rgba(255,255,255,0.02)' : 'rgba(239,68,68,0.04)',
+                  border: `1px solid ${r.isHidden ? 'rgba(255,255,255,0.05)' : 'rgba(239,68,68,0.15)'}`,
+                  opacity: r.isHidden ? 0.5 : 1,
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: '#ef444420', color: '#ef4444', border: '1px solid #ef444440' }}>
+                        {r.reportCount} report{r.reportCount !== 1 ? 's' : ''}
+                      </span>
+                      <span className="text-xs text-white/40 capitalize">{r.category}</span>
+                      {r.isHidden && <span className="text-xs text-white/30">Hidden</span>}
+                    </div>
+                    <div className="text-xs text-white/60 mb-1">
+                      <span className="text-white font-semibold">@{r.fromUser.username}</span>
+                      <span className="text-white/30"> → </span>
+                      <span className="text-white font-semibold">@{r.toUser.username}</span>
+                    </div>
+                    {r.comment && (
+                      <p className="text-xs text-white/40 italic line-clamp-2">"{r.comment}"</p>
+                    )}
+                  </div>
+                  {!r.isHidden && (
+                    <button
+                      onClick={() => handleHideFeedback(r.id)}
+                      className="p-2 rounded-xl flex-shrink-0"
+                      style={{ background: '#10b98115', color: '#10b981', border: '1px solid #10b98130' }}
+                      title="Hide this report"
+                    >
+                      <CheckCircle size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </div>
+
+      {/* Close role menu on outside click */}
+      {roleMenuOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setRoleMenuOpen(null)} />
+      )}
+    </div>
+  )
+}
