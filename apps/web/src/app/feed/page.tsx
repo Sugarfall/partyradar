@@ -4,11 +4,12 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
   Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket,
-  Flag, MessageCircle, Send, X,
+  Flag, MessageCircle, Send, X, Trash2,
 } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
+import { useAuth } from '@/hooks/useAuth'
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -39,7 +40,7 @@ const CROWD_CONFIG: Record<string, { color: string; label: string }> = {
 
 type FeedTab = 'foryou' | 'following'
 
-interface FeedUser { displayName: string; photoUrl?: string | null }
+interface FeedUser { id?: string; displayName: string; photoUrl?: string | null }
 interface FeedEvent { name: string; type?: string }
 interface FeedVenue { name: string }
 
@@ -132,11 +133,15 @@ function PostDetailModal({
   onClose,
   onLikeToggle,
   onCommentAdded,
+  onDelete,
+  currentUserId,
 }: {
   post: FeedItem & { id: string }
   onClose: () => void
   onLikeToggle: (liked: boolean, newCount: number) => void
   onCommentAdded: () => void
+  onDelete?: () => void
+  currentUserId?: string | null
 }) {
   const [comments, setComments] = useState<PostCommentData[]>([])
   const [loadingComments, setLoadingComments] = useState(true)
@@ -144,8 +149,23 @@ function PostDetailModal({
   const [submitting, setSubmitting] = useState(false)
   const [liked, setLiked] = useState(post.hasLiked ?? false)
   const [likesCount, setLikesCount] = useState(post.likesCount ?? 0)
+  const [deleting, setDeleting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const commentsEndRef = useRef<HTMLDivElement>(null)
+
+  const isOwner = !!(currentUserId && post.user.id && currentUserId === post.user.id)
+
+  async function handleDelete() {
+    if (!isOwner || deleting) return
+    setDeleting(true)
+    try {
+      await api.delete(`/posts/${post.id}`)
+      onDelete?.()
+      onClose()
+    } catch {
+      setDeleting(false)
+    }
+  }
 
   useEffect(() => {
     api.get<{ data: PostCommentData[] }>(`/posts/${post.id}/comments?limit=50`)
@@ -243,9 +263,20 @@ function PostDetailModal({
           <span className="text-[10px] font-bold" style={{ color: 'rgba(74,96,128,0.5)' }}>
             {timeAgo(post.createdAt)}
           </span>
+          {isOwner && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Delete post"
+              className="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150"
+              style={{ color: deleting ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.6)', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
+            >
+              {deleting ? <div className="w-3 h-3 rounded-full border animate-spin" style={{ borderColor: 'rgba(239,68,68,0.2)', borderTopColor: 'rgba(239,68,68,0.6)' }} /> : <Trash2 size={13} />}
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ml-1"
+            className="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150"
             style={{ color: 'rgba(74,96,128,0.6)', background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
           >
             <X size={14} />
@@ -474,12 +505,14 @@ function CheckInCard({ item }: { item: FeedItem }) {
 }
 
 // ─── Post Card ─────────────────────────────────────────────────────────────
-function PostCard({ item }: { item: FeedItem }) {
+function PostCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUserId?: string | null; onDelete?: (id: string) => void }) {
   const [liked, setLiked] = useState(item.hasLiked ?? false)
   const [likes, setLikes] = useState(item.likesCount ?? 0)
   const [commentsCount, setCommentsCount] = useState(item.commentsCount ?? 0)
   const [reported, setReported] = useState(false)
   const [showModal, setShowModal] = useState(false)
+
+  const isOwner = !!(currentUserId && item.user.id && currentUserId === item.user.id)
 
   async function handleLike(e: React.MouseEvent) {
     e.stopPropagation()
@@ -586,7 +619,22 @@ function PostCard({ item }: { item: FeedItem }) {
           </button>
 
           <div className="ml-auto flex items-center gap-2">
-            {item.id && (
+            {isOwner && item.id && (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  try {
+                    await api.delete(`/posts/${item.id}`)
+                    onDelete?.(item.id!)
+                  } catch {}
+                }}
+                title="Delete post"
+                style={{ color: 'rgba(239,68,68,0.5)' }}
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+            {!isOwner && item.id && (
               <button
                 onClick={handleReport}
                 disabled={reported}
@@ -606,11 +654,10 @@ function PostCard({ item }: { item: FeedItem }) {
         <PostDetailModal
           post={{ ...item, id: item.id }}
           onClose={() => setShowModal(false)}
-          onLikeToggle={(nowLiked, newCount) => {
-            setLiked(nowLiked)
-            setLikes(newCount)
-          }}
+          onLikeToggle={(nowLiked, newCount) => { setLiked(nowLiked); setLikes(newCount) }}
           onCommentAdded={() => setCommentsCount((c) => c + 1)}
+          currentUserId={currentUserId}
+          onDelete={() => { setShowModal(false); onDelete?.(item.id!) }}
         />
       )}
     </>
@@ -618,10 +665,10 @@ function PostCard({ item }: { item: FeedItem }) {
 }
 
 // ─── Feed Item Router ──────────────────────────────────────────────────────
-function FeedItemCard({ item }: { item: FeedItem }) {
+function FeedItemCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUserId?: string | null; onDelete?: (id: string) => void }) {
   if (item.type === 'RSVP')    return <RSVPCard item={item} />
   if (item.type === 'CHECKIN') return <CheckInCard item={item} />
-  if (item.type === 'POST')    return <PostCard item={item} />
+  if (item.type === 'POST')    return <PostCard item={item} currentUserId={currentUserId} onDelete={onDelete} />
   return null
 }
 
@@ -793,6 +840,12 @@ export default function FeedPage() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const { dbUser } = useAuth()
+  const currentUserId = dbUser?.id ?? null
+
+  function handlePostDeleted(id: string) {
+    setFeedItems((prev) => prev.filter((item) => item.id !== id))
+  }
 
   useEffect(() => {
     async function loadFeed() {
@@ -895,7 +948,7 @@ export default function FeedPage() {
           <>
             {/* Social activity items */}
             {feedItems.map((item, i) => (
-              <FeedItemCard key={item.id ?? i} item={item} />
+              <FeedItemCard key={item.id ?? i} item={item} currentUserId={currentUserId} onDelete={handlePostDeleted} />
             ))}
 
             {/* Upcoming events — shown in For You tab, either as filler or after activity */}

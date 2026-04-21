@@ -303,8 +303,11 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
   const [uploading, setUploading] = useState(false)
   const [textMode, setTextMode] = useState(false)
   const [textInput, setTextInput] = useState('')
-  const [tagInput, setTagInput] = useState('')
+  const [includeVenueTag, setIncludeVenueTag] = useState(true)
   const [deleting, setDeleting] = useState<string | null>(null)
+
+  // Derive the canonical location label from event data (venue name > neighbourhood > address)
+  const venueName: string | null = (event as any).venue?.name ?? event.neighbourhood ?? null
   const { dbUser } = useAuth()
   const scrollRef = useRef<HTMLDivElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -350,10 +353,10 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
     setUploading(true)
     try {
       const body: Record<string, unknown> = { eventId: event.id, text }
-      if (tagInput.trim()) body['taggedVenueName'] = tagInput.trim()
+      if (includeVenueTag && venueName) body['taggedVenueName'] = venueName
       const res = await api.post<{ data: any }>('/posts', body)
       if (res?.data) setHighlights(prev => [mapPost(res.data), ...prev])
-      setTextInput(''); setTagInput(''); setTextMode(false)
+      setTextInput(''); setTextMode(false)
     } catch {}
     finally { setUploading(false) }
   }
@@ -406,20 +409,29 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
               className="w-full text-xs resize-none rounded-lg px-3 py-2 outline-none"
               style={{ background: 'rgba(4,4,13,0.8)', border: `1px solid ${color}20`, color: '#e0f2fe', caretColor: color }}
             />
-            <input
-              value={tagInput}
-              onChange={e => setTagInput(e.target.value)}
-              placeholder="@ Tag a venue, person or event (optional)"
-              className="w-full text-xs rounded-lg px-3 py-2 outline-none"
-              style={{ background: 'rgba(4,4,13,0.8)', border: `1px solid ${color}15`, color: '#e0f2fe' }}
-            />
+            {venueName && (
+              <button
+                type="button"
+                onClick={() => setIncludeVenueTag(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all duration-150 w-fit"
+                style={{
+                  background: includeVenueTag ? `${color}15` : 'rgba(74,96,128,0.05)',
+                  border: `1px solid ${includeVenueTag ? `${color}40` : 'rgba(74,96,128,0.15)'}`,
+                  color: includeVenueTag ? color : 'rgba(74,96,128,0.5)',
+                }}
+              >
+                <MapPin size={10} />
+                {venueName}
+                {!includeVenueTag && <span style={{ color: 'rgba(74,96,128,0.4)', marginLeft: 2 }}>— tap to include</span>}
+              </button>
+            )}
             <div className="flex gap-2">
               <button onClick={handleTextPost} disabled={!textInput.trim() || uploading}
                 className="flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-widest disabled:opacity-40"
                 style={{ background: `${color}15`, border: `1px solid ${color}35`, color }}>
                 {uploading ? 'POSTING…' : 'POST'}
               </button>
-              <button onClick={() => { setTextMode(false); setTextInput(''); setTagInput('') }}
+              <button onClick={() => { setTextMode(false); setTextInput('') }}
                 className="px-3 py-1.5 rounded-lg text-[10px] font-bold"
                 style={{ color: 'rgba(224,242,254,0.3)', border: '1px solid rgba(224,242,254,0.08)' }}>
                 CANCEL
