@@ -66,11 +66,26 @@ const PORT = process.env['PORT'] ?? 4000
 
 export const io = new Server(httpServer, {
   cors: {
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      process.env['FRONTEND_URL'] ?? '',
-    ].filter(Boolean),
+    // Mirror the HTTP CORS logic: explicit allow-list + regex fallback for
+    // PartyRadar Vercel deploys. Same reasoning — Firebase ID tokens are
+    // the real auth gate.
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true)
+      const explicit = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        process.env['FRONTEND_URL'] ?? '',
+        ...(process.env['ADDITIONAL_ORIGINS']?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
+      ].filter(Boolean)
+      const regexes = [
+        /^https:\/\/partyradar[a-z0-9-]*\.vercel\.app$/i,
+        /^https:\/\/([a-z0-9-]+\.)?partyradar\.app$/i,
+      ]
+      if (explicit.includes(origin) || regexes.some((r) => r.test(origin))) {
+        return callback(null, true)
+      }
+      return callback(new Error('Not allowed by CORS'))
+    },
     credentials: true,
   },
 })
@@ -250,9 +265,7 @@ app.use(helmet())
 
 // Build CORS allowlist once at boot so we can log it and catch misconfig early.
 // Includes: localhost (dev), FRONTEND_URL (prod), and a comma-separated
-// ADDITIONAL_ORIGINS for preview deploys you explicitly trust. Any other
-// `*.vercel.app` origin is REJECTED — the old wildcard let any Vercel tenant
-// hit us with credentials.
+// ADDITIONAL_ORIGINS for preview deploys you explicitly trust.
 const CORS_ALLOWLIST = [
   'http://localhost:3000',
   'http://localhost:3001',
@@ -260,25 +273,48 @@ const CORS_ALLOWLIST = [
   ...(process.env['ADDITIONAL_ORIGINS']?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
 ].filter(Boolean)
 
+// Regex allow-list for PartyRadar Vercel deploys + custom domain. This keeps
+// the site working without requiring FRONTEND_URL to be set manually on
+// Railway — previously that single missing env var broke login, venues,
+// events, and upgrade for every production user. Firebase ID tokens are the
+// actual auth gate; CORS is just defense in depth.
+const CORS_REGEX_ALLOWLIST: RegExp[] = [
+  // Any PartyRadar Vercel deployment (prod + preview builds)
+  //   https://partyradar-web.vercel.app
+  //   https://partyradar-web-<hash>-<team>.vercel.app
+  //   https://partyradar-<whatever>.vercel.app
+  /^https:\/\/partyradar[a-z0-9-]*\.vercel\.app$/i,
+  // Custom domain, if/when wired up
+  /^https:\/\/([a-z0-9-]+\.)?partyradar\.app$/i,
+]
+
 if (!process.env['FRONTEND_URL']) {
   console.warn(
-    '⚠️  [CORS] FRONTEND_URL is not set — the API will reject every browser request from ' +
-    'production origins. Set FRONTEND_URL in Railway env vars to your Vercel deploy URL ' +
-    '(e.g. https://partyradar.app) and redeploy.',
+    '⚠️  [CORS] FRONTEND_URL is not set — falling back to regex allow-list for ' +
+    'partyradar*.vercel.app and *.partyradar.app. Set FRONTEND_URL in Railway ' +
+    'env vars to your canonical deploy URL to silence this warning.',
   )
 }
-console.log(`[CORS] Allowed origins: ${CORS_ALLOWLIST.join(', ') || '(none — browser requests will be rejected)'}`)
+console.log(
+  `[CORS] Explicit allow-list: ${CORS_ALLOWLIST.join(', ') || '(none)'} | ` +
+  `Regex allow-list: ${CORS_REGEX_ALLOWLIST.map((r) => r.source).join(', ')}`,
+)
+
+function isAllowedOrigin(origin: string): boolean {
+  if (CORS_ALLOWLIST.includes(origin)) return true
+  return CORS_REGEX_ALLOWLIST.some((r) => r.test(origin))
+}
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || CORS_ALLOWLIST.includes(origin)) {
+    if (!origin || isAllowedOrigin(origin)) {
       callback(null, true)
     } else {
       // Deny cleanly (no thrown error → no 500). The request is still
       // answered, but without Access-Control-Allow-Origin, so the browser
       // blocks the response client-side. Log every rejection so misconfig
       // is visible in Railway logs.
-      console.warn(`[CORS] Rejected origin: ${origin} (allowlist: ${CORS_ALLOWLIST.join(', ') || '(empty)'})`)
+      console.warn(`[CORS] Rejected origin: ${origin}`)
       callback(null, false)
     }
   },
