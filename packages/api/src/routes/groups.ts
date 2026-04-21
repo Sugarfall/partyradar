@@ -172,9 +172,9 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const { name, description, emoji, coverColor, isPrivate, password, isPaid, priceTierId, type: groupType } = req.body as {
+    const { name, description, emoji, coverColor, isPrivate, password, isPaid, priceTierId, priceMonthly: customPrice, type: groupType } = req.body as {
       name: string; description?: string; emoji?: string; coverColor?: string
-      isPrivate?: boolean; password?: string; isPaid?: boolean; priceTierId?: string
+      isPrivate?: boolean; password?: string; isPaid?: boolean; priceTierId?: string; priceMonthly?: number
       type?: 'GENRE' | 'FESTIVAL' | 'TRIP'
     }
     if (!name?.trim() || name.trim().length < 2) throw new AppError('Group name must be at least 2 characters', 400)
@@ -183,12 +183,20 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       throw new AppError('Private groups require a password (min 4 characters)', 400)
     }
 
-    // Validate paid tier
+    // Resolve monthly price — accept custom amount or fall back to legacy tier lookup
     let priceMonthly: number | null = null
     if (isPaid) {
-      const tier = GROUP_PRICE_TIERS.find((t) => t.id === priceTierId)
-      if (!tier) throw new AppError('Invalid price tier', 400)
-      priceMonthly = tier.price
+      if (customPrice != null) {
+        const p = Number(customPrice)
+        if (isNaN(p) || p < 0.5 || p > 999) throw new AppError('Price must be between £0.50 and £999', 400)
+        priceMonthly = Math.round(p * 100) / 100
+      } else if (priceTierId) {
+        const tier = GROUP_PRICE_TIERS.find((t) => t.id === priceTierId)
+        if (!tier) throw new AppError('Invalid price tier', 400)
+        priceMonthly = tier.price
+      } else {
+        throw new AppError('Paid groups require a price', 400)
+      }
     }
 
     const slug = `user-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString(36)}`

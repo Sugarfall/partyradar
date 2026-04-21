@@ -113,7 +113,7 @@ function HostGroupDashboard({
   const [newPassword, setNewPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [newPaid, setNewPaid] = useState(false)
-  const [newPriceTier, setNewPriceTier] = useState('MICRO')
+  const [newPriceAmount, setNewPriceAmount] = useState('')
   const [creating, setCreating] = useState(false)
 
   const myGroups = groups.filter((g) => g.isOwner)
@@ -135,7 +135,7 @@ function HostGroupDashboard({
       }
       if (newPaid) {
         body.isPaid = true
-        body.priceTierId = newPriceTier
+        body.priceMonthly = parseFloat(newPriceAmount)
       } else if (newPrivate) {
         body.isPrivate = true
         body.password = newPassword.trim()
@@ -144,7 +144,7 @@ function HostGroupDashboard({
       if (j?.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#a855f7')
-        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO')
+        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceAmount('')
       }
     } catch {}
     finally { setCreating(false) }
@@ -341,33 +341,28 @@ function HostGroupDashboard({
               </div>
             )}
 
-            {/* Price tier for paid groups */}
+            {/* Price input for paid groups */}
             {newPaid && (
               <div>
-                <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>SUBSCRIPTION PRICE</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'MICRO', price: '£0.99', label: 'Micro' },
-                    { id: 'STANDARD', price: '£2.99', label: 'Standard' },
-                    { id: 'VIP', price: '£4.99', label: 'VIP' },
-                    { id: 'ELITE', price: '£9.99', label: 'Elite' },
-                  ].map((t) => {
-                    const active = newPriceTier === t.id
-                    return (
-                      <button key={t.id} onClick={() => setNewPriceTier(t.id)}
-                        className="py-2 rounded-xl text-center transition-all"
-                        style={{
-                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(168,85,247,0.03)',
-                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(168,85,247,0.08)'}`,
-                        }}>
-                        <p className="text-sm font-black" style={{ color: active ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>{t.price}<span className="text-[9px] font-normal">/mo</span></p>
-                        <p className="text-[9px]" style={{ color: active ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>{t.label}</p>
-                      </button>
-                    )
-                  })}
+                <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>SUBSCRIPTION PRICE / MONTH</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black" style={{ color: 'rgba(255,214,0,0.6)' }}>£</span>
+                  <input
+                    type="number" min="0.50" max="999" step="0.01"
+                    value={newPriceAmount}
+                    onChange={(e) => setNewPriceAmount(e.target.value)}
+                    placeholder="e.g. 4.99"
+                    className="w-full pl-7 pr-4 py-2.5 rounded-xl text-sm font-black outline-none"
+                    style={{ background: 'rgba(255,214,0,0.06)', border: '1px solid rgba(255,214,0,0.25)', color: '#ffd600' }}
+                  />
                 </div>
-                <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
-                  You earn 80% of subscription revenue. Platform takes 20%.
+                {newPriceAmount && !isNaN(parseFloat(newPriceAmount)) && parseFloat(newPriceAmount) >= 0.5 && (
+                  <p className="text-[9px] mt-1.5 font-bold" style={{ color: 'rgba(0,255,136,0.6)' }}>
+                    You earn £{(parseFloat(newPriceAmount) * 0.8).toFixed(2)}/mo per subscriber (80%)
+                  </p>
+                )}
+                <p className="text-[8px] mt-1" style={{ color: 'rgba(255,214,0,0.35)' }}>
+                  Min £0.50 · Platform takes 20%
                 </p>
               </div>
             )}
@@ -377,7 +372,7 @@ function HostGroupDashboard({
               <div className="flex items-center justify-between">
                 <span className="text-2xl">{newEmoji}</span>
                 <div className="flex gap-1">
-                  {newPaid && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,214,0,0.15)', color: '#ffd600' }}>PAID</span>}
+                  {newPaid && newPriceAmount && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,214,0,0.15)', color: '#ffd600' }}>£{newPriceAmount}/mo</span>}
                   {newPrivate && !newPaid && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,0,110,0.12)', color: '#ff006e' }}>PRIVATE</span>}
                 </div>
               </div>
@@ -386,7 +381,7 @@ function HostGroupDashboard({
             </div>
 
             <button onClick={handleCreate}
-              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
+              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4) || (newPaid && (!newPriceAmount || parseFloat(newPriceAmount) < 0.5))}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
                 background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(168,85,247,0.12)',
@@ -423,7 +418,7 @@ function GroupBrowser({
   const [newPassword, setNewPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [newPaid, setNewPaid] = useState(false)
-  const [newPriceTier, setNewPriceTier] = useState('MICRO')
+  const [newPriceAmount, setNewPriceAmount] = useState('')
   const [newGroupType, setNewGroupType] = useState<'GENRE' | 'FESTIVAL' | 'TRIP'>('GENRE')
   const [creating, setCreating] = useState(false)
 
@@ -457,7 +452,7 @@ function GroupBrowser({
       }
       if (newPaid) {
         body.isPaid = true
-        body.priceTierId = newPriceTier
+        body.priceMonthly = parseFloat(newPriceAmount)
       } else if (newPrivate) {
         body.isPrivate = true
         body.password = newPassword.trim()
@@ -466,7 +461,7 @@ function GroupBrowser({
       if (j?.data) {
         onCreateGroup(j.data)
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
-        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceTier('MICRO'); setNewGroupType('GENRE')
+        setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceAmount(''); setNewGroupType('GENRE')
       }
     } catch {}
     finally { setCreating(false) }
@@ -733,33 +728,28 @@ function GroupBrowser({
               </div>
             )}
 
-            {/* Price tier for paid groups */}
+            {/* Price input for paid groups */}
             {newPaid && (
               <div>
-                <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>SUBSCRIPTION PRICE</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'MICRO', price: '£0.99', label: 'Micro' },
-                    { id: 'STANDARD', price: '£2.99', label: 'Standard' },
-                    { id: 'VIP', price: '£4.99', label: 'VIP' },
-                    { id: 'ELITE', price: '£9.99', label: 'Elite' },
-                  ].map((t) => {
-                    const active = newPriceTier === t.id
-                    return (
-                      <button key={t.id} onClick={() => setNewPriceTier(t.id)}
-                        className="py-2 rounded-xl text-center transition-all"
-                        style={{
-                          background: active ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.03)',
-                          border: `1px solid ${active ? 'rgba(255,214,0,0.4)' : 'rgba(var(--accent-rgb),0.08)'}`,
-                        }}>
-                        <p className="text-sm font-black" style={{ color: active ? '#ffd600' : 'rgba(224,242,254,0.5)' }}>{t.price}<span className="text-[9px] font-normal">/mo</span></p>
-                        <p className="text-[9px]" style={{ color: active ? 'rgba(255,214,0,0.6)' : 'rgba(224,242,254,0.3)' }}>{t.label}</p>
-                      </button>
-                    )
-                  })}
+                <p className="text-[9px] font-bold tracking-widest mb-2" style={{ color: 'rgba(255,214,0,0.5)' }}>SUBSCRIPTION PRICE / MONTH</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black" style={{ color: '#ffd600' }}>£</span>
+                  <input
+                    type="number" min="0.50" max="999" step="0.01"
+                    placeholder="0.00"
+                    value={newPriceAmount}
+                    onChange={(e) => setNewPriceAmount(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2.5 rounded-xl text-sm font-black bg-transparent outline-none"
+                    style={{ border: '1px solid rgba(255,214,0,0.3)', color: '#ffd600' }}
+                  />
                 </div>
-                <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
-                  You earn 80% of subscription revenue. Platform takes 20%.
+                {newPriceAmount && parseFloat(newPriceAmount) >= 0.5 && (
+                  <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.5)' }}>
+                    You earn £{(parseFloat(newPriceAmount) * 0.8).toFixed(2)}/mo per member (80%)
+                  </p>
+                )}
+                <p className="text-[8px] mt-0.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
+                  Min £0.50 · Platform takes 20%
                 </p>
               </div>
             )}
@@ -778,7 +768,7 @@ function GroupBrowser({
             </div>
 
             <button onClick={handleCreate}
-              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4)}
+              disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4) || (newPaid && (!newPriceAmount || parseFloat(newPriceAmount) < 0.5))}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
                 background: newPaid ? 'rgba(255,214,0,0.12)' : 'rgba(var(--accent-rgb),0.12)',
