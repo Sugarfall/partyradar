@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Map, { Marker } from 'react-map-gl'
@@ -204,7 +204,7 @@ function ClaimModal({ venueName, onClose }: { venueName: string; onClose: () => 
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function VenueDetailPage() {
+function VenueDetailInner() {
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -706,5 +706,13 @@ export default function VenueDetailPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function VenueDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <VenueDetailInner />
+    </Suspense>
   )
 }

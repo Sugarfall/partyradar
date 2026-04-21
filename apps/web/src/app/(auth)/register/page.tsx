@@ -10,8 +10,6 @@ import { api } from '@/lib/api'
 import { getStoredReferral, clearStoredReferral, captureReferral } from '@/lib/referral'
 import { Zap, Check, ChevronRight, Eye, EyeOff, Mail, Gift, X } from 'lucide-react'
 import type { Gender } from '@partyradar/shared'
-import { LANGUAGE_META } from '@/lib/i18n'
-import type { Language } from '@/lib/i18n'
 
 const GENDER_OPTIONS: { id: Gender; labelKey: string; emoji: string; color: string; glow: string }[] = [
   { id: 'MALE',              labelKey: 'register.gender.man',        emoji: '♂',  color: '#3d5afe', glow: 'rgba(61,90,254,0.35)'  },
@@ -45,7 +43,10 @@ export default function RegisterPage() {
   const { signUp, signInWithGoogle, signInWithApple, firebaseUser } = useAuth()
   const { lang, setLang, t } = useLanguage()
 
-  const [phase, setPhase] = useState<'language' | 'credentials' | 'verify' | 'gender'>('language')
+  // Language is auto-detected in LanguageContext (browser locale + timezone
+  // fallback). Users can change it anytime via Settings. No registration-flow
+  // prompt — keeps signup friction low.
+  const [phase, setPhase] = useState<'credentials' | 'verify' | 'gender'>('credentials')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -179,82 +180,6 @@ export default function RegisterPage() {
       }
     }
     router.push('/discover')
-  }
-
-  /* ═══ PHASE: LANGUAGE SELECTION ═════════════════════════════════════════ */
-  if (phase === 'language') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#04040d' }}>
-        <div className="flex items-center gap-2 mb-10">
-          <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
-            style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
-          <span className="font-black text-sm tracking-[0.2em]"
-            style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
-            PARTYRADAR
-          </span>
-        </div>
-
-        <div className="w-full max-w-sm animate-fade-up text-center">
-          <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-            LANGUAGE / JĘZYK
-          </p>
-          <h1 className="text-2xl font-black mb-2" style={{ color: '#e0f2fe', letterSpacing: '0.04em' }}>
-            {t('register.lang.title')}
-          </h1>
-          <p className="text-sm mb-8" style={{ color: 'rgba(74,96,128,0.7)' }}>
-            {t('register.lang.subtitle')}
-          </p>
-
-          <div className="flex flex-col gap-3 mb-8">
-            {(Object.entries(LANGUAGE_META) as [Language, typeof LANGUAGE_META[Language]][]).map(([code, meta]) => {
-              const selected = lang === code
-              return (
-                <button
-                  key={code}
-                  onClick={() => setLang(code)}
-                  className="flex items-center gap-4 px-5 py-4 rounded-2xl transition-all"
-                  style={{
-                    background: selected ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(7,7,26,0.8)',
-                    border: selected ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.12)',
-                    boxShadow: selected ? '0 0 20px rgba(var(--accent-rgb),0.12)' : 'none',
-                  }}
-                >
-                  <span style={{ fontSize: 28 }}>{meta.flag}</span>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-black" style={{ color: selected ? '#e0f2fe' : 'rgba(224,242,254,0.6)' }}>
-                      {meta.nativeName}
-                    </p>
-                    {meta.nativeName !== meta.name && (
-                      <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>{meta.name}</p>
-                    )}
-                  </div>
-                  {selected && (
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center"
-                      style={{ background: 'var(--accent)' }}>
-                      <Check size={11} color="#04040d" strokeWidth={3} />
-                    </div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-
-          <button
-            onClick={() => setPhase('credentials')}
-            className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all"
-            style={{
-              background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(61,90,254,0.12))',
-              border: '1px solid rgba(var(--accent-rgb),0.45)',
-              color: 'var(--accent)',
-              boxShadow: '0 0 18px rgba(var(--accent-rgb),0.18)',
-              letterSpacing: '0.1em',
-            }}
-          >
-            {t('register.continue')} <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-    )
   }
 
   /* ═══ PHASE: VERIFY EMAIL ════════════════════════════════════════════════ */

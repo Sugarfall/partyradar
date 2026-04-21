@@ -247,21 +247,34 @@ io.on('connection', (socket) => {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 app.use(helmet())
+
+// Build CORS allowlist once at boot so we can log it and catch misconfig early.
+// Includes: localhost (dev), FRONTEND_URL (prod), and a comma-separated
+// ADDITIONAL_ORIGINS for preview deploys you explicitly trust. Any other
+// `*.vercel.app` origin is REJECTED — the old wildcard let any Vercel tenant
+// hit us with credentials.
+const CORS_ALLOWLIST = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  process.env['FRONTEND_URL'] ?? '',
+  ...(process.env['ADDITIONAL_ORIGINS']?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
+].filter(Boolean)
+
+if (!process.env['FRONTEND_URL']) {
+  console.warn(
+    '⚠️  [CORS] FRONTEND_URL is not set — the API will reject every browser request from ' +
+    'production origins. Set FRONTEND_URL in Railway env vars to your Vercel deploy URL ' +
+    '(e.g. https://partyradar.app) and redeploy.',
+  )
+}
+console.log(`[CORS] Allowed origins: ${CORS_ALLOWLIST.join(', ') || '(none — browser requests will be rejected)'}`)
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allowlist: localhost (dev), FRONTEND_URL (prod), plus an optional
-    // comma-separated ADDITIONAL_ORIGINS (e.g. preview deploys you explicitly
-    // trust). Any other `*.vercel.app` origin is now REJECTED — previously the
-    // wildcard let any Vercel tenant hit us with credentials.
-    const allowed = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      process.env['FRONTEND_URL'] ?? '',
-      ...(process.env['ADDITIONAL_ORIGINS']?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
-    ].filter(Boolean)
-    if (!origin || allowed.includes(origin)) {
+    if (!origin || CORS_ALLOWLIST.includes(origin)) {
       callback(null, true)
     } else {
+      console.warn(`[CORS] Rejected origin: ${origin}`)
       callback(new Error(`CORS: origin ${origin} not allowed`))
     }
   },

@@ -19,15 +19,47 @@ const LanguageContext = createContext<LanguageContextValue>({
   t: (key) => key,
 })
 
+/** Best-effort locale detection from the browser.
+ *
+ *  We check `navigator.languages` (ordered preference list) and the timezone,
+ *  so a Polish user with an English OS gets English, and an English user
+ *  travelling through Warsaw doesn't get silently switched. Only Polish is
+ *  currently offered — anything else falls through to English.
+ */
+function detectBrowserLanguage(): Language {
+  if (typeof navigator === 'undefined') return 'en'
+  const prefs = (navigator.languages?.length ? navigator.languages : [navigator.language])
+    .filter(Boolean)
+    .map((l) => l.toLowerCase())
+  if (prefs.some((l) => l.startsWith('pl'))) return 'pl'
+
+  // Secondary signal — timezone. Only used if the browser locale didn't help.
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
+    if (tz === 'Europe/Warsaw') return 'pl'
+  } catch {
+    /* noop */
+  }
+  return 'en'
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Language>('en')
 
-  // Hydrate from localStorage on mount
+  // Hydrate from localStorage (user preference) — else detect from browser.
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY) as Language | null
-      if (stored === 'en' || stored === 'pl') setLangState(stored)
-    } catch {}
+      if (stored === 'en' || stored === 'pl') {
+        setLangState(stored)
+        return
+      }
+      const detected = detectBrowserLanguage()
+      setLangState(detected)
+      try { localStorage.setItem(STORAGE_KEY, detected) } catch { /* noop */ }
+    } catch {
+      /* noop — default 'en' already applied */
+    }
   }, [])
 
   function setLang(l: Language) {

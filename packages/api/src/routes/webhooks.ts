@@ -64,6 +64,19 @@ router.post('/stripe', async (req: Request, res: Response) => {
         await handleConnectAccountUpdated(account)
         break
       }
+      case 'account.application.deauthorized': {
+        // Host disconnected PartyRadar from their Stripe dashboard.
+        // Clear their Connect state so checkout refuses new sales until
+        // they re-onboard — otherwise tickets sell but Stripe rejects the
+        // transfer at checkout time. The payload's data.object is a
+        // Stripe.Application (the platform); the actual deauthorized
+        // connected account ID lives in event.account.
+        const connectedAccountId = event.account
+        if (connectedAccountId) {
+          await handleConnectAccountDeauthorized(connectedAccountId)
+        }
+        break
+      }
     }
 
     res.json({ received: true })
@@ -598,6 +611,24 @@ async function handleConnectAccountUpdated(account: Stripe.Account) {
       stripeConnectChargesEnabled: account.charges_enabled,
       stripeConnectPayoutsEnabled: account.payouts_enabled,
       stripeConnectDetailsSubmitted: account.details_submitted,
+    },
+  })
+}
+
+async function handleConnectAccountDeauthorized(connectedAccountId: string) {
+  const user = await prisma.user.findFirst({
+    where: { stripeConnectAccountId: connectedAccountId },
+    select: { id: true },
+  })
+  if (!user) return
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      stripeConnectAccountId: null,
+      stripeConnectChargesEnabled: false,
+      stripeConnectPayoutsEnabled: false,
+      stripeConnectDetailsSubmitted: false,
     },
   })
 }
