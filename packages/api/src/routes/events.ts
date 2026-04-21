@@ -94,6 +94,11 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       ]
     }
 
+    // Filter by specific venue or host
+    const { venueId, hostId: hostIdFilter } = req.query
+    if (venueId) where['venueId'] = venueId as string
+    if (hostIdFilter) where['hostId'] = hostIdFilter as string
+
     // Geo filter
     if (lat && lng) {
       const latN = Number(lat), lngN = Number(lng), radN = Number(radius)

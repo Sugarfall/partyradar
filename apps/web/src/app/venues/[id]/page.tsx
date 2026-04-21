@@ -234,6 +234,10 @@ export default function VenueDetailPage() {
   const [spotifyConnecting, setSpotifyConnecting] = useState(false)
   const [spotifyDisconnecting, setSpotifyDisconnecting] = useState(false)
 
+  // ── Venue events (separate fetch so we always get fresh data regardless of embed)
+  const [venueEvents, setVenueEvents] = useState<UpcomingEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(true)
+
   useEffect(() => {
     async function load() {
       setLoading(true)
@@ -250,6 +254,15 @@ export default function VenueDetailPage() {
       }
     }
     load()
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    setEventsLoading(true)
+    api.get<{ data: UpcomingEvent[] }>(`/events?venueId=${id}&limit=20`)
+      .then((json) => setVenueEvents(json?.data ?? []))
+      .catch(() => {})
+      .finally(() => setEventsLoading(false))
   }, [id])
 
   useEffect(() => {
@@ -509,18 +522,27 @@ export default function VenueDetailPage() {
         {activeTab === 'events' && (
         <div>
           <p className="text-[10px] font-bold tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
-            UPCOMING EVENTS {venue.events.length > 0 ? `— ${venue.events.length}` : ''}
+            UPCOMING EVENTS {!eventsLoading && venueEvents.length > 0 ? `— ${venueEvents.length}` : ''}
           </p>
 
-          {venue.events.length === 0 ? (
-            <div className="py-8 rounded-xl flex flex-col items-center" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
-              <Calendar size={24} className="mb-2" style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
+          {eventsLoading ? (
+            <div className="flex flex-col gap-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.06)' }} />
+              ))}
+            </div>
+          ) : venueEvents.length === 0 ? (
+            <div className="py-8 rounded-xl flex flex-col items-center gap-2" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+              <Calendar size={24} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
               <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO UPCOMING EVENTS</p>
+              <p className="text-[10px] text-center px-6" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                Nothing scheduled here yet — check back soon
+              </p>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {venue.events.map((event) => {
-                const ec = EVENT_TYPE_COLORS[event.type]
+              {venueEvents.map((event) => {
+                const ec = EVENT_TYPE_COLORS[event.type] ?? 'var(--accent)'
                 return (
                   <Link key={event.id} href={`/events/${event.id}`}
                     className="flex items-center gap-3 p-3 rounded-xl transition-all"
@@ -528,17 +550,27 @@ export default function VenueDetailPage() {
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.2)' }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.08)' }}
                   >
-                    {event.coverImageUrl && (
+                    {event.coverImageUrl ? (
                       <img src={event.coverImageUrl} alt={event.name} className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center text-xl"
+                        style={{ background: `${ec}12`, border: `1px solid ${ec}30` }}>
+                        🎉
+                      </div>
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{event.name}</p>
                       <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{formatDate(event.startsAt)}</p>
+                      {event.host?.displayName && (
+                        <p className="text-[9px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+                          by {event.host.displayName}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <span className="text-[9px] font-bold px-2 py-0.5 rounded"
                         style={{ color: ec, background: `${ec}15`, border: `1px solid ${ec}30` }}>
-                        {event.type.replace('_', ' ')}
+                        {event.type.replace(/_/g, ' ')}
                       </span>
                       <span className="flex items-center gap-1 text-xs font-bold" style={{ color: event.price === 0 ? '#00ff88' : '#e0f2fe' }}>
                         <Ticket size={10} /> {formatPrice(event.price)}

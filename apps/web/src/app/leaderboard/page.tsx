@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Trophy, Users, Zap, TrendingUp, Crown, MapPin, Gift } from 'lucide-react'
+import { Trophy, Users, Zap, TrendingUp, Crown, MapPin, Gift, Star } from 'lucide-react'
 import { api } from '@/lib/api'
 
 // ─── API response shapes ──────────────────────────────────────────────────────
@@ -38,6 +38,15 @@ interface ApiEarner {
   photoUrl: string | null
   earned: number
   referralCount: number
+}
+
+interface ApiSocial {
+  id: string
+  username: string | null
+  displayName: string | null
+  photoUrl: string | null
+  socialScore: number
+  subscriptionTier: string | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -372,11 +381,97 @@ function EarnersTab({ earners }: { earners: ApiEarner[] }) {
   )
 }
 
+// ─── Tab: Social Score ────────────────────────────────────────────────────────
+
+const TIER_COLORS: Record<string, string> = {
+  FREE:    'rgba(74,96,128,0.5)',
+  BASIC:   '#3b82f6',
+  PRO:     '#a855f7',
+  PREMIUM: '#ffd600',
+}
+
+function SocialTab({ users }: { users: ApiSocial[] }) {
+  if (users.length === 0) {
+    return <LeaderboardEmpty title="NO SCORES YET" subtitle="Social scores are earned by attending events, hosting, referring friends and being active." />
+  }
+
+  return (
+    <div className="space-y-2 px-4 py-3 pb-24">
+      {/* Info banner */}
+      <div className="rounded-xl px-3 py-2.5 flex items-center gap-3 mb-3"
+        style={{ background: 'rgba(255,214,0,0.04)', border: '1px solid rgba(255,214,0,0.12)' }}>
+        <Star size={14} style={{ color: '#ffd600' }} />
+        <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.45)' }}>
+          Ranked by Social Score — earned through events, referrals &amp; activity
+        </p>
+      </div>
+
+      <Podium items={users} />
+
+      {users.map((user, i) => {
+        const tierColor = TIER_COLORS[user.subscriptionTier ?? 'FREE'] ?? TIER_COLORS['FREE']
+        return (
+          <div
+            key={user.id}
+            className="flex items-center gap-3 rounded-xl px-3 py-3"
+            style={{
+              background: i < 3 ? 'rgba(255,214,0,0.03)' : 'rgba(7,7,26,0.6)',
+              border: i === 0 ? '1px solid rgba(255,214,0,0.2)' : '1px solid rgba(var(--accent-rgb),0.07)',
+            }}
+          >
+            <RankBadge rank={i + 1} />
+            <Avatar name={user.displayName ?? user.username ?? '?'} photoUrl={user.photoUrl} color="#ffd600" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-xs font-black truncate" style={{ color: '#e0f2fe' }}>
+                  {user.displayName ?? user.username ?? 'Anonymous'}
+                </p>
+                {user.subscriptionTier && user.subscriptionTier !== 'FREE' && (
+                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded"
+                    style={{ color: tierColor, background: `${tierColor}18`, border: `1px solid ${tierColor}40`, letterSpacing: '0.06em' }}>
+                    {user.subscriptionTier}
+                  </span>
+                )}
+              </div>
+              {user.username && (
+                <p className="text-[9px]" style={{ color: 'rgba(255,214,0,0.4)' }}>@{user.username}</p>
+              )}
+            </div>
+            <div className="text-right shrink-0">
+              <div className="flex items-center gap-1 justify-end">
+                <Star size={10} style={{ color: '#ffd600' }} />
+                <p className="text-xs font-black" style={{ color: '#ffd600' }}>
+                  {user.socialScore.toLocaleString()}
+                </p>
+              </div>
+              <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>points</p>
+            </div>
+          </div>
+        )
+      })}
+
+      <div className="rounded-2xl p-4 text-center mt-4"
+        style={{ background: 'rgba(255,214,0,0.04)', border: '1px solid rgba(255,214,0,0.2)' }}>
+        <Star size={20} className="mx-auto mb-2" style={{ color: '#ffd600' }} />
+        <p className="text-xs font-black tracking-widest mb-1" style={{ color: '#ffd600' }}>BOOST YOUR SCORE</p>
+        <p className="text-[10px] mb-3" style={{ color: 'rgba(224,242,254,0.4)' }}>
+          Attend events, host parties, invite friends and stay active to climb the ranks.
+        </p>
+        <a href="/discover" className="inline-block px-4 py-2 rounded-lg text-[10px] font-black"
+          style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600', letterSpacing: '0.1em' }}>
+          FIND EVENTS →
+        </a>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'hosts' | 'venues' | 'partygoers' | 'earners'
+type Tab = 'social' | 'hosts' | 'venues' | 'partygoers' | 'earners'
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }> }[] = [
+  { id: 'social',     label: 'SOCIAL',   icon: Star    },
   { id: 'hosts',      label: 'HOSTS',    icon: Trophy  },
   { id: 'venues',     label: 'VENUES',   icon: MapPin  },
   { id: 'partygoers', label: 'GOERS',    icon: Users   },
@@ -384,7 +479,8 @@ const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size?: number;
 ]
 
 export default function LeaderboardPage() {
-  const [tab, setTab] = useState<Tab>('hosts')
+  const [tab, setTab] = useState<Tab>('social')
+  const [social, setSocial] = useState<ApiSocial[]>([])
   const [hosts, setHosts] = useState<ApiHost[]>([])
   const [venues, setVenues] = useState<ApiVenue[]>([])
   const [partygoers, setPartygoers] = useState<ApiPartygoer[]>([])
@@ -395,12 +491,14 @@ export default function LeaderboardPage() {
     async function loadLeaderboard() {
       setLoading(true)
       try {
-        const [hostsRes, venuesRes, partygoersRes, earnersRes] = await Promise.allSettled([
+        const [socialRes, hostsRes, venuesRes, partygoersRes, earnersRes] = await Promise.allSettled([
+          api.get<{ data: ApiSocial[] }>('/leaderboard/social'),
           api.get<{ data: ApiHost[] }>('/leaderboard/hosts'),
           api.get<{ data: ApiVenue[] }>('/leaderboard/venues'),
           api.get<{ data: ApiPartygoer[] }>('/leaderboard/partygoers'),
           api.get<{ data: ApiEarner[] }>('/referrals/leaderboard'),
         ])
+        if (socialRes.status === 'fulfilled' && socialRes.value?.data) setSocial(socialRes.value.data)
         if (hostsRes.status === 'fulfilled' && hostsRes.value?.data) setHosts(hostsRes.value.data)
         if (venuesRes.status === 'fulfilled' && venuesRes.value?.data) setVenues(venuesRes.value.data)
         if (partygoersRes.status === 'fulfilled' && partygoersRes.value?.data) setPartygoers(partygoersRes.value.data)
@@ -465,6 +563,7 @@ export default function LeaderboardPage() {
           </div>
         ) : (
           <>
+            {tab === 'social'     && <SocialTab users={social} />}
             {tab === 'hosts'      && <HostsTab hosts={hosts} />}
             {tab === 'venues'     && <VenuesTab venues={venues} />}
             {tab === 'partygoers' && <PartygoersTab partygoers={partygoers} />}

@@ -163,4 +163,26 @@ router.get('/partygoers', async (_req, res, next) => {
   }
 })
 
+/** GET /api/leaderboard/social — Top users ranked by social score */
+router.get('/social', async (_req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { socialScore: { gt: 0 } },
+      orderBy: { socialScore: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        photoUrl: true,
+        socialScore: true,
+        subscriptionTier: true,
+      },
+    })
+    res.json({ data: users })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router
