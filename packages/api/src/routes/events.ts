@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth, optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { TIERS } from '@partyradar/shared'
+import { getTier } from '@partyradar/shared'
 import { stripe } from '../lib/stripe'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
@@ -335,7 +335,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const body = eventSchema.parse(req.body)
     const user = req.user!.dbUser
-    const tier = TIERS[user.subscriptionTier as SubscriptionTier]
+    const tier = getTier(user.subscriptionTier)
 
     // Tier check: event creation limits
     if (tier.maxEventsPerMonth !== -1) {
@@ -387,7 +387,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         ticketsRemaining: body.ticketQuantity,
         isPublished: true,
         inviteToken: body.isInviteOnly ? uuidv4() : null,
-        isFeatured: TIERS[user.subscriptionTier as SubscriptionTier].featuredPlacement,
+        isFeatured: getTier(user.subscriptionTier).featuredPlacement,
       },
       include: { host: { select: userSelect } },
     })
