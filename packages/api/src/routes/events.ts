@@ -337,16 +337,24 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     const tier = TIERS[user.subscriptionTier as SubscriptionTier]
 
     // Tier check: event creation limits
-    if (tier.maxEvents !== -1) {
+    if (tier.maxEventsPerMonth !== -1) {
       const thisMonth = new Date()
       thisMonth.setDate(1)
       thisMonth.setHours(0, 0, 0, 0)
       const count = await prisma.event.count({
         where: { hostId: user.id, createdAt: { gte: thisMonth } },
       })
-      if (count >= tier.maxEvents) {
-        throw new AppError(`Your ${tier.name} plan allows ${tier.maxEvents} event(s)/month. Upgrade to host more.`, 403, 'TIER_LIMIT')
+      if (count >= tier.maxEventsPerMonth) {
+        throw new AppError(`Your ${tier.name} plan allows ${tier.maxEventsPerMonth} event(s)/month. Upgrade to host more.`, 403, 'TIER_LIMIT')
       }
+    }
+
+    // Yacht & Beach parties require BASIC+ subscription
+    if (body.type === 'YACHT_PARTY' && !tier.canViewYachtParties) {
+      throw new AppError('Upgrade to Basic or higher to create Yacht Party events', 403, 'TIER_LIMIT')
+    }
+    if (body.type === 'BEACH_PARTY' && !tier.canViewBeachParties) {
+      throw new AppError('Upgrade to Basic or higher to create Beach Party events', 403, 'TIER_LIMIT')
     }
 
     // Ticket sales require Pro+
@@ -378,7 +386,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         ticketsRemaining: body.ticketQuantity,
         isPublished: true,
         inviteToken: body.isInviteOnly ? uuidv4() : null,
-        isFeatured: TIERS[user.subscriptionTier as SubscriptionTier].featured,
+        isFeatured: TIERS[user.subscriptionTier as SubscriptionTier].featuredPlacement,
       },
       include: { host: { select: userSelect } },
     })
@@ -447,6 +455,84 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
     await prisma.event.update({ where: { id: event.id }, data: { isCancelled: true } })
+    res.json({ data: { success: true } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── Moderator endpoints ────────────────────────────────────────────────────────
+
+/** GET /api/events/:id/moderators — list moderators (host only) */
+router.get('/:id/moderators', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
+    if (!event) throw new AppError('Event not found', 404)
+    if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
+
+    const moderators = await prisma.eventModerator.findMany({
+      where: { eventId: event.id },
+      include: {
+        user: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+        addedBy: { select: { id: true, displayName: true } },
+      },
+      orderBy: { addedAt: 'asc' },
+    })
+
+    res.json({ data: moderators })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/events/:id/moderators — add a moderator (host only) */
+router.post('/:id/moderators', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
+    if (!event) throw new AppError('Event not found', 404)
+    if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
+
+    const { userId } = req.body as { userId: string }
+    if (!userId) throw new AppError('userId is required', 400)
+
+    // Can't make the host a moderator of their own event
+    if (userId === event.hostId) throw new AppError('The host cannot be added as a moderator', 400)
+
+    // Ensure the user exists
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true, displayName: true, photoUrl: true },
+    })
+    if (!targetUser) throw new AppError('User not found', 404)
+
+    const moderator = await prisma.eventModerator.upsert({
+      where: { eventId_userId: { eventId: event.id, userId } },
+      create: { eventId: event.id, userId, addedById: req.user!.dbUser.id },
+      update: {},
+      include: {
+        user: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+        addedBy: { select: { id: true, displayName: true } },
+      },
+    })
+
+    res.status(201).json({ data: moderator })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** DELETE /api/events/:id/moderators/:userId — remove a moderator (host only) */
+router.delete('/:id/moderators/:userId', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
+    if (!event) throw new AppError('Event not found', 404)
+    if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
+
+    const userId = String(req.params['userId'])
+    await prisma.eventModerator.deleteMany({
+      where: { eventId: event.id, userId },
+    })
+
     res.json({ data: { success: true } })
   } catch (err) {
     next(err)

@@ -8,7 +8,7 @@ import {
   QrCode, ArrowLeft, Star, Share2, Lock, Loader2, Check,
   ChevronRight, Zap, Link2, ChevronDown, ChevronUp, UserCircle2,
   Megaphone, Radio, Eye, EyeOff, XCircle, AlertTriangle, MessageCircle, TrendingUp,
-  Clock, Music, Package, Info, Navigation, Ticket, Sparkles, Heart, X
+  Clock, Music, Music2, Package, Info, Navigation, Ticket, Sparkles, Heart, X, ThumbsUp
 } from 'lucide-react'
 import SaveButton from '@/components/events/SaveButton'
 import { useEvent, updateEvent, cancelEvent } from '@/hooks/useEvents'
@@ -18,7 +18,7 @@ import { uploadImage } from '@/lib/cloudinary'
 import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
-import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS } from '@partyradar/shared'
+import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS, getTier } from '@partyradar/shared'
 import { formatPrice } from '@/lib/currency'
 import type { PushBlastTier } from '@partyradar/shared'
 import useSWR from 'swr'
@@ -633,6 +633,494 @@ function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName
   )
 }
 
+// ── Moderator Panel (host-only) ───────────────────────────────────────────────
+interface ModUser { id: string; username: string; displayName: string; photoUrl: string | null }
+interface ModEntry { id: string; userId: string; addedAt: string; user: ModUser; addedBy: { id: string; displayName: string } }
+
+function ModeratorPanel({ eventId }: { eventId: string }) {
+  const [open, setOpen] = useState(false)
+  const [mods, setMods] = useState<ModEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [searchResults, setSearchResults] = useState<ModUser[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [adding, setAdding] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    api.get<{ data: ModEntry[] }>(`/events/${eventId}/moderators`)
+      .then(r => setMods(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [open, eventId])
+
+  function doSearch(q: string) {
+    setSearch(q)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!q.trim()) { setSearchResults([]); return }
+    searchTimer.current = setTimeout(async () => {
+      setSearchLoading(true)
+      try {
+        const r = await api.get<{ data: ModUser[] }>(`/users/search?q=${encodeURIComponent(q)}&limit=5`)
+        setSearchResults(r.data ?? [])
+      } catch { setSearchResults([]) }
+      finally { setSearchLoading(false) }
+    }, 350)
+  }
+
+  async function addMod(user: ModUser) {
+    setAdding(user.id)
+    try {
+      const r = await api.post<{ data: ModEntry }>(`/events/${eventId}/moderators`, { userId: user.id })
+      setMods(prev => [...prev.filter(m => m.userId !== user.id), r.data])
+      setSearch('')
+      setSearchResults([])
+    } catch {}
+    finally { setAdding(null) }
+  }
+
+  async function removeMod(userId: string) {
+    setRemoving(userId)
+    try {
+      await api.delete(`/events/${eventId}/moderators/${userId}`)
+      setMods(prev => prev.filter(m => m.userId !== userId))
+    } catch {}
+    finally { setRemoving(null) }
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.18)' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 transition-all"
+        style={{ background: 'rgba(168,85,247,0.03)' }}>
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={12} style={{ color: 'rgba(168,85,247,0.6)' }} />
+          <span className="text-xs font-black tracking-widest" style={{ color: '#e0f2fe' }}>MODERATORS</span>
+          {mods.length > 0 && (
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.25)', color: 'rgba(168,85,247,0.8)' }}>
+              {mods.length}
+            </span>
+          )}
+        </div>
+        {open
+          ? <ChevronUp size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
+          : <ChevronDown size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
+        }
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4" style={{ borderTop: '1px solid rgba(168,85,247,0.1)' }}>
+          {/* Search to add */}
+          <div>
+            <p className="text-[9px] font-bold tracking-[0.18em] mb-2" style={{ color: 'rgba(168,85,247,0.5)' }}>ADD MODERATOR</p>
+            <div className="relative">
+              <input
+                value={search}
+                onChange={e => doSearch(e.target.value)}
+                placeholder="Search by username or name..."
+                className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
+                style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }}
+              />
+              {searchLoading && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 size={12} className="animate-spin" style={{ color: 'rgba(168,85,247,0.5)' }} />
+                </div>
+              )}
+            </div>
+            {searchResults.length > 0 && (
+              <div className="mt-1.5 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.2)' }}>
+                {searchResults.map(u => {
+                  const alreadyMod = mods.some(m => m.userId === u.id)
+                  return (
+                    <div key={u.id} className="flex items-center gap-3 px-3 py-2.5"
+                      style={{ borderBottom: '1px solid rgba(168,85,247,0.08)' }}>
+                      {u.photoUrl ? (
+                        <img src={u.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                          style={{ background: 'rgba(168,85,247,0.1)', color: 'rgba(168,85,247,0.7)' }}>
+                          {u.displayName[0]}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                        <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.6)' }}>@{u.username}</p>
+                      </div>
+                      <button
+                        onClick={() => !alreadyMod && addMod(u)}
+                        disabled={alreadyMod || adding === u.id}
+                        className="text-[9px] font-black px-2.5 py-1 rounded-lg transition-all disabled:opacity-40"
+                        style={{ background: alreadyMod ? 'rgba(0,255,136,0.08)' : 'rgba(168,85,247,0.12)', border: `1px solid ${alreadyMod ? 'rgba(0,255,136,0.25)' : 'rgba(168,85,247,0.3)'}`, color: alreadyMod ? '#00ff88' : 'rgba(168,85,247,0.9)' }}>
+                        {adding === u.id ? '...' : alreadyMod ? '✓ MOD' : '+ ADD'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Current moderators */}
+          <div>
+            <p className="text-[9px] font-bold tracking-[0.18em] mb-2" style={{ color: 'rgba(168,85,247,0.5)' }}>CURRENT MODERATORS</p>
+            {loading ? (
+              <div className="flex items-center justify-center py-4 gap-2">
+                <Loader2 size={12} className="animate-spin" style={{ color: 'rgba(168,85,247,0.4)' }} />
+                <span className="text-[10px]" style={{ color: 'rgba(168,85,247,0.4)' }}>Loading...</span>
+              </div>
+            ) : mods.length === 0 ? (
+              <p className="text-[10px] text-center py-3" style={{ color: 'rgba(74,96,128,0.4)' }}>No moderators assigned yet</p>
+            ) : (
+              <div className="space-y-1.5">
+                {mods.map(m => (
+                  <div key={m.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                    style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.12)' }}>
+                    {m.user.photoUrl ? (
+                      <img src={m.user.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                        style={{ background: 'rgba(168,85,247,0.1)', color: 'rgba(168,85,247,0.7)' }}>
+                        {m.user.displayName[0]}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate" style={{ color: '#e0f2fe' }}>{m.user.displayName}</p>
+                      <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.6)' }}>@{m.user.username}</p>
+                    </div>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full mr-1"
+                      style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.2)', color: 'rgba(168,85,247,0.7)' }}>
+                      MOD
+                    </span>
+                    <button
+                      onClick={() => removeMod(m.userId)}
+                      disabled={removing === m.userId}
+                      className="p-1.5 rounded-lg transition-all disabled:opacity-40"
+                      style={{ color: 'rgba(255,0,110,0.5)' }}>
+                      {removing === m.userId ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── DJ Song Request Panel ─────────────────────────────────────────────────────
+interface DjReqUser { id: string; displayName: string; photoUrl: string | null; username: string }
+interface DjReqEntry {
+  id: string; song: string; artist: string | null; message: string | null
+  status: string; upvotes: number; walletPaid: boolean; createdAt: string
+  user: DjReqUser; hasUpvoted: boolean
+}
+
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  PENDING:  { label: 'PENDING',  color: 'rgba(255,214,0,0.8)' },
+  APPROVED: { label: 'APPROVED', color: '#00ff88' },
+  PLAYED:   { label: '✓ PLAYED', color: '#a855f7' },
+  REJECTED: { label: 'DECLINED', color: '#ff006e' },
+}
+
+function DjRequestPanel({
+  eventId, isHost, userTier,
+}: {
+  eventId: string; isHost: boolean; userTier?: string | null
+}) {
+  const [open, setOpen]             = useState(false)
+  const [requests, setRequests]     = useState<DjReqEntry[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [song, setSong]             = useState('')
+  const [artist, setArtist]         = useState('')
+  const [note, setNote]             = useState('')
+  const [error, setError]           = useState<string | null>(null)
+  const [success, setSuccess]       = useState(false)
+  const [upvoting, setUpvoting]     = useState<string | null>(null)
+  const [managing, setManaging]     = useState<string | null>(null)
+
+  const tier     = getTier(userTier)
+  const isFree   = !tier.canRequestDJ // FREE = must pay
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    api.get<{ data: DjReqEntry[] }>(`/events/${eventId}/dj-requests`)
+      .then(r => setRequests(r.data ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [open, eventId])
+
+  async function handleSubmit() {
+    if (!song.trim()) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const r = await api.post<{ data: DjReqEntry }>(`/events/${eventId}/dj-requests`, {
+        song: song.trim(), artist: artist.trim() || undefined, message: note.trim() || undefined,
+      })
+      setRequests(prev => [r.data, ...prev])
+      setSong(''); setArtist(''); setNote('')
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to submit request')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleUpvote(req: DjReqEntry) {
+    setUpvoting(req.id)
+    try {
+      const r = await api.post<{ data: { upvoted: boolean } }>(`/events/${eventId}/dj-requests/${req.id}/upvote`, {})
+      setRequests(prev => prev.map(x =>
+        x.id === req.id
+          ? { ...x, hasUpvoted: r.data.upvoted, upvotes: r.data.upvoted ? x.upvotes + 1 : x.upvotes - 1 }
+          : x
+      ).sort((a, b) => b.upvotes - a.upvotes || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()))
+    } catch {}
+    finally { setUpvoting(null) }
+  }
+
+  async function handleStatus(req: DjReqEntry, status: 'APPROVED' | 'REJECTED' | 'PLAYED') {
+    setManaging(req.id)
+    try {
+      await api.patch(`/events/${eventId}/dj-requests/${req.id}`, { status })
+      setRequests(prev => prev.map(x => x.id === req.id ? { ...x, status } : x))
+    } catch {}
+    finally { setManaging(null) }
+  }
+
+  const pendingCount = requests.filter(r => r.status === 'PENDING').length
+
+  return (
+    <div className="rounded-xl overflow-hidden mb-6" style={{ border: '1px solid rgba(168,85,247,0.18)' }}>
+      {/* Header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 transition-all"
+        style={{ background: 'rgba(168,85,247,0.03)' }}>
+        <div className="flex items-center gap-2">
+          <Music2 size={12} style={{ color: 'rgba(168,85,247,0.6)' }} />
+          <span className="text-xs font-black tracking-widest" style={{ color: '#e0f2fe' }}>REQUEST A SONG</span>
+          {pendingCount > 0 && (
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.25)', color: 'rgba(168,85,247,0.8)' }}>
+              {pendingCount}
+            </span>
+          )}
+          {isFree && (
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.2)', color: 'rgba(255,214,0,0.7)' }}>
+              £1 / REQUEST
+            </span>
+          )}
+          {!isFree && (
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', color: 'rgba(0,255,136,0.7)' }}>
+              FREE WITH PLAN
+            </span>
+          )}
+        </div>
+        {open
+          ? <ChevronUp size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
+          : <ChevronDown size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
+        }
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4" style={{ borderTop: '1px solid rgba(168,85,247,0.1)' }}>
+
+          {/* Submit form */}
+          <div className="space-y-2.5">
+            <p className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(168,85,247,0.5)' }}>
+              {isFree ? 'REQUEST A SONG · £1.00 FROM WALLET' : 'REQUEST A SONG · FREE WITH YOUR PLAN'}
+            </p>
+
+            <input
+              value={song}
+              onChange={e => setSong(e.target.value)}
+              placeholder="Song title *"
+              maxLength={100}
+              className="w-full px-3 py-2.5 rounded-lg text-sm focus:outline-none"
+              style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }}
+            />
+            <input
+              value={artist}
+              onChange={e => setArtist(e.target.value)}
+              placeholder="Artist (optional)"
+              maxLength={80}
+              className="w-full px-3 py-2.5 rounded-lg text-sm focus:outline-none"
+              style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }}
+            />
+            <input
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Note to DJ (optional)"
+              maxLength={200}
+              className="w-full px-3 py-2.5 rounded-lg text-sm focus:outline-none"
+              style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }}
+            />
+
+            {error && (
+              <p className="text-xs px-3 py-2 rounded-lg" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                {error}
+              </p>
+            )}
+
+            {success ? (
+              <div className="flex items-center justify-center gap-2 py-2.5 rounded-lg"
+                style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.25)' }}>
+                <Check size={12} style={{ color: '#00ff88' }} />
+                <span className="text-xs font-bold" style={{ color: '#00ff88' }}>Request sent to the DJ!</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || !song.trim()}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-black transition-all disabled:opacity-40"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.1))',
+                  border: '1px solid rgba(168,85,247,0.4)',
+                  color: '#a855f7',
+                  letterSpacing: '0.08em',
+                }}>
+                {submitting
+                  ? <><Loader2 size={12} className="animate-spin" /> SENDING...</>
+                  : isFree
+                  ? <><Music2 size={12} /> REQUEST · £1.00</>
+                  : <><Music2 size={12} /> SEND REQUEST</>
+                }
+              </button>
+            )}
+          </div>
+
+          {/* Request list */}
+          {loading ? (
+            <div className="flex items-center justify-center py-4 gap-2">
+              <Loader2 size={12} className="animate-spin" style={{ color: 'rgba(168,85,247,0.4)' }} />
+              <span className="text-[10px]" style={{ color: 'rgba(168,85,247,0.4)' }}>Loading requests...</span>
+            </div>
+          ) : requests.length === 0 ? (
+            <p className="text-center text-[10px] py-3" style={{ color: 'rgba(74,96,128,0.4)' }}>
+              No requests yet — be the first!
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(168,85,247,0.5)' }}>
+                REQUESTS · {requests.length}
+              </p>
+              {requests.map(req => {
+                const sc = STATUS_CONFIG[req.status] ?? STATUS_CONFIG['PENDING']!
+                return (
+                  <div key={req.id} className="flex items-start gap-3 px-3 py-2.5 rounded-xl"
+                    style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.1)' }}>
+
+                    {/* Avatar */}
+                    {req.user.photoUrl ? (
+                      <img src={req.user.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold"
+                        style={{ background: 'rgba(168,85,247,0.1)', color: 'rgba(168,85,247,0.7)' }}>
+                        {req.user.displayName[0]}
+                      </div>
+                    )}
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{req.song}</p>
+                      {req.artist && (
+                        <p className="text-[10px] truncate" style={{ color: 'rgba(224,242,254,0.5)' }}>{req.artist}</p>
+                      )}
+                      {req.message && (
+                        <p className="text-[10px] mt-0.5 italic" style={{ color: 'rgba(168,85,247,0.6)' }}>"{req.message}"</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-[9px] font-bold" style={{ color: 'rgba(74,96,128,0.5)' }}>
+                          @{req.user.username}
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                          style={{ color: sc.color, background: `${sc.color}12`, border: `1px solid ${sc.color}25` }}>
+                          {sc.label}
+                        </span>
+                        {req.walletPaid && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                            style={{ color: 'rgba(255,214,0,0.6)', background: 'rgba(255,214,0,0.06)', border: '1px solid rgba(255,214,0,0.15)' }}>
+                            PAID
+                          </span>
+                        )}
+
+                        {/* Host status controls */}
+                        {isHost && req.status === 'PENDING' && (
+                          <div className="flex items-center gap-1 ml-auto">
+                            <button
+                              onClick={() => handleStatus(req, 'APPROVED')}
+                              disabled={managing === req.id}
+                              className="text-[8px] font-black px-2 py-0.5 rounded transition-all disabled:opacity-40"
+                              style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', color: '#00ff88' }}>
+                              ✓ APPROVE
+                            </button>
+                            <button
+                              onClick={() => handleStatus(req, 'PLAYED')}
+                              disabled={managing === req.id}
+                              className="text-[8px] font-black px-2 py-0.5 rounded transition-all disabled:opacity-40"
+                              style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', color: '#a855f7' }}>
+                              ♫ PLAYED
+                            </button>
+                            <button
+                              onClick={() => handleStatus(req, 'REJECTED')}
+                              disabled={managing === req.id}
+                              className="text-[8px] font-black px-2 py-0.5 rounded transition-all disabled:opacity-40"
+                              style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.2)', color: '#ff006e' }}>
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                        {isHost && req.status === 'APPROVED' && (
+                          <button
+                            onClick={() => handleStatus(req, 'PLAYED')}
+                            disabled={managing === req.id}
+                            className="ml-auto text-[8px] font-black px-2 py-0.5 rounded transition-all disabled:opacity-40"
+                            style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', color: '#a855f7' }}>
+                            ♫ MARK PLAYED
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Upvote */}
+                    <button
+                      onClick={() => handleUpvote(req)}
+                      disabled={upvoting === req.id}
+                      className="flex flex-col items-center gap-0.5 p-1.5 rounded-lg shrink-0 transition-all disabled:opacity-40"
+                      style={{
+                        background: req.hasUpvoted ? 'rgba(168,85,247,0.12)' : 'transparent',
+                        border: `1px solid ${req.hasUpvoted ? 'rgba(168,85,247,0.35)' : 'rgba(168,85,247,0.12)'}`,
+                      }}>
+                      <ThumbsUp size={11} style={{ color: req.hasUpvoted ? '#a855f7' : 'rgba(168,85,247,0.4)' }} />
+                      <span className="text-[10px] font-black tabular-nums" style={{ color: req.hasUpvoted ? '#a855f7' : 'rgba(168,85,247,0.4)' }}>
+                        {req.upvotes}
+                      </span>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function EventDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -670,6 +1158,12 @@ export default function EventDetailPage() {
       `/events/${event.id}/friends-going`
     ).then(r => setFriendsGoing(r.data)).catch(() => {})
   }, [dbUser, event?.id])
+
+  // Track page view — fire once per event load (deduplicated server-side to 1 per 6h per user)
+  useEffect(() => {
+    if (!event?.id) return
+    api.post<unknown>(`/events/${event.id}/view`, {}).catch(() => {})
+  }, [event?.id])
 
   const { data: guestData } = useSWR<{ data: EventGuest[] }>(
     isHostView && guestListOpen ? `/events/${params['id']}/guests` : null,
@@ -1228,6 +1722,13 @@ export default function EventDetailPage() {
         {/* ── Highlights of the Night ── */}
         <HighlightsOfTheNight event={event} color={tc.color} />
 
+        {/* ── DJ Song Requests ── */}
+        <DjRequestPanel
+          eventId={event.id}
+          isHost={isHost}
+          userTier={dbUser?.subscriptionTier}
+        />
+
         {/* ── Venue Community Chat ── */}
         {(event as any).venue && (
           <div className="mb-6 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,214,0,0.15)' }}>
@@ -1532,6 +2033,9 @@ export default function EventDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Moderator management */}
+            <ModeratorPanel eventId={event.id} />
           </div>
         )}
       </div>

@@ -3,585 +3,552 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Loader2, Save, Upload, Eye, Palette, X } from 'lucide-react'
+import { ArrowLeft, Check, Upload, Navigation, Loader2, Save } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { useEvent } from '@/hooks/useEvents'
+import { useEvent, updateEvent } from '@/hooks/useEvents'
 import { uploadImage } from '@/lib/cloudinary'
-import { api } from '@/lib/api'
 import { VIBE_TAGS } from '@partyradar/shared'
+import type { AlcoholPolicy, AgeRestriction, EventType } from '@partyradar/shared'
 
-const PARTY_SIGNALS = [
-  { emoji: '🍾', code: 'BAR',      label: 'Free Bar' },
-  { emoji: '🎮', code: 'GAMING',   label: 'Gaming' },
-  { emoji: '🎲', code: 'GAMES',    label: 'Games' },
-  { emoji: '🕺', code: 'FLOOR',    label: 'Dance Floor' },
-  { emoji: '🔥', code: 'FIRE',     label: 'Firepit' },
-  { emoji: '🎤', code: 'KARAOKE',  label: 'Karaoke' },
-  { emoji: '🍕', code: 'FOOD',     label: 'Food' },
-  { emoji: '🎭', code: 'COSTUME',  label: 'Costume' },
-  { emoji: '🌙', code: 'LATENIGHT', label: 'Late Night' },
-  { emoji: '♨️', code: 'HOTTUB',   label: 'Hot Tub' },
-  { emoji: '🎸', code: 'LIVE',     label: 'Live Music' },
-  { emoji: '🎯', code: 'PONG',     label: 'Pong' },
-  { emoji: '🏊', code: 'POOL',     label: 'Pool' },
-  { emoji: '🌿', code: 'CHILL',    label: 'Chill' },
-  { emoji: '💋', code: 'FLIRTY',   label: 'Flirty' },
-  { emoji: '🍩', code: 'SNACKS',   label: 'Snacks' },
-]
-
-const ACCENT_COLORS = [
-  { hex: 'var(--accent)', label: 'Cyan' },
-  { hex: '#ff006e', label: 'Pink' },
-  { hex: '#3d5afe', label: 'Indigo' },
-  { hex: '#00ff88', label: 'Green' },
-  { hex: '#ffd600', label: 'Gold' },
-  { hex: '#a855f7', label: 'Purple' },
-  { hex: '#f97316', label: 'Orange' },
-  { hex: '#ef4444', label: 'Red' },
-  { hex: '#06b6d4', label: 'Teal' },
-  { hex: '#ec4899', label: 'Magenta' },
+// ── Types ─────────────────────────────────────────────────────────────────────
+const EVENT_TYPES: { id: EventType; label: string; emoji: string; color: string }[] = [
+  { id: 'HOME_PARTY',  label: 'Home Party',  emoji: '🏠', color: '#ff006e'     },
+  { id: 'CLUB_NIGHT',  label: 'Club Night',  emoji: '🎵', color: 'var(--accent)' },
+  { id: 'CONCERT',     label: 'Concert',     emoji: '🎤', color: '#3d5afe'     },
+  { id: 'PUB_NIGHT',   label: 'Pub Night',   emoji: '🍺', color: '#f59e0b'     },
+  { id: 'BEACH_PARTY', label: 'Beach Party', emoji: '🏖️', color: '#06b6d4'     },
+  { id: 'YACHT_PARTY', label: 'Yacht Party', emoji: '⛵', color: '#0ea5e9'     },
 ]
 
 const ALCOHOL_OPTIONS = [
   { value: 'NONE',     label: 'No Alcohol', emoji: '🚫' },
-  { value: 'PROVIDED', label: 'Bar / Free Drinks', emoji: '🍾' },
-  { value: 'BYOB',     label: 'BYOB', emoji: '🥃' },
+  { value: 'PROVIDED', label: 'Provided',   emoji: '🍾' },
+  { value: 'BYOB',     label: 'BYOB',       emoji: '🥃' },
 ]
 
 const AGE_OPTIONS = [
   { value: 'ALL_AGES', label: 'All Ages', emoji: '👶' },
-  { value: 'AGE_18',   label: '18+', emoji: '🔞' },
-  { value: 'AGE_21',   label: '21+', emoji: '🍸' },
+  { value: 'AGE_18',   label: '18+',      emoji: '🔞' },
+  { value: 'AGE_21',   label: '21+',      emoji: '🍸' },
 ]
 
-const TYPE_COLORS: Record<string, string> = {
-  HOME_PARTY: '#ff006e',
-  CLUB_NIGHT: 'var(--accent)',
-  CONCERT:    '#3d5afe',
-  PUB_NIGHT:  '#f59e0b',
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function CyberInput({ label, error, className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label?: string; error?: string }) {
+  const [focused, setFocused] = useState(false)
   return (
-    <div>
-      <label className="text-[10px] font-black tracking-[0.15em] block mb-1.5"
-        style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>{label}</label>
-      {children}
+    <div className={`flex flex-col gap-1.5 ${className}`}>
+      {label && <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>{label}</label>}
+      <input
+        {...props}
+        onFocus={(e) => { setFocused(true); props.onFocus?.(e) }}
+        onBlur={(e) => { setFocused(false); props.onBlur?.(e) }}
+        className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
+        style={{
+          background: 'rgba(var(--accent-rgb),0.04)',
+          border: focused ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
+          color: '#e0f2fe',
+          boxShadow: focused ? '0 0 12px rgba(var(--accent-rgb),0.1)' : 'none',
+        }}
+      />
+      {error && <p className="text-[11px] font-medium" style={{ color: '#ff006e' }}>{error}</p>}
     </div>
   )
 }
 
-function SectionHeader({ title, icon }: { title: string; icon?: React.ReactNode }) {
+function CyberTextarea({ label, error, className = '', ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; error?: string }) {
+  const [focused, setFocused] = useState(false)
   return (
-    <div className="flex items-center gap-2 mt-3 mb-2">
-      {icon}
-      <span className="text-[10px] font-black tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>
-        {title}
-      </span>
-      <div className="flex-1 h-px" style={{ background: 'rgba(var(--accent-rgb),0.08)' }} />
+    <div className={`flex flex-col gap-1.5 ${className}`}>
+      {label && <label className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>{label}</label>}
+      <textarea
+        {...props}
+        onFocus={(e) => { setFocused(true); props.onFocus?.(e) }}
+        onBlur={(e) => { setFocused(false); props.onBlur?.(e) }}
+        className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200 resize-none"
+        style={{
+          background: 'rgba(var(--accent-rgb),0.04)',
+          border: focused ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.15)',
+          color: '#e0f2fe',
+          boxShadow: focused ? '0 0 12px rgba(var(--accent-rgb),0.1)' : 'none',
+        }}
+      />
+      {error && <p className="text-[11px]" style={{ color: '#ff006e' }}>{error}</p>}
     </div>
   )
 }
 
-const inputStyle = {
-  background: 'rgba(var(--accent-rgb),0.04)',
-  border: '1px solid rgba(var(--accent-rgb),0.18)',
-  color: '#e0f2fe',
-} as const
-
+// ── Main Page ──────────────────────────────────────────────────────────────────
 export default function EditEventPage() {
   const params = useParams()
   const router = useRouter()
-  const { dbUser } = useAuth()
-  const { event, isLoading, mutate } = useEvent(params['id'] as string)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const eventId = String(params['id'])
+  const { dbUser, loading: authLoading } = useAuth()
+  const { event, isLoading: eventLoading } = useEvent(eventId)
 
-  const [form, setForm] = useState({
-    name: '',
-    description: '',
-    startsAt: '',
-    endsAt: '',
-    capacity: 0,
-    price: 0,
-    dressCode: '',
-    houseRules: '',
-    lineup: '',
-    partySigns: [] as string[],
-    vibeTags: [] as string[],
-    alcoholPolicy: 'NONE',
-    ageRestriction: 'ALL_AGES',
-    isInviteOnly: false,
-    coverImageUrl: '',
-    accentColor: '',
-  })
-  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState<Record<string, unknown>>({})
+  const [initialised, setInitialised] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  // Populate form once event loads
+  // Redirect if not authenticated
   useEffect(() => {
-    if (!event) return
-    setForm({
-      name: event.name,
-      description: event.description,
-      startsAt: event.startsAt ? new Date(event.startsAt).toISOString().slice(0, 16) : '',
-      endsAt: event.endsAt ? new Date(event.endsAt).toISOString().slice(0, 16) : '',
-      capacity: event.capacity,
-      price: event.price,
-      dressCode: event.dressCode ?? '',
-      houseRules: event.houseRules ?? '',
-      lineup: event.lineup ?? '',
-      partySigns: event.partySigns ?? [],
-      vibeTags: event.vibeTags ?? [],
-      alcoholPolicy: event.alcoholPolicy ?? 'NONE',
-      ageRestriction: event.ageRestriction ?? 'ALL_AGES',
-      isInviteOnly: event.isInviteOnly ?? false,
-      coverImageUrl: event.coverImageUrl ?? '',
-      accentColor: event.accentColor ?? '',
-    })
-    if (event.coverImageUrl) setCoverPreview(event.coverImageUrl)
-  }, [event])
+    if (!authLoading && !dbUser) router.push('/login')
+  }, [authLoading, dbUser, router])
 
-  // Auth guard
-  if (!isLoading && (!dbUser || (event && event.hostId !== dbUser.id))) {
-    router.push('/discover')
-    return null
-  }
+  // Pre-fill form when event loads
+  useEffect(() => {
+    if (event && !initialised) {
+      setForm({
+        name: event.name ?? '',
+        type: event.type,
+        description: event.description ?? '',
+        startsAt: event.startsAt ? new Date(event.startsAt).toISOString().slice(0, 16) : '',
+        endsAt: event.endsAt ? new Date(event.endsAt).toISOString().slice(0, 16) : '',
+        address: event.address ?? '',
+        neighbourhood: event.neighbourhood ?? '',
+        lat: event.lat,
+        lng: event.lng,
+        capacity: event.capacity ?? 50,
+        price: event.price ?? 0,
+        ticketQuantity: event.ticketQuantity ?? 0,
+        alcoholPolicy: event.alcoholPolicy ?? 'NONE',
+        ageRestriction: event.ageRestriction ?? 'ALL_AGES',
+        dressCode: (event as any).dressCode ?? '',
+        houseRules: (event as any).houseRules ?? '',
+        vibeTags: event.vibeTags ?? [],
+        isInviteOnly: event.isInviteOnly ?? false,
+        showNeighbourhoodOnly: event.showNeighbourhoodOnly ?? false,
+        venueName: (event as any).venueName ?? '',
+        lineup: (event as any).lineup ?? '',
+        whatToBring: event.whatToBring ?? [],
+        coverImageUrl: event.coverImageUrl ?? '',
+      })
+      if (event.coverImageUrl) setCoverPreview(event.coverImageUrl)
+      setInitialised(true)
+    }
+  }, [event, initialised])
 
-  if (isLoading || !event) {
+  // Access control: only host can edit
+  useEffect(() => {
+    if (!eventLoading && event && dbUser && event.hostId !== dbUser.id) {
+      router.push(`/events/${eventId}`)
+    }
+  }, [eventLoading, event, dbUser, router, eventId])
+
+  if (authLoading || eventLoading || !initialised) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d' }}>
-        <div className="w-10 h-10 border-2 rounded-full animate-spin"
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <div className="w-12 h-12 rounded-full border-2 animate-spin"
           style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+        <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>LOADING...</p>
       </div>
     )
   }
 
-  const accent = form.accentColor || TYPE_COLORS[event.type] || 'var(--accent)'
-
-  function set<K extends keyof typeof form>(key: K, value: typeof form[K]) {
-    setForm((f) => ({ ...f, [key]: value }))
-    setSaved(false)
+  if (!event) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="text-sm font-bold" style={{ color: '#ff006e' }}>Event not found</p>
+        <Link href="/discover" className="text-xs" style={{ color: 'var(--accent)' }}>← Back to Discover</Link>
+      </div>
+    )
   }
 
-  function toggleSign(code: string) {
-    setForm((f) => ({
-      ...f,
-      partySigns: f.partySigns.includes(code)
-        ? f.partySigns.filter((s) => s !== code)
-        : [...f.partySigns, code],
-    }))
-    setSaved(false)
+  function update(patch: Record<string, unknown>) {
+    setForm(f => ({ ...f, ...patch }))
   }
 
-  function toggleVibe(tag: string) {
-    setForm((f) => ({
-      ...f,
-      vibeTags: f.vibeTags.includes(tag)
-        ? f.vibeTags.filter((t) => t !== tag)
-        : f.vibeTags.length < 8 ? [...f.vibeTags, tag] : f.vibeTags,
-    }))
-    setSaved(false)
-  }
-
-  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleCover(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setCoverFile(file)
     setCoverPreview(URL.createObjectURL(file))
-    setSaved(false)
   }
 
-  function removeCover() {
-    setCoverFile(null)
-    setCoverPreview(null)
-    set('coverImageUrl', '')
+  function useMyLocation() {
+    setLocating(true)
+    navigator.geolocation?.getCurrentPosition(
+      ({ coords }) => {
+        update({ lat: coords.latitude, lng: coords.longitude })
+        setLocating(false)
+      },
+      () => setLocating(false),
+      { timeout: 5000 }
+    )
+  }
+
+  function toggleVibeTag(tag: string) {
+    const tags = (form.vibeTags as string[]) ?? []
+    update({ vibeTags: tags.includes(tag) ? tags.filter((t: string) => t !== tag) : [...tags, tag] })
   }
 
   async function handleSave() {
-    if (!event) return
-    setSaving(true)
+    setSubmitting(true)
     setError(null)
-
-    let coverImageUrl = form.coverImageUrl
-    if (coverFile) {
-      try {
-        setUploading(true)
-        coverImageUrl = await uploadImage(coverFile, 'events')
-      } catch {
-        // skip upload failure in dev
-      } finally {
-        setUploading(false)
-      }
-    }
-
-    const patch: Record<string, unknown> = {
-      name: form.name,
-      description: form.description,
-      startsAt: new Date(form.startsAt).toISOString(),
-      endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : undefined,
-      capacity: Number(form.capacity),
-      price: Number(form.price),
-      dressCode: form.dressCode || undefined,
-      houseRules: form.houseRules || undefined,
-      vibeTags: form.vibeTags,
-      alcoholPolicy: form.alcoholPolicy,
-      ageRestriction: form.ageRestriction,
-      isInviteOnly: form.isInviteOnly,
-      coverImageUrl: coverImageUrl || undefined,
-      accentColor: form.accentColor || null,
-    }
-
-    if (event.type === 'CLUB_NIGHT' || event.type === 'CONCERT' || event.type === 'PUB_NIGHT') {
-      patch.lineup = form.lineup || undefined
-    }
-    if (event.type === 'HOME_PARTY') {
-      patch.partySigns = form.partySigns
-    }
-
     try {
-      await api.put(`/events/${event.id}`, patch)
-      await mutate()
+      let coverImageUrl = form.coverImageUrl as string | undefined
+      if (coverFile) {
+        try { coverImageUrl = await uploadImage(coverFile, 'events') } catch { /* skip upload */ }
+      }
+
+      const payload: Record<string, unknown> = {
+        ...form,
+        coverImageUrl,
+        startsAt: form.startsAt ? new Date(form.startsAt as string).toISOString() : undefined,
+        endsAt: form.endsAt ? new Date(form.endsAt as string).toISOString() : undefined,
+        capacity: Number(form.capacity),
+        price: Number(form.price),
+        ticketQuantity: Number(form.ticketQuantity),
+        lat: Number(form.lat),
+        lng: Number(form.lng),
+      }
+
+      await updateEvent(eventId, payload as any)
       setSaved(true)
+      setTimeout(() => router.push(`/events/${eventId}`), 1200)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save changes')
     } finally {
-      setSaving(false)
+      setSubmitting(false)
     }
   }
 
-  const isHomeparty = event.type === 'HOME_PARTY'
-  const isClubOrConcert = event.type === 'CLUB_NIGHT' || event.type === 'CONCERT' || event.type === 'PUB_NIGHT'
+  const currentTypeConfig = EVENT_TYPES.find(t => t.id === form.type)
+  const accentColor = currentTypeConfig?.color ?? 'var(--accent)'
+  const vibeTags = (form.vibeTags as string[]) ?? []
+
+  if (saved) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4">
+        <div className="w-20 h-20 rounded-full flex items-center justify-center"
+          style={{ border: '2px solid #00ff88', boxShadow: '0 0 40px rgba(0,255,136,0.4)' }}>
+          <Check size={36} style={{ color: '#00ff88' }} />
+        </div>
+        <div className="text-center">
+          <p className="text-xs font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(0,255,136,0.6)' }}>CHANGES SAVED</p>
+          <h2 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>{form.name as string}</h2>
+          <p className="text-sm mt-1" style={{ color: 'rgba(74,96,128,0.8)' }}>Redirecting to event...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen pb-28 px-4 pt-20 max-w-lg mx-auto" style={{ background: '#04040d' }}>
+    <div className="min-h-screen flex flex-col pt-14 pb-32" style={{ background: '#04040d' }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <Link href={`/events/${event.id}`}
-          className="inline-flex items-center gap-1.5 text-xs font-bold"
-          style={{ color: `${accent}88` }}>
-          <ArrowLeft size={13} /> BACK
+      <div className="sticky top-14 z-30 flex items-center gap-3 px-4 py-3"
+        style={{ background: 'rgba(4,4,13,0.92)', borderBottom: '1px solid rgba(var(--accent-rgb),0.1)', backdropFilter: 'blur(16px)' }}>
+        <Link href={`/events/${eventId}`}
+          className="p-2 rounded-lg"
+          style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.6)' }}>
+          <ArrowLeft size={14} />
         </Link>
-        <div className="text-[10px] font-bold tracking-widest px-2 py-0.5 rounded"
-          style={{ color: accent, border: `1px solid ${accent}40`, background: `${accent}08` }}>
-          EDIT EVENT
+        <div className="flex-1">
+          <p className="text-[9px] font-bold tracking-[0.25em]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>EDITING EVENT</p>
+          <p className="text-sm font-black truncate" style={{ color: '#e0f2fe' }}>{event.name}</p>
         </div>
-      </div>
-
-      {/* Cover image preview */}
-      <div className="relative rounded-2xl overflow-hidden mb-4" style={{ height: 160 }}>
-        {coverPreview ? (
-          <>
-            <img src={coverPreview} alt="" className="w-full h-full object-cover"
-              style={{ filter: 'brightness(0.6) saturate(1.2)' }} />
-            <div className="absolute inset-0"
-              style={{ background: `linear-gradient(to bottom, transparent, ${accent}15 60%, #04040d 100%)` }} />
-            <button onClick={removeCover}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)' }}>
-              <X size={12} style={{ color: '#fff' }} />
-            </button>
-          </>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2"
-            style={{ background: `radial-gradient(ellipse at 30% 40%, ${accent}15 0%, #07071a 70%)`,
-                     border: `1px solid ${accent}20`, borderRadius: 16 }}>
-            <Upload size={24} style={{ color: `${accent}60` }} />
-            <span className="text-[10px] font-bold tracking-widest" style={{ color: `${accent}50` }}>NO COVER IMAGE</span>
-          </div>
-        )}
-        <button onClick={() => fileRef.current?.click()}
-          className="absolute bottom-2 left-2 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-bold tracking-wide"
-          style={{ background: 'rgba(0,0,0,0.7)', border: `1px solid ${accent}40`, color: accent }}>
-          <Upload size={11} /> {coverPreview ? 'CHANGE COVER' : 'UPLOAD COVER'}
+        <button
+          onClick={handleSave}
+          disabled={submitting}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black tracking-widest disabled:opacity-40 transition-all"
+          style={{ background: `${accentColor}15`, border: `1px solid ${accentColor}50`, color: accentColor }}>
+          {submitting
+            ? <><Loader2 size={12} className="animate-spin" /> SAVING...</>
+            : <><Save size={12} /> SAVE</>
+          }
         </button>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
       </div>
 
-      <h1 className="text-xl font-black mb-0.5" style={{ color: '#e0f2fe' }}>{event.name}</h1>
-      <p className="text-[10px] mb-5 font-bold tracking-wide" style={{ color: `${accent}70` }}>
-        {event.type.replace('_', ' ')}
-      </p>
-
-      <div className="space-y-4">
-        {/* ─── Basics ─────────────────────────────────────────── */}
-        <SectionHeader title="BASICS" />
-
-        <Field label="EVENT NAME">
-          <input value={form.name} onChange={(e) => set('name', e.target.value)}
-            className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-        </Field>
-
-        <Field label="DESCRIPTION">
-          <textarea value={form.description} onChange={(e) => set('description', e.target.value)}
-            rows={3} className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none" style={inputStyle} />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="STARTS AT">
-            <input type="datetime-local" value={form.startsAt} onChange={(e) => set('startsAt', e.target.value)}
-              className="w-full px-3 py-3 rounded-xl text-sm outline-none" style={{ ...inputStyle, colorScheme: 'dark' }} />
-          </Field>
-          <Field label="ENDS AT">
-            <input type="datetime-local" value={form.endsAt} onChange={(e) => set('endsAt', e.target.value)}
-              className="w-full px-3 py-3 rounded-xl text-sm outline-none" style={{ ...inputStyle, colorScheme: 'dark' }} />
-          </Field>
+      {/* Error banner */}
+      {error && (
+        <div className="mx-4 mt-4 px-4 py-3 rounded-xl text-sm font-medium"
+          style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.25)', color: '#ff006e' }}>
+          {error}
         </div>
+      )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="CAPACITY">
-            <input type="number" min={1} value={form.capacity} onChange={(e) => set('capacity', Number(e.target.value))}
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-          </Field>
-          <Field label="TICKET PRICE (£)">
-            <input type="number" min={0} step={0.01} value={form.price} onChange={(e) => set('price', Number(e.target.value))}
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-          </Field>
-        </div>
+      {/* Content */}
+      <div className="max-w-2xl mx-auto w-full px-4 py-6 space-y-8">
 
-        {/* ─── Look & Feel ────────────────────────────────────── */}
-        <SectionHeader title="LOOK & FEEL" icon={<Palette size={11} style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />} />
-
-        <Field label="ACCENT COLOR">
-          <div className="flex gap-2 flex-wrap">
-            {ACCENT_COLORS.map((c) => {
-              const selected = form.accentColor === c.hex
-              return (
-                <button key={c.hex} type="button"
-                  onClick={() => set('accentColor', selected ? '' : c.hex)}
-                  className="w-9 h-9 rounded-xl transition-all flex items-center justify-center"
-                  style={{
-                    background: `${c.hex}20`,
-                    border: selected ? `2px solid ${c.hex}` : `1px solid ${c.hex}30`,
-                    boxShadow: selected ? `0 0 12px ${c.hex}40` : 'none',
-                  }}
-                  title={c.label}>
-                  <div className="w-4 h-4 rounded-full" style={{ background: c.hex }} />
-                </button>
-              )
-            })}
+        {/* Event Type */}
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.2em] mb-3" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>EVENT TYPE</p>
+          <div className="grid grid-cols-3 gap-2">
+            {EVENT_TYPES.map(type => (
+              <button
+                key={type.id}
+                onClick={() => update({ type: type.id })}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all"
+                style={{
+                  background: form.type === type.id ? `${type.color}12` : 'rgba(7,7,26,0.8)',
+                  border: form.type === type.id ? `1px solid ${type.color}60` : '1px solid rgba(var(--accent-rgb),0.1)',
+                }}>
+                <span className="text-xl">{type.emoji}</span>
+                <span className="text-[9px] font-black tracking-wide"
+                  style={{ color: form.type === type.id ? type.color : 'rgba(224,242,254,0.6)' }}>
+                  {type.label.toUpperCase()}
+                </span>
+              </button>
+            ))}
           </div>
-          <p className="text-[9px] mt-1.5" style={{ color: 'rgba(74,96,128,0.5)' }}>
-            Customizes your event page glow and accents. Leave blank for default.
-          </p>
-        </Field>
+        </div>
 
-        {/* ─── Vibe ───────────────────────────────────────────── */}
-        <SectionHeader title="VIBE & POLICIES" />
+        {/* Basic Info */}
+        <div className="space-y-4">
+          <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>BASICS</p>
+          <CyberInput
+            label="EVENT NAME *"
+            value={(form.name as string) ?? ''}
+            onChange={e => update({ name: e.target.value })}
+            maxLength={100}
+          />
+          {(form.type === 'CLUB_NIGHT' || form.type === 'CONCERT' || form.type === 'PUB_NIGHT') && (
+            <CyberInput
+              label="VENUE NAME"
+              value={(form.venueName as string) ?? ''}
+              onChange={e => update({ venueName: e.target.value })}
+              placeholder="e.g. SWG3, Fabric..."
+            />
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <CyberInput
+              label="START DATE & TIME *"
+              type="datetime-local"
+              value={(form.startsAt as string) ?? ''}
+              onChange={e => update({ startsAt: e.target.value })}
+            />
+            <CyberInput
+              label="END TIME (OPTIONAL)"
+              type="datetime-local"
+              value={(form.endsAt as string) ?? ''}
+              onChange={e => update({ endsAt: e.target.value || undefined })}
+            />
+          </div>
+          <CyberTextarea
+            label="DESCRIPTION *"
+            value={(form.description as string) ?? ''}
+            onChange={e => update({ description: e.target.value })}
+            rows={4}
+            maxLength={2000}
+          />
+          {(form.type === 'CLUB_NIGHT' || form.type === 'CONCERT') && (
+            <CyberTextarea
+              label="LINEUP"
+              value={(form.lineup as string) ?? ''}
+              onChange={e => update({ lineup: e.target.value })}
+              rows={3}
+              placeholder="e.g. Bicep (DJ Set) · Charlotte de Witte"
+              maxLength={500}
+            />
+          )}
+        </div>
 
-        <Field label={`VIBE TAGS (${form.vibeTags.length}/8)`}>
-          <div className="flex gap-1.5 flex-wrap">
-            {VIBE_TAGS.map((tag) => {
-              const active = form.vibeTags.includes(tag)
-              return (
-                <button key={tag} type="button" onClick={() => toggleVibe(tag)}
-                  className="text-[10px] font-bold px-2.5 py-1 rounded-full transition-all"
+        {/* Cover Image */}
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>COVER IMAGE</p>
+          {coverPreview ? (
+            <div className="relative rounded-xl overflow-hidden mb-2" style={{ height: 180 }}>
+              <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
+              <button
+                onClick={() => { setCoverPreview(null); setCoverFile(null); update({ coverImageUrl: undefined }) }}
+                className="absolute top-2 right-2 px-3 py-1 rounded-lg text-xs font-bold"
+                style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(255,0,110,0.35)', color: '#ff006e' }}>
+                Remove
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full flex flex-col items-center gap-2 py-8 rounded-xl border-dashed transition-all"
+              style={{ border: '1px dashed rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.4)' }}>
+              <Upload size={20} />
+              <span className="text-xs font-bold">Upload cover image</span>
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleCover} className="hidden" />
+        </div>
+
+        {/* Location */}
+        <div className="space-y-3">
+          <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>LOCATION</p>
+          <CyberInput
+            label="FULL ADDRESS *"
+            value={(form.address as string) ?? ''}
+            onChange={e => update({ address: e.target.value })}
+            placeholder="22 Jamaica St, Glasgow G1 4QD"
+          />
+          <CyberInput
+            label="NEIGHBOURHOOD / AREA *"
+            value={(form.neighbourhood as string) ?? ''}
+            onChange={e => update({ neighbourhood: e.target.value })}
+            placeholder="City Centre, Glasgow"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <CyberInput label="LATITUDE" type="number" step="0.0001"
+              value={(form.lat as number) ?? ''}
+              onChange={e => update({ lat: parseFloat(e.target.value) })} />
+            <CyberInput label="LONGITUDE" type="number" step="0.0001"
+              value={(form.lng as number) ?? ''}
+              onChange={e => update({ lng: parseFloat(e.target.value) })} />
+          </div>
+          <button
+            onClick={useMyLocation}
+            disabled={locating}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold disabled:opacity-50 transition-all"
+            style={{ border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)' }}>
+            {locating
+              ? <><Loader2 size={12} className="animate-spin" /> Locating...</>
+              : <><Navigation size={12} /> Use My Location</>
+            }
+          </button>
+          <div className="flex items-center gap-3 p-3 rounded-xl cursor-pointer"
+            style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
+            onClick={() => update({ showNeighbourhoodOnly: !form.showNeighbourhoodOnly })}>
+            <div className="w-5 h-5 rounded flex items-center justify-center shrink-0"
+              style={{ background: form.showNeighbourhoodOnly ? 'var(--accent)' : 'transparent', border: `2px solid ${form.showNeighbourhoodOnly ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)'}` }}>
+              {form.showNeighbourhoodOnly && <Check size={11} color="#04040d" strokeWidth={3} />}
+            </div>
+            <div>
+              <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>Hide exact address from public</p>
+              <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.6)' }}>Only show neighbourhood to non-guests</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Capacity & Pricing */}
+        <div className="space-y-4">
+          <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>CAPACITY & PRICING</p>
+          <div className="grid grid-cols-3 gap-3">
+            <CyberInput label="CAPACITY" type="number" min={1} max={10000}
+              value={(form.capacity as number) ?? 50}
+              onChange={e => update({ capacity: parseInt(e.target.value) || 50 })} />
+            <CyberInput label="PRICE (£)" type="number" min={0} step={0.01}
+              value={(form.price as number) ?? 0}
+              onChange={e => update({ price: parseFloat(e.target.value) || 0 })} />
+            <CyberInput label="TICKET QTY" type="number" min={0}
+              value={(form.ticketQuantity as number) ?? 0}
+              onChange={e => update({ ticketQuantity: parseInt(e.target.value) || 0 })} />
+          </div>
+        </div>
+
+        {/* Policies */}
+        <div className="space-y-4">
+          <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>POLICIES</p>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.18em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>ALCOHOL</p>
+            <div className="grid grid-cols-3 gap-2">
+              {ALCOHOL_OPTIONS.map(opt => (
+                <button key={opt.value}
+                  onClick={() => update({ alcoholPolicy: opt.value as AlcoholPolicy })}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl transition-all"
                   style={{
-                    background: active ? `${accent}18` : 'rgba(var(--accent-rgb),0.03)',
-                    border: active ? `1px solid ${accent}50` : '1px solid rgba(var(--accent-rgb),0.1)',
-                    color: active ? accent : 'rgba(224,242,254,0.4)',
+                    background: form.alcoholPolicy === opt.value ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(7,7,26,0.8)',
+                    border: form.alcoholPolicy === opt.value ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                  }}>
+                  <span className="text-lg">{opt.emoji}</span>
+                  <span className="text-[9px] font-black"
+                    style={{ color: form.alcoholPolicy === opt.value ? 'var(--accent)' : 'rgba(224,242,254,0.5)' }}>
+                    {opt.label.toUpperCase()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.18em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>AGE RESTRICTION</p>
+            <div className="grid grid-cols-3 gap-2">
+              {AGE_OPTIONS.map(opt => (
+                <button key={opt.value}
+                  onClick={() => update({ ageRestriction: opt.value as AgeRestriction })}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl transition-all"
+                  style={{
+                    background: form.ageRestriction === opt.value ? 'rgba(var(--accent-rgb),0.1)' : 'rgba(7,7,26,0.8)',
+                    border: form.ageRestriction === opt.value ? '1px solid rgba(var(--accent-rgb),0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                  }}>
+                  <span className="text-lg">{opt.emoji}</span>
+                  <span className="text-[9px] font-black"
+                    style={{ color: form.ageRestriction === opt.value ? 'var(--accent)' : 'rgba(224,242,254,0.5)' }}>
+                    {opt.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <CyberInput
+            label="DRESS CODE (OPTIONAL)"
+            value={(form.dressCode as string) ?? ''}
+            onChange={e => update({ dressCode: e.target.value })}
+            placeholder="e.g. Smart casual, All black..."
+          />
+          <CyberTextarea
+            label="HOUSE RULES (OPTIONAL)"
+            value={(form.houseRules as string) ?? ''}
+            onChange={e => update({ houseRules: e.target.value })}
+            rows={3}
+            maxLength={1000}
+          />
+        </div>
+
+        {/* Vibe Tags */}
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.2em] mb-3" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>VIBE TAGS</p>
+          <div className="flex flex-wrap gap-2">
+            {VIBE_TAGS.map(tag => {
+              const active = vibeTags.includes(tag)
+              return (
+                <button key={tag}
+                  onClick={() => toggleVibeTag(tag)}
+                  className="text-[10px] font-bold px-3 py-1.5 rounded-full transition-all"
+                  style={{
+                    background: active ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+                    border: active ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.12)',
+                    color: active ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.4)',
                   }}>
                   #{tag}
                 </button>
               )
             })}
           </div>
-        </Field>
+        </div>
 
-        <Field label="ALCOHOL POLICY">
-          <div className="grid grid-cols-3 gap-2">
-            {ALCOHOL_OPTIONS.map((opt) => {
-              const active = form.alcoholPolicy === opt.value
-              return (
-                <button key={opt.value} type="button"
-                  onClick={() => set('alcoholPolicy', opt.value)}
-                  className="flex flex-col items-center gap-1 py-3 rounded-xl transition-all text-center"
-                  style={{
-                    background: active ? `${accent}12` : 'rgba(var(--accent-rgb),0.03)',
-                    border: active ? `1px solid ${accent}50` : '1px solid rgba(var(--accent-rgb),0.1)',
-                  }}>
-                  <span className="text-lg">{opt.emoji}</span>
-                  <span className="text-[9px] font-bold" style={{ color: active ? accent : 'rgba(224,242,254,0.4)' }}>
-                    {opt.label}
-                  </span>
-                </button>
-              )
-            })}
+        {/* Privacy */}
+        <div className="flex items-center gap-3 p-4 rounded-xl cursor-pointer"
+          style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
+          onClick={() => update({ isInviteOnly: !form.isInviteOnly })}>
+          <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all"
+            style={{ background: form.isInviteOnly ? 'var(--accent)' : 'transparent', border: `2px solid ${form.isInviteOnly ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)'}` }}>
+            {form.isInviteOnly && <Check size={11} color="#04040d" strokeWidth={3} />}
           </div>
-        </Field>
-
-        <Field label="AGE RESTRICTION">
-          <div className="grid grid-cols-3 gap-2">
-            {AGE_OPTIONS.map((opt) => {
-              const active = form.ageRestriction === opt.value
-              return (
-                <button key={opt.value} type="button"
-                  onClick={() => set('ageRestriction', opt.value)}
-                  className="flex flex-col items-center gap-1 py-3 rounded-xl transition-all text-center"
-                  style={{
-                    background: active ? `${accent}12` : 'rgba(var(--accent-rgb),0.03)',
-                    border: active ? `1px solid ${accent}50` : '1px solid rgba(var(--accent-rgb),0.1)',
-                  }}>
-                  <span className="text-lg">{opt.emoji}</span>
-                  <span className="text-[9px] font-bold" style={{ color: active ? accent : 'rgba(224,242,254,0.4)' }}>
-                    {opt.label}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </Field>
-
-        {/* Invite Only toggle */}
-        <div className="flex items-center justify-between py-3 px-4 rounded-xl"
-          style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
           <div>
             <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>Invite Only</p>
-            <p className="text-[9px]" style={{ color: 'rgba(74,96,128,0.6)' }}>Only people with the link can RSVP</p>
-          </div>
-          <button type="button" onClick={() => set('isInviteOnly', !form.isInviteOnly)}
-            className="w-11 h-6 rounded-full transition-all relative"
-            style={{
-              background: form.isInviteOnly ? `${accent}30` : 'rgba(74,96,128,0.2)',
-              border: form.isInviteOnly ? `1px solid ${accent}60` : '1px solid rgba(74,96,128,0.3)',
-            }}>
-            <div className="w-4 h-4 rounded-full absolute top-0.5 transition-all"
-              style={{
-                background: form.isInviteOnly ? accent : 'rgba(74,96,128,0.5)',
-                left: form.isInviteOnly ? 24 : 4,
-                boxShadow: form.isInviteOnly ? `0 0 8px ${accent}60` : 'none',
-              }} />
-          </button>
-        </div>
-
-        {/* Dress code */}
-        <Field label="DRESS CODE">
-          <input value={form.dressCode} onChange={(e) => set('dressCode', e.target.value)}
-            placeholder="Smart casual, Black tie, All black..."
-            className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-        </Field>
-
-        {/* House rules */}
-        <Field label="HOUSE RULES">
-          <textarea value={form.houseRules} onChange={(e) => set('houseRules', e.target.value)}
-            rows={3} placeholder="No outside drinks, no +1s without approval..."
-            className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none" style={inputStyle} />
-        </Field>
-
-        {/* Lineup — clubs & concerts */}
-        {isClubOrConcert && (
-          <Field label="LINEUP / RESIDENT DJs">
-            <input value={form.lineup} onChange={(e) => set('lineup', e.target.value)}
-              placeholder="DJ Shadow b2b Aphex Twin..."
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-          </Field>
-        )}
-
-        {/* Party Signals — home parties */}
-        {isHomeparty && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-black tracking-[0.15em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-                PARTY SIGNALS
-              </span>
-              <span className="text-[9px] font-bold" style={{ color: 'rgba(255,0,110,0.5)' }}>
-                {form.partySigns.length} selected
-              </span>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {PARTY_SIGNALS.map(({ emoji, code, label }) => {
-                const active = form.partySigns.includes(code)
-                return (
-                  <button key={code} type="button" onClick={() => toggleSign(code)}
-                    className="flex flex-col items-center gap-0.5 py-2 rounded-xl transition-all"
-                    style={{
-                      background: active ? 'rgba(255,0,110,0.12)' : 'rgba(var(--accent-rgb),0.03)',
-                      border: active ? '1px solid rgba(255,0,110,0.4)' : '1px solid rgba(var(--accent-rgb),0.1)',
-                      filter: active ? 'drop-shadow(0 0 6px rgba(255,0,110,0.4))' : 'none',
-                    }}>
-                    <span className="text-xl">{emoji}</span>
-                    <span className="text-[8px] font-bold" style={{ color: active ? '#ff006e' : 'rgba(224,242,254,0.3)' }}>
-                      {label}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ─── Live Preview ───────────────────────────────────── */}
-        <SectionHeader title="PREVIEW" icon={<Eye size={11} style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />} />
-
-        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${accent}20` }}>
-          <div className="relative" style={{ height: 80 }}>
-            {coverPreview ? (
-              <img src={coverPreview} alt="" className="w-full h-full object-cover" style={{ filter: 'brightness(0.5)' }} />
-            ) : (
-              <div className="w-full h-full" style={{ background: `radial-gradient(ellipse at 30% 40%, ${accent}22 0%, #07071a 70%)` }} />
-            )}
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent, #04040d)' }} />
-            <div className="absolute bottom-2 left-3">
-              <span className="text-[8px] font-bold px-2 py-0.5 rounded" style={{ color: accent, border: `1px solid ${accent}40`, background: `${accent}12` }}>
-                {event.type.replace('_', ' ')}
-              </span>
-            </div>
-          </div>
-          <div className="px-3 py-2" style={{ background: '#07071a' }}>
-            <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{form.name || event.name}</p>
-            <div className="flex items-center gap-2 mt-1">
-              {form.vibeTags.slice(0, 3).map((t) => (
-                <span key={t} className="text-[8px]" style={{ color: `${accent}60` }}>#{t}</span>
-              ))}
-              {form.price > 0 && (
-                <span className="text-[9px] font-bold ml-auto" style={{ color: '#e0f2fe' }}>£{form.price.toFixed(2)}</span>
-              )}
-              {form.price === 0 && (
-                <span className="text-[9px] font-bold ml-auto" style={{ color: '#00ff88' }}>FREE</span>
-              )}
-            </div>
+            <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.6)' }}>Guests need an invite link to RSVP</p>
           </div>
         </div>
-
-        {/* Error */}
-        {error && (
-          <p className="text-xs font-bold px-3 py-2 rounded-lg"
-            style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
-            {error}
-          </p>
-        )}
 
         {/* Save button */}
-        <button onClick={handleSave} disabled={saving || uploading}
-          className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all disabled:opacity-50"
+        <button
+          onClick={handleSave}
+          disabled={submitting}
+          className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm tracking-widest disabled:opacity-40 transition-all"
           style={{
-            background: saved
-              ? 'linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,255,136,0.08))'
-              : `linear-gradient(135deg, ${accent}20, ${accent}10)`,
-            border: saved ? '1px solid rgba(0,255,136,0.4)' : `1px solid ${accent}50`,
-            color: saved ? '#00ff88' : accent,
-            letterSpacing: '0.12em',
-            boxShadow: saved ? '0 0 24px rgba(0,255,136,0.1)' : `0 0 24px ${accent}15`,
+            background: `linear-gradient(135deg, ${accentColor}20, ${accentColor}10)`,
+            border: `1px solid ${accentColor}50`,
+            color: accentColor,
+            boxShadow: `0 0 20px ${accentColor}20`,
           }}>
-          {uploading
-            ? <><Loader2 size={15} className="animate-spin" /> UPLOADING...</>
-            : saving
-            ? <><Loader2 size={15} className="animate-spin" /> SAVING...</>
-            : saved
-            ? <><Check size={15} /> SAVED</>
-            : <><Save size={15} /> SAVE CHANGES</>
+          {submitting
+            ? <><Loader2 size={14} className="animate-spin" /> SAVING CHANGES...</>
+            : <><Save size={14} /> SAVE CHANGES</>
           }
         </button>
-
-        {/* View event */}
-        <Link href={`/events/${event.id}`}
-          className="w-full flex items-center justify-center py-3 rounded-xl text-xs font-bold transition-all"
-          style={{ border: '1px solid rgba(74,96,128,0.2)', color: 'rgba(74,96,128,0.6)', letterSpacing: '0.1em' }}>
-          ← VIEW EVENT PAGE
-        </Link>
       </div>
     </div>
   )

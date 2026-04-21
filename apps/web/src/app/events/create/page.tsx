@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Check, Upload, MapPin, Navigation, Zap } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronLeft, ChevronRight, Check, Upload, MapPin, Navigation, Zap, Lock } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { createEvent } from '@/hooks/useEvents'
 import { uploadImage } from '@/lib/cloudinary'
 import type { CreateEventInput, EventType, AlcoholPolicy, AgeRestriction } from '@partyradar/shared'
-import { VIBE_TAGS } from '@partyradar/shared'
+import { VIBE_TAGS, getTier } from '@partyradar/shared'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 const EVENT_TYPES: { id: EventType; label: string; emoji: string; desc: string; sub: string; color: string; glow: string }[] = [
@@ -368,47 +369,67 @@ export default function CreateEventPage() {
           <div className="grid grid-cols-1 gap-4">
             {EVENT_TYPES.map((type) => {
               const selected = form.type === type.id
+              const tier = getTier(dbUser?.subscriptionTier)
+              const isLocked =
+                (type.id === 'YACHT_PARTY' && !tier.canViewYachtParties) ||
+                (type.id === 'BEACH_PARTY' && !tier.canViewBeachParties)
               return (
-                <button
-                  key={type.id}
-                  onClick={() => update({ type: type.id })}
-                  className="relative flex items-center gap-5 p-5 rounded-2xl text-left transition-all duration-250"
-                  style={{
-                    background: selected ? `${type.color}12` : 'rgba(7,7,26,0.8)',
-                    border: selected ? `1px solid ${type.color}60` : '1px solid rgba(var(--accent-rgb),0.1)',
-                    boxShadow: selected ? `0 0 30px ${type.glow}` : 'none',
-                    transform: selected ? 'scale(1.01)' : 'scale(1)',
-                  }}
-                >
-                  {/* Corner brackets on selected */}
-                  {selected && <>
-                    <div className="absolute top-2 left-2 w-4 h-4" style={{ borderTop: `2px solid ${type.color}70`, borderLeft: `2px solid ${type.color}70` }} />
-                    <div className="absolute bottom-2 right-2 w-4 h-4" style={{ borderBottom: `2px solid ${type.color}70`, borderRight: `2px solid ${type.color}70` }} />
-                  </>}
-
-                  <div
-                    className="text-4xl flex-shrink-0 w-16 h-16 rounded-xl flex items-center justify-center"
+                <div key={type.id} className="relative">
+                  <button
+                    onClick={() => !isLocked && update({ type: type.id })}
+                    className="relative w-full flex items-center gap-5 p-5 rounded-2xl text-left transition-all duration-250"
                     style={{
-                      background: selected ? `${type.color}18` : 'rgba(var(--accent-rgb),0.04)',
-                      border: `1px solid ${selected ? type.color + '40' : 'rgba(var(--accent-rgb),0.1)'}`,
+                      background: isLocked ? 'rgba(7,7,26,0.5)' : selected ? `${type.color}12` : 'rgba(7,7,26,0.8)',
+                      border: isLocked ? `1px solid ${type.color}18` : selected ? `1px solid ${type.color}60` : '1px solid rgba(var(--accent-rgb),0.1)',
+                      boxShadow: selected && !isLocked ? `0 0 30px ${type.glow}` : 'none',
+                      transform: selected && !isLocked ? 'scale(1.01)' : 'scale(1)',
+                      cursor: isLocked ? 'not-allowed' : 'pointer',
+                      opacity: isLocked ? 0.65 : 1,
                     }}
                   >
-                    {type.emoji}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-black text-base tracking-wide" style={{ color: selected ? type.color : '#e0f2fe', textShadow: selected ? `0 0 12px ${type.glow}` : 'none' }}>
-                      {type.label.toUpperCase()}
-                    </p>
-                    <p className="text-sm mt-0.5" style={{ color: 'rgba(74,96,128,0.8)' }}>{type.desc}</p>
-                    <p className="text-[10px] mt-1 font-medium" style={{ color: selected ? `${type.color}60` : 'rgba(74,96,128,0.4)' }}>{type.sub}</p>
-                  </div>
-                  {selected && (
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ background: type.color, boxShadow: `0 0 10px ${type.glow}` }}>
-                      <Check size={12} color="#04040d" strokeWidth={3} />
+                    {/* Corner brackets on selected */}
+                    {selected && !isLocked && <>
+                      <div className="absolute top-2 left-2 w-4 h-4" style={{ borderTop: `2px solid ${type.color}70`, borderLeft: `2px solid ${type.color}70` }} />
+                      <div className="absolute bottom-2 right-2 w-4 h-4" style={{ borderBottom: `2px solid ${type.color}70`, borderRight: `2px solid ${type.color}70` }} />
+                    </>}
+
+                    <div
+                      className="text-4xl flex-shrink-0 w-16 h-16 rounded-xl flex items-center justify-center"
+                      style={{
+                        background: selected && !isLocked ? `${type.color}18` : 'rgba(var(--accent-rgb),0.04)',
+                        border: `1px solid ${selected && !isLocked ? type.color + '40' : 'rgba(var(--accent-rgb),0.1)'}`,
+                      }}
+                    >
+                      {type.emoji}
                     </div>
+                    <div className="flex-1">
+                      <p className="font-black text-base tracking-wide" style={{ color: selected && !isLocked ? type.color : '#e0f2fe', textShadow: selected && !isLocked ? `0 0 12px ${type.glow}` : 'none' }}>
+                        {type.label.toUpperCase()}
+                      </p>
+                      <p className="text-sm mt-0.5" style={{ color: 'rgba(74,96,128,0.8)' }}>{type.desc}</p>
+                      <p className="text-[10px] mt-1 font-medium" style={{ color: selected && !isLocked ? `${type.color}60` : 'rgba(74,96,128,0.4)' }}>{type.sub}</p>
+                    </div>
+                    {isLocked ? (
+                      <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                        <Lock size={14} style={{ color: `${type.color}80` }} />
+                        <span className="text-[8px] font-black tracking-widest" style={{ color: `${type.color}60` }}>BASIC+</span>
+                      </div>
+                    ) : selected ? (
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ background: type.color, boxShadow: `0 0 10px ${type.glow}` }}>
+                        <Check size={12} color="#04040d" strokeWidth={3} />
+                      </div>
+                    ) : null}
+                  </button>
+                  {/* Upgrade prompt below locked types */}
+                  {isLocked && (
+                    <Link href="/pricing"
+                      className="mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[9px] font-black tracking-widest transition-all"
+                      style={{ color: type.color, background: `${type.color}08`, border: `1px solid ${type.color}20` }}>
+                      <Lock size={8} /> UPGRADE TO BASIC TO HOST {type.label.toUpperCase()} EVENTS
+                    </Link>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>

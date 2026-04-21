@@ -52,10 +52,11 @@ export const TIERS: Record<TierName, TierConfig> = {
       'RSVP to free events',
       '5 swipes per day',
       'Group chats',
+      'Upgrade for Yacht & Beach parties',
     ],
 
     canViewYachtParties: false,
-    canViewBeachParties: true,
+    canViewBeachParties: false,
     canSeeProfileViewers: false,
     canRequestDJ: false,
     canSeeMatchDistance: false,

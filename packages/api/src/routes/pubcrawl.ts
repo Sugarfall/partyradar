@@ -46,14 +46,15 @@ function optimiseRoute<T extends { lat: number; lng: number }>(venues: T[], star
   return route
 }
 
+// Only these venue types are suitable for a pub crawl (no tickets, no bouncers)
+const CRAWL_VENUE_TYPES: VenueType[] = ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR']
+
 // ── Minutes per venue type ─────────────────────────────────────────────────────
 const DURATION_MAP: Record<string, number> = {
-  PUB:          50,
-  BAR:          55,
-  LOUNGE:       60,
-  ROOFTOP_BAR:  65,
-  CONCERT_HALL: 90,
-  NIGHTCLUB:   110,
+  PUB:         50,
+  BAR:         55,
+  LOUNGE:      60,
+  ROOFTOP_BAR: 65,
 }
 
 // ── Time helpers ──────────────────────────────────────────────────────────────
@@ -162,7 +163,7 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
     const venueWhere = {
       lat: { gte: lat - latDelta, lte: lat + latDelta },
       lng: { gte: lng - lngDelta, lte: lng + lngDelta },
-      type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as VenueType[] },
+      type: { in: CRAWL_VENUE_TYPES },
     }
 
     let candidates = await prisma.venue.findMany({
@@ -184,7 +185,7 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
         where: {
           lat: { gte: lat - wideLatDelta, lte: lat + wideLatDelta },
           lng: { gte: lng - wideLngDelta, lte: lng + wideLngDelta },
-          type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as VenueType[] },
+          type: { in: CRAWL_VENUE_TYPES },
         },
         select: {
           id: true, name: true, address: true, city: true,
@@ -215,25 +216,15 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
     })
     scored.sort((a, b) => b.score - a.score)
 
-    // ── 3. Pick stops — one nightclub max and it goes last ─────────────────────
-    const topPicks = scored.slice(0, Math.min(numStops * 3, 20))
-    const nightclubs = topPicks.filter((v) => v.type === 'NIGHTCLUB')
-    const others     = topPicks.filter((v) => v.type !== 'NIGHTCLUB')
-
-    const preClub = others.slice(0, numStops - (nightclubs.length > 0 ? 1 : 0))
-    const finalClub = nightclubs.slice(0, 1)
-    const selected = [...preClub, ...finalClub].slice(0, numStops)
+    // ── 3. Pick top-scored stops ───────────────────────────────────────────────
+    const selected = scored.slice(0, numStops)
 
     if (selected.length < 2) {
       return res.status(404).json({ error: { message: 'Not enough variety of venues found. Try a wider radius.' } })
     }
 
     // ── 4. Optimise walking route (nearest-neighbour) ─────────────────────────
-    // Keep nightclub last if present
-    const fixedLast = finalClub.length > 0 ? finalClub[0]! : null
-    const toOptimise = fixedLast ? selected.filter((v) => v.id !== fixedLast.id) : selected
-    const optimised  = optimiseRoute(toOptimise, lat, lng)
-    if (fixedLast) optimised.push(fixedLast)
+    const optimised = optimiseRoute(selected, lat, lng)
 
     // ── 5. Assign times ───────────────────────────────────────────────────────
     const route: Array<{

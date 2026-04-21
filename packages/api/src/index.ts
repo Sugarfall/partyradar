@@ -42,6 +42,7 @@ import usersRouter from './routes/users'
 import nearbyRouter from './routes/nearby'
 import socialScoreRouter from './routes/social-score'
 import djRequestsRouter from './routes/dj-requests'
+import djEventRequestsRouter from './routes/dj-requests-event'
 import phoneRouter from './routes/phone-verify'
 import brandsRouter from './routes/partner-brands'
 import referralCardsRouter from './routes/referral-cards'
@@ -348,6 +349,7 @@ app.use('/api/users', usersRouter)
 app.use('/api/nearby', nearbyRouter)
 app.use('/api/social-score', socialScoreRouter)
 app.use('/api/dj-requests', djRequestsRouter)
+app.use('/api/events', djEventRequestsRouter)
 app.use('/api/phone', phoneRouter)
 app.use('/api/brands', brandsRouter)
 app.use('/api/referral-cards', referralCardsRouter)

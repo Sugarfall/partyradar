@@ -143,8 +143,10 @@ model User {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
-  hostedEvents  Event[]             @relation("HostedEvents")
-  guestEntries  EventGuest[]
+  hostedEvents        Event[]             @relation("HostedEvents")
+  guestEntries        EventGuest[]
+  eventModeratorRoles EventModerator[]    @relation("EventModeratorUser")
+  eventModerationsAdded EventModerator[]  @relation("EventModeratorAddedBy")
   tickets       Ticket[]
   sightings     CelebritySighting[]
   sightingVotes SightingVote[]
@@ -181,6 +183,9 @@ model User {
   socialFeedbackGiven  AnonymousFeedback[] @relation("FeedbackGiven")
   socialFeedbackReceived AnonymousFeedback[] @relation("FeedbackReceived")
   djRequests           DjRequest[]
+  djRequestUpvotes     DjRequestUpvote[]
+  eventImpressions     EventImpression[]
+  eventViews           EventView[]
   phoneVerifications   PhoneVerification[]
   brandEntitlements    BrandEntitlement[]
   nearbyUpdates        NearbyUpdate[]
@@ -245,15 +250,18 @@ model Event {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
-  guests   EventGuest[]
-  tickets  Ticket[]
-  messages Message[]
+  guests      EventGuest[]
+  tickets     Ticket[]
+  messages    Message[]
+  moderators  EventModerator[]
 
-  checkIns   CheckIn[]
-  posts      Post[]
-  reviews    EventReview[]
-  savedBy    SavedEvent[]
-  djRequests DjRequest[]
+  checkIns    CheckIn[]
+  posts       Post[]
+  reviews     EventReview[]
+  savedBy     SavedEvent[]
+  djRequests  DjRequest[]
+  impressions EventImpression[]
+  eventViews  EventView[]
 
   @@index([hostId, createdAt])
   @@index([isPublished, isCancelled, startsAt])
@@ -276,6 +284,47 @@ model EventGuest {
   @@index([userId])
   @@index([eventId, status])
   @@index([userId, status])
+}
+
+model EventModerator {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  addedById String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation("EventModeratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  addedBy   User     @relation("EventModeratorAddedBy", fields: [addedById], references: [id])
+  addedAt   DateTime @default(now())
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+}
+
+// ── Discover impressions — event card appeared in a user's feed ───────────────
+model EventImpression {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String?
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, createdAt])
+  @@index([userId])
+}
+
+// ── Event page views — user opened the event detail page ─────────────────────
+model EventView {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String?
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, createdAt])
+  @@index([userId])
 }
 
 model Ticket {
@@ -1014,23 +1063,39 @@ enum DjRequestStatus {
 }
 
 model DjRequest {
-  id         String          @id @default(cuid())
-  userId     String
-  eventId    String?
-  venueId    String?
-  song       String
-  artist     String?
-  message    String?         @db.Text
-  creditCost Int             @default(1)
-  status     DjRequestStatus @default(PENDING)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event      Event?          @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  id            String          @id @default(cuid())
+  userId        String
+  eventId       String?
+  venueId       String?
+  song          String
+  artist        String?
+  message       String?         @db.Text
+  creditCost    Int             @default(1)
+  walletPaid    Boolean         @default(false)  // true = guest paid £1 from wallet
+  upvotes       Int             @default(0)
+  status        DjRequestStatus @default(PENDING)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event         Event?          @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  upvoteEntries DjRequestUpvote[]
 
   @@index([eventId])
   @@index([userId])
   @@index([venueId])
+}
+
+model DjRequestUpvote {
+  id        String    @id @default(cuid())
+  requestId String
+  userId    String
+  request   DjRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([requestId, userId])
+  @@index([requestId])
+  @@index([userId])
 }
 
 // ─── Partner Brands (e.g. Saintsinners) ─────────────────────────────────────

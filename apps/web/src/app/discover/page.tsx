@@ -81,15 +81,14 @@ const TYPE_LABELS: Record<string, string> = {
 
 type SlideDir = 'next' | 'prev' | null
 
-// ── Locked card shown to FREE users for YACHT_PARTY events ───────────────────
-function LockedEventListCard({ event }: { event: Event }) {
-  const color = '#0ea5e9' // YACHT_PARTY color
+// ── Locked card shown to FREE users for YACHT_PARTY / BEACH_PARTY events ──────
+function LockedEventListCard({ event, color, label }: { event: Event; color: string; label: string }) {
   return (
     <Link href="/pricing"
       className="flex gap-3 p-3 rounded-2xl relative overflow-hidden transition-all"
-      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid rgba(14,165,233,0.2)` }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(14,165,233,0.45)')}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(14,165,233,0.2)')}
+      style={{ background: 'rgba(7,7,26,0.85)', border: `1px solid ${color}30` }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = `${color}60`)}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = `${color}30`)}
     >
       {/* Blurred thumbnail */}
       <div className="shrink-0 relative" style={{ width: 64, height: 64 }}>
@@ -110,7 +109,7 @@ function LockedEventListCard({ event }: { event: Event }) {
         </p>
         <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
           style={{ color, background: `${color}12`, border: `1px solid ${color}30`, letterSpacing: '0.1em' }}>
-          YACHT PARTY
+          {label}
         </span>
       </div>
 
@@ -118,9 +117,9 @@ function LockedEventListCard({ event }: { event: Event }) {
       <div className="absolute inset-0 flex items-center justify-center rounded-2xl"
         style={{ background: 'rgba(7,7,26,0.55)', backdropFilter: 'blur(2px)' }}>
         <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl"
-          style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.35)' }}>
-          <Lock size={13} style={{ color: '#0ea5e9' }} />
-          <span className="text-[9px] font-black tracking-widest" style={{ color: '#0ea5e9' }}>BASIC+ TO UNLOCK</span>
+          style={{ background: `${color}12`, border: `1px solid ${color}50` }}>
+          <Lock size={13} style={{ color }} />
+          <span className="text-[9px] font-black tracking-widest" style={{ color }}>BASIC+ TO UNLOCK</span>
         </div>
       </div>
     </Link>
@@ -129,9 +128,12 @@ function LockedEventListCard({ event }: { event: Event }) {
 
 // ── Compact list card for list view ──────────────────────────────────────────
 function EventListCard({ event, live, userTier, currency }: { event: Event; live?: boolean; userTier?: string; currency?: string }) {
-  // Gate YACHT_PARTY for FREE users
+  // Gate YACHT_PARTY and BEACH_PARTY for FREE users
   if (event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties) {
-    return <LockedEventListCard event={event} />
+    return <LockedEventListCard event={event} color="#0ea5e9" label="YACHT PARTY" />
+  }
+  if (event.type === 'BEACH_PARTY' && !getTier(userTier).canViewBeachParties) {
+    return <LockedEventListCard event={event} color="#06b6d4" label="BEACH PARTY" />
   }
 
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
@@ -236,31 +238,39 @@ function EventStage({ event, dir, userTier, currency }: { event: Event; dir: Sli
   }, [event.id])
 
   const isYachtLocked = event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties
+  const isBeachLocked = event.type === 'BEACH_PARTY' && !getTier(userTier).canViewBeachParties
+  const isLocked = isYachtLocked || isBeachLocked
+  const lockedColor = isYachtLocked ? '#0ea5e9' : '#06b6d4'
+  const lockedEmoji = isYachtLocked ? '⛵' : '🏖️'
+  const lockedLabel = isYachtLocked ? 'YACHT PARTY' : 'BEACH PARTY'
+  const lockedDesc = isYachtLocked
+    ? 'Exclusive yacht parties are available to'
+    : 'Exclusive beach parties are available to'
 
   return (
     <div
       className={dir === 'next' ? 'animate-slide-next' : dir === 'prev' ? 'animate-slide-prev' : ''}
       style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}
     >
-      {/* Yacht Party lock overlay for FREE users */}
-      {isYachtLocked && (
+      {/* Yacht / Beach Party lock overlay for FREE users */}
+      {isLocked && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4"
           style={{ background: 'rgba(7,7,26,0.85)', backdropFilter: 'blur(12px)' }}>
           <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl text-center"
-            style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.3)', maxWidth: 280 }}>
-            <span style={{ fontSize: 40 }}>⛵</span>
+            style={{ background: `${lockedColor}08`, border: `1px solid ${lockedColor}40`, maxWidth: 280 }}>
+            <span style={{ fontSize: 40 }}>{lockedEmoji}</span>
             <div>
-              <p className="text-sm font-black tracking-widest mb-1" style={{ color: '#0ea5e9', letterSpacing: '0.12em' }}>
-                YACHT PARTY
+              <p className="text-sm font-black tracking-widest mb-1" style={{ color: lockedColor, letterSpacing: '0.12em' }}>
+                {lockedLabel}
               </p>
               <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.55)' }}>
-                Exclusive yacht parties are available to <strong style={{ color: 'var(--accent)' }}>Basic</strong> subscribers and above.
+                {lockedDesc} <strong style={{ color: 'var(--accent)' }}>Basic</strong> subscribers and above.
               </p>
             </div>
             <Link
               href="/pricing"
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all"
-              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.5)', color: '#0ea5e9' }}
+              style={{ background: `${lockedColor}18`, border: `1px solid ${lockedColor}60`, color: lockedColor }}
             >
               <Lock size={11} /> UPGRADE TO BASIC — £4.99/mo
             </Link>
@@ -269,7 +279,7 @@ function EventStage({ event, dir, userTier, currency }: { event: Event; dir: Sli
       )}
 
       {/* Cover image / colour header */}
-      <div className="relative flex-shrink-0" style={{ height: 220, filter: isYachtLocked ? 'blur(6px)' : 'none' }}>
+      <div className="relative flex-shrink-0" style={{ height: 220, filter: isLocked ? 'blur(6px)' : 'none' }}>
         {event.coverImageUrl ? (
           <img
             src={event.coverImageUrl}
@@ -348,7 +358,7 @@ function EventStage({ event, dir, userTier, currency }: { event: Event; dir: Sli
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ filter: isYachtLocked ? 'blur(6px)' : 'none', pointerEvents: isYachtLocked ? 'none' : undefined }}>
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ filter: isLocked ? 'blur(6px)' : 'none', pointerEvents: isLocked ? 'none' : undefined }}>
         {/* Host row */}
         <div className="flex items-center gap-3">
           {event.host?.photoUrl ? (
@@ -512,7 +522,7 @@ function EventStage({ event, dir, userTier, currency }: { event: Event; dir: Sli
       </div>
 
       {/* CTA */}
-      <div className="px-5 pb-6 pt-3 flex-shrink-0 space-y-2" style={{ filter: isYachtLocked ? 'blur(6px)' : 'none', pointerEvents: isYachtLocked ? 'none' : undefined }}>
+      <div className="px-5 pb-6 pt-3 flex-shrink-0 space-y-2" style={{ filter: isLocked ? 'blur(6px)' : 'none', pointerEvents: isLocked ? 'none' : undefined }}>
         {/* Primary action */}
         <Link
           href={`/events/${event.id}`}
@@ -1600,6 +1610,30 @@ export default function DiscoverPage() {
 
   // Reset index when events change
   useEffect(() => { setIndex(0) }, [events.length])
+
+  // ── Impression tracking ───────────────────────────────────────────────────
+  const impressionsTrackedRef = useRef(new Set<string>())
+
+  // List view: batch-send all visible event IDs after a 1.5s dwell
+  useEffect(() => {
+    if (!events.length || viewMode !== 'list' || tab !== 'events') return
+    const newIds = events.map(e => e.id).filter(id => !impressionsTrackedRef.current.has(id))
+    if (!newIds.length) return
+    const timer = setTimeout(() => {
+      newIds.forEach(id => impressionsTrackedRef.current.add(id))
+      api.post<unknown>('/events/impressions', { eventIds: newIds }).catch(() => {})
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [events, viewMode, tab])
+
+  // Card view: send impression when swiped to a new card
+  useEffect(() => {
+    if (!events.length || viewMode !== 'card' || tab !== 'events') return
+    const ev = events[index]
+    if (!ev || impressionsTrackedRef.current.has(ev.id)) return
+    impressionsTrackedRef.current.add(ev.id)
+    api.post<unknown>('/events/impressions', { eventIds: [ev.id] }).catch(() => {})
+  }, [events, index, viewMode, tab])
 
   // Set real timestamp on client after hydration, then tick every 60s
   useEffect(() => {
