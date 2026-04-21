@@ -823,16 +823,20 @@ function GroupChatView({
   const [showSubModal, setShowSubModal] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  // Pub crawl
+  // Pub crawl — active saved crawl
   const [activeTab, setActiveTab] = useState<'chat' | 'crawl'>('chat')
   const [crawl, setCrawl] = useState<any>(null)
   const [crawlLoading, setCrawlLoading] = useState(false)
-  const [showCreateCrawl, setShowCreateCrawl] = useState(false)
-  const [crawlName, setCrawlName] = useState('')
-  const [crawlStops, setCrawlStops] = useState([{ name: '', address: '' }, { name: '', address: '' }])
   const [crawlCreating, setCrawlCreating] = useState(false)
-  const [aiSuggesting, setAiSuggesting] = useState(false)
-  const [aiError, setAiError] = useState('')
+  // Pub crawl — AI planner panel (replaces old manual modal)
+  const [showPlanner, setShowPlanner] = useState(false)
+  const [plannerGroupSize, setPlannerGroupSize] = useState(4)
+  const [plannerStartTime, setPlannerStartTime] = useState('20:00')
+  const [plannerNumStops, setPlannerNumStops] = useState(4)
+  const [plannerVibes, setPlannerVibes] = useState<string[]>([])
+  const [plannerResult, setPlannerResult] = useState<any>(null)
+  const [plannerGenerating, setPlannerGenerating] = useState(false)
+  const [plannerError, setPlannerError] = useState('')
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -879,23 +883,20 @@ function GroupChatView({
     if (activeTab === 'crawl') loadCrawl()
   }, [activeTab, loadCrawl])
 
-  async function createCrawl() {
-    if (!crawlName.trim() || crawlCreating) return
-    const validStops = crawlStops.filter((s) => s.name.trim())
-    if (validStops.length < 2) return
-    setCrawlCreating(true)
-    try {
-      const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, { name: crawlName.trim(), stops: validStops })
-      if (j.data) { setCrawl(j.data); setShowCreateCrawl(false); setCrawlName(''); setCrawlStops([{ name: '', address: '' }, { name: '', address: '' }]) }
-    } catch {}
-    finally { setCrawlCreating(false) }
+  // Open planner and sync group size from group member count
+  function openPlanner() {
+    if (group?.memberCount) setPlannerGroupSize(group.memberCount)
+    setPlannerResult(null)
+    setPlannerError('')
+    setPlannerVibes([])
+    setShowPlanner(true)
   }
 
-  async function suggestWithAI() {
-    setAiSuggesting(true)
-    setAiError('')
+  async function generatePlannerRoute() {
+    setPlannerGenerating(true)
+    setPlannerError('')
+    setPlannerResult(null)
     try {
-      // Try geolocation, fall back to Glasgow
       const loc = await new Promise<{ lat: number; lng: number }>((resolve) => {
         if (!navigator.geolocation) { resolve({ lat: 55.8642, lng: -4.2518 }); return }
         navigator.geolocation.getCurrentPosition(
@@ -904,26 +905,39 @@ function GroupChatView({
           { enableHighAccuracy: false, timeout: 6000 },
         )
       })
-      const memberCount = group?.memberCount ?? 4
-      const json = await api.post<{ data: { crawlTitle: string; route: Array<{ name: string; address: string }> } }>('/pub-crawl/generate', {
+      const json = await api.post<{ data: any }>('/pub-crawl/generate', {
         lat: loc.lat,
         lng: loc.lng,
-        groupSize: memberCount,
-        startTime: '20:00',
-        vibes: [],
-        stops: Math.max(crawlStops.length, 4),
+        groupSize: plannerGroupSize,
+        startTime: plannerStartTime,
+        vibes: plannerVibes,
+        stops: plannerNumStops,
       })
-      if (json?.data) {
-        setCrawlName(json.data.crawlTitle)
-        setCrawlStops(json.data.route.map((s) => ({ name: s.name, address: s.address ?? '' })))
-      } else {
-        setAiError('No suggestions returned — try again')
-      }
+      if (json?.data) setPlannerResult(json.data)
+      else setPlannerError('No route generated — try a different area or fewer stops.')
     } catch (err: any) {
-      setAiError(err?.message ?? 'AI suggestion failed')
+      setPlannerError(err?.message ?? 'Failed to generate route')
     } finally {
-      setAiSuggesting(false)
+      setPlannerGenerating(false)
     }
+  }
+
+  async function savePlannerCrawl() {
+    if (!plannerResult || crawlCreating) return
+    setCrawlCreating(true)
+    try {
+      const stops = plannerResult.route.map((s: any) => ({ name: s.name, address: s.address ?? '' }))
+      const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, {
+        name: plannerResult.crawlTitle,
+        stops,
+      })
+      if (j.data) {
+        setCrawl(j.data)
+        setShowPlanner(false)
+        setPlannerResult(null)
+      }
+    } catch {}
+    finally { setCrawlCreating(false) }
   }
 
   async function checkIn(stopId: string) {
@@ -1173,12 +1187,12 @@ function GroupChatView({
             <div className="flex flex-col items-center gap-4 py-12 text-center">
               <span className="text-4xl">🍺</span>
               <p className="text-sm font-black tracking-wide" style={{ color: 'rgba(245,158,11,0.8)' }}>NO ACTIVE PUB CRAWL</p>
-              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Plan a pub crawl for the group — add stops, check in, and see the leaderboard.</p>
+              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Use the AI planner to build a walking route with timed stops for your group.</p>
               {dbUserId && (
-                <button onClick={() => setShowCreateCrawl(true)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
-                  style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b' }}>
-                  + PLAN PUB CRAWL
+                <button onClick={openPlanner}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
+                  style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(245,158,11,0.12))', border: '1px solid rgba(168,85,247,0.4)', color: '#a855f7' }}>
+                  ✨ PLAN WITH AI
                 </button>
               )}
             </div>
@@ -1266,92 +1280,188 @@ function GroupChatView({
             </div>
           )}
 
-          {/* Create crawl modal */}
-          {showCreateCrawl && (
-            <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
-              style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
-              onClick={() => { setShowCreateCrawl(false); setAiError('') }}>
-              <div className="w-full max-w-sm rounded-2xl p-5 space-y-4 max-h-[82vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
-                style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(245,158,11,0.25)' }}>
+          {/* ── Full AI Pub Crawl Planner modal ── */}
+          {showPlanner && (
+            <div className="fixed inset-0 z-50 flex items-end justify-center"
+              style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}
+              onClick={() => setShowPlanner(false)}>
+              <div className="w-full max-w-md rounded-t-3xl overflow-hidden max-h-[92vh] flex flex-col"
+                style={{ background: '#0d0d0f', border: '1px solid rgba(168,85,247,0.2)', borderBottom: 'none' }}
+                onClick={(e) => e.stopPropagation()}>
 
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-black" style={{ color: '#f59e0b' }}>🍺 PLAN PUB CRAWL</p>
-                  <button onClick={() => { setShowCreateCrawl(false); setAiError('') }}
-                    style={{ color: 'rgba(74,96,128,0.5)' }}>
-                    <X size={15} />
-                  </button>
-                </div>
-
-                {/* ✨ AI Suggest button */}
-                <button
-                  onClick={suggestWithAI}
-                  disabled={aiSuggesting}
-                  className="w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                  style={{
-                    background: aiSuggesting ? 'rgba(168,85,247,0.06)' : 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(245,158,11,0.12) 100%)',
-                    border: '1px solid rgba(168,85,247,0.4)',
-                    color: '#a855f7',
-                    letterSpacing: '0.08em',
-                    boxShadow: aiSuggesting ? 'none' : '0 0 16px rgba(168,85,247,0.15)',
-                  }}
-                >
-                  {aiSuggesting
-                    ? <><span className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'rgba(168,85,247,0.3)', borderTopColor: '#a855f7' }} /> AI PICKING STOPS…</>
-                    : <><span>✨</span> AI SUGGEST STOPS</>
-                  }
-                </button>
-                {aiError && (
-                  <p className="text-[10px]" style={{ color: 'rgba(255,0,110,0.7)' }}>{aiError}</p>
-                )}
-
-                {/* Divider */}
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-px" style={{ background: 'rgba(245,158,11,0.1)' }} />
-                  <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(245,158,11,0.35)' }}>OR ENTER MANUALLY</span>
-                  <div className="flex-1 h-px" style={{ background: 'rgba(245,158,11,0.1)' }} />
-                </div>
-
-                {/* Crawl name */}
-                <input type="text" placeholder="Crawl name (e.g. Friday Night Crawl)" value={crawlName}
-                  onChange={(e) => setCrawlName(e.target.value.slice(0, 50))}
-                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
-                  style={{ border: '1px solid rgba(245,158,11,0.2)', color: '#e0f2fe' }} />
-
-                {/* Stops */}
-                <div className="space-y-2">
-                  <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(245,158,11,0.5)' }}>STOPS</p>
-                  {crawlStops.map((stop, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
-                        style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>{i + 1}</div>
-                      <input type="text" placeholder="Pub name" value={stop.name}
-                        onChange={(e) => { const next = [...crawlStops]; next[i] = { ...next[i], name: e.target.value }; setCrawlStops(next) }}
-                        className="flex-1 px-2.5 py-2 rounded-lg text-xs bg-transparent outline-none"
-                        style={{ border: '1px solid rgba(245,158,11,0.15)', color: '#e0f2fe' }} />
-                      {crawlStops.length > 2 && (
-                        <button onClick={() => setCrawlStops((prev) => prev.filter((_, idx) => idx !== i))}
-                          className="p-1" style={{ color: 'rgba(255,0,110,0.5)' }}>
-                          <X size={12} />
-                        </button>
-                      )}
+                {/* Handle */}
+                <div className="flex-shrink-0 pt-3 pb-2 flex flex-col items-center gap-2"
+                  style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+                  <div className="w-8 h-1 rounded-full" style={{ background: 'rgba(var(--accent-rgb),0.2)' }} />
+                  <div className="flex items-center justify-between w-full px-5 pb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🍺</span>
+                      <span className="text-sm font-black tracking-widest" style={{ color: '#f59e0b' }}>PUB CRAWL</span>
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+                        style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)' }}>
+                        ✨ AI PLANNER
+                      </span>
                     </div>
-                  ))}
-                  {crawlStops.length < 12 && (
-                    <button onClick={() => setCrawlStops((prev) => [...prev, { name: '', address: '' }])}
-                      className="w-full py-2 rounded-lg text-[10px] font-black"
-                      style={{ border: '1px dashed rgba(245,158,11,0.25)', color: 'rgba(245,158,11,0.5)' }}>
-                      + ADD STOP
+                    <button onClick={() => setShowPlanner(false)} style={{ color: 'rgba(74,96,128,0.5)' }}>
+                      <X size={16} />
                     </button>
+                  </div>
+                </div>
+
+                {/* Scrollable body */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+                  {/* ── Config (only shown when no result yet) ── */}
+                  {!plannerResult && (
+                    <>
+                      {/* Group size */}
+                      <div className="rounded-2xl overflow-hidden"
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                        <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                          <p className="text-[10px] font-black tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>GROUP SIZE</p>
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => setPlannerGroupSize((n) => Math.max(2, n - 1))}
+                              className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-base active:scale-90"
+                              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>−</button>
+                            <span className="text-xl font-black w-10 text-center" style={{ color: '#e0f2fe' }}>{plannerGroupSize}</span>
+                            <button onClick={() => setPlannerGroupSize((n) => Math.min(30, n + 1))}
+                              className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-base active:scale-90"
+                              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>+</button>
+                            <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>people</span>
+                          </div>
+                        </div>
+
+                        {/* Start time + stops */}
+                        <div className="px-4 py-3 flex gap-4" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                          <div className="flex-1">
+                            <p className="text-[10px] font-black tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>START TIME</p>
+                            <input type="time" value={plannerStartTime} onChange={(e) => setPlannerStartTime(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg text-sm font-bold outline-none"
+                              style={{ background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe', colorScheme: 'dark' }} />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-[10px] font-black tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>STOPS</p>
+                            <div className="flex gap-1 flex-wrap">
+                              {[3, 4, 5, 6, 7, 8].map((n) => (
+                                <button key={n} onClick={() => setPlannerNumStops(n)}
+                                  className="px-2 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                  style={{
+                                    background: plannerNumStops === n ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+                                    border: `1px solid ${plannerNumStops === n ? 'rgba(var(--accent-rgb),0.45)' : 'rgba(var(--accent-rgb),0.12)'}`,
+                                    color: plannerNumStops === n ? 'var(--accent)' : 'rgba(224,242,254,0.4)',
+                                  }}>{n}</button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Vibe tags */}
+                        <div className="px-4 py-3">
+                          <p className="text-[10px] font-black tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>VIBE (OPTIONAL)</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {['Relaxed','Lively','Dancing','Live Music','Craft Beer','Cocktails','LGBT+','Sports','Rooftop','Student'].map((vibe) => {
+                              const active = plannerVibes.includes(vibe)
+                              return (
+                                <button key={vibe} onClick={() => setPlannerVibes((prev) => prev.includes(vibe) ? prev.filter((v) => v !== vibe) : [...prev, vibe])}
+                                  className="px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
+                                  style={{
+                                    background: active ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.03)',
+                                    border: active ? '1px solid rgba(168,85,247,0.45)' : '1px solid rgba(74,96,128,0.2)',
+                                    color: active ? '#a855f7' : 'rgba(224,242,254,0.4)',
+                                  }}>{vibe}</button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {plannerError && (
+                        <p className="text-[11px] px-1" style={{ color: 'rgba(255,0,110,0.7)' }}>{plannerError}</p>
+                      )}
+
+                      {/* Generate button */}
+                      <button onClick={generatePlannerRoute} disabled={plannerGenerating}
+                        className="w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-60"
+                        style={{
+                          background: plannerGenerating ? 'rgba(var(--accent-rgb),0.06)' : 'linear-gradient(135deg, rgba(var(--accent-rgb),0.18) 0%, rgba(168,85,247,0.18) 100%)',
+                          border: `1px solid ${plannerGenerating ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.4)'}`,
+                          color: 'var(--accent)',
+                          letterSpacing: '0.1em',
+                          boxShadow: plannerGenerating ? 'none' : '0 0 30px rgba(var(--accent-rgb),0.15)',
+                        }}>
+                        {plannerGenerating
+                          ? <><span className="inline-block w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.2)', borderTopColor: 'var(--accent)' }} /> BUILDING ROUTE…</>
+                          : <>✨ GENERATE AI ROUTE &rarr;</>
+                        }
+                      </button>
+                    </>
+                  )}
+
+                  {/* ── Result ── */}
+                  {plannerResult && (
+                    <>
+                      {/* Title card */}
+                      <div className="rounded-2xl overflow-hidden"
+                        style={{ background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.1) 0%, rgba(168,85,247,0.1) 100%)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+                        <div className="h-0.5" style={{ background: 'linear-gradient(90deg, var(--accent), #a855f7)' }} />
+                        <div className="px-4 py-3">
+                          <p className="text-[9px] font-black tracking-[0.2em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>AI-GENERATED ROUTE</p>
+                          <p className="text-base font-black leading-tight mb-1" style={{ color: '#e0f2fe' }}>{plannerResult.crawlTitle}</p>
+                          <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.5)' }}>{plannerResult.openingLine}</p>
+                          <div className="flex flex-wrap gap-3 mt-3 pt-3" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                            {[
+                              `👥 ${plannerResult.groupSize} people`,
+                              `📍 ${plannerResult.totalStops} stops`,
+                              `🚶 ${plannerResult.totalDistanceKm}km`,
+                              `⏱ ${plannerResult.startTime}→${plannerResult.endTime}`,
+                            ].map((s) => (
+                              <span key={s} className="text-[10px] font-bold" style={{ color: 'rgba(224,242,254,0.5)' }}>{s}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Stop list */}
+                      <div className="space-y-2">
+                        {plannerResult.route?.map((stop: any, i: number) => (
+                          <div key={i} className="flex gap-3 items-start p-3 rounded-xl"
+                            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5"
+                              style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>
+                              {stop.order}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{stop.name}</p>
+                              <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                                {stop.arrivalTime} → {stop.departureTime}
+                              </p>
+                              {stop.address && (
+                                <p className="text-[9px] truncate mt-0.5" style={{ color: 'rgba(224,242,254,0.3)' }}>{stop.address}</p>
+                              )}
+                              {stop.description && (
+                                <p className="text-[10px] mt-1 leading-relaxed" style={{ color: 'rgba(224,242,254,0.5)' }}>{stop.description}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Action row */}
+                      <div className="flex gap-2 pb-2">
+                        <button onClick={() => { setPlannerResult(null); setPlannerError('') }}
+                          className="flex-1 py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5"
+                          style={{ background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.08em' }}>
+                          ↩ REDO
+                        </button>
+                        <button onClick={savePlannerCrawl} disabled={crawlCreating}
+                          className="flex-[2] py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.45)', color: '#f59e0b', letterSpacing: '0.08em' }}>
+                          {crawlCreating ? 'SAVING…' : '🍺 START THIS CRAWL'}
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
-
-                {/* Start button */}
-                <button onClick={createCrawl} disabled={crawlCreating || !crawlName.trim() || crawlStops.filter((s) => s.name.trim()).length < 2}
-                  className="w-full py-3 rounded-xl text-xs font-black tracking-widest disabled:opacity-40"
-                  style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b' }}>
-                  {crawlCreating ? 'CREATING...' : 'START CRAWL 🍺'}
-                </button>
               </div>
             </div>
           )}

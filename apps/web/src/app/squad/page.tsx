@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight, Loader2, PoundSterling, Beer, Sparkles } from 'lucide-react'
+import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight, Loader2, PoundSterling } from 'lucide-react'
 
 import { api } from '@/lib/api'
 
@@ -266,20 +266,6 @@ function PlanTonightModal({ squad, onClose }: { squad: Squad; onClose: () => voi
           </p>
         </div>
 
-        {/* Pub Crawl shortcut */}
-        <Link
-          href="/pub-crawl"
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all"
-          style={{
-            background: 'rgba(var(--accent-rgb),0.06)',
-            border: '1px solid rgba(var(--accent-rgb),0.15)',
-            color: 'rgba(var(--accent-rgb),0.6)',
-            letterSpacing: '0.1em',
-          }}
-        >
-          <Beer size={13} /> PLAN A PUB CRAWL INSTEAD →
-        </Link>
-
         {/* Share button */}
         {sent ? (
           <div className="w-full py-3 rounded-xl text-sm font-black text-center"
@@ -442,48 +428,6 @@ export default function SquadPage() {
             <Plus size={13} /> CREATE SQUAD
           </button>
         </div>
-      </div>
-
-      {/* ── Pub Crawl feature card ── */}
-      <div className="max-w-xl mx-auto px-4 mb-2">
-        <Link
-          href="/pub-crawl"
-          className="flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-[0.98]"
-          style={{
-            background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.08) 0%, rgba(168,85,247,0.08) 100%)',
-            border: '1px solid rgba(var(--accent-rgb),0.2)',
-            boxShadow: '0 2px 20px rgba(0,0,0,0.3)',
-          }}
-        >
-          {/* Icon */}
-          <div
-            className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-            style={{
-              background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(168,85,247,0.15))',
-              border: '1px solid rgba(var(--accent-rgb),0.25)',
-            }}
-          >
-            <Beer size={22} style={{ color: 'var(--accent)' }} />
-          </div>
-
-          {/* Text */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <p className="text-sm font-black tracking-wide" style={{ color: '#e0f2fe' }}>PUB CRAWL</p>
-              <span
-                className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
-                style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)' }}
-              >
-                <Sparkles size={7} /> AI
-              </span>
-            </div>
-            <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
-              AI builds your group a walking bar route with timed stops
-            </p>
-          </div>
-
-          <ChevronRight size={16} style={{ color: 'rgba(var(--accent-rgb),0.4)', flexShrink: 0 }} />
-        </Link>
       </div>
 
       {/* Squad list */}
