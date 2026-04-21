@@ -1,5 +1,5 @@
 import { messaging } from './firebase-admin'
-import { prisma } from '@partyradar/db'
+import { prisma, Prisma } from '@partyradar/db'
 import type { NotificationType } from '@partyradar/shared'
 
 interface SendNotificationOptions {
@@ -15,7 +15,7 @@ export async function sendNotification(opts: SendNotificationOptions) {
 
   // Save to DB
   await prisma.notification.create({
-    data: { userId, type, title, body, data: data ?? null },
+    data: { userId, type, title, body, data: data ?? Prisma.JsonNull },
   })
 
   // Send FCM push if user has a token

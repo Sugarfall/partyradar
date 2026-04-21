@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { prisma } from '@partyradar/db'
+import { prisma, Prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { auth } from '../lib/firebase-admin'
@@ -158,7 +158,13 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
-    const user = await prisma.user.update({ where: { id: userId }, data: body })
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...body,
+        notifPrefs: body.notifPrefs === null ? Prisma.JsonNull : body.notifPrefs,
+      },
+    })
     res.json({ data: user })
   } catch (err) {
     next(err)

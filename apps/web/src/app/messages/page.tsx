@@ -979,8 +979,14 @@ function GroupChatView({
   async function handleSubscribe() {
     setSubscribing(true)
     try {
-      await api.post(`/groups/${groupId}/subscribe`, {})
+      const res = await api.post<{ data: { url?: string; subscribed?: boolean } }>(`/groups/${groupId}/subscribe`, {})
       setShowSubModal(false)
+      if (res.data.url) {
+        // Stripe checkout — redirect; subscription confirmed via webhook + success page
+        window.location.href = res.data.url
+        return
+      }
+      // Owner / immediate subscription — update state right away
       const patch = { isJoined: true, isSubscribed: true, memberCount: (group?.memberCount ?? 0) + 1, notificationsEnabled: true }
       setGroup((g) => g ? { ...g, ...patch } : g)
       onGroupUpdate(groupId, patch)

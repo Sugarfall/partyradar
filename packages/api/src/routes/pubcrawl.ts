@@ -7,6 +7,7 @@
  */
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
+import type { VenueType } from '@prisma/client'
 import { optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 
@@ -161,7 +162,7 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
     const venueWhere = {
       lat: { gte: lat - latDelta, lte: lat + latDelta },
       lng: { gte: lng - lngDelta, lte: lng + lngDelta },
-      type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as const },
+      type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as VenueType[] },
     }
 
     let candidates = await prisma.venue.findMany({
@@ -183,7 +184,7 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
         where: {
           lat: { gte: lat - wideLatDelta, lte: lat + wideLatDelta },
           lng: { gte: lng - wideLngDelta, lte: lng + wideLngDelta },
-          type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as const },
+          type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as VenueType[] },
         },
         select: {
           id: true, name: true, address: true, city: true,

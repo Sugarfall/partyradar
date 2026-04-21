@@ -159,7 +159,7 @@ async function fetchNearby(lat: number, lng: number, radius: number, type: strin
   const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${Math.min(radius, 50000)}&type=${type}&key=${GOOGLE_API_KEY}`
   try {
     const r = await fetch(url)
-    const data: GoogleNearbyResponse = await r.json()
+    const data = await r.json() as GoogleNearbyResponse
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       console.error(`[venue-discover] Google API error (nearby ${type}):`, data.status)
     }
@@ -175,7 +175,7 @@ async function fetchTextSearch(query: string, lat: number, lng: number, radius: 
   const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&location=${lat},${lng}&radius=${Math.min(radius, 50000)}&key=${GOOGLE_API_KEY}`
   try {
     const r = await fetch(url)
-    const data: GoogleNearbyResponse = await r.json()
+    const data = await r.json() as GoogleNearbyResponse
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       console.error(`[venue-discover] Google API error (text "${query}"):`, data.status)
     }
@@ -192,7 +192,7 @@ async function fetchPlaceDetails(placeId: string): Promise<GooglePlaceDetails['r
   const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${GOOGLE_API_KEY}`
   try {
     const r = await fetch(url)
-    const data: GooglePlaceDetails = await r.json()
+    const data = await r.json() as GooglePlaceDetails
     if (data.status !== 'OK') return null
     return data.result
   } catch { return null }
