@@ -43,15 +43,21 @@ function priority(source: Source): number {
   return SOURCE_PRIORITY[source] ?? 99
 }
 
-// Common UK/IE city names that sources append to event/venue names.
-// "The Garage Glasgow", "Nice N Sleazy Glasgow", "Tyketto Edinburgh" etc.
+// Common UK/IE city/region names that sources append to event/venue names
+// or dump into `neighbourhood`. We strip these from match keys because a
+// city is way too coarse to be a venue identifier — two unrelated events in
+// Glasgow would collide if "glasgow" counted as their venue.
 const CITY_SUFFIXES = [
   'glasgow', 'edinburgh', 'london', 'manchester', 'dundee', 'aberdeen',
   'birmingham', 'liverpool', 'leeds', 'sheffield', 'bristol', 'cardiff',
   'belfast', 'dublin', 'newcastle', 'nottingham', 'brighton', 'oxford',
   'cambridge', 'uk', 'scotland', 'england', 'wales', 'ireland',
+  'city centre', 'city center', 'town centre', 'town center',
 ]
-const CITY_SUFFIX_RE = new RegExp(`\\s+(${CITY_SUFFIXES.join('|')})\\b`, 'gi')
+const CITY_SUFFIX_SET = new Set(CITY_SUFFIXES)
+// Match city names that appear as a whole token (start-of-string, after a
+// space, or at end-of-string). Used to scrub "Tyketto Glasgow" → "Tyketto".
+const CITY_SUFFIX_RE = new RegExp(`(^|\\s+)(${CITY_SUFFIXES.join('|')})\\b`, 'gi')
 
 /** Strip venue/city suffixes, punctuation, and leading articles so
  *  "The Tyketto", "Tyketto Glasgow", and "Tyketto at The Garage" all
@@ -86,6 +92,9 @@ interface DedupableEvent {
   lat?: number | null
   lng?: number | null
   venueName?: string | null
+  /** `neighbourhood` is often where external sync stashed the venue name
+   *  (Perplexity, SerpAPI). We treat it as a secondary venue signal. */
+  neighbourhood?: string | null
   externalSource?: Source
 }
 
@@ -108,9 +117,16 @@ function makeDedupKeys(event: DedupableEvent): string[] {
 
   const keys: string[] = []
 
-  const venueKey = normalizeVenue(event.venueName)
-  if (venueKey) {
-    keys.push(`${nameKey}|${day}|venue:${venueKey}`)
+  // Primary venue key: official venueName if set. Secondary: neighbourhood
+  // (some sync paths stash venue name there). Both are discarded if they
+  // normalize to a bare city name ("glasgow") — that's too coarse to be a
+  // venue identifier and would falsely collapse unrelated events.
+  const venueSignals = [event.venueName, event.neighbourhood]
+  for (const raw of venueSignals) {
+    const v = normalizeVenue(raw)
+    if (!v) continue
+    if (CITY_SUFFIX_SET.has(v)) continue      // reject bare city names
+    keys.push(`${nameKey}|${day}|venue:${v}`)
   }
 
   if (event.lat != null && event.lng != null) {

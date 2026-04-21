@@ -249,6 +249,7 @@ async function syncTicketmaster(
         if (geo) address = geo
       }
       const neighbourhood = (cityName || address.split(',')[0]) ?? 'Unknown'
+      const venueName = venue?.name ?? null
       const name = ev.name ?? 'Unnamed Event'
       const description = truncateDescription(ev.info ?? ev.pleaseNote, name)
 
@@ -274,6 +275,7 @@ async function syncTicketmaster(
           lng: evLng,
           address,
           neighbourhood,
+          venueName,
           coverImageUrl,
           price,
           socialSourceUrl: ev.url,
@@ -289,6 +291,7 @@ async function syncTicketmaster(
           lng: evLng,
           address,
           neighbourhood,
+          venueName,
           showNeighbourhoodOnly: false,
           capacity: 200,
           price,
@@ -400,6 +403,7 @@ async function syncSkiddle(
         if (geo) address = geo
       }
       const neighbourhood = (townName || address.split(',')[0]) ?? 'Unknown'
+      const venueName = ev.venue?.name ?? null
       const name = ev.eventname ?? 'Unnamed Event'
       const description = truncateDescription(ev.description, name)
 
@@ -422,6 +426,7 @@ async function syncSkiddle(
           lng: evLng,
           address,
           neighbourhood,
+          venueName,
           coverImageUrl: ev.imageurl ?? null,
           price,
           socialSourceUrl: ev.link,
@@ -437,6 +442,7 @@ async function syncSkiddle(
           lng: evLng,
           address,
           neighbourhood,
+          venueName,
           showNeighbourhoodOnly: false,
           capacity: 200,
           price,
@@ -534,6 +540,7 @@ async function syncEventbrite(
       const evLng = parseFloat(addr.longitude ?? String(lng))
       const address = addr.localized_address_display ?? ev.venue?.name ?? 'Unknown'
       const neighbourhood = address.split(',')[0] ?? 'Unknown'
+      const venueName = ev.venue?.name ?? null
       const name = ev.name?.text ?? 'Unnamed Event'
       const description = truncateDescription(ev.description?.text, name)
 
@@ -567,6 +574,7 @@ async function syncEventbrite(
           lng: evLng,
           address,
           neighbourhood,
+          venueName,
           coverImageUrl,
           price,
           eventbriteUrl: ev.url,
@@ -583,6 +591,7 @@ async function syncEventbrite(
           lng: evLng,
           address,
           neighbourhood,
+          venueName,
           showNeighbourhoodOnly: false,
           capacity,
           price,
@@ -737,10 +746,11 @@ async function syncSerpApi(
 
       await prisma.event.upsert({
         where: { serpApiId },
-        update: { name, description, startsAt, address, neighbourhood, coverImageUrl, socialSourceUrl },
+        update: { name, description, startsAt, address, neighbourhood, venueName: venueName || null, coverImageUrl, socialSourceUrl },
         create: {
           hostId, name, type, description, startsAt, endsAt: null,
           lat, lng, address, neighbourhood,
+          venueName: venueName || null,
           showNeighbourhoodOnly: false, capacity: 500, price,
           ticketQuantity: 0, ticketsRemaining: 0,
           alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
@@ -884,6 +894,7 @@ async function syncPerplexity(
         if (geo) address = geo
       }
       const neighbourhood = ev.venue ?? address.split(',')[0] ?? city
+      const venueName = ev.venue ?? null
       const description = truncateDescription(ev.description, name)
 
       if (!isNightlifeEvent(name, description)) { skipped++; continue }
@@ -895,13 +906,13 @@ async function syncPerplexity(
         where: { aiEventId },
         update: {
           name, description, startsAt, endsAt,
-          address, neighbourhood,
+          address, neighbourhood, venueName,
           coverImageUrl: ev.imageUrl ?? null,
           socialSourceUrl: ev.url,
         },
         create: {
           hostId, name, type, description, startsAt,
-          endsAt: endsAt ?? null, lat, lng, address, neighbourhood,
+          endsAt: endsAt ?? null, lat, lng, address, neighbourhood, venueName,
           showNeighbourhoodOnly: false, capacity: 300, price,
           ticketQuantity: 0, ticketsRemaining: 0,
           alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
