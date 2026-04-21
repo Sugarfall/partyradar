@@ -274,8 +274,12 @@ app.use(cors({
     if (!origin || CORS_ALLOWLIST.includes(origin)) {
       callback(null, true)
     } else {
-      console.warn(`[CORS] Rejected origin: ${origin}`)
-      callback(new Error(`CORS: origin ${origin} not allowed`))
+      // Deny cleanly (no thrown error → no 500). The request is still
+      // answered, but without Access-Control-Allow-Origin, so the browser
+      // blocks the response client-side. Log every rejection so misconfig
+      // is visible in Railway logs.
+      console.warn(`[CORS] Rejected origin: ${origin} (allowlist: ${CORS_ALLOWLIST.join(', ') || '(empty)'})`)
+      callback(null, false)
     }
   },
   credentials: true,
