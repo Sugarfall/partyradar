@@ -162,6 +162,7 @@ model User {
   checkIns         CheckIn[]
   posts            Post[]
   postLikes        PostLike[]
+  postComments     PostComment[]
   reviews          EventReview[]
   createdSquads    Squad[]       @relation("CreatedSquads")
   squadMemberships SquadMember[]
@@ -536,22 +537,24 @@ model CheckIn {
 }
 
 model Post {
-  id         String     @id @default(cuid())
-  userId     String
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eventId    String?
-  event      Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  venueId    String?
-  venue      Venue?     @relation(fields: [venueId], references: [id], onDelete: SetNull)
-  imageUrl   String?
-  text       String?    @db.Text
-  isStory    Boolean    @default(false)
-  expiresAt  DateTime?
-  likesCount Int        @default(0)
-  viewCount  Int        @default(0)
-  createdAt  DateTime   @default(now())
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId       String?
+  event         Event?         @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  venueId       String?
+  venue         Venue?         @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  imageUrl      String?
+  text          String?        @db.Text
+  isStory       Boolean        @default(false)
+  expiresAt     DateTime?
+  likesCount    Int            @default(0)
+  commentsCount Int            @default(0)
+  viewCount     Int            @default(0)
+  createdAt     DateTime       @default(now())
 
-  likes PostLike[]
+  likes    PostLike[]
+  comments PostComment[]
 
   @@index([userId])
   @@index([eventId])
@@ -568,6 +571,20 @@ model PostLike {
   createdAt DateTime @default(now())
 
   @@unique([postId, userId])
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
 }
 
 model EventReview {

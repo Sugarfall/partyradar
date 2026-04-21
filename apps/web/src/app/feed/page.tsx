@@ -1,8 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket, Flag } from 'lucide-react'
+import {
+  Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket,
+  Flag, MessageCircle, Send, X,
+} from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
@@ -50,14 +53,29 @@ interface FeedItem {
   text?: string | null
   imageUrl?: string | null
   likesCount?: number
+  commentsCount?: number
+  hasLiked?: boolean
   createdAt: string
+}
+
+interface PostCommentUser {
+  id: string
+  username: string
+  displayName: string
+  photoUrl?: string | null
+}
+interface PostCommentData {
+  id: string
+  text: string
+  createdAt: string
+  user: PostCommentUser
 }
 
 const DEMO_FEED: FeedItem[] = [
   { type: 'RSVP',    user: { displayName: 'Jamie K', photoUrl: null },    event: { name: 'Sub Club — Techno Night', type: 'CLUB_NIGHT' }, createdAt: new Date(Date.now() - 15*60*1000).toISOString() },
   { type: 'CHECKIN', user: { displayName: 'Sarah M', photoUrl: null },    venue: { name: 'SWG3' }, crowdLevel: 'BUSY',   createdAt: new Date(Date.now() - 32*60*1000).toISOString() },
   { type: 'RSVP',    user: { displayName: 'Lewis R', photoUrl: null },    event: { name: 'Òran Mór Live', type: 'CONCERT' }, createdAt: new Date(Date.now() - 1*60*60*1000).toISOString() },
-  { type: 'POST',    user: { displayName: 'Chloe B', photoUrl: null },    event: { name: 'Rooftop Party' }, text: 'Best night 🔥', imageUrl: null, likesCount: 12, createdAt: new Date(Date.now() - 2*60*60*1000).toISOString() },
+  { type: 'POST',    user: { displayName: 'Chloe B', photoUrl: null },    event: { name: 'Rooftop Party' }, text: 'Best night 🔥', imageUrl: null, likesCount: 12, commentsCount: 3, createdAt: new Date(Date.now() - 2*60*60*1000).toISOString() },
   { type: 'CHECKIN', user: { displayName: 'Ryan T', photoUrl: null },     venue: { name: 'Stereo' }, crowdLevel: 'RAMMED', createdAt: new Date(Date.now() - 3*60*60*1000).toISOString() },
 ]
 
@@ -69,8 +87,18 @@ const DEMO_STORIES = [
   { name: 'Ryan T',  active: false },
 ]
 
+// ─── Mention renderer ──────────────────────────────────────────────────────
+function renderMentions(text: string): React.ReactNode {
+  const parts = text.split(/(@[\w.]+)/g)
+  return parts.map((part, i) =>
+    /^@\w/.test(part)
+      ? <span key={i} style={{ color: 'var(--accent)', fontWeight: 700 }}>{part}</span>
+      : <span key={i}>{part}</span>
+  )
+}
+
 // ─── Avatar ────────────────────────────────────────────────────────────────
-function Avatar({ user, size = 36 }: { user: FeedUser; size?: number }) {
+function Avatar({ user, size = 36 }: { user: { displayName: string; photoUrl?: string | null }; size?: number }) {
   const initials = user.displayName?.[0]?.toUpperCase() ?? '?'
   if (user.photoUrl) {
     return (
@@ -94,6 +122,268 @@ function Avatar({ user, size = 36 }: { user: FeedUser; size?: number }) {
       }}
     >
       {initials}
+    </div>
+  )
+}
+
+// ─── Post Detail Modal (Instagram-style) ──────────────────────────────────
+function PostDetailModal({
+  post,
+  onClose,
+  onLikeToggle,
+  onCommentAdded,
+}: {
+  post: FeedItem & { id: string }
+  onClose: () => void
+  onLikeToggle: (liked: boolean, newCount: number) => void
+  onCommentAdded: () => void
+}) {
+  const [comments, setComments] = useState<PostCommentData[]>([])
+  const [loadingComments, setLoadingComments] = useState(true)
+  const [commentText, setCommentText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [liked, setLiked] = useState(post.hasLiked ?? false)
+  const [likesCount, setLikesCount] = useState(post.likesCount ?? 0)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const commentsEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    api.get<{ data: PostCommentData[] }>(`/posts/${post.id}/comments?limit=50`)
+      .then((res) => setComments(res?.data ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingComments(false))
+  }, [post.id])
+
+  // Lock body scroll while modal open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  async function handleLike() {
+    try {
+      const res = await api.post<{ data: { liked: boolean } }>(`/posts/${post.id}/like`, {})
+      const nowLiked = res?.data?.liked ?? !liked
+      const newCount = nowLiked ? likesCount + 1 : Math.max(0, likesCount - 1)
+      setLiked(nowLiked)
+      setLikesCount(newCount)
+      onLikeToggle(nowLiked, newCount)
+    } catch {
+      // optimistic fallback
+      const nowLiked = !liked
+      const newCount = nowLiked ? likesCount + 1 : Math.max(0, likesCount - 1)
+      setLiked(nowLiked)
+      setLikesCount(newCount)
+      onLikeToggle(nowLiked, newCount)
+    }
+  }
+
+  async function handleSubmit() {
+    const text = commentText.trim()
+    if (!text || submitting) return
+    setSubmitting(true)
+    try {
+      const res = await api.post<{ data: PostCommentData }>(`/posts/${post.id}/comments`, { text })
+      if (res?.data) {
+        setComments((prev) => [...prev, res.data])
+        setCommentText('')
+        onCommentAdded()
+        setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
+      }
+    } catch {
+      // swallow — moderation or auth error
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function handleBackdropClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target === e.currentTarget) onClose()
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
+      onClick={handleBackdropClick}
+    >
+      <div
+        className="w-full sm:max-w-lg flex flex-col sm:rounded-2xl overflow-hidden"
+        style={{
+          background: '#080812',
+          border: '1px solid rgba(var(--accent-rgb),0.14)',
+          height: '92vh',
+          maxHeight: 780,
+          boxShadow: '0 0 60px rgba(var(--accent-rgb),0.08)',
+        }}
+      >
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <div
+          className="flex items-center gap-3 px-3 py-2.5 shrink-0"
+          style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}
+        >
+          <Avatar user={post.user} size={34} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>
+              {post.user.displayName}
+            </p>
+            {post.event && (
+              <p className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                <Calendar size={9} /> {post.event.name}
+              </p>
+            )}
+          </div>
+          <span className="text-[10px] font-bold" style={{ color: 'rgba(74,96,128,0.5)' }}>
+            {timeAgo(post.createdAt)}
+          </span>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ml-1"
+            style={{ color: 'rgba(74,96,128,0.6)', background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* ── Post image ──────────────────────────────────────────── */}
+        {post.imageUrl && (
+          <div className="shrink-0" style={{ maxHeight: '40%', overflow: 'hidden', background: '#000' }}>
+            <img
+              src={post.imageUrl}
+              alt=""
+              className="w-full object-contain"
+              style={{ maxHeight: '40vh' }}
+            />
+          </div>
+        )}
+
+        {/* ── Post text ───────────────────────────────────────────── */}
+        {post.text && (
+          <p
+            className="px-4 py-3 text-sm leading-relaxed shrink-0"
+            style={{ color: 'rgba(224,242,254,0.85)', borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}
+          >
+            {renderMentions(post.text)}
+          </p>
+        )}
+
+        {/* ── Like / comment counts ────────────────────────────────── */}
+        <div
+          className="flex items-center gap-4 px-4 py-2.5 shrink-0"
+          style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}
+        >
+          <button
+            onClick={handleLike}
+            className="flex items-center gap-1.5 transition-all duration-200"
+            style={{ color: liked ? '#ec4899' : 'rgba(74,96,128,0.6)' }}
+          >
+            <Heart
+              size={18}
+              fill={liked ? '#ec4899' : 'none'}
+              style={{ filter: liked ? 'drop-shadow(0 0 6px rgba(236,72,153,0.7))' : 'none', transition: 'filter 0.2s' }}
+            />
+            <span className="text-xs font-bold">{likesCount > 0 ? likesCount : ''}</span>
+          </button>
+          <div className="flex items-center gap-1.5" style={{ color: 'rgba(74,96,128,0.5)' }}>
+            <MessageCircle size={16} />
+            <span className="text-xs font-bold">{comments.length > 0 ? comments.length : ''}</span>
+          </div>
+        </div>
+
+        {/* ── Comments list ───────────────────────────────────────── */}
+        <div
+          className="flex-1 overflow-y-auto px-4 py-3 space-y-4"
+          style={{ overscrollBehavior: 'contain' }}
+        >
+          {loadingComments ? (
+            <div className="flex justify-center py-8">
+              <div
+                className="w-5 h-5 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }}
+              />
+            </div>
+          ) : comments.length === 0 ? (
+            <p className="text-center text-xs py-8 font-bold tracking-widest"
+              style={{ color: 'rgba(74,96,128,0.45)' }}>
+              NO COMMENTS YET
+            </p>
+          ) : (
+            comments.map((c) => (
+              <div key={c.id} className="flex gap-2.5">
+                <Avatar
+                  user={{ displayName: c.user.displayName, photoUrl: c.user.photoUrl }}
+                  size={28}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-[11px] font-black" style={{ color: 'var(--accent)' }}>
+                      {c.user.displayName}
+                    </span>
+                    <span className="text-[9px]" style={{ color: 'rgba(74,96,128,0.45)' }}>
+                      {timeAgo(c.createdAt)}
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed mt-0.5" style={{ color: 'rgba(224,242,254,0.75)' }}>
+                    {renderMentions(c.text)}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={commentsEndRef} />
+        </div>
+
+        {/* ── Comment input ───────────────────────────────────────── */}
+        <div
+          className="px-3 py-3 shrink-0 flex gap-2.5 items-end"
+          style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.08)', background: 'rgba(4,4,13,0.85)' }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={commentText}
+            onChange={(e) => {
+              setCommentText(e.target.value)
+              e.target.style.height = 'auto'
+              e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px'
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Add a comment… @mention someone"
+            rows={1}
+            className="flex-1 resize-none text-sm rounded-xl px-3 py-2.5 outline-none"
+            style={{
+              background: 'rgba(var(--accent-rgb),0.05)',
+              border: '1px solid rgba(var(--accent-rgb),0.15)',
+              color: '#e0f2fe',
+              lineHeight: '1.4',
+              minHeight: 40,
+              maxHeight: 80,
+              caretColor: 'var(--accent)',
+            }}
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={!commentText.trim() || submitting}
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200"
+            style={{
+              background: commentText.trim() ? 'rgba(var(--accent-rgb),0.15)' : 'rgba(var(--accent-rgb),0.04)',
+              border: '1px solid rgba(var(--accent-rgb),0.2)',
+              color: commentText.trim() ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.25)',
+            }}
+          >
+            {submitting
+              ? <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+              : <Send size={15} />
+            }
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -185,16 +475,34 @@ function CheckInCard({ item }: { item: FeedItem }) {
 
 // ─── Post Card ─────────────────────────────────────────────────────────────
 function PostCard({ item }: { item: FeedItem }) {
-  const [liked, setLiked] = useState(false)
+  const [liked, setLiked] = useState(item.hasLiked ?? false)
   const [likes, setLikes] = useState(item.likesCount ?? 0)
+  const [commentsCount, setCommentsCount] = useState(item.commentsCount ?? 0)
   const [reported, setReported] = useState(false)
+  const [showModal, setShowModal] = useState(false)
 
-  function handleLike() {
-    setLiked((v) => !v)
-    setLikes((c) => c + (liked ? -1 : 1))
+  async function handleLike(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!item.id) {
+      const nowLiked = !liked
+      setLiked(nowLiked)
+      setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1))
+      return
+    }
+    try {
+      const res = await api.post<{ data: { liked: boolean } }>(`/posts/${item.id}/like`, {})
+      const nowLiked = res?.data?.liked ?? !liked
+      setLiked(nowLiked)
+      setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1))
+    } catch {
+      const nowLiked = !liked
+      setLiked(nowLiked)
+      setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1))
+    }
   }
 
-  async function handleReport() {
+  async function handleReport(e: React.MouseEvent) {
+    e.stopPropagation()
     if (!item.id || reported) return
     try {
       await api.post('/reports', { contentType: 'post', contentId: item.id, reason: 'OTHER' })
@@ -202,69 +510,110 @@ function PostCard({ item }: { item: FeedItem }) {
     } catch {}
   }
 
+  function openModal(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (item.id) setShowModal(true)
+  }
+
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: 'rgba(24,24,27,0.95)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
-    >
-      <div className="flex items-center gap-3 p-3">
-        <Avatar user={item.user} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{item.user.displayName}</p>
-          {item.event && (
-            <p className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-              <Calendar size={9} /> {item.event.name}
-            </p>
-          )}
-        </div>
-        <span className="text-[10px] font-bold shrink-0" style={{ color: 'rgba(74,96,128,0.55)' }}>
-          {timeAgo(item.createdAt)}
-        </span>
-      </div>
-
-      {item.imageUrl && (
-        <div style={{ maxHeight: 260, overflow: 'hidden' }}>
-          <img src={item.imageUrl} alt="" className="w-full object-cover" style={{ maxHeight: 260 }} />
-        </div>
-      )}
-
-      {item.text && (
-        <p className="px-4 py-3 text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.8)' }}>
-          {item.text}
-        </p>
-      )}
-
+    <>
       <div
-        className="flex items-center gap-3 px-4 py-2.5"
-        style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}
+        className="rounded-2xl overflow-hidden transition-transform duration-150 active:scale-[0.99]"
+        style={{
+          background: 'rgba(24,24,27,0.95)',
+          border: '1px solid rgba(var(--accent-rgb),0.1)',
+          cursor: item.id ? 'pointer' : 'default',
+        }}
+        onClick={openModal}
       >
-        <button
-          onClick={handleLike}
-          className="flex items-center gap-1.5 transition-all duration-200"
-          style={{ color: liked ? '#ec4899' : 'rgba(74,96,128,0.6)' }}
+        {/* Header */}
+        <div className="flex items-center gap-3 p-3">
+          <Avatar user={item.user} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{item.user.displayName}</p>
+            {item.event && (
+              <p className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                <Calendar size={9} /> {item.event.name}
+              </p>
+            )}
+          </div>
+          <span className="text-[10px] font-bold shrink-0" style={{ color: 'rgba(74,96,128,0.55)' }}>
+            {timeAgo(item.createdAt)}
+          </span>
+        </div>
+
+        {/* Image */}
+        {item.imageUrl && (
+          <div style={{ maxHeight: 320, overflow: 'hidden' }}>
+            <img src={item.imageUrl} alt="" className="w-full object-cover" style={{ maxHeight: 320 }} />
+          </div>
+        )}
+
+        {/* Text */}
+        {item.text && (
+          <p className="px-4 py-3 text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.8)' }}>
+            {renderMentions(item.text)}
+          </p>
+        )}
+
+        {/* Action bar */}
+        <div
+          className="flex items-center gap-3 px-4 py-2.5"
+          style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}
         >
-          <Heart
-            size={15}
-            fill={liked ? '#ec4899' : 'none'}
-            style={{ filter: liked ? 'drop-shadow(0 0 4px rgba(236,72,153,0.6))' : 'none' }}
-          />
-          <span className="text-xs font-bold">{likes > 0 ? likes : ''}</span>
-        </button>
-        <div className="ml-auto flex items-center gap-2">
-          {item.id && (
-            <button
-              onClick={handleReport}
-              disabled={reported}
-              title={reported ? 'Reported' : 'Report post'}
-              style={{ color: reported ? 'rgba(239,68,68,0.4)' : 'rgba(74,96,128,0.4)' }}
-            >
-              <Flag size={13} />
-            </button>
-          )}
-          <Zap size={11} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+          {/* Like */}
+          <button
+            onClick={handleLike}
+            className="flex items-center gap-1.5 transition-all duration-200"
+            style={{ color: liked ? '#ec4899' : 'rgba(74,96,128,0.6)' }}
+          >
+            <Heart
+              size={15}
+              fill={liked ? '#ec4899' : 'none'}
+              style={{ filter: liked ? 'drop-shadow(0 0 4px rgba(236,72,153,0.6))' : 'none' }}
+            />
+            <span className="text-xs font-bold">{likes > 0 ? likes : ''}</span>
+          </button>
+
+          {/* Comment */}
+          <button
+            onClick={openModal}
+            className="flex items-center gap-1.5 transition-all duration-200"
+            style={{ color: 'rgba(74,96,128,0.6)' }}
+          >
+            <MessageCircle size={15} />
+            <span className="text-xs font-bold">{commentsCount > 0 ? commentsCount : ''}</span>
+          </button>
+
+          <div className="ml-auto flex items-center gap-2">
+            {item.id && (
+              <button
+                onClick={handleReport}
+                disabled={reported}
+                title={reported ? 'Reported' : 'Report post'}
+                style={{ color: reported ? 'rgba(239,68,68,0.4)' : 'rgba(74,96,128,0.4)' }}
+              >
+                <Flag size={13} />
+              </button>
+            )}
+            <Zap size={11} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Instagram-style modal */}
+      {showModal && item.id && (
+        <PostDetailModal
+          post={{ ...item, id: item.id }}
+          onClose={() => setShowModal(false)}
+          onLikeToggle={(nowLiked, newCount) => {
+            setLiked(nowLiked)
+            setLikes(newCount)
+          }}
+          onCommentAdded={() => setCommentsCount((c) => c + 1)}
+        />
+      )}
+    </>
   )
 }
 
