@@ -17,13 +17,17 @@ router.get('/users', requireAuth, async (req: AuthRequest, res, next) => {
     const myId = req.user!.dbUser.id
 
     if (!q) {
-      const existingConvos = await prisma.conversation.findMany({
-        where: { participants: { some: { userId: myId } } },
-        include: { participants: { select: { userId: true } } },
+      // Who have I already messaged? Look up participants directly — one query,
+      // no unbounded conversation fetch.
+      const participantRows = await prisma.conversationParticipant.findMany({
+        where: {
+          userId: { not: myId },
+          conversation: { participants: { some: { userId: myId } } },
+        },
+        select: { userId: true },
+        take: 500,
       })
-      const alreadyTalkedTo = new Set(
-        existingConvos.flatMap((c) => c.participants.map((p) => p.userId)).filter((id) => id !== myId),
-      )
+      const alreadyTalkedTo = new Set(participantRows.map((p) => p.userId))
 
       const suggestions = await prisma.user.findMany({
         where: {

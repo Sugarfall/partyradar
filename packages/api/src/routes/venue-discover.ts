@@ -252,6 +252,13 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const allPlaces = Array.from(placeMap.values())
     let discovered = 0
 
+    // Batch-fetch existing venues up front (avoids N+1 findFirst per place)
+    const placeIds = allPlaces.map((p) => p.place_id).filter(Boolean) as string[]
+    const existingVenues = placeIds.length > 0
+      ? await prisma.venue.findMany({ where: { googlePlaceId: { in: placeIds } } })
+      : []
+    const existingByPlaceId = new Map(existingVenues.map((v) => [v.googlePlaceId, v]))
+
     // Upsert each venue into DB (batch for performance)
     const upsertPromises = allPlaces.map(async (place) => {
       const googlePlaceId = place.place_id
@@ -261,9 +268,7 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
       const vibeTags = extractVibeTags(place)
       const photoUrl = getPhotoUrl(place)
 
-      const existing = await prisma.venue.findFirst({
-        where: { googlePlaceId },
-      })
+      const existing = existingByPlaceId.get(googlePlaceId) ?? null
 
       if (existing) {
         // Update rating, photo, and address when better data is available

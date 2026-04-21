@@ -4,7 +4,6 @@ import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { stripe, platformFeeCents } from '../lib/stripe'
-import QRCode from 'qrcode'
 import { z } from 'zod'
 
 const router = Router()
@@ -16,7 +15,13 @@ const eventSelect = {
   hostId: true, ticketsRemaining: true,
 }
 
-/** POST /api/tickets/checkout — create Stripe Checkout session */
+/** POST /api/tickets/checkout — create Stripe Checkout session.
+ *
+ *  Funds flow directly to the host's connected Stripe account via
+ *  `transfer_data.destination` + `on_behalf_of`. We take our cut as an
+ *  `application_fee_amount`. Host must have completed Connect Express
+ *  onboarding (charges_enabled) before any tickets can sell.
+ */
 router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
   const schema = z.object({ eventId: z.string(), quantity: z.number().int().min(1).max(10).default(1) })
   try {
@@ -25,6 +30,22 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
     if (!event) throw new AppError('Event not found', 404)
     if (!event.stripePriceId) throw new AppError('Event does not have tickets', 400)
     if (event.ticketsRemaining < quantity) throw new AppError('Not enough tickets remaining', 400)
+
+    // Host must be connected for funds to land anywhere — refuse otherwise.
+    const host = await prisma.user.findUnique({
+      where: { id: event.hostId },
+      select: {
+        stripeConnectAccountId: true,
+        stripeConnectChargesEnabled: true,
+      },
+    })
+    if (!host?.stripeConnectAccountId || !host.stripeConnectChargesEnabled) {
+      throw new AppError(
+        'Host has not finished payout setup — tickets unavailable. Ask the host to finish Stripe onboarding.',
+        400,
+        'HOST_PAYOUTS_NOT_READY',
+      )
+    }
 
     const userId = req.user!.dbUser.id
     let stripeCustomerId = (await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } }))?.stripeCustomerId
@@ -42,9 +63,11 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
       mode: 'payment',
       success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event_id=${eventId}`,
       cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/events/${eventId}`,
-      metadata: { eventId, userId, quantity: String(quantity) },
+      metadata: { eventId, userId, quantity: String(quantity), hostId: event.hostId },
       payment_intent_data: {
         application_fee_amount: platformFeeCents(event.price) * quantity,
+        on_behalf_of: host.stripeConnectAccountId,
+        transfer_data: { destination: host.stripeConnectAccountId },
       },
     })
 
@@ -54,7 +77,10 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** GET /api/tickets/my — user's tickets */
+/** GET /api/tickets/my — user's tickets
+ *  QR codes are rendered client-side to keep the response fast even when a
+ *  user has many tickets (server-side PNG encoding was O(n) blocking CPU).
+ */
 router.get('/my', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const tickets = await prisma.ticket.findMany({
@@ -62,15 +88,7 @@ router.get('/my', requireAuth, async (req: AuthRequest, res, next) => {
       include: { event: { select: eventSelect } },
       orderBy: { createdAt: 'desc' },
     })
-
-    const withQR = await Promise.all(
-      tickets.map(async (t) => ({
-        ...t,
-        qrDataUrl: await QRCode.toDataURL(t.qrCode, { width: 300, margin: 2 }),
-      }))
-    )
-
-    res.json({ data: withQR })
+    res.json({ data: tickets })
   } catch (err) {
     next(err)
   }
@@ -87,8 +105,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     if (!ticket) throw new AppError('Ticket not found', 404)
     if (ticket.userId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
-    const qrDataUrl = await QRCode.toDataURL(ticket.qrCode, { width: 300, margin: 2 })
-    res.json({ data: { ...ticket, qrDataUrl } })
+    res.json({ data: ticket })
   } catch (err) {
     next(err)
   }

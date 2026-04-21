@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAdmin, requireAuth, requireAppRole } from '../middleware/auth'
+import { requireAdmin, requireAuth, requireAppRole, hasRole } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { stripe } from '../lib/stripe'
@@ -196,11 +196,8 @@ router.put('/users/:id/ban', requireAuth, requireAppRole('MODERATOR'), async (re
     const user = await prisma.user.findUnique({ where: { id: req.params['id'] } })
     if (!user) throw new AppError('User not found', 404)
     // Moderators cannot ban other admins/moderators
-    const callerRole = req.user!.dbUser.appRole
-    if (callerRole !== 'ADMIN' && !req.user!.dbUser.isAdmin) {
-      if (user.appRole === 'ADMIN' || user.appRole === 'MODERATOR' || user.isAdmin) {
-        throw new AppError('Moderators cannot ban platform staff', 403)
-      }
+    if (!hasRole(req.user!.dbUser, 'ADMIN') && hasRole(user, 'MODERATOR')) {
+      throw new AppError('Moderators cannot ban platform staff', 403)
     }
     const updated = await prisma.user.update({
       where: { id: user.id },
@@ -354,7 +351,7 @@ router.get('/revenue', requireAdmin, async (_req, res, next) => {
 })
 
 /** POST /api/admin/seed-venues — seed Glasgow venues (idempotent) */
-router.post('/seed-venues', async (_req, res, next) => {
+router.post('/seed-venues', requireAdmin, async (_req, res, next) => {
   try {
     const venues = [
       // ─── NIGHTCLUBS ──────────────────────────────────────────────────────
@@ -466,7 +463,7 @@ router.post('/seed-venues', async (_req, res, next) => {
 })
 
 /** POST /api/admin/fix-event-types — one-shot migration: correct HOME_PARTY → proper type */
-router.post('/fix-event-types', async (_req, res, next) => {
+router.post('/fix-event-types', requireAdmin, async (_req, res, next) => {
   try {
     const pubNightNames = [
       'The Doublet: Pub Karaoke',
@@ -487,7 +484,7 @@ router.post('/fix-event-types', async (_req, res, next) => {
 })
 
 /** POST /api/admin/seed-activity — seed Glasgow nightlife activity (idempotent) */
-router.post('/seed-activity', async (_req, res, next) => {
+router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
   try {
     // ── 0. One-shot type corrections (idempotent) ────────────────────────────
     const pubNightFix = [
@@ -1011,7 +1008,7 @@ router.post('/seed-activity', async (_req, res, next) => {
 })
 
 /** POST /api/admin/refresh-activity — add fresh posts to feel live (called by cron) */
-router.post('/refresh-activity', async (_req, res, next) => {
+router.post('/refresh-activity', requireAdmin, async (_req, res, next) => {
   try {
     const hour = new Date().getHours()
 
@@ -1179,7 +1176,7 @@ router.put('/cards/:id/status', requireAdmin, async (req, res, next) => {
  * No auth required (one-time cleanup only, only cancels events).
  */
 /** POST /api/admin/purge-non-uk-events — cancel events outside UK bounding box */
-router.post('/purge-non-uk-events', async (_req, res, next) => {
+router.post('/purge-non-uk-events', requireAdmin, async (_req, res, next) => {
   try {
     // UK bounding box: lat 49.9–61.0, lng -10.0–2.0
     const nonUkEvents = await prisma.event.findMany({
@@ -1218,7 +1215,7 @@ router.post('/purge-non-uk-events', async (_req, res, next) => {
   }
 })
 
-router.post('/purge-bad-events-now', async (_req, res, next) => {
+router.post('/purge-bad-events-now', requireAdmin, async (_req, res, next) => {
   try {
     const REJECT_KEYWORDS = [
       'aquarium', 'sea life', 'zoo', 'wildlife', 'safari', 'museum', 'gallery',
@@ -1282,9 +1279,9 @@ router.post('/purge-bad-events-now', async (_req, res, next) => {
  * POST /api/admin/reclassify-club-events
  * Finds events classified as CONCERT that should be CLUB_NIGHT based on name/description keywords.
  * Also finds events at known Glasgow clubs that should be CLUB_NIGHT.
- * No auth required — safe one-time fix for existing mis-classified events.
+ * Admin-only: safe one-time fix for existing mis-classified events.
  */
-router.post('/reclassify-club-events', async (_req, res, next) => {
+router.post('/reclassify-club-events', requireAdmin, async (_req, res, next) => {
   try {
     const CLUB_KEYWORDS = [
       'dj set', 'dj night', 'club night', 'rave', 'techno', 'house music',

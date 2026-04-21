@@ -2,12 +2,21 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { Eye, EyeOff } from 'lucide-react'
 
+/** Only allow relative same-origin redirects (defence against open-redirect). */
+function safeNext(raw: string | null): string {
+  if (!raw) return '/discover'
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/discover'
+  return raw
+}
+
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const nextPath = safeNext(searchParams?.get('next') ?? null)
   const { signIn, signInWithGoogle, signInWithApple } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -24,7 +33,7 @@ export default function LoginPage() {
     setError(null)
     try {
       await signIn(email, password)
-      router.push('/discover')
+      router.push(nextPath)
     } catch (err: any) {
       const code = err?.code ?? ''
       if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-email') {
@@ -61,7 +70,7 @@ export default function LoginPage() {
     setError(null)
     try {
       await signInWithGoogle()
-      router.push('/discover')
+      router.push(nextPath)
     } catch (err: any) {
       const msg = parseAuthError(err)
       if (msg) setError(msg)
@@ -75,7 +84,7 @@ export default function LoginPage() {
     setError(null)
     try {
       await signInWithApple()
-      router.push('/discover')
+      router.push(nextPath)
     } catch (err: any) {
       const msg = parseAuthError(err)
       if (msg) setError(msg)

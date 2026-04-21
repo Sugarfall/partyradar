@@ -45,6 +45,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         votes: req.user ? { where: { userId: req.user.dbUser.id } } : false,
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     })
 
     const data = sightings.map((s) => ({

@@ -7,6 +7,7 @@ import { Bookmark, Calendar, MapPin, Users } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
+import { loginHref } from '@/lib/authRedirect'
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
@@ -34,7 +35,7 @@ export default function SavedEventsPage() {
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && !dbUser) router.push('/login')
+    if (!loading && !dbUser) router.push(loginHref('/saved'))
   }, [loading, dbUser, router])
 
   const { data, isLoading } = useSWR(

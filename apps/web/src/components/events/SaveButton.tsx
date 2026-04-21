@@ -5,6 +5,7 @@ import { Bookmark, BookmarkCheck } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
+import { loginHref } from '@/lib/authRedirect'
 
 interface Props {
   eventId: string
@@ -25,7 +26,7 @@ export default function SaveButton({ eventId, size = 'md' }: Props) {
   }, [eventId, dbUser])
 
   async function toggle() {
-    if (!dbUser) { router.push('/login'); return }
+    if (!dbUser) { router.push(loginHref()); return }
     setSaved(s => !s) // optimistic
     setLoading(true)
     try {

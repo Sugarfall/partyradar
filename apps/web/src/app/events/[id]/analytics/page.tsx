@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useEvent } from '@/hooks/useEvents'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
+import { loginHref } from '@/lib/authRedirect'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ export default function EventAnalyticsPage() {
   const analytics = data?.data
 
   useEffect(() => {
-    if (!authLoading && !dbUser) router.push('/login')
+    if (!authLoading && !dbUser) router.push(loginHref(`/events/${params['id']}/analytics`))
   }, [authLoading, dbUser, router])
 
   useEffect(() => {

@@ -163,18 +163,18 @@ export const GROUP_PRICE_TIERS: GroupPriceTier[] = [
 ]
 
 // ─── Referral Program ────────────────────────────────────────────────────────
+//
+// Model: the referrer earns REVENUE_SHARE_PERCENT of whatever the PLATFORM
+// collects (fees, subscriptions, group cut, venue commission, etc.) from a
+// referred user — for LIFETIME, with no flat bonuses. Because the payout is a
+// share of platform revenue (not user spend), the platform cannot lose money
+// on a referral regardless of how much the referred user spends.
 
 export const REFERRAL_CONFIG = {
-  /** % of the referred user's first ticket purchase the referrer earns */
-  TICKET_COMMISSION_PERCENT: 10,
-  /** % of the referred user's subscription the referrer earns (recurring) */
-  SUBSCRIPTION_COMMISSION_PERCENT: 15,
-  /** % of group subscription revenue the referrer earns */
-  GROUP_COMMISSION_PERCENT: 10,
+  /** % of platform revenue from the referred user paid to the referrer (lifetime). */
+  REVENUE_SHARE_PERCENT: 10,
   /** Platform cut from group subscription revenue (rest goes to group creator) */
   GROUP_PLATFORM_CUT_PERCENT: 20,
-  /** Flat bonus (£) when a referred user makes their first purchase */
-  FIRST_PURCHASE_BONUS: 1.00,
   /** Minimum balance to request payout (£) */
   MIN_PAYOUT: 5.00,
 }

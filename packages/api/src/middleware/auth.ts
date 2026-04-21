@@ -62,6 +62,21 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+/** Single source of truth for app role. Legacy `isAdmin` maps to ADMIN. */
+export type AppRole = 'USER' | 'MODERATOR' | 'ADMIN'
+const ROLE_ORDER: Record<AppRole, number> = { USER: 0, MODERATOR: 1, ADMIN: 2 }
+
+export function effectiveRole(dbUser: { isAdmin: boolean; appRole: string } | null | undefined): AppRole {
+  if (!dbUser) return 'USER'
+  if (dbUser.isAdmin) return 'ADMIN'
+  const r = dbUser.appRole as AppRole
+  return r in ROLE_ORDER ? r : 'USER'
+}
+
+export function hasRole(dbUser: { isAdmin: boolean; appRole: string } | null | undefined, min: AppRole): boolean {
+  return ROLE_ORDER[effectiveRole(dbUser)] >= ROLE_ORDER[min]
+}
+
 export async function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
   // Bug 17 fix: allow internal service-to-service calls via INTERNAL_API_KEY
   const internalKey = process.env['INTERNAL_API_KEY']
@@ -70,8 +85,7 @@ export async function requireAdmin(req: AuthRequest, res: Response, next: NextFu
     return
   }
   await requireAuth(req, res, () => {
-    const user = req.user?.dbUser
-    if (!user?.isAdmin && user?.appRole !== 'ADMIN') {
+    if (!hasRole(req.user?.dbUser, 'ADMIN')) {
       res.status(403).json({ error: 'Admin access required' })
       return
     }
@@ -81,14 +95,10 @@ export async function requireAdmin(req: AuthRequest, res: Response, next: NextFu
 
 /** requireAppRole — platform-level MODERATOR or ADMIN gate */
 export function requireAppRole(minRole: 'MODERATOR' | 'ADMIN') {
-  const order: Record<string, number> = { USER: 0, MODERATOR: 1, ADMIN: 2 }
   return async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthRequest
     if (!authReq.user) return res.status(401).json({ error: 'Authentication required' })
-    const role = (authReq.user.dbUser.appRole as string) ?? 'USER'
-    // legacy isAdmin maps to ADMIN
-    const effectiveOrder = authReq.user.dbUser.isAdmin ? 2 : (order[role] ?? 0)
-    if (effectiveOrder < (order[minRole] ?? 0)) {
+    if (!hasRole(authReq.user.dbUser, minRole)) {
       return res.status(403).json({
         error: `This action requires ${minRole} access or higher`,
         code: 'ROLE_REQUIRED',

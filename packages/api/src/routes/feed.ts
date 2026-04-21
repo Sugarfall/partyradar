@@ -22,17 +22,14 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
       where: { followerId: userId },
       select: { followingId: true },
     })
-    const followingIds = followingRows.map((f) => f.followingId)
-
-    if (followingIds.length === 0) {
-      return res.json({ data: [], total: 0, page: pageNum, limit: limitNum, hasMore: false })
-    }
+    // Always include the user's own id so own posts appear in their own feed
+    const feedUserIds = [...new Set([...followingRows.map((f) => f.followingId), userId])]
 
     // Fetch RSVPs, check-ins, and posts in parallel
     const [rsvps, checkIns, posts] = await Promise.all([
       prisma.eventGuest.findMany({
         where: {
-          userId: { in: followingIds },
+          userId: { in: feedUserIds },
           status: 'CONFIRMED',
           event: { isCancelled: false, isPublished: true },
         },
@@ -44,7 +41,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         },
       }),
       prisma.checkIn.findMany({
-        where: { userId: { in: followingIds } },
+        where: { userId: { in: feedUserIds } },
         orderBy: { createdAt: 'desc' },
         take: 100,
         include: {
@@ -55,7 +52,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
       }),
       prisma.post.findMany({
         where: {
-          userId: { in: followingIds },
+          userId: { in: feedUserIds },
           OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }],
           user: { firebaseUid: { not: { startsWith: 'demo_' } } },
         },

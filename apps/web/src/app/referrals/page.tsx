@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Copy, Check, Users, TrendingUp, Wallet, Gift, ChevronRight, Crown, Share2 } from 'lucide-react'
+import Link from 'next/link'
+import { Copy, Check, Users, TrendingUp, Wallet, Gift, Crown, Share2 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
-import { DEV_MODE } from '@/lib/firebase'
 
 interface ReferralData {
   code: string
@@ -15,11 +15,8 @@ interface ReferralData {
   inactiveReferrals: number
   referrals: { id: string; earned: number; isPaidOut: boolean; isActive: boolean; createdAt: string }[]
   config: {
-    TICKET_COMMISSION_PERCENT: number
-    SUBSCRIPTION_COMMISSION_PERCENT: number
-    GROUP_COMMISSION_PERCENT: number
+    REVENUE_SHARE_PERCENT: number
     GROUP_PLATFORM_CUT_PERCENT: number
-    FIRST_PURCHASE_BONUS: number
     MIN_PAYOUT: number
   }
 }
@@ -47,16 +44,13 @@ function StatCard({ label, value, icon, color }: { label: string; value: string;
   )
 }
 
-function EarnCard({ emoji, title, percent, desc }: { emoji: string; title: string; percent: string; desc: string }) {
+function EarnRow({ emoji, title, desc }: { emoji: string; title: string; desc: string }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl"
       style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
       <span className="text-xl mt-0.5">{emoji}</span>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>{title}</p>
-          <span className="text-xs font-black" style={{ color: '#00ff88' }}>{percent}</span>
-        </div>
+        <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>{title}</p>
         <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.4)' }}>{desc}</p>
       </div>
     </div>
@@ -87,10 +81,14 @@ export default function ReferralsPage() {
       .finally(() => setLoading(false))
   }, [dbUser?.id])
 
+  function buildInviteLink(code: string): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${origin}/invite/${code}`
+  }
+
   function copyCode() {
     if (!data?.code) return
-    const link = `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/register?ref=${data.code}`
-    navigator.clipboard?.writeText(link).then(() => {
+    navigator.clipboard?.writeText(buildInviteLink(data.code)).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -98,9 +96,13 @@ export default function ReferralsPage() {
 
   function shareCode() {
     if (!data?.code) return
-    const link = `${window.location.origin}/auth/register?ref=${data.code}`
+    const link = buildInviteLink(data.code)
     if (navigator.share) {
-      navigator.share({ title: 'Join PartyRadar', text: `Use my referral code ${data.code} and we both earn!`, url: link })
+      navigator.share({
+        title: 'Join PartyRadar',
+        text: "Come party with me on PartyRadar — tap the link to sign up, no code needed.",
+        url: link,
+      }).catch(() => {})
     } else {
       copyCode()
     }
@@ -124,10 +126,10 @@ export default function ReferralsPage() {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4" style={{ background: '#04040d', paddingTop: 56 }}>
         <Gift size={40} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
         <p className="text-sm font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOG IN TO EARN</p>
-        <a href="/auth/login" className="px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
+        <Link href="/login?next=/referrals" className="px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
           style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
           LOG IN
-        </a>
+        </Link>
       </div>
     )
   }
@@ -152,14 +154,14 @@ export default function ReferralsPage() {
           <Gift size={22} style={{ color: '#00ff88' }} />
         </div>
         <div>
-          <h1 className="text-xl font-black" style={{ color: '#e0f2fe' }}>Earn with PartyRadar</h1>
+          <h1 className="text-xl font-black" style={{ color: '#e0f2fe' }}>My Referrals</h1>
           <p className="text-[10px] font-bold tracking-wide" style={{ color: 'rgba(0,255,136,0.5)' }}>
-            REFER FRIENDS. EARN REAL MONEY.
+            SHARE YOUR CODE. TRACK EARNINGS.
           </p>
         </div>
       </div>
 
-      {/* Referral code card */}
+      {/* Referral link card */}
       {data && (
         <div className="rounded-2xl p-5 mb-5"
           style={{
@@ -167,30 +169,42 @@ export default function ReferralsPage() {
             border: '1px solid rgba(0,255,136,0.2)',
           }}>
           <p className="text-[9px] font-black tracking-[0.2em] mb-2" style={{ color: 'rgba(0,255,136,0.5)' }}>
-            YOUR REFERRAL CODE
+            YOUR INVITE LINK
           </p>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex-1 px-4 py-3 rounded-xl font-mono text-lg font-black tracking-[0.15em]"
-              style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0,255,136,0.25)', color: '#00ff88' }}>
-              {data.code}
+          <div className="flex items-center gap-2 mb-3">
+            <div
+              className="flex-1 min-w-0 px-4 py-3 rounded-xl font-mono text-[11px] font-bold truncate"
+              style={{
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(0,255,136,0.25)',
+                color: '#00ff88',
+              }}
+              title={buildInviteLink(data.code)}
+            >
+              {buildInviteLink(data.code).replace(/^https?:\/\//, '')}
             </div>
             <button onClick={copyCode}
-              className="p-3 rounded-xl transition-all"
+              className="p-3 rounded-xl transition-all shrink-0"
               style={{
                 background: copied ? 'rgba(0,255,136,0.15)' : 'rgba(0,255,136,0.08)',
                 border: `1px solid ${copied ? 'rgba(0,255,136,0.4)' : 'rgba(0,255,136,0.2)'}`,
                 color: '#00ff88',
-              }}>
+              }}
+              aria-label="Copy link">
               {copied ? <Check size={18} /> : <Copy size={18} />}
             </button>
             <button onClick={shareCode}
-              className="p-3 rounded-xl transition-all"
-              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
+              className="p-3 rounded-xl transition-all shrink-0"
+              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}
+              aria-label="Share link">
               <Share2 size={18} />
             </button>
           </div>
           <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>
-            Share your link. When they sign up and spend, you earn.
+            Send the link — no codes to type. The app links the account to you the moment they sign up.
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: 'rgba(224,242,254,0.25)' }}>
+            Code: <span className="font-mono" style={{ color: 'rgba(0,255,136,0.6)' }}>{data.code}</span>
           </p>
         </div>
       )}
@@ -245,24 +259,53 @@ export default function ReferralsPage() {
       {/* Earn tab */}
       {tab === 'earn' && cfg && (
         <div className="space-y-2.5">
-          <EarnCard emoji="🎟️" title="Ticket Sales" percent={`${cfg.TICKET_COMMISSION_PERCENT}%`}
-            desc="Earn on every ticket your referral buys" />
-          <EarnCard emoji="⭐" title="Subscriptions" percent={`${cfg.SUBSCRIPTION_COMMISSION_PERCENT}%`}
-            desc="Recurring cut when they subscribe to PRO/PREMIUM" />
-          <EarnCard emoji="👥" title="Group Subs" percent={`${cfg.GROUP_COMMISSION_PERCENT}%`}
-            desc="Earn when your referral subscribes to paid groups" />
-          <EarnCard emoji="🎁" title="First Purchase Bonus" percent={`+£${cfg.FIRST_PURCHASE_BONUS.toFixed(2)}`}
-            desc="Flat bonus when they make their first purchase" />
+          {/* Hero: how it works in one card */}
+          <div className="p-4 rounded-2xl"
+            style={{
+              background: 'linear-gradient(135deg, rgba(0,255,136,0.08), rgba(var(--accent-rgb),0.05))',
+              border: '1px solid rgba(0,255,136,0.2)',
+            }}>
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp size={14} style={{ color: '#00ff88' }} />
+              <p className="text-xs font-black tracking-widest" style={{ color: '#00ff88' }}>
+                HOW IT WORKS
+              </p>
+            </div>
+            <p className="text-2xl font-black leading-tight mb-2" style={{ color: '#e0f2fe' }}>
+              Earn <span style={{ color: '#00ff88' }}>{cfg.REVENUE_SHARE_PERCENT}%</span> of every £ we make from your referrals. <span style={{ color: 'rgba(224,242,254,0.45)' }}>For life.</span>
+            </p>
+            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.55)' }}>
+              Every time someone you referred buys a ticket, pays a subscription, joins a paid group,
+              or spends at a partner venue — we take our fee, and you keep
+              <span style={{ color: '#00ff88', fontWeight: 800 }}> {cfg.REVENUE_SHARE_PERCENT}% of it</span>.
+              No caps, no time limit.
+            </p>
+          </div>
+
+          <p className="text-[9px] font-black tracking-[0.15em] mt-4 mb-1 px-1" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+            WHAT COUNTS
+          </p>
+          <EarnRow emoji="🎟️" title="Ticket fees"
+            desc={`We take 5% of every ticket they buy — you get ${cfg.REVENUE_SHARE_PERCENT}% of that fee`} />
+          <EarnRow emoji="⭐" title="Subscriptions"
+            desc={`${cfg.REVENUE_SHARE_PERCENT}% of every monthly subscription payment — recurring`} />
+          <EarnRow emoji="👥" title="Paid groups"
+            desc={`${cfg.REVENUE_SHARE_PERCENT}% of our ${cfg.GROUP_PLATFORM_CUT_PERCENT}% platform cut when they join`} />
+          <EarnRow emoji="🍸" title="Venue spend"
+            desc={`${cfg.REVENUE_SHARE_PERCENT}% of the commission we earn on their wallet spend at partner venues`} />
+          <EarnRow emoji="📣" title="Push blasts"
+            desc={`${cfg.REVENUE_SHARE_PERCENT}% of every push blast they buy`} />
 
           <div className="mt-4 p-4 rounded-2xl" style={{ background: 'rgba(255,214,0,0.04)', border: '1px solid rgba(255,214,0,0.15)' }}>
             <div className="flex items-center gap-2 mb-2">
               <Crown size={14} style={{ color: '#ffd600' }} />
-              <p className="text-xs font-black" style={{ color: '#ffd600' }}>GROUP CREATOR EARNINGS</p>
+              <p className="text-xs font-black" style={{ color: '#ffd600' }}>ALSO FOR GROUP CREATORS</p>
             </div>
             <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.5)' }}>
-              Create paid groups and earn <span style={{ color: '#ffd600', fontWeight: 800 }}>{100 - cfg.GROUP_PLATFORM_CUT_PERCENT}%</span> of
-              subscription revenue. Platform takes {cfg.GROUP_PLATFORM_CUT_PERCENT}%.
-              Minimum payout: <span style={{ color: '#00ff88', fontWeight: 800 }}>£{cfg.MIN_PAYOUT.toFixed(2)}</span>.
+              Running a paid group? Keep
+              <span style={{ color: '#ffd600', fontWeight: 800 }}> {100 - cfg.GROUP_PLATFORM_CUT_PERCENT}%</span> of
+              subscription revenue. Minimum payout:
+              <span style={{ color: '#00ff88', fontWeight: 800 }}> £{cfg.MIN_PAYOUT.toFixed(2)}</span>.
             </p>
           </div>
 

@@ -3,11 +3,11 @@ import type { Request, Response } from 'express'
 import { prisma } from '@partyradar/db'
 import { stripe } from '../lib/stripe'
 import type Stripe from 'stripe'
-import QRCode from 'qrcode'
 import { v4 as uuidv4 } from 'uuid'
 import { sendNotificationToMany } from '../lib/fcm'
-import { PUSH_BLAST_TIERS } from '@partyradar/shared'
+import { PUSH_BLAST_TIERS, TIERS, REVENUE_MODEL } from '@partyradar/shared'
 import { haversineDistance } from '../lib/fcm'
+import { creditReferrer } from './referrals'
 
 const router = Router()
 
@@ -56,6 +56,14 @@ router.post('/stripe', async (req: Request, res: Response) => {
         }
         break
       }
+      case 'account.updated': {
+        // Sent when a connected Express account changes — mirror the
+        // verification flags onto the host's User row so we can gate
+        // checkout without hitting Stripe on every request.
+        const account = event.data.object as Stripe.Account
+        await handleConnectAccountUpdated(account)
+        break
+      }
     }
 
     res.json({ received: true })
@@ -86,7 +94,13 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     return
   }
 
-  // Subscription checkout
+  // Group subscription checkout — user subscribes to a paid community group
+  if (session.mode === 'subscription' && session.metadata?.['type'] === 'group_subscription') {
+    await handleGroupSubscriptionCheckout(session)
+    return
+  }
+
+  // Platform subscription checkout (BASIC / PRO / PREMIUM host tiers)
   if (session.mode === 'subscription') {
     const { userId: subUserId, tier } = session.metadata ?? {}
     if (!subUserId || !tier) return
@@ -113,6 +127,21 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
       where: { id: subUserId },
       data: { subscriptionTier: tier as 'BASIC' | 'PRO' | 'PREMIUM' },
     })
+
+    // Record platform revenue + credit referrer (100% of sub price is platform revenue)
+    const tierConfig = TIERS[tier as 'BASIC' | 'PRO' | 'PREMIUM']
+    const subRevenue = tierConfig?.price ?? 0
+    if (subRevenue > 0) {
+      await prisma.platformRevenue.create({
+        data: {
+          source: 'subscription',
+          amount: subRevenue,
+          referenceId: subUserId,
+          description: `${tierConfig.name} subscription (initial)`,
+        },
+      })
+      await creditReferrer(subUserId, subRevenue)
+    }
     return
   }
 
@@ -125,38 +154,58 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   const qty = Number(quantity)
   const pricePaid = event.price
   const platformFee = (pricePaid * Number(process.env['PLATFORM_FEE_PERCENT'] ?? 5)) / 100
+  const totalPlatformRevenue = Number((platformFee * qty).toFixed(2))
 
-  // Create ticket records
-  for (let i = 0; i < qty; i++) {
-    await prisma.ticket.create({
-      data: {
-        eventId,
-        userId,
-        qrCode: uuidv4(),
-        stripePaymentId: session.payment_intent as string,
-        stripeSessionId: session.id,
-        pricePaid,
-        platformFee,
-      },
-    })
+  // Idempotency: if we've already processed this session, skip.
+  const already = await prisma.ticket.findFirst({ where: { stripeSessionId: session.id } })
+  if (already) return
+
+  // Atomically: create tickets, decrement capacity, upsert guest, record revenue.
+  // If any step fails, nothing is written — capacity stays correct.
+  const ticketData = Array.from({ length: qty }, () => ({
+    eventId,
+    userId,
+    qrCode: uuidv4(),
+    stripePaymentId: session.payment_intent as string,
+    stripeSessionId: session.id,
+    pricePaid,
+    platformFee,
+  }))
+
+  await prisma.$transaction([
+    prisma.ticket.createMany({ data: ticketData }),
+    prisma.event.update({
+      where: { id: eventId },
+      data: { ticketsRemaining: { decrement: qty } },
+    }),
+    prisma.eventGuest.upsert({
+      where: { eventId_userId: { eventId, userId } },
+      create: { eventId, userId, status: 'CONFIRMED' },
+      update: { status: 'CONFIRMED' },
+    }),
+    ...(totalPlatformRevenue > 0
+      ? [
+          prisma.platformRevenue.create({
+            data: {
+              source: 'ticket_fee',
+              amount: totalPlatformRevenue,
+              referenceId: eventId,
+              description: `Ticket fee · ${qty}× ${event.name}`,
+            },
+          }),
+        ]
+      : []),
+  ])
+
+  // Referral credit runs outside the transaction — it's secondary bookkeeping
+  // and should never block the ticket from being recorded if it fails.
+  if (totalPlatformRevenue > 0) {
+    await creditReferrer(userId, totalPlatformRevenue)
   }
-
-  // Decrement tickets remaining
-  await prisma.event.update({
-    where: { id: eventId },
-    data: { ticketsRemaining: { decrement: qty } },
-  })
-
-  // Add as confirmed guest
-  await prisma.eventGuest.upsert({
-    where: { eventId_userId: { eventId, userId } },
-    create: { eventId, userId, status: 'CONFIRMED' },
-    update: { status: 'CONFIRMED' },
-  })
 }
 
 async function handlePushBlastPaid(session: Stripe.Checkout.Session) {
-  const { eventId, tierId, message } = session.metadata ?? {}
+  const { eventId, tierId, message, userId: buyerId } = session.metadata ?? {}
   if (!eventId || !tierId || !message) return
 
   const tier = PUSH_BLAST_TIERS.find((t) => t.id === tierId)
@@ -164,6 +213,19 @@ async function handlePushBlastPaid(session: Stripe.Checkout.Session) {
 
   const event = await prisma.event.findUnique({ where: { id: eventId } })
   if (!event) return
+
+  // Record platform revenue + credit referrer — 100% of blast price is platform revenue
+  if (buyerId && tier.price > 0) {
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'push_blast',
+        amount: tier.price,
+        referenceId: eventId,
+        description: `Push blast · ${tier.label}`,
+      },
+    })
+    await creditReferrer(buyerId, tier.price)
+  }
 
   // Find candidate users: all users with an FCM token
   const candidates = await prisma.user.findMany({
@@ -199,42 +261,177 @@ async function handlePushBlastPaid(session: Stripe.Checkout.Session) {
   })
 }
 
+async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session) {
+  const { groupId, userId } = session.metadata ?? {}
+  if (!groupId || !userId || !session.subscription) return
+
+  const stripeSub = await stripe.subscriptions.retrieve(session.subscription as string)
+  const periodEnd = new Date(stripeSub.current_period_end * 1000)
+
+  await prisma.groupSubscription.upsert({
+    where: { groupId_userId: { groupId, userId } },
+    create: {
+      groupId,
+      userId,
+      stripeSubscriptionId: stripeSub.id,
+      currentPeriodEnd: periodEnd,
+    },
+    update: {
+      stripeSubscriptionId: stripeSub.id,
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+    },
+  })
+
+  // Ensure membership row exists so the user actually has access
+  const membership = await prisma.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  })
+  if (!membership) {
+    await prisma.groupMembership.create({ data: { groupId, userId } })
+    await prisma.groupChat.update({
+      where: { id: groupId },
+      data: { memberCount: { increment: 1 } },
+    })
+  }
+
+  // Platform takes GROUP_PLATFORM_CUT_PERCENT of each group subscription payment
+  const group = await prisma.groupChat.findUnique({
+    where: { id: groupId },
+    select: { priceMonthly: true, name: true },
+  })
+  const price = group?.priceMonthly ?? 0
+  const platformCut = Number(((price * REVENUE_MODEL.GROUP_PLATFORM_CUT_PERCENT) / 100).toFixed(2))
+  if (platformCut > 0) {
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'group_subscription',
+        amount: platformCut,
+        referenceId: groupId,
+        description: `Group sub · ${group?.name ?? groupId} (initial)`,
+      },
+    })
+    await creditReferrer(userId, platformCut)
+  }
+}
+
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
   if (!invoice.subscription) return
   const stripeSub = await stripe.subscriptions.retrieve(invoice.subscription as string)
+  const periodEnd = new Date(stripeSub.current_period_end * 1000)
 
-  await prisma.subscription.updateMany({
+  // Skip the very first invoice — already credited in handleCheckoutComplete.
+  // Stripe marks the first invoice of a subscription with billing_reason 'subscription_create'.
+  const isRenewal = invoice.billing_reason === 'subscription_cycle'
+  const amountPaid = Number(((invoice.amount_paid ?? 0) / 100).toFixed(2))
+
+  // Platform host subscription renewal
+  const platformSub = await prisma.subscription.findFirst({
     where: { stripeSubscriptionId: stripeSub.id },
-    data: { currentPeriodEnd: new Date(stripeSub.current_period_end * 1000) },
+    select: { userId: true },
   })
+  if (platformSub) {
+    await prisma.subscription.updateMany({
+      where: { stripeSubscriptionId: stripeSub.id },
+      data: { currentPeriodEnd: periodEnd },
+    })
+    if (isRenewal && amountPaid > 0) {
+      await prisma.platformRevenue.create({
+        data: {
+          source: 'subscription',
+          amount: amountPaid,
+          referenceId: platformSub.userId,
+          description: `Subscription renewal`,
+        },
+      })
+      await creditReferrer(platformSub.userId, amountPaid)
+    }
+    return
+  }
+
+  // Group subscription renewal
+  const groupSub = await prisma.groupSubscription.findFirst({
+    where: { stripeSubscriptionId: stripeSub.id },
+    select: { id: true, groupId: true, userId: true },
+  })
+  if (groupSub) {
+    await prisma.groupSubscription.update({
+      where: { id: groupSub.id },
+      data: { currentPeriodEnd: periodEnd },
+    })
+    if (isRenewal && amountPaid > 0) {
+      const platformCut = Number(((amountPaid * REVENUE_MODEL.GROUP_PLATFORM_CUT_PERCENT) / 100).toFixed(2))
+      if (platformCut > 0) {
+        await prisma.platformRevenue.create({
+          data: {
+            source: 'group_subscription',
+            amount: platformCut,
+            referenceId: groupSub.groupId,
+            description: `Group sub renewal`,
+          },
+        })
+        await creditReferrer(groupSub.userId, platformCut)
+      }
+    }
+  }
 }
 
 async function handleSubscriptionUpdated(stripeSub: Stripe.Subscription) {
-  const sub = await prisma.subscription.findUnique({ where: { stripeSubscriptionId: stripeSub.id } })
-  if (!sub) return
+  const periodEnd = new Date(stripeSub.current_period_end * 1000)
 
-  await prisma.subscription.update({
-    where: { id: sub.id },
-    data: {
-      currentPeriodEnd: new Date(stripeSub.current_period_end * 1000),
-      cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
-    },
-  })
+  // Platform subscription update
+  const platformSub = await prisma.subscription.findUnique({ where: { stripeSubscriptionId: stripeSub.id } })
+  if (platformSub) {
+    await prisma.subscription.update({
+      where: { id: platformSub.id },
+      data: {
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
+      },
+    })
+    return
+  }
+
+  // Group subscription update
+  const groupSub = await prisma.groupSubscription.findFirst({ where: { stripeSubscriptionId: stripeSub.id } })
+  if (groupSub) {
+    await prisma.groupSubscription.update({
+      where: { id: groupSub.id },
+      data: {
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
+      },
+    })
+  }
 }
 
 async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription) {
+  // Platform subscription deletion
   const sub = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: stripeSub.id } })
-  if (!sub) return
+  if (sub) {
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data: { tier: 'FREE', stripeSubscriptionId: null, currentPeriodEnd: null },
+    })
+    await prisma.user.update({
+      where: { id: sub.userId },
+      data: { subscriptionTier: 'FREE' },
+    })
+    return
+  }
 
-  await prisma.subscription.update({
-    where: { id: sub.id },
-    data: { tier: 'FREE', stripeSubscriptionId: null, currentPeriodEnd: null },
-  })
-
-  await prisma.user.update({
-    where: { id: sub.userId },
-    data: { subscriptionTier: 'FREE' },
-  })
+  // Group subscription deletion — revoke membership so they lose access
+  const groupSub = await prisma.groupSubscription.findFirst({ where: { stripeSubscriptionId: stripeSub.id } })
+  if (groupSub) {
+    await prisma.groupSubscription.delete({ where: { id: groupSub.id } })
+    await prisma.groupMembership.deleteMany({
+      where: { groupId: groupSub.groupId, userId: groupSub.userId },
+    })
+    await prisma.groupChat.update({
+      where: { id: groupSub.groupId },
+      data: { memberCount: { decrement: 1 } },
+    })
+  }
 }
 
 // ─── Wallet Top-Up ───────────────────────────────────────────────────────────
@@ -378,6 +575,29 @@ async function handleCardOrder(session: Stripe.Checkout.Session) {
       amount: cardDesign.price - CARD_COST,
       referenceId: userId,
       description: `${cardDesign.name} card order`,
+    },
+  })
+}
+
+// ─── Stripe Connect Account Update ───────────────────────────────────────────
+
+async function handleConnectAccountUpdated(account: Stripe.Account) {
+  const userId = (account.metadata?.['partyradarUserId'] as string | undefined)
+  // Two lookup paths: metadata (set at account creation) or the stored
+  // accountId on the user row. Fall back to the accountId lookup so we still
+  // sync accounts that predate the metadata tag.
+  const where = userId
+    ? { id: userId }
+    : { stripeConnectAccountId: account.id }
+  const user = await prisma.user.findFirst({ where, select: { id: true } })
+  if (!user) return
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      stripeConnectChargesEnabled: account.charges_enabled,
+      stripeConnectPayoutsEnabled: account.payouts_enabled,
+      stripeConnectDetailsSubmitted: account.details_submitted,
     },
   })
 }

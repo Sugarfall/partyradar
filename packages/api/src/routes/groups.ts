@@ -3,9 +3,11 @@ import { prisma } from '@partyradar/db'
 import { optionalAuth, requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { GROUP_PRICE_TIERS, REFERRAL_CONFIG } from '@partyradar/shared'
+import { GROUP_PRICE_TIERS } from '@partyradar/shared'
 import { stripe } from '../lib/stripe'
 import { moderateContent, recordViolation } from '../lib/moderation'
+import { hashPassword, verifyPassword, isHashed } from '../lib/passwordHash'
+import { assertOwnImageUrl } from '../lib/cloudinary'
 
 const router = Router()
 
@@ -201,6 +203,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     const slug = `user-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString(36)}`
 
+    // Hash the group password before storing (never persist plaintext)
+    const passwordHash = (isPrivate && !isPaid && password?.trim())
+      ? await hashPassword(password.trim())
+      : null
+
     const group = await prisma.groupChat.create({
       data: {
         slug,
@@ -210,7 +217,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         emoji: emoji?.trim() || '💬',
         coverColor: coverColor || '#6366f1',
         isPrivate: !!(isPrivate || isPaid),
-        password: (isPrivate && !isPaid) ? password!.trim() : null,
+        password: passwordHash,
         isPaid: !!isPaid,
         priceMonthly,
         createdById: userId,
@@ -259,32 +266,52 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
         })
       : null
 
-    // Private/paid groups: only members can read messages
-    const isOwnerLocked = group.createdById === userId
-    if (group.isPrivate && !membership && !isOwnerLocked) {
-      res.json({
-        data: {
-          group: {
-            id: group.id, slug: group.slug, name: group.name, emoji: group.emoji,
-            coverColor: group.coverColor, memberCount: group.memberCount,
-            isPrivate: true, isPaid: group.isPaid, priceMonthly: group.priceMonthly,
-            isJoined: false, isSubscribed: false, notificationsEnabled: false,
-          },
-          messages: [],
-          locked: true,
-        },
-      })
-      return
-    }
-
-    // Check subscription status for paid groups
     const isOwnerOfGroup = group.createdById === userId
+
+    // System-seeded public groups (genre-*, venue-*) are readable by anyone —
+    // they're app-wide discussion channels.
+    const isSystemGroup = group.slug.startsWith('genre-') || group.slug.startsWith('venue-')
+
+    // Subscription status for paid groups (used for both the lock check and UI)
     const groupSub = userId && group.isPaid && !isOwnerOfGroup
       ? await prisma.groupSubscription.findUnique({
           where: { groupId_userId: { groupId: group.id, userId } },
         })
       : null
     const isSubscribed = isOwnerOfGroup || (!!groupSub && (!groupSub.currentPeriodEnd || groupSub.currentPeriodEnd > new Date()))
+
+    // Lock rules:
+    //  - System groups: open to all
+    //  - Paid groups: require active subscription (owner exempt)
+    //  - Private groups: require membership (owner exempt)
+    //  - User-created public groups: require auth (no anon scraping)
+    const lockReason =
+      isSystemGroup || isOwnerOfGroup
+        ? null
+        : group.isPaid && !isSubscribed
+          ? 'subscription'
+          : group.isPrivate && !membership
+            ? 'membership'
+            : !userId
+              ? 'auth'
+              : null
+
+    if (lockReason) {
+      res.json({
+        data: {
+          group: {
+            id: group.id, slug: group.slug, name: group.name, emoji: group.emoji,
+            coverColor: group.coverColor, memberCount: group.memberCount,
+            isPrivate: group.isPrivate, isPaid: group.isPaid, priceMonthly: group.priceMonthly,
+            isJoined: !!membership, isSubscribed, notificationsEnabled: false,
+          },
+          messages: [],
+          locked: true,
+          lockReason,
+        },
+      })
+      return
+    }
 
     const messages = await prisma.groupMessage.findMany({
       where: { groupId: group.id },
@@ -366,8 +393,13 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
 
     // Private (non-paid) group requires correct password (owner exempt)
     if (group.isPrivate && !group.isPaid && !isOwner) {
-      if (!password || password !== group.password) {
-        throw new AppError('Incorrect password', 403)
+      const ok = !!password && await verifyPassword(password, group.password)
+      if (!ok) throw new AppError('Incorrect password', 403)
+      // Upgrade legacy plaintext passwords to a hash on successful login
+      if (group.password && !isHashed(group.password)) {
+        try {
+          await prisma.groupChat.update({ where: { id: group.id }, data: { password: await hashPassword(password!) } })
+        } catch { /* non-fatal */ }
       }
     }
 
@@ -580,6 +612,13 @@ router.post('/:id/messages', requireAuth, async (req: AuthRequest, res, next) =>
     const userId = req.user!.dbUser.id
     const { text, imageUrl } = req.body as { text?: string; imageUrl?: string }
     if (!text?.trim() && !imageUrl) throw new AppError('Message required', 400)
+
+    // Only accept image URLs that our own Cloudinary upload produced.
+    try {
+      if (imageUrl) assertOwnImageUrl(imageUrl)
+    } catch (e) {
+      throw new AppError((e as Error).message, 400)
+    }
 
     const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
     if (!group) throw new AppError('Group not found', 404)

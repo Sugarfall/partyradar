@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
   Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff, X,
-  Camera, Mic, Radio, Play, Square, ShieldCheck, Timer, Flag,
+  Camera, Mic, Radio, Play, Square, ShieldCheck, Timer, Flag, Settings, Trash2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { silent, logError } from '@/lib/logError'
 import { uploadImage } from '@/lib/cloudinary'
 import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
 import { formatPrice } from '@/lib/currency'
@@ -69,6 +71,27 @@ interface GroupMessage {
   imageUrl?: string | null
   createdAt: string
   isFollowing: boolean
+}
+
+interface GroupMember {
+  id: string
+  userId: string
+  role: 'OWNER' | 'MOD' | 'MEMBER'
+  joinedAt: string
+  user: {
+    id: string
+    displayName: string
+    username: string
+    photoUrl?: string | null
+  }
+}
+
+interface InviteUser {
+  id: string
+  username: string
+  displayName: string
+  photoUrl?: string | null
+  isFollowing?: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -146,7 +169,7 @@ function HostGroupDashboard({
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#a855f7')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceAmount('')
       }
-    } catch {}
+    } catch (e) { silent('messages:create-group')(e) }
     finally { setCreating(false) }
   }
 
@@ -463,7 +486,7 @@ function GroupBrowser({
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceAmount(''); setNewGroupType('GENRE')
       }
-    } catch {}
+    } catch (e) { silent('messages:create-group-extended')(e) }
     finally { setCreating(false) }
   }
 
@@ -813,8 +836,25 @@ function GroupChatView({
   const [showSubModal, setShowSubModal] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // Tab + members panel
+  const [activeTab, setActiveTab] = useState<'chat' | 'crawl' | 'members'>('chat')
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
+  // Group settings modal
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [settingsName, setSettingsName] = useState('')
+  const [settingsDescription, setSettingsDescription] = useState('')
+  const [settingsEmoji, setSettingsEmoji] = useState('')
+  const [settingsColor, setSettingsColor] = useState('')
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [settingsDeleting, setSettingsDeleting] = useState(false)
+  // Invite modal
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteSearch, setInviteSearch] = useState('')
+  const [inviteResults, setInviteResults] = useState<InviteUser[]>([])
+  const [inviteSearchLoading, setInviteSearchLoading] = useState(false)
+  const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set())
   // Pub crawl
-  const [activeTab, setActiveTab] = useState<'chat' | 'crawl'>('chat')
   const [crawl, setCrawl] = useState<any>(null)
   const [crawlLoading, setCrawlLoading] = useState(false)
   const [crawlCreating, setCrawlCreating] = useState(false)
@@ -845,7 +885,7 @@ function GroupChatView({
           setFollowingSet(followed)
         }
       }
-    } catch {}
+    } catch (e) { logError('messages:load-group', e) }
     if (!silent) setLoading(false)
   }, [groupId])
 
@@ -864,7 +904,7 @@ function GroupChatView({
     try {
       const j = await api.get<{ data: unknown }>(`/groups/${groupId}/pub-crawl`)
       setCrawl(j.data)
-    } catch {}
+    } catch (e) { logError('messages:load-pub-crawl', e) }
     finally { setCrawlLoading(false) }
   }, [groupId])
 
@@ -914,7 +954,7 @@ function GroupChatView({
       const stops = plannerResult.route.map((s: any) => ({ name: s.name, address: s.address ?? '' }))
       const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, { name: plannerResult.crawlTitle, stops })
       if (j.data) { setCrawl(j.data); setShowPlanner(false); setPlannerResult(null) }
-    } catch {}
+    } catch (e) { logError('messages:save-planner-crawl', e) }
     finally { setCrawlCreating(false) }
   }
 
@@ -922,7 +962,7 @@ function GroupChatView({
     try {
       await api.post(`/groups/${groupId}/pub-crawl/stops/${stopId}/checkin`, {})
       await loadCrawl()
-    } catch {}
+    } catch (e) { logError('messages:crawl-checkin', e) }
   }
 
   async function endCrawl() {
@@ -1080,6 +1120,122 @@ function GroupChatView({
     setUserPopup(null)
   }
 
+  // ── Members panel ──────────────────────────────────────────────────────────
+  const loadMembers = useCallback(async () => {
+    setMembersLoading(true)
+    try {
+      const j = await api.get<{ data: GroupMember[] }>(`/groups/${groupId}/members`)
+      setGroupMembers(j.data ?? [])
+    } catch {}
+    setMembersLoading(false)
+  }, [groupId])
+
+  useEffect(() => {
+    if (activeTab === 'members') loadMembers()
+  }, [activeTab, loadMembers])
+
+  async function handleKick(userId: string) {
+    try {
+      await api.delete(`/groups/${groupId}/members/${userId}`)
+      setGroupMembers(prev => prev.filter(m => m.userId !== userId))
+      setGroup(g => g ? { ...g, memberCount: g.memberCount - 1 } : g)
+    } catch {}
+  }
+
+  async function handleSetRole(userId: string, role: 'MOD' | 'MEMBER') {
+    try {
+      await api.put(`/groups/${groupId}/members/${userId}/role`, { role })
+      setGroupMembers(prev => prev.map(m => m.userId === userId ? { ...m, role } : m))
+    } catch {}
+  }
+
+  function openSettingsModal() {
+    if (!group) return
+    setSettingsName(group.name)
+    setSettingsDescription(group.description ?? '')
+    setSettingsEmoji(group.emoji ?? '💬')
+    setSettingsColor(group.coverColor ?? '#6366f1')
+    setShowSettingsModal(true)
+  }
+
+  async function saveSettings() {
+    if (settingsSaving) return
+    setSettingsSaving(true)
+    try {
+      const j = await api.put<{ data: { name: string; description: string | null; emoji: string; coverColor: string } }>(
+        `/groups/${groupId}/settings`,
+        {
+          name: settingsName.trim(),
+          description: settingsDescription.trim(),
+          emoji: settingsEmoji.trim(),
+          coverColor: settingsColor,
+        }
+      )
+      if (j.data && group) {
+        setGroup({
+          ...group,
+          name: j.data.name,
+          description: j.data.description,
+          emoji: j.data.emoji,
+          coverColor: j.data.coverColor,
+        })
+      }
+      setShowSettingsModal(false)
+    } catch {}
+    setSettingsSaving(false)
+  }
+
+  async function deleteGroup() {
+    if (settingsDeleting) return
+    if (!window.confirm('Delete this group permanently? This cannot be undone.')) return
+    setSettingsDeleting(true)
+    try {
+      await api.delete(`/groups/${groupId}`)
+      setShowSettingsModal(false)
+      onBack()
+    } catch {}
+    setSettingsDeleting(false)
+  }
+
+  // ── Invite modal ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!showInviteModal) return
+    const q = inviteSearch.trim()
+    if (!q) {
+      // Show friend suggestions (users currently following)
+      api.get<{ data: InviteUser[] }>('/dm/users').then(j => setInviteResults(j.data ?? [])).catch(() => {})
+      return
+    }
+    const t = setTimeout(async () => {
+      setInviteSearchLoading(true)
+      try {
+        const j = await api.get<{ data: InviteUser[] }>(`/users/search?q=${encodeURIComponent(q)}`)
+        setInviteResults(j.data ?? [])
+      } catch {}
+      setInviteSearchLoading(false)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [inviteSearch, showInviteModal])
+
+  async function sendInvite(user: InviteUser) {
+    if (invitedIds.has(user.id)) return
+    setInvitedIds(prev => new Set(prev).add(user.id))
+    try {
+      // Create or get DM conversation then send the invite message
+      const convoRes = await api.post<{ data: { id: string } }>('/dm', { recipientId: user.id })
+      const convoId = convoRes.data?.id
+      if (convoId && group) {
+        const groupUrl = `${window.location.origin}/messages?group=${groupId}`
+        await api.post(`/dm/${convoId}`, {
+          text: `Hey! I think you'd like this group "${group.name}" on PartyRadar — join us: ${groupUrl}`,
+        })
+      }
+    } catch {
+      // Revert if send failed
+      setInvitedIds(prev => { const n = new Set(prev); n.delete(user.id); return n })
+    }
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 rounded-full border-2 animate-spin"
@@ -1109,6 +1265,34 @@ function GroupChatView({
         </div>
         {group && dbUserId && (
           <div className="flex items-center gap-1.5">
+            {/* Settings gear — visible to group owner */}
+            {group.isOwner && (
+              <button
+                onClick={openSettingsModal}
+                className="p-2 rounded-xl transition-all"
+                title="Group settings"
+                style={{
+                  background: 'rgba(var(--accent-rgb),0.06)',
+                  border: '1px solid rgba(var(--accent-rgb),0.2)',
+                  color: 'rgba(var(--accent-rgb),0.7)',
+                }}>
+                <Settings size={13} />
+              </button>
+            )}
+            {/* Invite button — visible to group owner */}
+            {group.isOwner && (
+              <button
+                onClick={() => { setShowInviteModal(true); setInviteSearch(''); setInvitedIds(new Set()) }}
+                className="p-2 rounded-xl transition-all"
+                title="Invite people"
+                style={{
+                  background: 'rgba(var(--accent-rgb),0.06)',
+                  border: '1px solid rgba(var(--accent-rgb),0.2)',
+                  color: 'rgba(var(--accent-rgb),0.7)',
+                }}>
+                <UserPlus size={13} />
+              </button>
+            )}
             {group.isJoined && (
               <button onClick={toggleNotifications}
                 className="p-2 rounded-xl transition-all"
@@ -1141,12 +1325,13 @@ function GroupChatView({
         )}
       </div>
 
-      {/* Chat / Pub Crawl tab bar */}
+      {/* Chat / Pub Crawl / Members tab bar */}
       <div className="flex-shrink-0 flex gap-1 px-4 py-2"
         style={{ background: 'rgba(4,4,13,0.9)', borderBottom: '1px solid rgba(var(--accent-rgb),0.07)' }}>
         {([
-          { key: 'chat', label: '💬 Chat' },
-          { key: 'crawl', label: '🍺 Pub Crawl' },
+          { key: 'chat',    label: '💬 Chat' },
+          { key: 'crawl',   label: '🍺 Pub Crawl' },
+          { key: 'members', label: `👥 Members` },
         ] as const).map(({ key, label }) => (
           <button key={key} onClick={() => setActiveTab(key)}
             className="flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-wide transition-all"
@@ -1452,6 +1637,109 @@ function GroupChatView({
         </div>
       )}
 
+      {/* ── Members tab ──────────────────────────────────────────────────── */}
+      {activeTab === 'members' && (
+        <div className="flex-1 overflow-y-auto">
+          {membersLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="w-6 h-6 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+            </div>
+          ) : (
+            <div>
+              <div className="px-4 py-2.5 flex items-center justify-between"
+                style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+                  {groupMembers.length} MEMBER{groupMembers.length !== 1 ? 'S' : ''}
+                </span>
+                {group?.isOwner && (
+                  <button
+                    onClick={() => { setShowInviteModal(true); setInviteSearch(''); setInvitedIds(new Set()) }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black transition-all"
+                    style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
+                    <UserPlus size={10} /> INVITE
+                  </button>
+                )}
+              </div>
+
+              {groupMembers.map(member => {
+                const isMe = member.userId === dbUserId
+                const roleBadge = member.role === 'OWNER'
+                  ? { label: 'OWNER', color: '#ffd600', bg: 'rgba(255,214,0,0.12)', border: 'rgba(255,214,0,0.3)' }
+                  : member.role === 'MOD'
+                    ? { label: 'MOD', color: '#a855f7', bg: 'rgba(168,85,247,0.12)', border: 'rgba(168,85,247,0.3)' }
+                    : null
+
+                return (
+                  <div key={member.id} className="flex items-center gap-3 px-4 py-3"
+                    style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.04)' }}>
+                    {/* Avatar */}
+                    <Avatar user={{ displayName: member.user.displayName, photoUrl: member.user.photoUrl }} size={36} />
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>
+                          {member.user.displayName}
+                          {isMe && <span className="text-[9px] ml-1" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>(you)</span>}
+                        </span>
+                        {roleBadge && (
+                          <span className="text-[8px] font-black px-1.5 py-0.5 rounded shrink-0"
+                            style={{ background: roleBadge.bg, color: roleBadge.color, border: `1px solid ${roleBadge.border}` }}>
+                            {roleBadge.label}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>
+                        @{member.user.username}
+                      </span>
+                    </div>
+
+                    {/* Admin actions — only for owner, not on self or other owner */}
+                    {group?.isOwner && !isMe && member.role !== 'OWNER' && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {member.role === 'MEMBER' ? (
+                          <button
+                            onClick={() => handleSetRole(member.userId, 'MOD')}
+                            className="px-2 py-1 rounded-lg text-[9px] font-black transition-all"
+                            style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', color: '#a855f7' }}>
+                            MAKE MOD
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleSetRole(member.userId, 'MEMBER')}
+                            className="px-2 py-1 rounded-lg text-[9px] font-black transition-all"
+                            style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.15)', color: 'rgba(168,85,247,0.5)' }}>
+                            UNMAKE MOD
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Kick ${member.user.displayName} from the group?`)) {
+                              handleKick(member.userId)
+                            }
+                          }}
+                          className="px-2 py-1 rounded-lg text-[9px] font-black transition-all"
+                          style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                          KICK
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {groupMembers.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 gap-2">
+                  <Users size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+                  <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No members yet</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
       {activeTab === 'chat' && (
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
@@ -1568,9 +1856,9 @@ function GroupChatView({
       ) : (
         <div className="flex-shrink-0 px-4 py-3 text-center"
           style={{ background: 'rgba(4,4,13,0.95)', borderTop: '1px solid rgba(var(--accent-rgb),0.08)' }}>
-          <a href="/login" className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+          <Link href="/login?next=/messages" className="text-xs font-bold" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
             Log in to join the conversation
-          </a>
+          </Link>
         </div>
       )}
 
@@ -1604,6 +1892,36 @@ function GroupChatView({
                     : <><UserPlus size={13} /> FOLLOW</>
                   }
                 </button>
+
+                {/* Admin actions — only shown to group owner in the chat */}
+                {group?.isOwner && (() => {
+                  const memberEntry = groupMembers.find(m => m.userId === userPopup.senderId)
+                  const senderRole = memberEntry?.role ?? 'MEMBER'
+                  if (senderRole === 'OWNER') return null
+                  return (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { handleSetRole(userPopup.senderId, senderRole === 'MOD' ? 'MEMBER' : 'MOD'); setUserPopup(null) }}
+                        className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-[11px] font-black"
+                        style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', color: '#a855f7' }}>
+                        <ShieldCheck size={12} />
+                        {senderRole === 'MOD' ? 'REMOVE MOD' : 'MAKE MOD'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Kick ${userPopup.senderName}?`)) {
+                            handleKick(userPopup.senderId)
+                            setUserPopup(null)
+                          }
+                        }}
+                        className="px-3 py-2 rounded-xl text-[11px] font-black"
+                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                        KICK
+                      </button>
+                    </div>
+                  )
+                })()}
+
                 <button
                   onClick={() => reportMessage(userPopup.id)}
                   disabled={reportedMsgId === userPopup.id}
@@ -1641,6 +1959,219 @@ function GroupChatView({
               style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.4)', color: '#ff006e' }}>
               JOIN GROUP
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Group settings modal (owner only) ───────────────────────────── */}
+      {showSettingsModal && group && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+          onClick={() => !settingsSaving && !settingsDeleting && setShowSettingsModal(false)}>
+          <div className="w-full max-w-lg rounded-t-3xl overflow-hidden flex flex-col"
+            style={{ background: '#0d0d24', border: '1px solid rgba(var(--accent-rgb),0.2)', borderBottom: 'none', maxHeight: '85vh' }}
+            onClick={e => e.stopPropagation()}>
+
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+            </div>
+
+            <div className="flex items-center justify-between px-5 py-3"
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <div className="flex items-center gap-2">
+                <Settings size={14} style={{ color: 'var(--accent)' }} />
+                <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>GROUP SETTINGS</p>
+              </div>
+              <button onClick={() => setShowSettingsModal(false)} disabled={settingsSaving || settingsDeleting}>
+                <X size={16} style={{ color: 'rgba(255,255,255,0.4)' }} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 overflow-y-auto space-y-4">
+              <div>
+                <label className="text-[10px] font-bold tracking-widest block mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>GROUP NAME</label>
+                <input
+                  type="text"
+                  value={settingsName}
+                  onChange={(e) => setSettingsName(e.target.value)}
+                  maxLength={40}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm"
+                  style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold tracking-widest block mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>DESCRIPTION</label>
+                <textarea
+                  value={settingsDescription}
+                  onChange={(e) => setSettingsDescription(e.target.value)}
+                  maxLength={200}
+                  rows={3}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm resize-none"
+                  style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }}
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold tracking-widest block mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>EMOJI</label>
+                  <input
+                    type="text"
+                    value={settingsEmoji}
+                    onChange={(e) => setSettingsEmoji(e.target.value.slice(0, 4))}
+                    className="w-full px-3 py-2.5 rounded-xl text-xl text-center"
+                    style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold tracking-widest block mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>COLOR</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={settingsColor}
+                      onChange={(e) => setSettingsColor(e.target.value)}
+                      className="h-10 w-14 rounded-lg cursor-pointer"
+                      style={{ background: 'transparent', border: '1px solid rgba(var(--accent-rgb),0.15)' }}
+                    />
+                    <span className="text-xs font-mono" style={{ color: 'rgba(var(--accent-rgb),0.6)' }}>{settingsColor}</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={saveSettings}
+                disabled={settingsSaving || settingsDeleting || !settingsName.trim()}
+                className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-50"
+                style={{ background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}>
+                {settingsSaving ? 'SAVING…' : 'SAVE CHANGES'}
+              </button>
+
+              <div className="pt-3" style={{ borderTop: '1px solid rgba(239,68,68,0.1)' }}>
+                <p className="text-[10px] font-bold tracking-widest mb-2" style={{ color: 'rgba(239,68,68,0.6)' }}>DANGER ZONE</p>
+                <button
+                  onClick={deleteGroup}
+                  disabled={settingsSaving || settingsDeleting}
+                  className="w-full py-2.5 rounded-xl text-xs font-black tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444' }}>
+                  <Trash2 size={12} />
+                  {settingsDeleting ? 'DELETING…' : 'DELETE GROUP'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Invite modal ──────────────────────────────────────────────────── */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowInviteModal(false)}>
+          <div className="w-full max-w-lg rounded-t-3xl overflow-hidden flex flex-col"
+            style={{ background: '#0d0d24', border: '1px solid rgba(var(--accent-rgb),0.2)', borderBottom: 'none', maxHeight: '75vh' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3"
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <div className="flex items-center gap-2">
+                <UserPlus size={14} style={{ color: 'var(--accent)' }} />
+                <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>INVITE TO GROUP</p>
+              </div>
+              <button onClick={() => setShowInviteModal(false)}>
+                <X size={16} style={{ color: 'rgba(255,255,255,0.4)' }} />
+              </button>
+            </div>
+
+            {/* Share link row */}
+            <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+              <button
+                onClick={() => {
+                  const link = `${window.location.origin}/messages?group=${groupId}`
+                  navigator.clipboard?.writeText(link).catch(() => {})
+                  alert('Invite link copied!')
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest"
+                style={{
+                  background: 'rgba(var(--accent-rgb),0.08)',
+                  border: '1px solid rgba(var(--accent-rgb),0.25)',
+                  color: 'var(--accent)',
+                }}>
+                🔗 COPY INVITE LINK
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+              <div className="relative">
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                <input
+                  value={inviteSearch}
+                  onChange={e => setInviteSearch(e.target.value)}
+                  placeholder="Search people to invite..."
+                  className="w-full pl-8 pr-3 py-2 rounded-xl text-xs bg-transparent outline-none"
+                  style={{ border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }}
+                  autoFocus
+                />
+                {inviteSearchLoading && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 animate-spin"
+                    style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'rgba(var(--accent-rgb),0.5)' }} />
+                )}
+              </div>
+            </div>
+
+            {/* User list */}
+            <div className="flex-1 overflow-y-auto">
+              {!inviteSearch.trim() && inviteResults.length === 0 && (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                    Search for people to invite
+                  </p>
+                </div>
+              )}
+
+              {inviteResults.map(u => {
+                const alreadyMember = groupMembers.some(m => m.userId === u.id)
+                const sent = invitedIds.has(u.id)
+                return (
+                  <div key={u.id} className="flex items-center gap-3 px-5 py-3"
+                    style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.04)' }}>
+                    {/* Avatar with online dot */}
+                    <div className="relative shrink-0">
+                      <Avatar user={{ displayName: u.displayName, photoUrl: u.photoUrl }} size={38} />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
+                      <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>
+                    </div>
+
+                    {alreadyMember ? (
+                      <span className="text-[9px] font-black px-2 py-1 rounded-full"
+                        style={{ background: 'rgba(0,255,136,0.08)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.2)' }}>
+                        IN GROUP
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => sendInvite(u)}
+                        disabled={sent}
+                        className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all disabled:opacity-50"
+                        style={sent
+                          ? { background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.2)', color: '#00ff88' }
+                          : { background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }
+                        }>
+                        {sent ? '✓ SENT' : 'INVITE'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -1847,14 +2378,45 @@ function SnapMessageBubble({
 
   if (viewing) {
     return (
-      <div className="relative rounded-2xl overflow-hidden" style={{ maxWidth: 200 }}>
-        <img src={url} alt="snap" className="w-full rounded-2xl" style={{ maxHeight: 280, objectFit: 'cover' }} />
-        <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full"
-          style={{ background: 'rgba(0,0,0,0.6)' }}>
-          <Timer size={10} style={{ color: '#ff006e' }} />
-          <span className="text-[10px] font-black" style={{ color: '#ff006e' }}>{secondsLeft}s</span>
+      <>
+        {/* Placeholder bubble so chat layout doesn't jump while viewing */}
+        <div className="px-3 py-2 rounded-2xl flex items-center gap-2"
+          style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.35)' }}>
+          <Camera size={14} style={{ color: '#ff006e' }} />
+          <span className="text-xs font-bold" style={{ color: '#ff006e' }}>Viewing… {secondsLeft}s</span>
         </div>
-      </div>
+        {/* Full-screen overlay */}
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center"
+          style={{ background: '#000' }}
+          onClick={() => {
+            if (timerRef.current) clearInterval(timerRef.current)
+            setViewing(false)
+            onViewed(message.id)
+            setSecondsLeft(0)
+          }}
+        >
+          <img
+            src={url}
+            alt="snap"
+            className="max-w-full max-h-full"
+            style={{ objectFit: 'contain' }}
+          />
+          <div
+            className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 rounded-full"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+          >
+            <Timer size={14} style={{ color: '#ff006e' }} />
+            <span className="text-sm font-black" style={{ color: '#ff006e' }}>{secondsLeft}s</span>
+          </div>
+          <div
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-[11px] font-semibold"
+            style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(8px)' }}
+          >
+            Tap anywhere to close
+          </div>
+        </div>
+      </>
     )
   }
 
@@ -2273,10 +2835,10 @@ function DmSection({ dbUser }: {
       <div className="py-16 flex flex-col items-center gap-3">
         <MessageCircle size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
         <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.5)' }}>LOG IN TO MESSAGE PEOPLE</p>
-        <a href="/login" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
+        <Link href="/login?next=/messages" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black"
           style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
           <LogIn size={11} /> LOG IN
-        </a>
+        </Link>
       </div>
     )
   }

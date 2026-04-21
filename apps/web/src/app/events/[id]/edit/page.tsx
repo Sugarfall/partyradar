@@ -7,6 +7,7 @@ import { ArrowLeft, Check, Upload, Navigation, Loader2, Save } from 'lucide-reac
 import { useAuth } from '@/hooks/useAuth'
 import { useEvent, updateEvent } from '@/hooks/useEvents'
 import { uploadImage } from '@/lib/cloudinary'
+import { loginHref } from '@/lib/authRedirect'
 import { VIBE_TAGS } from '@partyradar/shared'
 import type { AlcoholPolicy, AgeRestriction, EventType } from '@partyradar/shared'
 
@@ -97,7 +98,7 @@ export default function EditEventPage() {
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!authLoading && !dbUser) router.push('/login')
+    if (!authLoading && !dbUser) router.push(loginHref(`/events/${params['id']}/edit`))
   }, [authLoading, dbUser, router])
 
   // Pre-fill form when event loads

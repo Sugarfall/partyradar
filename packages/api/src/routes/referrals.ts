@@ -103,34 +103,32 @@ router.post('/apply', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** POST /api/referrals/credit — internal: credit referrer when referred user makes a purchase */
-export async function creditReferrer(referredUserId: string, amount: number, type: 'ticket' | 'subscription' | 'group') {
+/**
+ * Internal: credit the referrer with a share of the PLATFORM REVENUE earned
+ * from a referred user. `platformRevenue` is the amount the platform actually
+ * keeps (e.g. the 5% ticket fee, the full subscription amount, the 20% group
+ * cut, the venue commission). The referrer earns
+ * REFERRAL_CONFIG.REVENUE_SHARE_PERCENT of that — lifetime, no flat bonus.
+ *
+ * Safe to call on any purchase event: a no-op if the user was not referred.
+ */
+export async function creditReferrer(referredUserId: string, platformRevenue: number) {
+  if (platformRevenue <= 0) return
+
   const referral = await prisma.referral.findUnique({ where: { referredId: referredUserId } })
   if (!referral) return
 
-  let percent = 0
-  switch (type) {
-    case 'ticket': percent = REFERRAL_CONFIG.TICKET_COMMISSION_PERCENT; break
-    case 'subscription': percent = REFERRAL_CONFIG.SUBSCRIPTION_COMMISSION_PERCENT; break
-    case 'group': percent = REFERRAL_CONFIG.GROUP_COMMISSION_PERCENT; break
-  }
-
-  const commission = Number(((amount * percent) / 100).toFixed(2))
+  const commission = Number(((platformRevenue * REFERRAL_CONFIG.REVENUE_SHARE_PERCENT) / 100).toFixed(2))
   if (commission <= 0) return
-
-  // Add first purchase bonus if this is the first earning
-  const isFirst = referral.earnedAmount === 0
-  const bonus = isFirst ? REFERRAL_CONFIG.FIRST_PURCHASE_BONUS : 0
-  const totalCredit = commission + bonus
 
   await prisma.referral.update({
     where: { referredId: referredUserId },
-    data: { earnedAmount: { increment: totalCredit } },
+    data: { earnedAmount: { increment: commission } },
   })
 
   await prisma.user.update({
     where: { id: referral.referrerId },
-    data: { referralBalance: { increment: totalCredit } },
+    data: { referralBalance: { increment: commission } },
   })
 }
 

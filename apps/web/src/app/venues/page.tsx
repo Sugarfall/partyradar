@@ -62,6 +62,18 @@ const FILTER_TABS: { label: string; value: VenueType | 'ALL' }[] = [
   { label: 'Lounge',       value: 'LOUNGE' },
 ]
 
+// ─── Session persistence ──────────────────────────────────────────────────────
+
+const VENUE_SESSION_KEY = 'venues_page_v1'
+
+function readVenueSession(): Record<string, any> | null {
+  try {
+    if (typeof window === 'undefined') return null
+    const raw = sessionStorage.getItem(VENUE_SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function zoomToRadius(zoom: number): number {
@@ -268,18 +280,20 @@ export default function VenuesPage() {
   const [venues, setVenues] = useState<Venue[]>([])
   const [loading, setLoading] = useState(true)
   const [discovering, setDiscovering] = useState(false)
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<VenueType | 'ALL'>('ALL')
+  // Lazy-init from sessionStorage so back-navigation restores last position
+  const [search, setSearch] = useState<string>(() => readVenueSession()?.search ?? '')
+  const [typeFilter, setTypeFilter] = useState<VenueType | 'ALL'>(() => readVenueSession()?.typeFilter ?? 'ALL')
+  const [cityLabel, setCityLabel] = useState<string>(() => readVenueSession()?.cityLabel ?? 'NEARBY')
+  const [viewState, setViewState] = useState<{ latitude: number; longitude: number; zoom: number }>(() => {
+    const saved = readVenueSession()?.viewState
+    return saved as { latitude: number; longitude: number; zoom: number } ?? { latitude: 55.8642, longitude: -4.2518, zoom: 12 }
+  })
+  // True if we loaded a saved map position — used to skip geolocation centering
+  const [hasSavedView] = useState<boolean>(() => !!readVenueSession()?.viewState)
   const [popupVenue, setPopupVenue] = useState<Venue | null>(null)
   const [discoveredCount, setDiscoveredCount] = useState(0)
-  const [cityLabel, setCityLabel] = useState('NEARBY')
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapVisible, setMapVisible] = useState(true)
-  const [viewState, setViewState] = useState({
-    latitude: 55.8642,
-    longitude: -4.2518,
-    zoom: 12,
-  })
 
   // Track last discovered center to avoid re-fetching same area
   const lastDiscoverRef = useRef<{ lat: number; lng: number; zoom: number } | null>(null)
@@ -292,13 +306,22 @@ export default function VenuesPage() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        // Also center the map on user's location
-        setViewState((v) => ({ ...v, latitude: pos.coords.latitude, longitude: pos.coords.longitude }))
+        // Only center the map if we didn't restore a saved position from sessionStorage
+        if (!hasSavedView) {
+          setViewState((v) => ({ ...v, latitude: pos.coords.latitude, longitude: pos.coords.longitude }))
+        }
       },
       () => { /* permission denied or unavailable — keep default Glasgow center */ },
       { enableHighAccuracy: false, timeout: 8000 },
     )
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist map/search state to sessionStorage on every change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(VENUE_SESSION_KEY, JSON.stringify({ search, typeFilter, cityLabel, viewState }))
+    } catch {}
+  }, [search, typeFilter, cityLabel, viewState])
 
   // Fetch venues from DB based on current viewport
   const fetchVenues = useCallback(async (lat: number, lng: number, radius: number) => {

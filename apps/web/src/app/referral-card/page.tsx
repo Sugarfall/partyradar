@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { Gift, Copy, Check, TrendingUp } from 'lucide-react'
@@ -51,7 +52,7 @@ export default function ReferralCardPage() {
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#07071a' }}>
       <div className="text-center space-y-3">
         <Gift size={36} style={{ color: 'rgba(var(--accent-rgb),0.2)', margin: '0 auto' }} />
-        <a href="/login" className="text-sm font-black" style={{ color: 'var(--accent)' }}>Log in to get your referral card</a>
+        <Link href="/login?next=/referral-card" className="text-sm font-black" style={{ color: 'var(--accent)' }}>Log in to get your referral card</Link>
       </div>
     </div>
   )

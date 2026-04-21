@@ -461,10 +461,10 @@ function SocialTab({ users }: { users: ApiSocial[] }) {
         <p className="text-[10px] mb-3" style={{ color: 'rgba(224,242,254,0.4)' }}>
           Attend events, host parties, invite friends and stay active to climb the ranks.
         </p>
-        <a href="/discover" className="inline-block px-4 py-2 rounded-lg text-[10px] font-black"
+        <Link href="/discover" className="inline-block px-4 py-2 rounded-lg text-[10px] font-black"
           style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.4)', color: '#ffd600', letterSpacing: '0.1em' }}>
           FIND EVENTS →
-        </a>
+        </Link>
       </div>
     </div>
   )

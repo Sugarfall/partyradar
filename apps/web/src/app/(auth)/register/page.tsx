@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { sendEmailVerification } from '@/lib/firebase'
 import { api } from '@/lib/api'
-import { Zap, Check, ChevronRight, Eye, EyeOff, Mail } from 'lucide-react'
+import { getStoredReferral, clearStoredReferral, captureReferral } from '@/lib/referral'
+import { Zap, Check, ChevronRight, Eye, EyeOff, Mail, Gift, X } from 'lucide-react'
 import type { Gender } from '@partyradar/shared'
 import { LANGUAGE_META } from '@/lib/i18n'
 import type { Language } from '@/lib/i18n'
@@ -21,6 +22,22 @@ const GENDER_OPTIONS: { id: Gender; labelKey: string; emoji: string; color: stri
 
 function saveGenderLocally(gender: Gender) {
   try { localStorage.setItem('partyradar_gender', gender) } catch {}
+}
+
+/**
+ * Fire-and-forget POST /api/referrals/apply using the stored ref code.
+ * Safe to call from multiple signup paths — the backend rejects duplicates.
+ */
+async function applyStoredReferral() {
+  const code = getStoredReferral()
+  if (!code) return
+  try {
+    await api.post('/referrals/apply', { code })
+  } catch {
+    // Already applied, invalid code, or user already referred — none are fatal
+  } finally {
+    clearStoredReferral()
+  }
 }
 
 export default function RegisterPage() {
@@ -40,11 +57,24 @@ export default function RegisterPage() {
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [checkingVerify, setCheckingVerify] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
+  const [refCode, setRefCode] = useState<string | null>(null)
+  const [refBannerDismissed, setRefBannerDismissed] = useState(false)
+
+  /* ── Capture any ?ref= param & read stored code on mount ── */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const urlRef = new URLSearchParams(window.location.search).get('ref')
+    if (urlRef) captureReferral(urlRef)
+    setRefCode(getStoredReferral())
+  }, [])
 
   /* ── Phase 1: credentials ── */
   async function handleCredentials(e: React.FormEvent) {
     e.preventDefault()
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (password.length < 8) { setError('Password must be at least 8 characters'); return }
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Password must include at least one letter and one number'); return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -65,6 +95,7 @@ export default function RegisterPage() {
     try {
       await firebaseUser.reload()
       if (firebaseUser.emailVerified) {
+        await applyStoredReferral()
         setPhase('gender')
       } else {
         setVerifyError('Email not verified yet — click the link in your inbox then try again')
@@ -112,6 +143,7 @@ export default function RegisterPage() {
     setError(null)
     try {
       await signInWithGoogle()
+      await applyStoredReferral()
       setPhase('gender') // Google accounts are always verified
     } catch (err: any) {
       const msg = parseAuthError(err)
@@ -126,6 +158,7 @@ export default function RegisterPage() {
     setError(null)
     try {
       await signInWithApple()
+      await applyStoredReferral()
       setPhase('gender')
     } catch (err: any) {
       const msg = parseAuthError(err)
@@ -453,6 +486,40 @@ export default function RegisterPage() {
           <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.3), transparent)' }} />
         </div>
 
+        {/* Invited-by banner (dismissible) */}
+        {refCode && !refBannerDismissed && (
+          <div
+            className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl mb-4"
+            style={{
+              background: 'rgba(0,255,136,0.06)',
+              border: '1px solid rgba(0,255,136,0.2)',
+            }}
+          >
+            <Gift size={14} style={{ color: '#00ff88', marginTop: 2, flexShrink: 0 }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold" style={{ color: '#00ff88' }}>
+                Invited by a friend
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.5)' }}>
+                Code <span className="font-mono font-bold" style={{ color: '#e0f2fe' }}>{refCode}</span> will link automatically — no need to type it.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setRefBannerDismissed(true)
+                setRefCode(null)
+                clearStoredReferral()
+              }}
+              aria-label="Dismiss referral"
+              className="p-0.5 rounded"
+              style={{ color: 'rgba(0,255,136,0.5)' }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {/* Google */}
         <button
           onClick={handleGoogleSignUp}
@@ -532,7 +599,7 @@ export default function RegisterPage() {
                 type={showPw ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Min. 6 characters"
+                placeholder="Min. 8 characters (letters + numbers)"
                 required
                 minLength={6}
                 autoComplete="new-password"

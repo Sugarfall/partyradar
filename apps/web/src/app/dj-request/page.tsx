@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
+import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { silent } from '@/lib/logError'
 import { Music, Zap } from 'lucide-react'
 
 const CREDIT_COST = 50
@@ -26,7 +28,7 @@ function DjRequestInner() {
     if (!dbUser) return
     api.get<{ data: { rewardPoints: number } }>('/wallet')
       .then(j => setPoints(j?.data?.rewardPoints ?? null))
-      .catch(() => {})
+      .catch(silent('dj-request:wallet-points'))
   }, [dbUser])
 
   async function submit() {
@@ -54,8 +56,8 @@ function DjRequestInner() {
       <div className="text-center space-y-3">
         <Music size={36} style={{ color: 'rgba(var(--accent-rgb),0.2)', margin: '0 auto' }} />
         <p className="text-sm font-black" style={{ color: 'rgba(224,242,254,0.5)' }}>Log in to request a song</p>
-        <a href="/login" className="inline-block px-6 py-2.5 rounded-xl text-xs font-black"
-          style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>LOG IN</a>
+        <Link href="/login?next=/dj-request" className="inline-block px-6 py-2.5 rounded-xl text-xs font-black"
+          style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>LOG IN</Link>
       </div>
     </div>
   )
@@ -82,10 +84,10 @@ function DjRequestInner() {
         <p className="text-sm" style={{ color: 'rgba(224,242,254,0.5)' }}>
           DJ Song Requests are available from the <span className="font-black" style={{ color: 'var(--accent)' }}>BASIC</span> tier and above.
         </p>
-        <a href="/pricing" className="inline-block px-6 py-2.5 rounded-xl text-xs font-black"
+        <Link href="/pricing" className="inline-block px-6 py-2.5 rounded-xl text-xs font-black"
           style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.4)', color: 'var(--accent)' }}>
           VIEW PLANS
-        </a>
+        </Link>
       </div>
     </div>
   )

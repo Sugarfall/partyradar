@@ -58,6 +58,7 @@ interface NearbyVenue {
   id: string
   name: string
   type: string
+  address?: string | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -313,30 +314,25 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // ── Venue location tagging ────────────────────────────────────────────────
-  const [nearbyVenues, setNearbyVenues] = useState<NearbyVenue[]>([])
-  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
-  const [locLoading, setLocLoading] = useState(false)
+  // ── Venue location tagging — @ search ────────────────────────────────────
+  const [venueSearch, setVenueSearch] = useState('')
+  const [venueSuggestions, setVenueSuggestions] = useState<NearbyVenue[]>([])
+  const [venueSearchLoading, setVenueSearchLoading] = useState(false)
+  const [selectedVenue, setSelectedVenue] = useState<NearbyVenue | null>(null)
 
   useEffect(() => {
-    if (!navigator.geolocation) return
-    setLocLoading(true)
-    navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        try {
-          const res = await api.get<{ data: NearbyVenue[] }>(
-            `/venues?lat=${coords.latitude}&lng=${coords.longitude}&radius=1&limit=5`
-          )
-          const venues = res.data ?? []
-          setNearbyVenues(venues)
-          if (venues.length > 0) setSelectedVenueId(venues[0]!.id)
-        } catch {}
-        setLocLoading(false)
-      },
-      () => setLocLoading(false),
-      { timeout: 6000, maximumAge: 60000 }
-    )
-  }, [])
+    const q = venueSearch.trim()
+    if (!q) { setVenueSuggestions([]); return }
+    const t = setTimeout(async () => {
+      setVenueSearchLoading(true)
+      try {
+        const res = await api.get<{ data: NearbyVenue[] }>(`/venues?q=${encodeURIComponent(q)}&limit=8`)
+        setVenueSuggestions(res.data ?? [])
+      } catch {}
+      setVenueSearchLoading(false)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [venueSearch])
 
   function pickMedia(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -369,7 +365,7 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
         text: text.trim() || undefined,
         imageUrl,
         isStory: false,
-        venueId: selectedVenueId ?? undefined,
+        venueId: selectedVenue?.id ?? undefined,
       })
       onPosted()
       onClose()
@@ -442,43 +438,74 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
           </div>
         </div>
 
-        {/* Venue location chips */}
-        {(locLoading || nearbyVenues.length > 0) && (
-          <div className="px-5 mb-3">
-            <div className="flex items-center gap-1.5 mb-2">
-              <MapPin size={10} style={{ color: 'rgba(0,200,255,0.5)' }} />
-              <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,200,255,0.4)' }}>
-                TAG LOCATION
-              </span>
-            </div>
-            {locLoading ? (
-              <div className="flex items-center gap-1.5">
-                <div className="h-6 w-24 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                <div className="h-6 w-20 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
+        {/* @ Venue search */}
+        <div className="px-5 mb-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <MapPin size={10} style={{ color: 'rgba(0,200,255,0.5)' }} />
+            <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,200,255,0.4)' }}>
+              TAG LOCATION
+            </span>
+          </div>
+
+          {selectedVenue ? (
+            /* Selected chip — tap to remove */
+            <button
+              onClick={() => { setSelectedVenue(null); setVenueSearch('') }}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold transition-all"
+              style={{ background: 'rgba(0,200,255,0.15)', color: 'var(--accent)', border: '1px solid rgba(0,200,255,0.4)' }}
+            >
+              <span>{venueTypeEmoji[selectedVenue.type] ?? '📍'}</span>
+              {selectedVenue.name}
+              <X size={10} />
+            </button>
+          ) : (
+            /* @ search input + dropdown */
+            <div className="relative">
+              <div
+                className="flex items-center rounded-full overflow-hidden"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
+              >
+                <span className="pl-3 text-sm font-bold" style={{ color: 'rgba(0,200,255,0.6)' }}>@</span>
+                <input
+                  value={venueSearch}
+                  onChange={e => setVenueSearch(e.target.value)}
+                  placeholder="Search venues by name..."
+                  className="flex-1 px-2 py-1.5 text-[11px] bg-transparent outline-none"
+                  style={{ color: '#e0f2fe' }}
+                />
+                {venueSearchLoading && (
+                  <div className="w-3 h-3 mr-3 rounded-full border-2 animate-spin shrink-0"
+                    style={{ borderColor: 'rgba(0,200,255,0.1)', borderTopColor: 'rgba(0,200,255,0.5)' }} />
+                )}
               </div>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {nearbyVenues.map(v => {
-                  const selected = selectedVenueId === v.id
-                  return (
+
+              {/* Suggestions dropdown */}
+              {venueSuggestions.length > 0 && (
+                <div
+                  className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-20"
+                  style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,200,255,0.15)', maxHeight: 160, overflowY: 'auto' }}
+                >
+                  {venueSuggestions.map(v => (
                     <button
                       key={v.id}
-                      onClick={() => setSelectedVenueId(selected ? null : v.id)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
-                      style={selected
-                        ? { background: 'rgba(0,200,255,0.15)', color: 'var(--accent)', border: '1px solid rgba(0,200,255,0.4)' }
-                        : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }
-                      }
+                      onClick={() => { setSelectedVenue(v); setVenueSuggestions([]); setVenueSearch('') }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors"
+                      style={{ color: '#e0f2fe', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,200,255,0.06)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
-                      <span>{venueTypeEmoji[v.type] ?? '📍'}</span>
-                      {v.name}
+                      <span className="shrink-0">{venueTypeEmoji[v.type] ?? '📍'}</span>
+                      <span className="flex-1 truncate">{v.name}</span>
+                      {v.address && (
+                        <span className="text-[9px] shrink-0 truncate max-w-[100px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{v.address}</span>
+                      )}
                     </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Error */}
         {error && <p className="px-5 pb-3 text-xs font-semibold" style={{ color: '#ef4444' }}>{error}</p>}

@@ -249,21 +249,28 @@ export default function WalletPage() {
 
           {/* ── Balance card ─────────────────────────────────────────────── */}
           <SectionCard className="p-5">
-            <div className="flex items-start justify-between mb-4">
-              <div>
+            <div className="flex items-start justify-between mb-4 gap-3">
+              <div className="min-w-0">
                 <p className="text-[10px] font-bold tracking-widest mb-1" style={{ color: 'rgba(224,242,254,0.4)' }}>
                   AVAILABLE BALANCE
                 </p>
-                <p className="text-4xl font-black" style={{ color: '#e0f2fe', lineHeight: 1.1 }}>
+                <p className="text-4xl font-black truncate" style={{ color: '#e0f2fe', lineHeight: 1.1 }}>
                   {wallet ? formatPrice(wallet.balance, 'GBP') : '—'}
                 </p>
               </div>
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}
+              <button
+                onClick={() => setTopUpTierId('MEDIUM')}
+                className="flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 font-black text-[11px] tracking-widest transition-all duration-150 active:scale-[0.96] shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.22), rgba(var(--accent-rgb),0.12))',
+                  border: '1px solid rgba(var(--accent-rgb),0.4)',
+                  color: 'var(--accent)',
+                  boxShadow: '0 0 14px rgba(var(--accent-rgb),0.18)',
+                }}
               >
-                <CreditCard size={22} style={{ color: 'var(--accent)' }} />
-              </div>
+                <CreditCard size={14} />
+                TOP UP
+              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

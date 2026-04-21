@@ -8,20 +8,22 @@ import { fetcher } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { Ticket, Calendar, MapPin, Loader2 } from 'lucide-react'
 import { EventTypeBadge } from '@/components/ui/Badge'
+import TicketQR from '@/components/ui/TicketQR'
 import { formatPrice } from '@/lib/currency'
+import { loginHref } from '@/lib/authRedirect'
 import type { Ticket as TicketType } from '@partyradar/shared'
 
 export default function TicketsPage() {
   const { dbUser, loading } = useAuth()
   const router = useRouter()
 
-  const { data, isLoading } = useSWR<{ data: (TicketType & { qrDataUrl: string })[] }>(
+  const { data, isLoading } = useSWR<{ data: TicketType[] }>(
     dbUser ? '/tickets/my' : null,
     fetcher
   )
 
   useEffect(() => {
-    if (!loading && !dbUser && typeof window !== 'undefined') router.push('/login')
+    if (!loading && !dbUser && typeof window !== 'undefined') router.push(loginHref('/tickets'))
   }, [dbUser, loading, router])
 
   if (loading) return null
@@ -41,10 +43,34 @@ export default function TicketsPage() {
           <Loader2 className="animate-spin text-accent" size={28} />
         </div>
       ) : tickets.length === 0 ? (
-        <div className="text-center py-12">
-          <Ticket size={48} className="text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-400 mb-2">No tickets yet</p>
-          <Link href="/discover" className="text-accent text-sm hover:underline">Browse events</Link>
+        <div className="text-center py-16 px-6">
+          <div
+            className="w-20 h-20 rounded-3xl mx-auto mb-5 flex items-center justify-center"
+            style={{
+              background: 'rgba(var(--accent-rgb),0.08)',
+              border: '1px solid rgba(var(--accent-rgb),0.2)',
+            }}
+          >
+            <Ticket size={36} style={{ color: 'var(--accent)' }} />
+          </div>
+          <h2 className="text-lg font-black mb-2" style={{ color: '#e0f2fe' }}>
+            No tickets yet
+          </h2>
+          <p className="text-sm mb-6 max-w-xs mx-auto leading-relaxed" style={{ color: 'rgba(224,242,254,0.5)' }}>
+            Book a club night, concert or home party and your ticket QR codes will live here.
+          </p>
+          <Link
+            href="/discover"
+            className="inline-block px-6 py-3 rounded-xl font-black text-sm"
+            style={{
+              background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.18), rgba(61,90,254,0.12))',
+              border: '1px solid rgba(var(--accent-rgb),0.5)',
+              color: 'var(--accent)',
+              letterSpacing: '0.1em',
+            }}
+          >
+            BROWSE EVENTS
+          </Link>
         </div>
       ) : (
         <div className="space-y-4">
@@ -81,11 +107,7 @@ export default function TicketsPage() {
                       <p className="text-xs">{new Date(ticket.scannedAt).toLocaleString()}</p>
                     </div>
                   ) : (
-                    <img
-                      src={ticket.qrDataUrl}
-                      alt="Ticket QR"
-                      className="w-40 h-40 rounded-lg"
-                    />
+                    <TicketQR qrCode={ticket.qrCode} size={160} />
                   )}
                 </div>
 

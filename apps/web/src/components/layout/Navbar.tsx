@@ -363,7 +363,7 @@ function NavbarInner() {
                       <Link href="/earn" onClick={() => setMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
                         style={{ color: pathname.startsWith('/earn') ? 'var(--accent)' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <TrendingUp size={15} /> Earn
+                        <TrendingUp size={15} /> How to Earn
                       </Link>
                       <Link href="/referrals" onClick={() => setMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"

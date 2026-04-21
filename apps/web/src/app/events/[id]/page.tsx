@@ -14,7 +14,9 @@ import SaveButton from '@/components/events/SaveButton'
 import { useEvent, updateEvent, cancelEvent } from '@/hooks/useEvents'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { silent, logError } from '@/lib/logError'
 import { uploadImage } from '@/lib/cloudinary'
+import { loginHref } from '@/lib/authRedirect'
 import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
@@ -95,7 +97,7 @@ function WeatherWidget({ lat, lng, eventDate }: { lat: number; lng: number; even
           low: Math.round(data.daily.temperature_2m_min[idx] as number),
         })
       })
-      .catch(() => {})
+      .catch(silent('events/[id]'))
   }, [lat, lng, eventDate])
 
   if (!weather) return null
@@ -334,7 +336,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
         const mapped = (r?.data ?? []).map(mapPost)
         setHighlights(mapped)
       })
-      .catch(() => {})
+      .catch(silent('events/[id]'))
   }, [event.id])
 
   async function handleDeletePost(postId: string) {
@@ -343,7 +345,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
       await api.delete(`/posts/${postId}`)
       setHighlights(prev => prev.filter(h => h.id !== postId))
       if (viewingIdx !== null) setViewingIdx(null)
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
     finally { setDeleting(null) }
   }
 
@@ -357,7 +359,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
       const res = await api.post<{ data: any }>('/posts', body)
       if (res?.data) setHighlights(prev => [mapPost(res.data), ...prev])
       setTextInput(''); setTextMode(false)
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
     finally { setUploading(false) }
   }
 
@@ -460,7 +462,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
                     const imageUrl = await uploadImage(file, 'events')
                     const res = await api.post<{ data: any }>('/posts', { eventId: event.id, imageUrl })
                     if (res?.data) setHighlights((prev) => [mapPost(res.data), ...prev])
-                  } catch {}
+                  } catch (e) { logError('events/[id]', e) }
                   finally { setUploading(false) }
                 }}
               />
@@ -638,7 +640,7 @@ function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName
   useEffect(() => {
     api.get<{ data: VenuePost[] }>(`/posts/venue/${venueId}?limit=20`)
       .then((r) => setPosts((r?.data ?? []).filter((p) => p.text)))
-      .catch(() => {})
+      .catch(silent('events/[id]'))
   }, [venueId])
 
   async function sendPost() {
@@ -649,7 +651,7 @@ function VenueCommunityChat({ venueId, venueName }: { venueId: string; venueName
     try {
       const res = await api.post<{ data: VenuePost }>('/posts', { text, venueId })
       if (res?.data) setPosts((prev) => [res.data, ...prev])
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
     finally { setSending(false) }
   }
 
@@ -755,7 +757,7 @@ function ModeratorPanel({ eventId }: { eventId: string }) {
     setLoading(true)
     api.get<{ data: ModEntry[] }>(`/events/${eventId}/moderators`)
       .then(r => setMods(r.data))
-      .catch(() => {})
+      .catch(silent('events/[id]'))
       .finally(() => setLoading(false))
   }, [open, eventId])
 
@@ -780,7 +782,7 @@ function ModeratorPanel({ eventId }: { eventId: string }) {
       setMods(prev => [...prev.filter(m => m.userId !== user.id), r.data])
       setSearch('')
       setSearchResults([])
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
     finally { setAdding(null) }
   }
 
@@ -789,7 +791,7 @@ function ModeratorPanel({ eventId }: { eventId: string }) {
     try {
       await api.delete(`/events/${eventId}/moderators/${userId}`)
       setMods(prev => prev.filter(m => m.userId !== userId))
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
     finally { setRemoving(null) }
   }
 
@@ -956,7 +958,7 @@ function DjRequestPanel({
     setLoading(true)
     api.get<{ data: DjReqEntry[] }>(`/events/${eventId}/dj-requests`)
       .then(r => setRequests(r.data ?? []))
-      .catch(() => {})
+      .catch(silent('events/[id]'))
       .finally(() => setLoading(false))
   }, [open, eventId])
 
@@ -988,7 +990,7 @@ function DjRequestPanel({
           ? { ...x, hasUpvoted: r.data.upvoted, upvotes: r.data.upvoted ? x.upvotes + 1 : x.upvotes - 1 }
           : x
       ).sort((a, b) => b.upvotes - a.upvotes || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()))
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
     finally { setUpvoting(null) }
   }
 
@@ -997,7 +999,7 @@ function DjRequestPanel({
     try {
       await api.patch(`/events/${eventId}/dj-requests/${req.id}`, { status })
       setRequests(prev => prev.map(x => x.id === req.id ? { ...x, status } : x))
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
     finally { setManaging(null) }
   }
 
@@ -1259,13 +1261,13 @@ export default function EventDetailPage() {
     if (!dbUser || !event) return
     api.get<{ data: { count: number; friends: Array<{ id: string; displayName: string; photoUrl: string | null }> } }>(
       `/events/${event.id}/friends-going`
-    ).then(r => setFriendsGoing(r.data)).catch(() => {})
+    ).then(r => setFriendsGoing(r.data)).catch(silent('events/[id]'))
   }, [dbUser, event?.id])
 
   // Track page view — fire once per event load (deduplicated server-side to 1 per 6h per user)
   useEffect(() => {
     if (!event?.id) return
-    api.post<unknown>(`/events/${event.id}/view`, {}).catch(() => {})
+    api.post<unknown>(`/events/${event.id}/view`, {}).catch(silent('events/[id]'))
   }, [event?.id])
 
   const { data: guestData } = useSWR<{ data: EventGuest[] }>(
@@ -1301,7 +1303,7 @@ export default function EventDetailPage() {
   const isFull = capacityPct >= 100
 
   async function handleRSVP() {
-    if (!dbUser) { router.push('/login'); return }
+    if (!dbUser) { router.push(loginHref()); return }
     setRsvpLoading(true)
     setActionError(null)
     try {
@@ -1316,7 +1318,7 @@ export default function EventDetailPage() {
   }
 
   async function handleTicketCheckout() {
-    if (!dbUser) { router.push('/login'); return }
+    if (!dbUser) { router.push(loginHref()); return }
     setTicketLoading(true)
     try {
       const res = await api.post<{ data: { url: string } }>('/tickets/checkout', { eventId: event!.id, quantity: ticketQty })
@@ -1461,7 +1463,7 @@ export default function EventDetailPage() {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       }
-    } catch {}
+    } catch (e) { logError('events/[id]', e) }
   }
 
   return (

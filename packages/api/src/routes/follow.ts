@@ -62,13 +62,15 @@ router.get('/followers', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
     const { page = '1', limit = '20' } = req.query
-    const skip = (Number(page) - 1) * Number(limit)
+    const pageNum = Math.max(1, Number(page) || 1)
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20))
+    const skip = (pageNum - 1) * limitNum
 
     const [followers, total] = await Promise.all([
       prisma.follow.findMany({
         where: { followingId: userId },
         skip,
-        take: Number(limit),
+        take: limitNum,
         orderBy: { createdAt: 'desc' },
         include: { follower: { select: userSelect } },
       }),
@@ -78,8 +80,8 @@ router.get('/followers', requireAuth, async (req: AuthRequest, res, next) => {
     res.json({
       data: followers.map((f) => f.follower),
       total,
-      page: Number(page),
-      limit: Number(limit),
+      page: pageNum,
+      limit: limitNum,
       hasMore: skip + followers.length < total,
     })
   } catch (err) {
@@ -92,13 +94,15 @@ router.get('/following', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
     const { page = '1', limit = '20' } = req.query
-    const skip = (Number(page) - 1) * Number(limit)
+    const pageNum = Math.max(1, Number(page) || 1)
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20))
+    const skip = (pageNum - 1) * limitNum
 
     const [following, total] = await Promise.all([
       prisma.follow.findMany({
         where: { followerId: userId },
         skip,
-        take: Number(limit),
+        take: limitNum,
         orderBy: { createdAt: 'desc' },
         include: { following: { select: userSelect } },
       }),
@@ -108,8 +112,8 @@ router.get('/following', requireAuth, async (req: AuthRequest, res, next) => {
     res.json({
       data: following.map((f) => f.following),
       total,
-      page: Number(page),
-      limit: Number(limit),
+      page: pageNum,
+      limit: limitNum,
       hasMore: skip + following.length < total,
     })
   } catch (err) {

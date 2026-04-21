@@ -52,6 +52,7 @@ import pubCrawlRouter from './routes/pubcrawl'
 import goOutRouter from './routes/go-out'
 import reportsRouter from './routes/reports'
 import spotifyRouter from './routes/spotify'
+import connectRouter from './routes/connect'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification } from './lib/fcm'
 import { auth as firebaseAuth } from './lib/firebase-admin'
@@ -248,13 +249,17 @@ io.on('connection', (socket) => {
 app.use(helmet())
 app.use(cors({
   origin: (origin, callback) => {
+    // Allowlist: localhost (dev), FRONTEND_URL (prod), plus an optional
+    // comma-separated ADDITIONAL_ORIGINS (e.g. preview deploys you explicitly
+    // trust). Any other `*.vercel.app` origin is now REJECTED — previously the
+    // wildcard let any Vercel tenant hit us with credentials.
     const allowed = [
       'http://localhost:3000',
       'http://localhost:3001',
       process.env['FRONTEND_URL'] ?? '',
+      ...(process.env['ADDITIONAL_ORIGINS']?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
     ].filter(Boolean)
-    // Allow all Vercel deployments and requests with no origin (curl, mobile)
-    if (!origin || allowed.includes(origin) || origin.endsWith('.vercel.app')) {
+    if (!origin || allowed.includes(origin)) {
       callback(null, true)
     } else {
       callback(new Error(`CORS: origin ${origin} not allowed`))
@@ -298,6 +303,28 @@ const discoverLimiter = rateLimit({
   message: { error: 'Too many venue discovery requests' },
 })
 
+// Anti-spam limiter for message sends — only limits WRITE methods so
+// reading conversations stays snappy. Scoped to send/conversation-create
+// paths only (applied further below).
+const dmWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,     // 1 minute
+  max: 30,                   // 30 outbound DMs per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method !== 'POST',
+  message: { error: 'Sending messages too quickly — slow down' },
+})
+
+// Referral-code apply: prevent brute-force guessing of valid codes.
+// A legitimate user calls this exactly once per signup, so 5/min is generous.
+const referralApplyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many referral attempts — slow down' },
+})
+
 app.use('/api', globalLimiter)
 app.use('/api/auth', authLimiter)
 app.use('/api/tickets', paymentLimiter)
@@ -307,7 +334,10 @@ app.use('/api/wallet/top-up', paymentLimiter)
 app.use('/api/wallet/payment-intent', paymentLimiter)
 app.use('/api/wallet/spend', paymentLimiter)
 app.use('/api/wallet/order-card', paymentLimiter)
+app.use('/api/connect', paymentLimiter)
 app.use('/api/venues/discover', discoverLimiter)
+app.use('/api/dm', dmWriteLimiter)
+app.use('/api/referrals/apply', referralApplyLimiter)
 
 // Raw body for Stripe webhook signature verification
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }))
@@ -359,6 +389,7 @@ app.use('/api/pub-crawl', pubCrawlRouter)
 app.use('/api/go-out', goOutRouter)
 app.use('/api/reports', reportsRouter)
 app.use('/api/spotify', spotifyRouter)
+app.use('/api/connect', connectRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
@@ -620,6 +651,52 @@ cron.schedule('0 * * * *', async () => {
     console.error('[Startup] Cleanup error:', err)
   }
 })()
+
+// ─── Env-var sanity check ────────────────────────────────────────────────────
+
+function checkEnvVars() {
+  const isProd = process.env['NODE_ENV'] === 'production'
+  const required = [
+    'DATABASE_URL',
+    'FIREBASE_PROJECT_ID',
+    'FIREBASE_CLIENT_EMAIL',
+    'FIREBASE_PRIVATE_KEY',
+  ]
+  const paymentRequired = [
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+  ]
+  const missing: string[] = []
+  for (const key of required) {
+    if (!process.env[key]) missing.push(key)
+  }
+  const missingPayment: string[] = []
+  for (const key of paymentRequired) {
+    if (!process.env[key]) missingPayment.push(key)
+  }
+
+  if (missing.length > 0) {
+    console.error(`\n❌ [Startup] Missing required env vars: ${missing.join(', ')}`)
+    if (isProd) {
+      console.error('❌ [Startup] Refusing to start in production without core env vars.')
+      process.exit(1)
+    } else {
+      console.warn('⚠️  [Startup] Continuing without these in non-production — some features will fail.')
+    }
+  }
+
+  if (missingPayment.length > 0) {
+    if (isProd) {
+      console.error(`\n❌ [Startup] Missing payment env vars in production: ${missingPayment.join(', ')}`)
+      console.error('   Stripe webhooks will reject all events — refusing to start.')
+      process.exit(1)
+    } else {
+      console.warn(`\n⚠️  [Startup] Missing payment env vars (Stripe disabled): ${missingPayment.join(', ')}\n`)
+    }
+  }
+}
+
+checkEnvVars()
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 

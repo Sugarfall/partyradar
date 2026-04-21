@@ -154,7 +154,7 @@ export default function NotificationsPage() {
             LOG IN TO VIEW NOTIFICATIONS
           </p>
           <a
-            href="/login"
+            href="/login?next=%2Fnotifications"
             className="inline-block px-6 py-2.5 rounded-xl text-xs font-black"
             style={{
               background: 'rgba(var(--accent-rgb),0.1)',

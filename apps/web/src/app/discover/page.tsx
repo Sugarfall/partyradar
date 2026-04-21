@@ -13,6 +13,7 @@ import type { EventType, Event } from '@partyradar/shared'
 import { AGE_RESTRICTION_LABELS, getTier } from '@partyradar/shared'
 import { useAuth } from '@/hooks/useAuth'
 import { api, API_URL } from '@/lib/api'
+import { silent } from '@/lib/logError'
 import DiscoverFeedTab from '@/components/feed/DiscoverFeedTab'
 import { formatPrice, detectCurrency } from '@/lib/currency'
 
@@ -234,7 +235,7 @@ function EventStage({ event, dir, userTier, currency }: { event: Event; dir: Sli
       `/events/${event.id}/friends-going`
     )
       .then(r => { if (r?.data) setFriendsGoing(r.data) })
-      .catch(() => {})
+      .catch(silent('discover:friends-going'))
   }, [event.id])
 
   const isYachtLocked = event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties
@@ -970,13 +971,13 @@ function EmptyState({ loading, onRetry, onSearch, onCreateEvent }: {
     fetch(`${API_URL}/events?limit=6&lat=55.86&lng=-4.25&radius=400`)
       .then(r => r.json())
       .then(j => { if (Array.isArray(j?.data)) setAnyEvents(j.data) })
-      .catch(() => {})
+      .catch(silent('discover:empty-state-suggestions'))
   }, [])
 
   const handleRetry = async () => {
     if (!onRetry || retrying) return
     setRetrying(true)
-    try { await onRetry() } catch {} finally { setRetrying(false) }
+    try { await onRetry() } catch (e) { silent('discover:retry')(e) } finally { setRetrying(false) }
   }
 
   if (loading || retrying) {
@@ -1457,7 +1458,7 @@ export default function DiscoverPage() {
               // Persist precise GPS location for instant results on next visit
               try { localStorage.setItem('pr_loc', JSON.stringify({ lat, lng, city, ts: Date.now() })) } catch {}
             })
-            .catch(() => {})
+            .catch(silent('discover:reverse-geocode'))
         }
       },
       () => { clearTimeout(fallback); setGeoResolved(true); setIsTracking(false) },
@@ -1596,7 +1597,7 @@ export default function DiscoverPage() {
     autoRetried.current = true
     setSyncing(true)
     const t = setTimeout(async () => {
-      await forceRetry().catch(() => {})
+      await forceRetry().catch(silent('discover:force-retry'))
       setSyncing(false)
     }, 4000)
     return () => clearTimeout(t)
@@ -1621,7 +1622,7 @@ export default function DiscoverPage() {
     if (!newIds.length) return
     const timer = setTimeout(() => {
       newIds.forEach(id => impressionsTrackedRef.current.add(id))
-      api.post<unknown>('/events/impressions', { eventIds: newIds }).catch(() => {})
+      api.post<unknown>('/events/impressions', { eventIds: newIds }).catch(silent('discover:impressions-batch'))
     }, 1500)
     return () => clearTimeout(timer)
   }, [events, viewMode, tab])
@@ -1632,7 +1633,7 @@ export default function DiscoverPage() {
     const ev = events[index]
     if (!ev || impressionsTrackedRef.current.has(ev.id)) return
     impressionsTrackedRef.current.add(ev.id)
-    api.post<unknown>('/events/impressions', { eventIds: [ev.id] }).catch(() => {})
+    api.post<unknown>('/events/impressions', { eventIds: [ev.id] }).catch(silent('discover:impression-card'))
   }, [events, index, viewMode, tab])
 
   // Set real timestamp on client after hydration, then tick every 60s

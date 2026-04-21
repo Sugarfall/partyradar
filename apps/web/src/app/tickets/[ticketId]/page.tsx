@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import type { Ticket } from '@partyradar/shared'
 import { formatPrice } from '@/lib/currency'
+import { loginHref } from '@/lib/authRedirect'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-GB', {
@@ -36,7 +37,7 @@ export default function TicketPage() {
   const [qrGenerated, setQrGenerated] = useState(false)
 
   useEffect(() => {
-    if (!authLoading && !dbUser) router.push('/login')
+    if (!authLoading && !dbUser) router.push(loginHref(`/tickets/${params['ticketId']}`))
   }, [authLoading, dbUser, router])
 
   useEffect(() => {

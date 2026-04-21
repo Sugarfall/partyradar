@@ -7,6 +7,9 @@ import { ChevronLeft, ChevronRight, Check, Upload, MapPin, Navigation, Zap, Lock
 import { useAuth } from '@/hooks/useAuth'
 import { createEvent } from '@/hooks/useEvents'
 import { uploadImage } from '@/lib/cloudinary'
+import { loginHref } from '@/lib/authRedirect'
+import { api } from '@/lib/api'
+import { silent } from '@/lib/logError'
 import type { CreateEventInput, EventType, AlcoholPolicy, AgeRestriction } from '@partyradar/shared'
 import { VIBE_TAGS, getTier } from '@partyradar/shared'
 
@@ -146,9 +149,20 @@ export default function CreateEventPage() {
   const [linkedVenue, setLinkedVenue] = useState<{ id: string; name: string } | null>(null)
   const venueSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Stripe Connect readiness — drives the warning banner on the tickets step
+  // and keeps us from submitting paid events that will fail server-side.
+  const [payoutsReady, setPayoutsReady] = useState<boolean | null>(null)
+
   useEffect(() => {
-    if (!authLoading && !dbUser) router.push('/login')
+    if (!authLoading && !dbUser) router.push(loginHref('/events/create'))
   }, [authLoading, dbUser, router])
+
+  useEffect(() => {
+    if (!dbUser) return
+    api.get<{ data: { chargesEnabled: boolean } }>('/connect/status')
+      .then((r) => setPayoutsReady(!!r.data?.chargesEnabled))
+      .catch(silent('events/create:connect-status'))
+  }, [dbUser])
 
   if (authLoading || !dbUser) return null
 
@@ -727,6 +741,20 @@ export default function CreateEventPage() {
                 <div className="px-3 py-2.5 rounded-lg text-xs font-medium" style={{ background: 'rgba(255,214,0,0.06)', border: '1px solid rgba(255,214,0,0.2)', color: 'rgba(255,214,0,0.7)' }}>
                   ⚡ Platform fee: 5% per ticket · Requires Pro or Premium subscription
                 </div>
+                {payoutsReady === false && (
+                  <div className="px-3 py-3 rounded-lg space-y-2" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                    <p className="text-xs font-bold" style={{ color: '#fca5a5' }}>
+                      Finish Stripe payout setup before publishing
+                    </p>
+                    <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.6)' }}>
+                      Ticket revenue is paid directly to your connected Stripe account. Paid events cannot be published until onboarding is complete.
+                    </p>
+                    <Link href="/payouts" className="inline-block text-[11px] font-black tracking-widest"
+                      style={{ color: '#fca5a5', letterSpacing: '0.1em', textDecoration: 'underline' }}>
+                      OPEN PAYOUT SETUP →
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>

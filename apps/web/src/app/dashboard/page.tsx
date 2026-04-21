@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { silent, logError } from '@/lib/logError'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -150,13 +151,13 @@ function AttendeesModal({ eventId, eventName, onClose }: {
   useEffect(() => {
     api.get<{ data: EventAttendees }>(`/dashboard/events/${eventId}/attendees`)
       .then((j) => setData(j.data))
-      .catch(() => {})
+      .catch(silent('dashboard:attendees'))
       .finally(() => setLoading(false))
   }, [eventId])
 
   async function removeGuest(guestId: string) {
     setRemoving(guestId)
-    await api.delete(`/dashboard/guests/${guestId}`).catch(() => {})
+    await api.delete(`/dashboard/guests/${guestId}`).catch(silent('dashboard:remove-guest'))
     setData((d) => d ? {
       ...d,
       guests: d.guests.map((g) => g.id === guestId ? { ...g, status: 'REMOVED' } : g),
@@ -308,7 +309,7 @@ function BlastModal({ events, onClose }: {
         { eventId: selectedEvent, tierId: selectedTier, title: title.trim(), body: body.trim() },
       )
       if (j.data?.checkoutUrl) setResult(j.data)
-    } catch {}
+    } catch (e) { logError('dashboard:blast', e) }
     finally { setSending(false) }
   }
 
@@ -439,7 +440,7 @@ function BlastModal({ events, onClose }: {
 // ─── Main Dashboard Page ─────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { dbUser } = useAuth()
+  const { dbUser, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashStats | null>(null)
   const [events, setEvents] = useState<DashEvent[]>([])
@@ -462,18 +463,29 @@ export default function DashboardPage() {
         setBlasts(j.data.blasts ?? [])
         setBlastQueue(j.data.blastQueue?.queuedAhead ?? 0)
       }
-    } catch {}
+    } catch (e) { logError('dashboard:load', e) }
     finally { setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // While Firebase auth is resolving, show the same spinner to avoid
+  // a flash of the "log in" screen for already-logged-in users.
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d', paddingTop: 56 }}>
+        <div className="w-8 h-8 rounded-full border-2 animate-spin"
+          style={{ borderColor: 'rgba(168,85,247,0.1)', borderTopColor: '#a855f7' }} />
+      </div>
+    )
+  }
 
   if (!dbUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#04040d', paddingTop: 56 }}>
         <BarChart3 size={40} style={{ color: 'rgba(168,85,247,0.2)' }} />
         <p className="text-sm font-bold" style={{ color: 'rgba(224,242,254,0.3)' }}>Log in to access your dashboard</p>
-        <Link href="/login" className="px-5 py-2 rounded-xl text-xs font-black"
+        <Link href="/login?next=/dashboard" className="px-5 py-2 rounded-xl text-xs font-black"
           style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7' }}>
           LOG IN
         </Link>

@@ -7,6 +7,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { LANGUAGE_META } from '@/lib/i18n'
 import type { Language } from '@/lib/i18n'
 import { api } from '@/lib/api'
+import { loginHref } from '@/lib/authRedirect'
 import {
   Shield, Bell, Eye, User, ChevronRight,
   AlertTriangle, Zap, ToggleLeft, ToggleRight, Globe,
@@ -201,7 +202,7 @@ export default function SettingsPage() {
   // ── Auth gate ──────────────────────────────────────────────────────────────
   if (loading) return null
   if (!dbUser) {
-    if (typeof window !== 'undefined') router.push('/login')
+    if (typeof window !== 'undefined') router.push(loginHref('/settings'))
     return null
   }
 

@@ -5,6 +5,7 @@ import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
 import { moderateContent, recordViolation } from '../lib/moderation'
+import { assertOwnImageUrl } from '../lib/cloudinary'
 
 const router = Router()
 
@@ -28,6 +29,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     if (!body.imageUrl && !body.text) {
       throw new AppError('Post must have either imageUrl or text', 400)
+    }
+
+    // Only accept image URLs that our own Cloudinary upload produced.
+    try {
+      if (body.imageUrl) assertOwnImageUrl(body.imageUrl)
+    } catch (e) {
+      throw new AppError((e as Error).message, 400)
     }
 
     // ── Content moderation ──────────────────────────────────────────────────
@@ -90,6 +98,7 @@ router.get('/stories', requireAuth, async (req: AuthRequest, res, next) => {
         expiresAt: { gt: new Date() },
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
       include: {
         user: { select: userSelect },
         event: { select: eventSelect },

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -94,10 +95,10 @@ export default function BrandPage() {
 
         {/* CTA */}
         {!dbUser && (
-          <a href="/login" className="block w-full py-3.5 rounded-xl text-center text-sm font-black tracking-widest"
+          <Link href={`/login?next=/brands/${slug}`} className="block w-full py-3.5 rounded-xl text-center text-sm font-black tracking-widest"
             style={{ background: `${accent}15`, border: `1px solid ${accent}40`, color: accent }}>
             LOG IN TO ACCESS
-          </a>
+          </Link>
         )}
         {dbUser && !hasEntitlement && !applied && (
           <button onClick={apply} disabled={applying}

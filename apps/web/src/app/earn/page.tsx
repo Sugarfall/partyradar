@@ -14,9 +14,7 @@ import {
   Calculator,
   Megaphone,
   Crown,
-  Gift,
   Star,
-  ChevronRight,
 } from 'lucide-react'
 
 /* ── Reusable section card ─────────────────────────────────────────────────── */
@@ -249,34 +247,38 @@ export default function EarnPage() {
         {/* ── For Referrers ──────────────────────────────────────────────── */}
         <SectionCard icon={Share2} title="For Referrers" accent="#ffd600">
           <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(224,242,254,0.55)' }}>
-            Share your unique referral code and earn from every conversion. Stack commissions across
-            multiple revenue streams.
+            Share your referral code and earn <span className="font-bold" style={{ color: '#ffd600' }}>10%</span> of
+            every pound the platform makes from someone you refer — for life. We take our fee, you keep 10% of it.
+            No caps. No expiry.
           </p>
           <div className="space-y-2.5">
             {[
-              { label: 'Ticket sales commission', value: '10%', icon: Ticket },
-              { label: 'Subscription revenue share', value: '15%', icon: Crown },
-              { label: 'Group membership cut', value: '10%', icon: Users },
-              { label: 'First purchase bonus', value: '\u00a31.00', icon: Gift },
+              { label: 'Share of platform revenue', value: '10%', icon: TrendingUp },
+              { label: 'Duration', value: 'Lifetime', icon: Crown },
+              { label: 'Counts on', value: 'Tickets, subs, groups, venue', icon: Ticket },
               { label: 'Minimum payout threshold', value: '\u00a35.00', icon: Wallet },
             ].map(({ label, value, icon: Icon }) => (
               <div
                 key={label}
-                className="flex items-center justify-between rounded-lg px-4 py-2.5"
+                className="flex items-center justify-between rounded-lg px-4 py-2.5 gap-3"
                 style={{ background: 'rgba(255,214,0,0.04)', border: '1px solid rgba(255,214,0,0.1)' }}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <Icon size={14} style={{ color: '#ffd600' }} />
-                  <span className="text-xs" style={{ color: 'rgba(224,242,254,0.6)' }}>
+                  <span className="text-xs truncate" style={{ color: 'rgba(224,242,254,0.6)' }}>
                     {label}
                   </span>
                 </div>
-                <span className="text-sm font-bold" style={{ color: '#ffd600' }}>
+                <span className="text-sm font-bold shrink-0" style={{ color: '#ffd600' }}>
                   {value}
                 </span>
               </div>
             ))}
           </div>
+          <p className="text-[11px] mt-4" style={{ color: 'rgba(224,242,254,0.4)' }}>
+            Example: your referral subscribes at <strong style={{ color: '#e0f2fe' }}>£9.99/mo</strong>.
+            You earn <strong style={{ color: '#ffd600' }}>£1.00/mo</strong> every month they stay subscribed.
+          </p>
         </SectionCard>
 
         {/* ── Wallet Rewards ─────────────────────────────────────────────── */}

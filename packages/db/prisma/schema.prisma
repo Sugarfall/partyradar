@@ -121,6 +121,14 @@ model User {
   subscriptionTier  SubscriptionTier @default(FREE)
   accountMode      AccountMode      @default(ATTENDEE)
   stripeCustomerId  String?
+  // Stripe Connect Express — for hosts that receive ticket revenue payouts.
+  // `chargesEnabled` + `payoutsEnabled` + `detailsSubmitted` are cached from
+  // Stripe's `account.updated` webhook so request handlers don't have to make
+  // an extra API call per checkout.
+  stripeConnectAccountId       String?
+  stripeConnectChargesEnabled  Boolean  @default(false)
+  stripeConnectPayoutsEnabled  Boolean  @default(false)
+  stripeConnectDetailsSubmitted Boolean @default(false)
   fcmToken          String?
   lastKnownLat      Float?
   lastKnownLng      Float?

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 
 import { api } from '@/lib/api'
+import { silent, logError } from '@/lib/logError'
 import { DEV_MODE } from '@/lib/firebase'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -170,7 +171,7 @@ function PostDetailModal({
   useEffect(() => {
     api.get<{ data: PostCommentData[] }>(`/posts/${post.id}/comments?limit=50`)
       .then((res) => setComments(res?.data ?? []))
-      .catch(() => {})
+      .catch(silent('feed:load-comments'))
       .finally(() => setLoadingComments(false))
   }, [post.id])
 
@@ -540,7 +541,7 @@ function PostCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUs
     try {
       await api.post('/reports', { contentType: 'post', contentId: item.id, reason: 'OTHER' })
       setReported(true)
-    } catch {}
+    } catch (err) { logError('feed:report-post', err) }
   }
 
   function openModal(e: React.MouseEvent) {
@@ -626,7 +627,7 @@ function PostCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUs
                   try {
                     await api.delete(`/posts/${item.id}`)
                     onDelete?.(item.id!)
-                  } catch {}
+                  } catch (err) { logError('feed:delete-post', err) }
                 }}
                 title="Delete post"
                 style={{ color: 'rgba(239,68,68,0.5)' }}

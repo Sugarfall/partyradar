@@ -9,11 +9,16 @@ import Navbar from '@/components/layout/Navbar'
 import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 import VenueAutoDiscover from '@/components/layout/VenueAutoDiscover'
+import ReferralCapture from '@/components/layout/ReferralCapture'
+import { ToastHost } from '@/components/ui/Toast'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'PartyRadar — Find Your Night',
+  title: {
+    default: 'PartyRadar — Find Your Night',
+    template: '%s · PartyRadar',
+  },
   description: 'Discover home parties, club nights, concerts, and celebrity sightings near you.',
   manifest: '/manifest.json',
   appleWebApp: {
@@ -24,6 +29,20 @@ export const metadata: Metadata = {
   icons: {
     apple: '/icons/icon-152.png',
   },
+  openGraph: {
+    type: 'website',
+    siteName: 'PartyRadar',
+    title: 'PartyRadar — Find Your Night',
+    description: 'Discover home parties, club nights, concerts, and celebrity sightings near you.',
+    images: [{ url: '/icons/icon-512.png', width: 512, height: 512, alt: 'PartyRadar' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'PartyRadar — Find Your Night',
+    description: 'Discover home parties, club nights, concerts, and celebrity sightings near you.',
+    images: ['/icons/icon-512.png'],
+  },
+  robots: { index: true, follow: true },
 }
 
 export const viewport: Viewport = {
@@ -45,12 +64,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} bg-bg-primary text-white min-h-screen`}>
         <AuthProvider>
           <LanguageProvider>
-            <ThemeProvider />
-            <Navbar />
-            <VenueAutoDiscover />
-            <main className="pt-14 min-h-screen">{children}</main>
-            <PWAInstallPrompt />
-            <SpeedInsights />
+            <ToastHost>
+              <ThemeProvider />
+              <Navbar />
+              <VenueAutoDiscover />
+              <ReferralCapture />
+              <main className="pt-14 min-h-screen">{children}</main>
+              <PWAInstallPrompt />
+              <SpeedInsights />
+            </ToastHost>
           </LanguageProvider>
         </AuthProvider>
 

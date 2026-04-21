@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth, optionalAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth, hasRole } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { getTier } from '@partyradar/shared'
@@ -202,7 +202,7 @@ router.get('/invite/:token', optionalAuth, async (req: AuthRequest, res, next) =
 router.get('/diagnostics', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!.dbUser
-    if (user.appRole !== 'ADMIN' && user.appRole !== 'MODERATOR' && !user.isAdmin) {
+    if (!hasRole(user, 'MODERATOR')) {
       throw new AppError('Admin or Moderator access required', 403)
     }
 
@@ -366,6 +366,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     // Paid events must have ticket quantity > 0
     if (body.price > 0 && body.ticketQuantity <= 0) {
       throw new AppError('Paid events must have a ticket quantity greater than 0', 400)
+    }
+
+    // Paid events require a connected Stripe account so funds can flow to the host.
+    if (body.price > 0) {
+      const connect = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { stripeConnectChargesEnabled: true },
+      })
+      if (!connect?.stripeConnectChargesEnabled) {
+        throw new AppError(
+          'Finish Stripe payout setup before publishing a paid event. Visit /payouts to connect.',
+          403,
+          'CONNECT_REQUIRED',
+        )
+      }
     }
 
     // startsAt must be in the future

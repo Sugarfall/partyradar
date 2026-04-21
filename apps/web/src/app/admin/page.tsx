@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { silent } from '@/lib/logError'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Shield, ShieldAlert, ShieldCheck, Users, Calendar, MessageSquare,
   Flag, Search, Ban, ChevronDown, Trash2, BarChart3, Crown,
@@ -138,16 +140,16 @@ function RoleBadge({ role, isAdmin }: { role: string; isAdmin: boolean }) {
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
   return (
     <div
-      className="rounded-2xl p-5 flex flex-col gap-3"
+      className="rounded-2xl p-3 sm:p-5 flex flex-col gap-2 sm:gap-3"
       style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-white/40 uppercase tracking-widest font-semibold">{label}</span>
-        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${color}15`, color }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] sm:text-xs text-white/40 uppercase tracking-widest font-semibold truncate">{label}</span>
+        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${color}15`, color }}>
           {icon}
         </div>
       </div>
-      <div className="text-3xl font-black" style={{ color }}>{value.toLocaleString()}</div>
+      <div className="text-2xl sm:text-3xl font-black" style={{ color }}>{value.toLocaleString()}</div>
     </div>
   )
 }
@@ -169,7 +171,8 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const { dbUser, loading } = useAuth()
+  const { dbUser, firebaseUser, loading } = useAuth()
+  const router = useRouter()
   const [tab, setTab] = useState<Tab>('stats')
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -198,24 +201,32 @@ export default function AdminPage() {
   const isStaff = dbUser?.appRole === 'ADMIN' || dbUser?.appRole === 'MODERATOR' || dbUser?.isAdmin
   const isAdmin = dbUser?.appRole === 'ADMIN' || dbUser?.isAdmin
 
+  // Redirect unauthenticated users to login (keeps the "Access Denied" branch
+  // reserved for authenticated non-staff users, which is the correct UX)
+  useEffect(() => {
+    if (!loading && !firebaseUser) {
+      router.replace('/login?next=/admin')
+    }
+  }, [loading, firebaseUser, router])
+
   // Load data per tab
   useEffect(() => {
     if (!isStaff) return
     if (tab === 'stats') {
-      api.get<{ data: Stats }>('/admin/stats').then((r) => setStats(r.data)).catch(() => {})
+      api.get<{ data: Stats }>('/admin/stats').then((r) => setStats(r.data)).catch(silent('admin:stats'))
     } else if (tab === 'users') {
-      api.get<{ data: AdminUser[] }>('/admin/users').then((r) => setUsers(r.data)).catch(() => {})
+      api.get<{ data: AdminUser[] }>('/admin/users').then((r) => setUsers(r.data)).catch(silent('admin:users'))
     } else if (tab === 'events') {
-      api.get<{ data: AdminEvent[] }>('/admin/events').then((r) => setEvents(r.data)).catch(() => {})
+      api.get<{ data: AdminEvent[] }>('/admin/events').then((r) => setEvents(r.data)).catch(silent('admin:events'))
     } else if (tab === 'groups') {
-      api.get<{ data: AdminGroup[] }>('/admin/groups').then((r) => setGroups(r.data)).catch(() => {})
+      api.get<{ data: AdminGroup[] }>('/admin/groups').then((r) => setGroups(r.data)).catch(silent('admin:groups'))
     } else if (tab === 'reports') {
-      api.get<{ data: AdminReport[] }>('/admin/reports').then((r) => setReports(r.data)).catch(() => {})
+      api.get<{ data: AdminReport[] }>('/admin/reports').then((r) => setReports(r.data)).catch(silent('admin:reports'))
     } else if (tab === 'moderation') {
-      api.get<{ data: ModerationLog[] }>('/admin/moderation-logs').then((r) => setModLogs(r.data)).catch(() => {})
-      api.get<{ data: ContentReport[] }>('/admin/content-reports').then((r) => setContentReports(r.data)).catch(() => {})
+      api.get<{ data: ModerationLog[] }>('/admin/moderation-logs').then((r) => setModLogs(r.data)).catch(silent('admin:moderation-logs'))
+      api.get<{ data: ContentReport[] }>('/admin/content-reports').then((r) => setContentReports(r.data)).catch(silent('admin:content-reports'))
     } else if (tab === 'pipeline') {
-      api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((r) => setDiagnostics(r.data)).catch(() => {})
+      api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((r) => setDiagnostics(r.data)).catch(silent('admin:diagnostics'))
     }
   }, [tab, isStaff])
 
@@ -309,7 +320,7 @@ export default function AdminPage() {
       setSyncResult(r.data)
       showToast(`Sync done — ${r.data.imported} imported`)
       // Refresh diagnostics
-      api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((d) => setDiagnostics(d.data)).catch(() => {})
+      api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((d) => setDiagnostics(d.data)).catch(silent('admin:diagnostics-refresh'))
     } catch (e: any) {
       showToast(e?.message ?? 'Sync failed', false)
     } finally {
@@ -412,7 +423,7 @@ export default function AdminPage() {
         {/* ── Stats tab ── */}
         {tab === 'stats' && stats && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
               <StatCard label="Active Users" value={stats.userCount} icon={<Users size={16} />} color="#00c8ff" />
               <StatCard label="Live Events" value={stats.eventCount} icon={<Calendar size={16} />} color="#a855f7" />
               <StatCard label="Groups" value={stats.groupCount} icon={<MessageSquare size={16} />} color="#f59e0b" />

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import Link from 'next/link'
 import Map, { Marker, NavigationControl, GeolocateControl, Source, Layer } from 'react-map-gl'
 import type { LayerProps } from 'react-map-gl'
 import useSWR from 'swr'
@@ -154,7 +155,7 @@ export default function RadarClient() {
               <Star size={32} className="text-party-gold mx-auto mb-3" fill="currentColor" />
               <h3 className="font-semibold mb-1">Sign in to use Radar</h3>
               <p className="text-zinc-400 text-sm mb-4">Report celebrity sightings and see what&apos;s happening near you</p>
-              <a href="/login" className="btn-primary text-sm inline-block">Sign in</a>
+              <Link href="/login?next=/radar" className="btn-primary text-sm inline-block">Sign in</Link>
             </div>
           </div>
         )}

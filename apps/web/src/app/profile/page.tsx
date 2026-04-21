@@ -13,6 +13,7 @@ import type { Gender } from '@partyradar/shared'
 
 import { api } from '@/lib/api'
 import { uploadImage } from '@/lib/cloudinary'
+import { loginHref } from '@/lib/authRedirect'
 
 // ── Follow List Modal (own profile) ─────────────────────────────────────────
 function FollowListModal({ username, mode, onClose }: {
@@ -606,7 +607,7 @@ export default function ProfilePage() {
 
   // Bug 5 fix: don't render an infinite spinner for logged-out users — redirect to login
   if (!dbUser) {
-    if (typeof window !== 'undefined') window.location.href = '/login'
+    if (typeof window !== 'undefined') window.location.href = loginHref('/profile')
     return null
   }
 

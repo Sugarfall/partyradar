@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -40,7 +41,7 @@ export default function PhoneVerifyPage() {
 
   if (!dbUser) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#07071a' }}>
-      <a href="/login" className="text-sm font-black" style={{ color: 'var(--accent)' }}>Log in first</a>
+      <Link href="/login?next=/phone-verify" className="text-sm font-black" style={{ color: 'var(--accent)' }}>Log in first</Link>
     </div>
   )
 
