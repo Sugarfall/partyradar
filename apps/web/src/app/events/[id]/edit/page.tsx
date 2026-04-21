@@ -412,7 +412,7 @@ export default function EditEventPage() {
             onClick={() => update({ showNeighbourhoodOnly: !form.showNeighbourhoodOnly })}>
             <div className="w-5 h-5 rounded flex items-center justify-center shrink-0"
               style={{ background: form.showNeighbourhoodOnly ? 'var(--accent)' : 'transparent', border: `2px solid ${form.showNeighbourhoodOnly ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)'}` }}>
-              {form.showNeighbourhoodOnly && <Check size={11} color="#04040d" strokeWidth={3} />}
+              {!!form.showNeighbourhoodOnly && <Check size={11} color="#04040d" strokeWidth={3} />}
             </div>
             <div>
               <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>Hide exact address from public</p>
@@ -526,7 +526,7 @@ export default function EditEventPage() {
           onClick={() => update({ isInviteOnly: !form.isInviteOnly })}>
           <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all"
             style={{ background: form.isInviteOnly ? 'var(--accent)' : 'transparent', border: `2px solid ${form.isInviteOnly ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)'}` }}>
-            {form.isInviteOnly && <Check size={11} color="#04040d" strokeWidth={3} />}
+            {!!form.isInviteOnly && <Check size={11} color="#04040d" strokeWidth={3} />}
           </div>
           <div>
             <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>Invite Only</p>
