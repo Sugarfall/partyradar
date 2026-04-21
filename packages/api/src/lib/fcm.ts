@@ -22,11 +22,23 @@ export async function sendNotification(opts: SendNotificationOptions) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { fcmToken: true } })
   if (!user?.fcmToken) return
 
+  const notifUrl = data?.eventId ? `/events/${data.eventId}` : '/discover'
+
   try {
     await messaging.send({
       token: user.fcmToken,
       notification: { title, body },
-      data: data ?? {},
+      data: { ...(data ?? {}), url: notifUrl },
+      webpush: {
+        notification: {
+          title,
+          body,
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-72.png',
+          vibrate: [200, 100, 200],
+        },
+        fcmOptions: { link: notifUrl },
+      },
     })
   } catch {
     // Token invalid — clear it

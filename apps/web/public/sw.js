@@ -52,17 +52,31 @@ self.addEventListener('fetch', (event) => {
   // If network fails, just let the browser handle it naturally
 })
 
-// Push notifications
+// Push notifications — handles both raw Web Push and Firebase Cloud Messaging formats
 self.addEventListener('push', (event) => {
-  const data = event.data?.json() ?? {}
+  let payload = {}
+  try { payload = event.data?.json() ?? {} } catch {}
+
+  // FCM wraps the payload as { notification: { title, body }, data: { url, ... } }
+  // Raw Web Push sends { title, body, url } at the top level
+  const notif   = payload.notification ?? payload
+  const extra   = payload.data ?? payload
+
+  const title   = notif.title || 'PartyRadar'
+  const body    = notif.body  || 'Something is happening near you'
+  const url     = extra.url   || payload.fcmOptions?.link || '/discover'
+  const eventId = extra.eventId
+
   event.waitUntil(
-    self.registration.showNotification(data.title || 'PartyRadar', {
-      body: data.body || 'Something is happening near you',
-      icon: '/icons/icon-192.png',
+    self.registration.showNotification(title, {
+      body,
+      icon:  '/icons/icon-192.png',
       badge: '/icons/icon-72.png',
-      data: { url: data.url || '/discover' },
+      tag:   eventId ? `event-${eventId}` : 'partyradar',
+      renotify: true,
+      data:  { url: eventId ? `/events/${eventId}` : url },
       actions: [
-        { action: 'view',    title: 'View Event' },
+        { action: 'view',    title: '⚡ View' },
         { action: 'dismiss', title: 'Dismiss' },
       ],
       vibrate: [200, 100, 200],

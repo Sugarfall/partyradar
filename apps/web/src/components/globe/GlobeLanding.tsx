@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { api } from '@/lib/api'
 import { Zap, Loader2, Eye, EyeOff, ChevronRight, Radio } from 'lucide-react'
 
 // SSR-safe dynamic import for react-globe.gl
@@ -37,9 +38,7 @@ const HOT_SPOTS = [
   { id: 20, lat: 37.774, lng: -122.419, label: 'San Francisco', events: 45, color: GREEN },
 ]
 
-const DEMO_PARTY_POINT = [
-  { id: 'party', lat: 51.5201, lng: -0.1020, label: 'WAREHOUSE RAVE — LONDON', events: 1, color: '#ff006e' }
-]
+// No demo point — real nearest event is fetched from the API after geolocation
 
 // Arcs between cities for visual flair
 const ARCS = [
@@ -71,6 +70,9 @@ export default function GlobeLanding() {
   const [globeReady, setGlobeReady] = useState(false)
   const [userLat, setUserLat] = useState(51.505)
   const [userLng, setUserLng] = useState(-0.09)
+  const [nearestEvent, setNearestEvent] = useState<{
+    id: string; name: string; neighbourhood?: string; price?: number; ticketsLeft?: number
+  } | null>(null)
 
   // Expose phase setter for dev preview
   useEffect(() => { (window as any).__setGlobePhase = setPhase }, [])
@@ -93,21 +95,33 @@ export default function GlobeLanding() {
     }
   }, [authLoading, dbUser])
 
+  const fetchNearestEvent = useCallback(async (lat: number, lng: number) => {
+    try {
+      const json = await api.get<{ data: Array<{ id: string; name: string; neighbourhood?: string; price?: number; ticketsLeft?: number }> }>(
+        `/events?lat=${lat}&lng=${lng}&radius=50&limit=1`
+      )
+      const first = json?.data?.[0]
+      if (first) setNearestEvent(first)
+    } catch { /* silent — just don't show the card */ }
+  }, [])
+
   const getLocationAndZoom = useCallback(() => {
     setPhase('zooming')
     navigator.geolocation?.getCurrentPosition(
       ({ coords }) => {
         setUserLat(coords.latitude)
         setUserLng(coords.longitude)
+        fetchNearestEvent(coords.latitude, coords.longitude)
         zoomToCoords(coords.latitude, coords.longitude)
       },
       () => {
-        // Fallback: zoom to nearest hotspot (Glasgow / London)
+        // Fallback to Glasgow — still try to fetch events there
+        fetchNearestEvent(55.861, -4.251)
         zoomToCoords(55.861, -4.251)
       },
       { timeout: 4000 }
     )
-  }, [])
+  }, [fetchNearestEvent, zoomToCoords])
 
   const zoomToCoords = useCallback((lat: number, lng: number) => {
     if (!globeRef.current) {
@@ -209,7 +223,7 @@ export default function GlobeLanding() {
     showAtmosphere: true,
 
     // Glowing dots at hotspots
-    pointsData: [...HOT_SPOTS, ...DEMO_PARTY_POINT],
+    pointsData: HOT_SPOTS,
     pointLat: 'lat',
     pointLng: 'lng',
     pointColor: 'color',
@@ -606,26 +620,37 @@ export default function GlobeLanding() {
               <div className="mt-4 h-px mx-auto w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.6), transparent)' }} />
             </div>
 
-            {/* Live party alert */}
-            <div
-              className="mb-6 rounded-2xl overflow-hidden"
-              style={{
-                border: '1px solid rgba(255,0,110,0.4)',
-                background: 'rgba(255,0,110,0.08)',
-                boxShadow: '0 0 20px rgba(255,0,110,0.1)',
-              }}
-            >
-              <div className="h-0.5" style={{ background: 'linear-gradient(90deg, transparent, #ff006e, transparent)' }} />
-              <div className="px-4 py-3.5 flex items-center gap-3">
-                <div className="text-2xl">🎉</div>
-                <div className="flex-1">
-                  <p className="text-[10px] font-black tracking-[0.2em]" style={{ color: '#ff006e' }}>PARTY DETECTED NEAR YOU</p>
-                  <p className="text-sm font-black mt-0.5" style={{ color: '#ffffff' }}>WAREHOUSE RAVE — LONDON</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>Farringdon · 187 tickets left · £15</p>
+            {/* Nearest real event — shown only when a live event was found */}
+            {nearestEvent && (
+              <button
+                onClick={() => router.push(`/events/${nearestEvent.id}`)}
+                className="w-full mb-6 rounded-2xl overflow-hidden text-left transition-all active:scale-[0.98]"
+                style={{
+                  border: '1px solid rgba(255,0,110,0.4)',
+                  background: 'rgba(255,0,110,0.08)',
+                  boxShadow: '0 0 20px rgba(255,0,110,0.1)',
+                }}
+              >
+                <div className="h-0.5" style={{ background: 'linear-gradient(90deg, transparent, #ff006e, transparent)' }} />
+                <div className="px-4 py-3.5 flex items-center gap-3">
+                  <div className="text-2xl">🎉</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black tracking-[0.2em]" style={{ color: '#ff006e' }}>PARTY DETECTED NEAR YOU</p>
+                    <p className="text-sm font-black mt-0.5 truncate" style={{ color: '#ffffff' }}>
+                      {nearestEvent.name.toUpperCase()}
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                      {[
+                        nearestEvent.neighbourhood,
+                        nearestEvent.ticketsLeft != null ? `${nearestEvent.ticketsLeft} tickets left` : null,
+                        nearestEvent.price === 0 ? 'Free entry' : nearestEvent.price != null ? `£${nearestEvent.price}` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <div className="w-2 h-2 rounded-full animate-ping shrink-0" style={{ background: '#ff006e' }} />
                 </div>
-                <div className="w-2 h-2 rounded-full animate-ping shrink-0" style={{ background: '#ff006e' }} />
-              </div>
-            </div>
+              </button>
+            )}
 
             {/* Choice cards */}
             <div className="grid grid-cols-2 gap-4">

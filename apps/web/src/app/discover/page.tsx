@@ -1598,9 +1598,6 @@ export default function DiscoverPage() {
   // (rare: means all three geo methods failed — we'll show Glasgow fallback within 5 s anyway)
   const gpsDenied = geoResolved && !locationReady
 
-  const [partyAlert, setPartyAlert] = useState<null | Event>(null)
-  const [alertDismissed, setAlertDismissed] = useState(false)
-
   // Reset index when events change
   useEffect(() => { setIndex(0) }, [events.length])
 
@@ -1641,15 +1638,6 @@ export default function DiscoverPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // Simulate host push notification after 2s
-  useEffect(() => {
-    if (alertDismissed) return
-    const t = setTimeout(() => {
-      setPartyAlert(events[1] ?? events[0] ?? null) // show rooftop house party
-    }, 2000)
-    return () => clearTimeout(t)
-  }, [events, alertDismissed])
-
   // Clamp index so a stale value never exceeds the new array length during the
   // one render before the setIndex(0) useEffect fires on events.length change.
   const safeIndex = events.length > 0 ? Math.min(index, events.length - 1) : 0
@@ -1670,60 +1658,6 @@ export default function DiscoverPage() {
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-
-      {/* ── Host push notification toast ── */}
-      {partyAlert && !alertDismissed && (
-        <div
-          className="fixed top-16 inset-x-0 z-50 flex justify-center px-3 pointer-events-none"
-          style={{ animation: 'slideDown 0.4s ease' }}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl overflow-hidden pointer-events-auto"
-            style={{
-              background: 'rgba(7,7,26,0.97)',
-              border: '1px solid rgba(255,0,110,0.4)',
-              boxShadow: '0 0 40px rgba(255,0,110,0.15), 0 8px 32px rgba(0,0,0,0.8)',
-              backdropFilter: 'blur(20px)',
-            }}
-          >
-            <div className="h-0.5" style={{ background: 'linear-gradient(90deg, transparent, #ff006e, transparent)' }} />
-            <div className="p-4">
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-lg animate-bounce"
-                  style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.3)' }}>
-                  🎉
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black tracking-[0.15em] mb-0.5" style={{ color: '#ff006e' }}>
-                    PARTY ALERT · NEARBY
-                  </p>
-                  <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>{partyAlert.name}</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.5)' }}>
-                    {partyAlert.neighbourhood} · {partyAlert.price === 0 ? 'Free entry' : formatPrice(partyAlert.price, currentCurrency)} · {partyAlert.guestCount ?? 0} going
-                  </p>
-                </div>
-                <button onClick={() => setAlertDismissed(true)} style={{ color: 'rgba(74,96,128,0.5)', flexShrink: 0 }}>
-                  ✕
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <Link href={`/events/${partyAlert.id}`}
-                  onClick={() => setAlertDismissed(true)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-black"
-                  style={{ background: 'rgba(255,0,110,0.12)', border: '1px solid rgba(255,0,110,0.4)', color: '#ff006e', letterSpacing: '0.1em' }}>
-                  ⚡ I'M INTERESTED
-                </Link>
-                <button
-                  onClick={() => setAlertDismissed(true)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold"
-                  style={{ border: '1px solid rgba(74,96,128,0.2)', color: 'rgba(74,96,128,0.5)', letterSpacing: '0.08em' }}>
-                  DISMISS
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Header bar ── */}
       <div
