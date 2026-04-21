@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Zap, Compass, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight, Menu, Shield } from 'lucide-react'
+import { Zap, Compass, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, MessageCircle, Gift, BarChart3, TrendingUp, UserPlus, Eye, Sparkles, Users, Heart, Wallet, ChevronRight, Menu, Shield, UsersRound } from 'lucide-react'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -18,8 +18,9 @@ const NAV = [
 
 // ── Mobile bottom tabs ───────────────────────────────────────────────────────
 const MOBILE_NAV = [
-  { href: '/discover', label: 'Discover', icon: Compass },
-  { href: '/nearby',   label: 'Nearby',   icon: Users   },
+  { href: '/discover', label: 'Discover',  icon: Compass     },
+  { href: '/nearby',   label: 'Nearby',    icon: Users       },
+  { href: '/squad',    label: 'Squad',     icon: UsersRound  },
 ]
 
 const NOTIF_ICONS: Record<string, React.ReactNode> = {
@@ -346,6 +347,11 @@ function NavbarInner() {
                           </Link>
                         </>
                       )}
+                      <Link href="/pricing" onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                        style={{ color: pathname.startsWith('/pricing') ? '#00e5ff' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <Sparkles size={15} /> Upgrade Plan
+                      </Link>
                       <Link href="/earn" onClick={() => setMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
                         style={{ color: pathname.startsWith('/earn') ? 'var(--accent)' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>

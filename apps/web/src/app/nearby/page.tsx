@@ -91,14 +91,14 @@ function PaidGate({ feature, icon, description }: {
         href="/pricing"
         className="w-full max-w-xs flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black tracking-widest transition-all"
         style={{
-          background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.2), rgba(var(--accent-rgb),0.08))',
-          border: '1px solid rgba(var(--accent-rgb),0.4)',
-          color: 'var(--accent)',
-          boxShadow: '0 0 20px rgba(var(--accent-rgb),0.1)',
-          letterSpacing: '0.15em',
+          background: 'linear-gradient(135deg, rgba(0,229,255,0.18), rgba(0,229,255,0.08))',
+          border: '1px solid rgba(0,229,255,0.4)',
+          color: '#00e5ff',
+          boxShadow: '0 0 20px rgba(0,229,255,0.1)',
+          letterSpacing: '0.12em',
         }}
       >
-        <Lock size={13} /> UNLOCK WITH BASIC — £4.99/mo
+        <Lock size={13} /> SEE PLANS — FROM £4.99/MO
       </Link>
 
       <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.2)' }}>

@@ -15,7 +15,7 @@ import blastRouter from './routes/blast'
 import eventsRouter from './routes/events'
 import guestsRouter from './routes/guests'
 import ticketsRouter from './routes/tickets'
-import radarRouter from './routes/radar'
+// radarRouter removed — feature discontinued
 import subscriptionsRouter from './routes/subscriptions'
 import notificationsRouter from './routes/notifications'
 import uploadsRouter from './routes/uploads'
@@ -321,7 +321,7 @@ app.use('/api/events', analyticsRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api/events/:id/guests', guestsRouter)
 app.use('/api/tickets', ticketsRouter)
-app.use('/api/radar', radarRouter)
+// /api/radar removed — feature discontinued
 app.use('/api/subscriptions', subscriptionsRouter)
 app.use('/api/notifications', notificationsRouter)
 app.use('/api/uploads', uploadsRouter)
