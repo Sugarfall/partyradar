@@ -284,8 +284,14 @@ interface HighlightPost {
   userId: string
   userName: string
   userPhoto?: string
-  imageUrl: string
+  imageUrl?: string
   caption?: string
+  text?: string
+  taggedVenueId?: string
+  taggedVenueName?: string
+  taggedEventId?: string
+  taggedEventName?: string
+  taggedUserIds?: string[]
   likes: number
   createdAt: string
 }
@@ -295,6 +301,10 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
   const [viewingIdx, setViewingIdx] = useState<number | null>(null)
   const [liked, setLiked] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
+  const [textMode, setTextMode] = useState(false)
+  const [textInput, setTextInput] = useState('')
+  const [tagInput, setTagInput] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
   const { dbUser } = useAuth()
   const scrollRef = useRef<HTMLDivElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -306,57 +316,47 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
       userId: p.userId ?? p.user?.id ?? '',
       userName: p.user?.displayName ?? 'User',
       userPhoto: p.user?.photoUrl ?? undefined,
-      imageUrl: p.imageUrl ?? '',
+      imageUrl: p.imageUrl ?? undefined,
       caption: p.text ?? undefined,
+      text: p.text ?? undefined,
       likes: p._count?.likes ?? 0,
       createdAt: p.createdAt,
     }
   }
 
   useEffect(() => {
-    // Fetch highlights from API — filter to image-only posts
-    api.get<{ data: any[] }>(`/posts/event/${event.id}?limit=20`)
+    // Fetch all posts for this event (images + text)
+    api.get<{ data: any[] }>(`/posts/event/${event.id}?limit=30`)
       .then(r => {
-        const mapped = (r?.data ?? []).filter((p) => p.imageUrl).map(mapPost)
-        if (mapped.length > 0) setHighlights(mapped)
-        else throw new Error('no images')
+        const mapped = (r?.data ?? []).map(mapPost)
+        setHighlights(mapped)
       })
-      .catch(() => {
-        // Demo highlights for dev mode
-        setHighlights([
-          {
-            id: 'h1', userId: 'u1', userName: 'Sophie L', userPhoto: undefined,
-            imageUrl: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&h=500&fit=crop&crop=center',
-            caption: 'The vibes tonight 🔥🔥', likes: 24,
-            createdAt: new Date(Date.now() - 1800000).toISOString(),
-          },
-          {
-            id: 'h2', userId: 'u2', userName: 'DJ Marco', userPhoto: undefined,
-            imageUrl: 'https://images.unsplash.com/photo-1571266028243-3716f02d2d74?w=400&h=500&fit=crop&crop=center',
-            caption: 'Behind the decks 🎧', likes: 41,
-            createdAt: new Date(Date.now() - 1200000).toISOString(),
-          },
-          {
-            id: 'h3', userId: 'u3', userName: 'Alex R', userPhoto: undefined,
-            imageUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=500&fit=crop&crop=center',
-            caption: 'Crowd going crazy', likes: 18,
-            createdAt: new Date(Date.now() - 600000).toISOString(),
-          },
-          {
-            id: 'h4', userId: 'u4', userName: 'Jamie K', userPhoto: undefined,
-            imageUrl: 'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=400&h=500&fit=crop&crop=center',
-            caption: 'Light show is insane 💡', likes: 33,
-            createdAt: new Date(Date.now() - 300000).toISOString(),
-          },
-          {
-            id: 'h5', userId: 'u5', userName: 'Mia Chen', userPhoto: undefined,
-            imageUrl: 'https://images.unsplash.com/photo-1504680177321-2e6a879aac86?w=400&h=500&fit=crop&crop=center',
-            caption: 'Best night out 🌙', likes: 12,
-            createdAt: new Date(Date.now() - 120000).toISOString(),
-          },
-        ])
-      })
+      .catch(() => {})
   }, [event.id])
+
+  async function handleDeletePost(postId: string) {
+    setDeleting(postId)
+    try {
+      await api.delete(`/posts/${postId}`)
+      setHighlights(prev => prev.filter(h => h.id !== postId))
+      if (viewingIdx !== null) setViewingIdx(null)
+    } catch {}
+    finally { setDeleting(null) }
+  }
+
+  async function handleTextPost() {
+    const text = textInput.trim()
+    if (!text || !dbUser) return
+    setUploading(true)
+    try {
+      const body: Record<string, unknown> = { eventId: event.id, text }
+      if (tagInput.trim()) body['taggedVenueName'] = tagInput.trim()
+      const res = await api.post<{ data: any }>('/posts', body)
+      if (res?.data) setHighlights(prev => [mapPost(res.data), ...prev])
+      setTextInput(''); setTagInput(''); setTextMode(false)
+    } catch {}
+    finally { setUploading(false) }
+  }
 
   function toggleLike(id: string) {
     setLiked(prev => {
@@ -376,7 +376,8 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
     return `${Math.floor(h / 24)}d ago`
   }
 
-  if (highlights.length === 0) return null
+  // Only hide the section entirely if there's no user logged in AND no posts
+  if (highlights.length === 0 && !dbUser) return null
 
   const viewing = viewingIdx !== null ? highlights[viewingIdx] : null
 
@@ -388,14 +389,49 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
             📸 HIGHLIGHTS OF THE NIGHT
           </p>
           <span className="text-[9px] font-bold" style={{ color: 'rgba(224,242,254,0.3)' }}>
-            {highlights.length} photos
+            {highlights.length} {highlights.length === 1 ? 'post' : 'posts'}
           </span>
         </div>
 
+        {/* Text post composer */}
+        {dbUser && textMode && (
+          <div className="mb-3 rounded-xl p-3 space-y-2"
+            style={{ background: `${color}06`, border: `1px solid ${color}20` }}>
+            <textarea
+              value={textInput}
+              onChange={e => setTextInput(e.target.value)}
+              placeholder="Share a vibe, memory, or shout-out from this event..."
+              maxLength={280}
+              rows={3}
+              className="w-full text-xs resize-none rounded-lg px-3 py-2 outline-none"
+              style={{ background: 'rgba(4,4,13,0.8)', border: `1px solid ${color}20`, color: '#e0f2fe', caretColor: color }}
+            />
+            <input
+              value={tagInput}
+              onChange={e => setTagInput(e.target.value)}
+              placeholder="@ Tag a venue, person or event (optional)"
+              className="w-full text-xs rounded-lg px-3 py-2 outline-none"
+              style={{ background: 'rgba(4,4,13,0.8)', border: `1px solid ${color}15`, color: '#e0f2fe' }}
+            />
+            <div className="flex gap-2">
+              <button onClick={handleTextPost} disabled={!textInput.trim() || uploading}
+                className="flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-widest disabled:opacity-40"
+                style={{ background: `${color}15`, border: `1px solid ${color}35`, color }}>
+                {uploading ? 'POSTING…' : 'POST'}
+              </button>
+              <button onClick={() => { setTextMode(false); setTextInput(''); setTagInput('') }}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold"
+                style={{ color: 'rgba(224,242,254,0.3)', border: '1px solid rgba(224,242,254,0.08)' }}>
+                CANCEL
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Horizontal scrolling story-style thumbnails */}
         <div ref={scrollRef} className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4">
-          {/* Upload button */}
-          {dbUser && (
+          {/* Upload buttons */}
+          {dbUser && !textMode && (
             <>
               <input
                 ref={photoInputRef}
@@ -416,46 +452,77 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
                   finally { setUploading(false) }
                 }}
               />
+              {/* Photo post */}
               <button
                 onClick={() => photoInputRef.current?.click()}
                 disabled={uploading}
                 className="shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl transition-opacity disabled:opacity-50"
-                style={{
-                  width: 80, height: 110,
-                  background: `${color}08`, border: `2px dashed ${color}30`,
-                }}>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
-                  style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
-                  <span style={{ color }}>{uploading ? '…' : '+'}</span>
-                </div>
+                style={{ width: 80, height: 110, background: `${color}08`, border: `2px dashed ${color}30` }}>
+                <span style={{ color, fontSize: 20 }}>{uploading ? '…' : '📸'}</span>
                 <span className="text-[8px] font-bold" style={{ color: `${color}60`, letterSpacing: '0.08em' }}>
-                  {uploading ? 'UPLOADING' : 'ADD'}
+                  {uploading ? 'UPLOADING' : 'PHOTO'}
                 </span>
+              </button>
+              {/* Text post */}
+              <button
+                onClick={() => setTextMode(true)}
+                className="shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl transition-opacity"
+                style={{ width: 80, height: 110, background: `${color}05`, border: `2px dashed ${color}20` }}>
+                <span style={{ color, fontSize: 20 }}>✍️</span>
+                <span className="text-[8px] font-bold" style={{ color: `${color}50`, letterSpacing: '0.08em' }}>TEXT</span>
               </button>
             </>
           )}
 
-          {/* Photo thumbnails */}
+          {/* Post thumbnails */}
+          {highlights.length === 0 && !dbUser && (
+            <div className="flex items-center justify-center w-full py-6">
+              <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.4)' }}>No posts yet — be the first!</p>
+            </div>
+          )}
           {highlights.map((h, i) => (
-            <button key={h.id} onClick={() => setViewingIdx(i)}
-              className="shrink-0 rounded-xl overflow-hidden relative group"
-              style={{ width: 80, height: 110 }}>
-              <img src={h.imageUrl} alt="" className="w-full h-full object-cover" />
-              {/* Gradient overlay */}
-              <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.7) 100%)' }} />
+            <div key={h.id} className="shrink-0 rounded-xl overflow-hidden relative group cursor-pointer"
+              style={{ width: 80, height: 110 }}
+              onClick={() => setViewingIdx(i)}>
+              {h.imageUrl ? (
+                <>
+                  <img src={h.imageUrl} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.7) 100%)' }} />
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center p-2"
+                  style={{ background: `${color}10`, border: `1px solid ${color}20` }}>
+                  <p className="text-[9px] text-center leading-tight font-bold line-clamp-4"
+                    style={{ color: '#e0f2fe' }}>{h.text}</p>
+                </div>
+              )}
               {/* User ring */}
               <div className="absolute top-1.5 left-1.5">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold"
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold overflow-hidden"
                   style={{ background: 'rgba(0,0,0,0.5)', border: `2px solid ${color}`, color: '#e0f2fe' }}>
-                  {h.userName[0]}
+                  {h.userPhoto
+                    ? <img src={h.userPhoto} alt="" className="w-full h-full object-cover" />
+                    : h.userName[0]}
                 </div>
               </div>
               {/* Bottom info */}
-              <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                <p className="text-[8px] font-bold truncate" style={{ color: '#fff' }}>{h.userName}</p>
-                <p className="text-[7px]" style={{ color: 'rgba(255,255,255,0.6)' }}>{timeAgo(h.createdAt)}</p>
-              </div>
-            </button>
+              {h.imageUrl && (
+                <div className="absolute bottom-1.5 left-1.5 right-1.5">
+                  <p className="text-[8px] font-bold truncate" style={{ color: '#fff' }}>{h.userName}</p>
+                  <p className="text-[7px]" style={{ color: 'rgba(255,255,255,0.6)' }}>{timeAgo(h.createdAt)}</p>
+                </div>
+              )}
+              {/* Delete own post */}
+              {dbUser?.id === h.userId && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeletePost(h.id) }}
+                  disabled={deleting === h.id}
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ background: 'rgba(255,0,110,0.8)' }}>
+                  <X size={10} color="#fff" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -474,21 +541,34 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold overflow-hidden"
                 style={{ background: `${color}20`, border: `2px solid ${color}`, color }}>
-                {viewing.userName[0]}
+                {viewing.userPhoto
+                  ? <img src={viewing.userPhoto} alt="" className="w-full h-full object-cover" />
+                  : viewing.userName[0]}
               </div>
               <div>
                 <p className="text-xs font-bold" style={{ color: '#fff' }}>{viewing.userName}</p>
                 <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{timeAgo(viewing.createdAt)}</p>
               </div>
             </div>
-            <button onClick={() => setViewingIdx(null)} style={{ color: 'rgba(255,255,255,0.7)', padding: 4 }}>
-              <X size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              {dbUser?.id === viewing.userId && (
+                <button
+                  onClick={() => handleDeletePost(viewing.id)}
+                  disabled={deleting === viewing.id}
+                  className="p-1.5 rounded-lg text-[9px] font-black"
+                  style={{ background: 'rgba(255,0,110,0.15)', border: '1px solid rgba(255,0,110,0.3)', color: '#ff006e' }}>
+                  {deleting === viewing.id ? '…' : '🗑'}
+                </button>
+              )}
+              <button onClick={() => setViewingIdx(null)} style={{ color: 'rgba(255,255,255,0.7)', padding: 4 }}>
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
-          {/* Image */}
+          {/* Image or Text post */}
           <div className="flex-1 flex items-center justify-center px-4 relative"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect()
@@ -499,12 +579,22 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
                 else setViewingIdx(viewingIdx + 1)
               }
             }}>
-            <img src={viewing.imageUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" />
+            {viewing.imageUrl ? (
+              <img src={viewing.imageUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" />
+            ) : (
+              <div className="w-full max-w-sm rounded-2xl p-6 text-center"
+                style={{ background: `${color}08`, border: `1px solid ${color}20` }}>
+                <p className="text-lg leading-relaxed font-medium" style={{ color: '#e0f2fe' }}>{viewing.text}</p>
+                {viewing.taggedVenueName && (
+                  <p className="text-xs mt-3" style={{ color: `${color}80` }}>📍 {viewing.taggedVenueName}</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Caption + actions */}
           <div className="px-4 py-4">
-            {viewing.caption && (
+            {viewing.imageUrl && viewing.caption && (
               <p className="text-sm mb-3" style={{ color: '#e0f2fe' }}>{viewing.caption}</p>
             )}
             <div className="flex items-center gap-4">
@@ -1446,15 +1536,20 @@ export default function EventDetailPage() {
         {/* Host row */}
         <div className="flex items-center gap-3 mb-6 p-3 rounded-xl"
           style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
-          {event.host.photoUrl ? (
-            <img src={event.host.photoUrl} alt="" className="w-10 h-10 rounded-lg object-cover"
-              style={{ border: `1px solid ${tc.color}40`, boxShadow: `0 0 8px ${tc.glow}` }} />
-          ) : (
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center font-black text-base"
-              style={{ background: `${tc.color}15`, border: `1px solid ${tc.color}40`, color: tc.color }}>
-              {event.host.displayName[0]}
-            </div>
-          )}
+          {(() => {
+            const isBot = event.host.username === 'partyradar' || event.host.displayName === 'PartyRadar Assistant'
+            const src = isBot ? '/icon.png' : event.host.photoUrl
+            return src ? (
+              <img src={src} alt="" className="w-10 h-10 rounded-lg object-cover"
+                style={{ border: `1px solid ${tc.color}40`, boxShadow: `0 0 8px ${tc.glow}` }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+            ) : (
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center font-black text-base"
+                style={{ background: `${tc.color}15`, border: `1px solid ${tc.color}40`, color: tc.color }}>
+                {event.host.displayName[0]}
+              </div>
+            )
+          })()}
           <div className="flex-1">
             <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{event.host.displayName}</p>
             {event.hostRating && (

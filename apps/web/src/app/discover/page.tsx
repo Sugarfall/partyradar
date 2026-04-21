@@ -119,7 +119,7 @@ function LockedEventListCard({ event, color, label }: { event: Event; color: str
         <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl"
           style={{ background: `${color}12`, border: `1px solid ${color}50` }}>
           <Lock size={13} style={{ color }} />
-          <span className="text-[9px] font-black tracking-widest" style={{ color }}>BASIC+ TO UNLOCK</span>
+          <span className="text-[9px] font-black tracking-widest" style={{ color }}>PRO+ TO UNLOCK</span>
         </div>
       </div>
     </Link>

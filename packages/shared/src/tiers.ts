@@ -99,13 +99,13 @@ export const TIERS: Record<TierName, TierConfig> = {
       'Match & message people',
       'See match distance',
       'Request DJ songs',
-      'View Yacht & Beach parties',
       'Buy tickets to paid events',
       'No ads',
+      'Upgrade to Pro for Yacht & Beach parties',
     ],
 
-    canViewYachtParties: true,
-    canViewBeachParties: true,
+    canViewYachtParties: false,
+    canViewBeachParties: false,
     canSeeProfileViewers: false,
     canRequestDJ: true,
     canSeeMatchDistance: true,
@@ -118,7 +118,7 @@ export const TIERS: Record<TierName, TierConfig> = {
     exclusiveEvents: false,
     noAds: true,
 
-    maxEventsPerMonth: 3,
+    maxEventsPerMonth: 2,
     maxGuestsPerEvent: 100,
     pushBlastsPerMonth: 0,
     featuredPlacement: false,
@@ -127,7 +127,7 @@ export const TIERS: Record<TierName, TierConfig> = {
     ticketSales: false,
 
     hostPerks: [
-      'Up to 3 events per month',
+      'Up to 2 events per month',
       'Up to 100 attendees per event',
       'Free RSVPs only',
       'Basic event listing',
@@ -144,6 +144,7 @@ export const TIERS: Record<TierName, TierConfig> = {
 
     perks: [
       'Everything in Basic',
+      'Yacht & Beach party access',
       'See who viewed your profile',
       'Host paid ticketed events',
       'See full guest list',

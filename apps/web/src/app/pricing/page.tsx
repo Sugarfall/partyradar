@@ -59,7 +59,6 @@ const ATTENDEE_PLANS: Plan[] = [
       'Match & message people',
       'See match distance',
       'Request DJ songs',
-      'Yacht & Beach party access',
       'Buy paid event tickets',
       'No ads',
     ],
@@ -75,6 +74,7 @@ const ATTENDEE_PLANS: Plan[] = [
     tagline: 'Level up your night',
     perks: [
       'Everything in Basic',
+      '🛥 Yacht & Beach party access',
       'See who viewed your profile',
       'Exclusive PRO-only events',
       'Priority in Nearby & Match',
@@ -120,6 +120,22 @@ const HOST_PLANS: Plan[] = [
       'Event page & photo upload',
     ],
     cta: 'Current plan',
+  },
+  {
+    tier: 'BASIC',
+    label: 'Basic Host',
+    emoji: '⚡',
+    price: 4.99,
+    color: '#00e5ff',
+    tagline: 'Start hosting',
+    perks: [
+      '2 events per month',
+      'Up to 100 attendees',
+      'Free RSVPs only',
+      'Event page & highlights',
+      'All attendee Basic perks included',
+    ],
+    cta: 'Start Basic Hosting',
   },
   {
     tier: 'PRO',

@@ -185,7 +185,11 @@ function HostsTab({ hosts }: { hosts: ApiHost[] }) {
           </div>
           <div className="text-right shrink-0">
             <p className="text-xs font-black" style={{ color: 'var(--accent)' }}>{host.eventCount}</p>
-            <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>events</p>
+            <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+              {host.username === 'partyradar' || host.displayName === 'PartyRadar Assistant'
+                ? 'TOTAL ON PLATFORM'
+                : 'events hosted'}
+            </p>
             {host.avgRating != null && (
               <p className="text-[9px] font-bold" style={{ color: '#ffd600' }}>★ {host.avgRating.toFixed(1)}</p>
             )}

@@ -1307,7 +1307,7 @@ export default function ProfilePage() {
               {dbUser.subscriptionTier === 'FREE' ? 'Upgrade for more events & radar access' : 'Your plan is active'}
             </p>
           </div>
-          <Link href="/subscriptions"
+          <Link href="/pricing"
             className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-lg shrink-0"
             style={{ color: tier.color, border: `1px solid ${tier.color}40`, background: `${tier.color}10`, letterSpacing: '0.08em' }}>
             {dbUser.subscriptionTier === 'FREE' ? 'UPGRADE' : 'MANAGE'} <ChevronRight size={11} />

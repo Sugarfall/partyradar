@@ -448,15 +448,54 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** DELETE /api/events/:id — cancel event */
+/** DELETE /api/events/:id — cancel event + refund all paid tickets */
 router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const event = await prisma.event.findUnique({ where: { id: String(req.params['id']) } })
+    const eventId = String(req.params['id'])
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, hostId: true, name: true, price: true },
+    })
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
+    // Cancel the event
     await prisma.event.update({ where: { id: event.id }, data: { isCancelled: true } })
-    res.json({ data: { success: true } })
+
+    // Refund wallet for all paid tickets on this event
+    let refundCount = 0
+    if (event.price > 0) {
+      const tickets = await prisma.ticket.findMany({
+        where: { eventId, scannedAt: null },
+        select: { id: true, userId: true, pricePaid: true },
+      })
+
+      for (const ticket of tickets) {
+        if (ticket.pricePaid <= 0) continue
+        const wallet = await prisma.wallet.findUnique({ where: { userId: ticket.userId } })
+        if (!wallet) continue
+        await prisma.$transaction([
+          prisma.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: { increment: ticket.pricePaid } },
+          }),
+          prisma.walletTransaction.create({
+            data: {
+              walletId:    wallet.id,
+              type:        'BONUS',
+              amount:      ticket.pricePaid,
+              balanceAfter: wallet.balance + ticket.pricePaid,
+              description: `Refund: Event cancelled — "${event.name.slice(0, 60)}"`,
+              status:      'COMPLETED',
+              eventId,
+            },
+          }),
+        ])
+        refundCount++
+      }
+    }
+
+    res.json({ data: { success: true, ticketsRefunded: refundCount } })
   } catch (err) {
     next(err)
   }

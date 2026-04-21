@@ -150,6 +150,15 @@ function NavbarInner() {
   const pathname = usePathname()
   const { dbUser } = useAuth()
   const { t } = useLanguage()
+  const [walletBalance, setWalletBalance] = useState<number | null>(null)
+
+  // Load wallet balance for bottom tab display
+  useEffect(() => {
+    if (!dbUser) return
+    api.get<{ data: { balance: number } }>('/wallet')
+      .then(r => setWalletBalance(r?.data?.balance ?? null))
+      .catch(() => {})
+  }, [dbUser?.id])
 
   // Mode is localStorage-first so it works without login and reacts instantly
   const [isHost, setIsHost] = useState(false)
@@ -466,7 +475,9 @@ function NavbarInner() {
             style={{ color: pathname.startsWith('/wallet') ? '#00ff88' : 'rgba(255,255,255,0.35)' }}>
             <Wallet size={16} strokeWidth={pathname.startsWith('/wallet') ? 2 : 1.5}
               style={pathname.startsWith('/wallet') ? { filter: 'drop-shadow(0 0 6px rgba(0,255,136,0.6))' } : undefined} />
-            <span className="text-[8px] font-medium tracking-tight leading-none">Wallet</span>
+            <span className="text-[8px] font-medium tracking-tight leading-none">
+              {dbUser && walletBalance !== null ? `£${walletBalance.toFixed(2)}` : 'Wallet'}
+            </span>
           </Link>
 
           {/* Profile */}

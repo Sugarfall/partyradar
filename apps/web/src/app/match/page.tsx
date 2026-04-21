@@ -233,15 +233,34 @@ export default function MatchPage() {
   const [tab, setTab] = useState<'swipe' | 'matches'>('swipe')
   const [matches, setMatches] = useState<MatchProfile[]>([])
   const [matchesLoading, setMatchesLoading] = useState(false)
+  const [isDemoMode, setIsDemoMode] = useState(false)
+
+  const DEMO_DECK: MatchProfile[] = [
+    { id: 'demo-1', displayName: 'Sophie L', username: 'sophie_l', photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=600&fit=crop&crop=face', bio: 'Love live music and late nights 🎶', interests: ['Drum & Bass', 'Festivals', 'Photography'], gender: 'FEMALE', distance: 0.4 },
+    { id: 'demo-2', displayName: 'Jake M', username: 'jakemalone', photoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=600&fit=crop&crop=face', bio: 'DJ & producer based in Glasgow. Always down for a night out', interests: ['House Music', 'Vinyl', 'Clubbing'], gender: 'MALE', distance: 0.8 },
+    { id: 'demo-3', displayName: 'Zara K', username: 'zara_k', photoUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=600&fit=crop&crop=face', bio: 'Party radar enthusiast 🎉 West End crew', interests: ['Techno', 'Art', 'Brunch'], gender: 'FEMALE', distance: 1.2 },
+    { id: 'demo-4', displayName: 'Liam R', username: 'liamr_music', photoUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=600&fit=crop&crop=face', bio: 'Music is life. Catch me at SWG3 most weekends', interests: ['Rave', 'Bass Music', 'Cycling'], gender: 'MALE', distance: 1.9 },
+    { id: 'demo-5', displayName: 'Mia C', username: 'mia_chen', photoUrl: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=600&fit=crop&crop=face', bio: 'Adventure seeker & night owl 🌙 Tell me your playlist', interests: ['Indie', 'Yoga', 'Travel'], gender: 'FEMALE', distance: 2.3 },
+  ]
 
   async function loadDeck() {
     setLoading(true)
     setOutOfCards(false)
     try {
       const j = await api.get<{ data: MatchProfile[] }>('/match/deck')
-      setDeck(j?.data ?? [])
-      if ((j?.data ?? []).length === 0) setOutOfCards(true)
-    } catch {}
+      const data = j?.data ?? []
+      if (data.length > 0) {
+        setDeck(data)
+        setIsDemoMode(false)
+      } else {
+        // Show demo deck so users can see how the feature works
+        setDeck(DEMO_DECK)
+        setIsDemoMode(true)
+      }
+    } catch {
+      setDeck(DEMO_DECK)
+      setIsDemoMode(true)
+    }
     setLoading(false)
   }
 
@@ -324,6 +343,14 @@ export default function MatchPage() {
       {/* Swipe tab */}
       {tab === 'swipe' && (
         <div className="max-w-lg mx-auto px-4">
+          {isDemoMode && !loading && deck.length > 0 && (
+            <div className="mb-3 px-3 py-2 rounded-xl text-center"
+              style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.18)' }}>
+              <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,0,110,0.5)' }}>
+                👁 DEMO PREVIEW — These are example profiles. Real users will appear once more people join nearby.
+              </p>
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center h-96">
               <div className="w-10 h-10 rounded-full border-2 animate-spin"

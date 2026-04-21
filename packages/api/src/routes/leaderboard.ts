@@ -10,7 +10,6 @@ router.get('/hosts', async (_req, res, next) => {
   try {
     const hosts = await prisma.event.groupBy({
       by: ['hostId'],
-      where: { isPublished: true, isCancelled: false },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
       take: 50,
@@ -28,7 +27,7 @@ router.get('/hosts', async (_req, res, next) => {
     // Fetch average rating per host from their events
     const ratings = await prisma.event.groupBy({
       by: ['hostId'],
-      where: { hostId: { in: hostIds }, hostRating: { not: null } },
+      where: { hostId: { in: hostIds }, hostRating: { not: null }, isPublished: true, isCancelled: false },
       _avg: { hostRating: true },
     })
     const ratingMap = new Map(ratings.map((r) => [r.hostId, r._avg.hostRating]))
