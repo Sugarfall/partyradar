@@ -47,6 +47,7 @@ import brandsRouter from './routes/partner-brands'
 import referralCardsRouter from './routes/referral-cards'
 import matchRouter from './routes/match'
 import squadsRouter from './routes/squads'
+import pubCrawlRouter from './routes/pubcrawl'
 import goOutRouter from './routes/go-out'
 import reportsRouter from './routes/reports'
 import spotifyRouter from './routes/spotify'
@@ -352,6 +353,7 @@ app.use('/api/brands', brandsRouter)
 app.use('/api/referral-cards', referralCardsRouter)
 app.use('/api/match', matchRouter)
 app.use('/api/squads', squadsRouter)
+app.use('/api/pub-crawl', pubCrawlRouter)
 app.use('/api/go-out', goOutRouter)
 app.use('/api/reports', reportsRouter)
 app.use('/api/spotify', spotifyRouter)
