@@ -139,7 +139,12 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
         include: {
           host: { select: userSelect },
-          _count: { select: { guests: { where: { status: 'CONFIRMED' } } } },
+          _count: {
+            select: {
+              guests: { where: { status: 'CONFIRMED' } },
+              savedBy: true,
+            },
+          },
         },
       }),
       prisma.event.count({ where }),
@@ -150,6 +155,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       // Hide exact address for neighbourhood-only events
       address: e.showNeighbourhoodOnly && !req.user ? e.neighbourhood : e.address,
       guestCount: e._count.guests,
+      savesCount: e._count.savedBy,
     }))
 
     res.json({ data, total, page: Number(page), limit: Number(limit), hasMore: skip + data.length < total })
@@ -292,7 +298,12 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
       where: { id: String(req.params['id']) },
       include: {
         host: { select: userSelect },
-        _count: { select: { guests: { where: { status: 'CONFIRMED' } } } },
+        _count: {
+          select: {
+            guests: { where: { status: 'CONFIRMED' } },
+            savedBy: true,
+          },
+        },
       },
     })
 
@@ -312,7 +323,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
     // Note: alcohol filter applies to *discovery listings*, not direct event links.
     // Removing it here so authenticated users can always view a specific event.
 
-    res.json({ data: { ...event, guestCount: event._count.guests } })
+    res.json({ data: { ...event, guestCount: event._count.guests, savesCount: event._count.savedBy } })
   } catch (err) {
     next(err)
   }

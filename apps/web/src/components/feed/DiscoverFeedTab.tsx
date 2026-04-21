@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Heart, Flag, Camera, X, ImagePlus, MapPin, Calendar, Zap, Clock, Video } from 'lucide-react'
+import { Heart, Flag, Camera, X, ImagePlus, MapPin, Calendar, Zap, Video } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import { uploadImage, uploadVideo, isVideoUrl } from '@/lib/cloudinary'
@@ -54,16 +54,10 @@ interface FeedItem {
   createdAt: string
 }
 
-interface Story {
+interface NearbyVenue {
   id: string
-  userId: string
-  imageUrl?: string | null
-  text?: string | null
-  expiresAt: string
-  createdAt: string
-  user: FeedUser
-  event?: FeedEvent | null
-  venue?: FeedVenue | null
+  name: string
+  type: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -105,113 +99,6 @@ function Avatar({ user, size = 36 }: { user: { displayName: string; photoUrl?: s
   )
 }
 
-// ─── Story Ring ───────────────────────────────────────────────────────────────
-
-function StoryRing({ story, onClick }: { story: Story; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="flex flex-col items-center gap-1.5 shrink-0">
-      <div
-        className="rounded-full p-0.5"
-        style={{ background: 'linear-gradient(135deg, #ec4899, #f97316, #fbbf24)' }}
-      >
-        <div className="rounded-full p-0.5" style={{ background: '#07071a' }}>
-          <Avatar user={story.user} size={44} />
-        </div>
-      </div>
-      <span className="text-[9px] font-bold text-white/50 max-w-[48px] truncate text-center">
-        {story.user.displayName.split(' ')[0]}
-      </span>
-    </button>
-  )
-}
-
-// ─── Story Viewer ─────────────────────────────────────────────────────────────
-
-function StoryViewer({ story, onClose }: { story: Story; onClose: () => void }) {
-  const [progress, setProgress] = useState(0)
-  const isVideo = story.imageUrl ? isVideoUrl(story.imageUrl) : false
-
-  useEffect(() => {
-    if (isVideo) return // videos auto-advance via onEnded
-    const start = Date.now()
-    const duration = 5000
-    const tick = () => {
-      const p = Math.min((Date.now() - start) / duration, 1)
-      setProgress(p)
-      if (p < 1) requestAnimationFrame(tick)
-      else onClose()
-    }
-    const raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [onClose, isVideo])
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col"
-      style={{ background: '#000' }}
-      onClick={onClose}
-    >
-      {/* Progress bar */}
-      <div className="absolute top-0 left-0 right-0 z-10 px-3 pt-3">
-        <div className="h-0.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.2)' }}>
-          <div className="h-full rounded-full" style={{ background: '#fff', width: `${progress * 100}%`, transition: 'none' }} />
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="absolute top-6 left-0 right-0 z-10 flex items-center gap-2 px-4 pt-2">
-        <Avatar user={story.user} size={32} />
-        <div>
-          <p className="text-xs font-bold text-white">{story.user.displayName}</p>
-          <p className="text-[10px] text-white/50">{timeAgo(story.createdAt)}</p>
-        </div>
-        <button onClick={onClose} className="ml-auto">
-          <X size={20} style={{ color: 'rgba(255,255,255,0.7)' }} />
-        </button>
-      </div>
-
-      {/* Content */}
-      {story.imageUrl && isVideo ? (
-        <video
-          src={story.imageUrl}
-          className="w-full h-full object-cover"
-          autoPlay
-          playsInline
-          muted={false}
-          onEnded={onClose}
-          onClick={e => e.stopPropagation()}
-        />
-      ) : story.imageUrl ? (
-        <img src={story.imageUrl} alt="" className="w-full h-full object-cover" />
-      ) : (
-        <div className="flex-1 flex items-center justify-center px-8">
-          <p className="text-white text-xl font-bold text-center leading-relaxed">{story.text}</p>
-        </div>
-      )}
-      {story.text && story.imageUrl && (
-        <div className="absolute bottom-16 left-0 right-0 px-6">
-          <p className="text-white text-lg font-bold text-center leading-relaxed"
-            style={{ textShadow: '0 2px 12px rgba(0,0,0,0.9)' }}>
-            {story.text}
-          </p>
-        </div>
-      )}
-
-      {/* Event/Venue tag */}
-      {(story.event || story.venue) && (
-        <div className="absolute bottom-6 left-0 right-0 flex justify-center">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.15)' }}>
-            <MapPin size={10} style={{ color: 'rgba(255,255,255,0.6)' }} />
-            <span className="text-[11px] font-semibold text-white/80">
-              {story.event?.name ?? story.venue?.name}
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Post Card ────────────────────────────────────────────────────────────────
 
@@ -422,10 +309,34 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
   const [mediaFile, setMediaFile] = useState<File | null>(null)
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
-  const [isStory, setIsStory] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // ── Venue location tagging ────────────────────────────────────────────────
+  const [nearbyVenues, setNearbyVenues] = useState<NearbyVenue[]>([])
+  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null)
+  const [locLoading, setLocLoading] = useState(false)
+
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    setLocLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        try {
+          const res = await api.get<{ data: NearbyVenue[] }>(
+            `/venues?lat=${coords.latitude}&lng=${coords.longitude}&radius=1&limit=5`
+          )
+          const venues = res.data ?? []
+          setNearbyVenues(venues)
+          if (venues.length > 0) setSelectedVenueId(venues[0]!.id)
+        } catch {}
+        setLocLoading(false)
+      },
+      () => setLocLoading(false),
+      { timeout: 6000, maximumAge: 60000 }
+    )
+  }, [])
 
   function pickMedia(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -454,7 +365,12 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
           ? await uploadVideo(mediaFile, 'sightings')
           : await uploadImage(mediaFile, 'sightings')
       }
-      await api.post('/posts', { text: text.trim() || undefined, imageUrl, isStory })
+      await api.post('/posts', {
+        text: text.trim() || undefined,
+        imageUrl,
+        isStory: false,
+        venueId: selectedVenueId ?? undefined,
+      })
       onPosted()
       onClose()
     } catch (e: unknown) {
@@ -462,6 +378,11 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
     } finally {
       setUploading(false)
     }
+  }
+
+  const venueTypeEmoji: Record<string, string> = {
+    NIGHTCLUB: '🎧', BAR: '🍸', PUB: '🍺',
+    LOUNGE: '🛋️', ROOFTOP_BAR: '🌆', CONCERT_HALL: '🎵',
   }
 
   return (
@@ -505,7 +426,7 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
         )}
 
         {/* Text input */}
-        <div className="px-5 mb-4">
+        <div className="px-5 mb-3">
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
@@ -521,6 +442,44 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
           </div>
         </div>
 
+        {/* Venue location chips */}
+        {(locLoading || nearbyVenues.length > 0) && (
+          <div className="px-5 mb-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <MapPin size={10} style={{ color: 'rgba(0,200,255,0.5)' }} />
+              <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,200,255,0.4)' }}>
+                TAG LOCATION
+              </span>
+            </div>
+            {locLoading ? (
+              <div className="flex items-center gap-1.5">
+                <div className="h-6 w-24 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <div className="h-6 w-20 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {nearbyVenues.map(v => {
+                  const selected = selectedVenueId === v.id
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelectedVenueId(selected ? null : v.id)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
+                      style={selected
+                        ? { background: 'rgba(0,200,255,0.15)', color: 'var(--accent)', border: '1px solid rgba(0,200,255,0.4)' }
+                        : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }
+                      }
+                    >
+                      <span>{venueTypeEmoji[v.type] ?? '📍'}</span>
+                      {v.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Error */}
         {error && <p className="px-5 pb-3 text-xs font-semibold" style={{ color: '#ef4444' }}>{error}</p>}
 
@@ -535,19 +494,6 @@ function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: ()
             <ImagePlus size={16} style={{ color: 'rgba(255,255,255,0.5)' }} />
           </button>
           <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={pickMedia} />
-
-          {/* Story toggle */}
-          <button
-            onClick={() => setIsStory(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all"
-            style={isStory
-              ? { background: 'rgba(236,72,153,0.15)', color: '#ec4899', border: '1px solid rgba(236,72,153,0.35)' }
-              : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.08)' }
-            }
-          >
-            <Clock size={12} />
-            25H STORY
-          </button>
 
           {/* Post button */}
           <button
@@ -573,11 +519,9 @@ interface Props {
 
 export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   const [items, setItems] = useState<FeedItem[]>([])
-  const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set())
-  const [viewingStory, setViewingStory] = useState<Story | null>(null)
   const [composing, setComposing] = useState(false)
   const loadedRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -585,15 +529,11 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const [feedRes, storiesRes] = await Promise.all([
-        api.get<{ data: FeedItem[] }>('/feed/discover'),
-        isLoggedIn ? api.get<{ data: Story[] }>('/posts/stories').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-      ])
+      const feedRes = await api.get<{ data: FeedItem[] }>('/feed/discover')
       setItems(feedRes.data ?? [])
-      setStories((storiesRes as { data: Story[] }).data ?? [])
     } catch {}
     if (!silent) setLoading(false)
-  }, [isLoggedIn])
+  }, [])
 
   useEffect(() => {
     if (loadedRef.current) return
@@ -644,14 +584,6 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   if (loading) {
     return (
       <div className="flex-1 overflow-y-auto">
-        <div className="flex gap-4 px-4 py-4 overflow-x-auto no-scrollbar" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="flex flex-col items-center gap-1.5 shrink-0">
-              <div className="w-14 h-14 rounded-full animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />
-              <div className="w-10 h-2 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
-            </div>
-          ))}
-        </div>
         {[...Array(3)].map((_, i) => (
           <div key={i} className="px-4 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
             <div className="flex items-center gap-3 mb-3">
@@ -675,43 +607,6 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
       <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20">
-
-        {/* ── Stories Row ─────────────────────────────────────────────────── */}
-        {(stories.length > 0 || isLoggedIn) && (
-          <div
-            className="flex items-center gap-4 px-4 py-4 overflow-x-auto no-scrollbar"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.2)' }}
-          >
-            {/* Your story / add story */}
-            {isLoggedIn && dbUser && (
-              <button
-                onClick={() => setComposing(true)}
-                className="flex flex-col items-center gap-1.5 shrink-0"
-              >
-                <div className="relative">
-                  <div className="rounded-full p-0.5" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                    <Avatar user={dbUser} size={44} />
-                  </div>
-                  <div
-                    className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center"
-                    style={{ background: 'linear-gradient(135deg, #ec4899, #f97316)', border: '2px solid #07071a' }}
-                  >
-                    <span className="text-white font-black" style={{ fontSize: 11, lineHeight: 1 }}>+</span>
-                  </div>
-                </div>
-                <span className="text-[9px] font-bold text-white/40">Your story</span>
-              </button>
-            )}
-
-            {stories.map(story => (
-              <StoryRing key={story.id} story={story} onClick={() => setViewingStory(story)} />
-            ))}
-
-            {stories.length === 0 && isLoggedIn && (
-              <p className="text-[10px] text-white/20 italic ml-2">No stories yet — be the first 🎉</p>
-            )}
-          </div>
-        )}
 
         {/* ── Feed Stats bar ───────────────────────────────────────────────── */}
         {allItems.length > 0 && (
@@ -789,11 +684,6 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
         >
           <Camera size={20} style={{ color: '#fff' }} />
         </button>
-      )}
-
-      {/* ── Story viewer ────────────────────────────────────────────────── */}
-      {viewingStory && (
-        <StoryViewer story={viewingStory} onClose={() => setViewingStory(null)} />
       )}
 
       {/* ── Compose modal ───────────────────────────────────────────────── */}

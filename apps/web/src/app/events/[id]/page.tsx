@@ -243,10 +243,9 @@ function EventHighlights({ event, color }: { event: any; color: string }) {
     highlights.push({ icon: Sparkles, text: 'Free entry — no ticket needed' })
   }
 
-  // Capacity vibe
-  const pct = Math.round(((event.guestCount ?? 0) / event.capacity) * 100)
-  if (pct >= 80) highlights.push({ icon: Zap, text: 'Almost sold out — grab your spot!' })
-  else if (pct >= 50) highlights.push({ icon: Users, text: `${event.guestCount} people going — filling up fast` })
+  // Going / interest vibe
+  if ((event.guestCount ?? 0) >= 50) highlights.push({ icon: Zap, text: 'Very popular — lots of people going!' })
+  else if ((event.guestCount ?? 0) >= 10) highlights.push({ icon: Users, text: `${event.guestCount} people going` })
 
   // Lineup
   if ((event as any).lineup) highlights.push({ icon: Music, text: (event as any).lineup })
@@ -981,7 +980,7 @@ export default function EventDetailPage() {
           <MetaCell icon={MapPin} label="LOCATION" value={event.showNeighbourhoodOnly ? event.neighbourhood : (event.address ?? event.neighbourhood)} color={tc.color} />
           <MetaCell icon={Wine} label="ALCOHOL" value={ALCOHOL_POLICY_LABELS[event.alcoholPolicy] ?? event.alcoholPolicy} color={tc.color} />
           <MetaCell icon={ShieldCheck} label="AGE POLICY" value={AGE_RESTRICTION_LABELS[event.ageRestriction] ?? event.ageRestriction} color={tc.color} />
-          <MetaCell icon={Users} label="CAPACITY" value={`${event.guestCount ?? 0} / ${event.capacity} spots`} color={tc.color} />
+          <MetaCell icon={Users} label="GOING" value={`${event.guestCount ?? 0} ${(event.guestCount ?? 0) === 1 ? 'person' : 'people'}`} color={tc.color} />
         </div>
 
         {/* Quick actions row */}
@@ -1004,29 +1003,23 @@ export default function EventDetailPage() {
           </button>
         </div>
 
-        {/* Capacity bar */}
-        <div className="mb-6 p-4 rounded-xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <Users size={11} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
-              <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>CAPACITY</span>
-            </div>
-            <span className="text-xs font-black" style={{ color: isFull ? '#ff006e' : '#e0f2fe' }}>
-              {event.guestCount ?? 0} / {event.capacity}
-              {isFull && <span className="ml-2 text-[9px] tracking-widest" style={{ color: '#ff006e' }}>FULL</span>}
-            </span>
+        {/* Interested / Going social stats */}
+        {((event.guestCount ?? 0) > 0 || (event as any).savesCount > 0) && (
+          <div className="mb-6 p-4 rounded-xl flex items-center gap-6" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+            {(event as any).savesCount > 0 && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xl font-black" style={{ color: '#ffd600' }}>{(event as any).savesCount}</span>
+                <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>INTERESTED</span>
+              </div>
+            )}
+            {(event.guestCount ?? 0) > 0 && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xl font-black" style={{ color: tc.color }}>{event.guestCount ?? 0}</span>
+                <span className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>GOING</span>
+              </div>
+            )}
           </div>
-          <div className="h-1.5 rounded-full" style={{ background: 'rgba(var(--accent-rgb),0.08)' }}>
-            <div
-              className="h-1.5 rounded-full transition-all duration-700"
-              style={{
-                width: `${Math.min(100, capacityPct)}%`,
-                background: capacityPct > 80 ? '#ff006e' : capacityPct > 50 ? '#ffd600' : tc.color,
-                boxShadow: `0 0 8px ${capacityPct > 80 ? 'rgba(255,0,110,0.5)' : `${tc.color}`}`,
-              }}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Event highlights */}
         <EventHighlights event={event} color={tc.color} />

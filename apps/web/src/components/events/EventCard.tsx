@@ -199,9 +199,19 @@ export function EventCard({ event, compact = false }: EventCardProps) {
             >
               {formatPrice(event.price)}
             </span>
-            <span className="text-[10px] flex items-center gap-0.5" style={{ color: 'rgba(74,96,128,0.7)' }}>
-              <Users size={9} />
-              {event.guestCount ?? 0}/{event.capacity}
+            <span className="text-[10px] flex items-center gap-2" style={{ color: 'rgba(74,96,128,0.7)' }}>
+              {(event as any).savesCount > 0 && (
+                <span className="flex items-center gap-0.5">
+                  <Star size={8} />
+                  {(event as any).savesCount}
+                </span>
+              )}
+              {(event.guestCount ?? 0) > 0 && (
+                <span className="flex items-center gap-0.5">
+                  <Users size={9} />
+                  {event.guestCount ?? 0} going
+                </span>
+              )}
             </span>
           </div>
 

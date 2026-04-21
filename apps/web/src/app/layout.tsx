@@ -8,6 +8,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext'
 import Navbar from '@/components/layout/Navbar'
 import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
+import VenueAutoDiscover from '@/components/layout/VenueAutoDiscover'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <LanguageProvider>
             <ThemeProvider />
             <Navbar />
+            <VenueAutoDiscover />
             <main className="pt-14 min-h-screen">{children}</main>
             <PWAInstallPrompt />
             <SpeedInsights />
