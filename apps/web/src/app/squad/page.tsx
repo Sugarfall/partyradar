@@ -482,7 +482,7 @@ export default function SquadPage() {
             </p>
           </div>
 
-          <ChevronRight size={16} style={{ color: 'rgba(var(--accent-rgb),0.4)', shrink: 0 }} />
+          <ChevronRight size={16} style={{ color: 'rgba(var(--accent-rgb),0.4)', flexShrink: 0 }} />
         </Link>
       </div>
 
