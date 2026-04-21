@@ -16,20 +16,40 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}` }
 }
 
+/** Thrown when fetch itself fails (network down, CORS rejected, DNS, etc.).
+ *  Callers can distinguish network failures from HTTP errors by instanceof check.
+ */
+export class NetworkError extends Error {
+  constructor(public readonly path: string, cause?: unknown) {
+    super(`Network error reaching API (${path}). Check your connection — if you're on the live site this usually means the API is unreachable or CORS is blocking the request.`)
+    this.name = 'NetworkError'
+    if (cause) (this as any).cause = cause
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const authHeader = await getAuthHeader()
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    cache: 'no-store',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeader,
-      ...(options.headers as Record<string, string> ?? {}),
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader,
+        ...(options.headers as Record<string, string> ?? {}),
+      },
+    })
+  } catch (err) {
+    // fetch only throws on network/CORS/DNS failures — never on HTTP error
+    // codes. Rethrow with context so the UI can show something useful instead
+    // of the bare "Failed to fetch" that browsers produce by default.
+    console.error(`[api] ${options.method ?? 'GET'} ${path} — network/CORS failure`, err)
+    throw new NetworkError(path, err)
+  }
 
   // Bug 1 fix: guard against non-JSON bodies (e.g. Railway/Cloudflare 502 HTML pages)
   const text = await res.text()
@@ -57,11 +77,17 @@ export const api = {
 
 export async function fetcher(path: string) {
   const authHeader = await getAuthHeader()
-  const res = await fetch(`${API_URL}${path}`, {
-    // Bug 10 fix: disable browser cache so SWR always gets fresh data (e.g. scanned tickets)
-    cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', ...authHeader },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      // Bug 10 fix: disable browser cache so SWR always gets fresh data (e.g. scanned tickets)
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+    })
+  } catch (err) {
+    console.error(`[fetcher] GET ${path} — network/CORS failure`, err)
+    throw new NetworkError(path, err)
+  }
   const text = await res.text()
   let data: any
   try { data = JSON.parse(text) } catch { data = { error: text || 'Fetch failed' } }

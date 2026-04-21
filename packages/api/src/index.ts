@@ -707,6 +707,29 @@ function checkEnvVars() {
       console.warn(`\n⚠️  [Startup] Missing payment env vars (Stripe disabled): ${missingPayment.join(', ')}\n`)
     }
   }
+
+  // Discovery env vars — NOT fatal (the app still works without them, just
+  // with an empty venue/event list) but we surface them loudly because an
+  // empty "nothing near you" state otherwise looks like a bug to the user.
+  if (!process.env['GOOGLE_PLACES_API_KEY']) {
+    console.warn(
+      '⚠️  [Startup] GOOGLE_PLACES_API_KEY is not set — venue discovery will ' +
+      'return only venues already in the DB. Set it to unlock real-time ' +
+      'Google Places lookups.',
+    )
+  }
+  const eventSourceKeys = [
+    'TICKETMASTER_API_KEY', 'SKIDDLE_API_KEY', 'EVENTBRITE_PRIVATE_TOKEN',
+    'SERPAPI_KEY', 'PERPLEXITY_API_KEY',
+  ]
+  const anyEventSource = eventSourceKeys.some((k) => process.env[k])
+  if (!anyEventSource) {
+    console.warn(
+      `⚠️  [Startup] No event source keys configured (${eventSourceKeys.join(', ')}). ` +
+      'Event lists will only show whatever is already in the DB. Set at least ' +
+      'one of these to auto-populate events from external sources.',
+    )
+  }
 }
 
 checkEnvVars()
