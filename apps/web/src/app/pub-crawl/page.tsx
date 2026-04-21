@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import {
   Beer, Users, Clock, MapPin, Zap, ChevronRight,
   Navigation, Loader2, Sparkles, ArrowRight, Star,
-  CheckCircle, RotateCcw, Share2, Route, UserCheck,
+  CheckCircle, RotateCcw, Share2, Route, UserCheck, Map,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -423,9 +423,16 @@ export default function PubCrawlPage() {
 
         {/* ── Error ── */}
         {error && (
-          <div className="mt-3 px-4 py-3 rounded-xl text-sm"
-            style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)', color: '#ff006e' }}>
-            {error}
+          <div className="mt-3 px-4 py-3 rounded-xl space-y-2"
+            style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+            <p className="text-sm" style={{ color: '#ff006e' }}>{error}</p>
+            {error.includes('Not enough venues') && (
+              <Link href="/venues"
+                className="flex items-center gap-1.5 text-xs font-black w-full justify-center py-2 rounded-lg mt-1"
+                style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>
+                <Map size={12} /> OPEN VENUES MAP FIRST →
+              </Link>
+            )}
           </div>
         )}
 

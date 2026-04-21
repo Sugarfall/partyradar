@@ -35,6 +35,7 @@ const eventSchema = z.object({
   partySigns: z.array(z.string()).max(16).default([]),
   lineup: z.string().max(500).optional(),
   venueName: z.string().max(200).optional(),
+  venueId: z.string().optional(),
   coverImageUrl: z.preprocess(
     (v) => (v === '' || v == null ? undefined : v),
     z.string().url().optional()

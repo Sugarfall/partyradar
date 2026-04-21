@@ -188,6 +188,11 @@ model User {
   swipesReceived SwipeLike[] @relation("SwipesReceived")
   moderationLogs ModerationLog[]
   contentReports ContentReport[] @relation("ReportsMade")
+
+  // Spotify Artist profile
+  spotifyArtistId       String?
+  spotifyArtistData     String?   @db.Text
+  spotifyArtistSyncedAt DateTime?
 }
 
 model Event {
@@ -375,6 +380,16 @@ model Venue {
   events        Event[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  // Spotify "Now Playing" integration
+  spotifyConnected    Boolean   @default(false)
+  spotifyUserId       String?
+  spotifyDisplayName  String?
+  spotifyAccessToken  String?
+  spotifyRefreshToken String?
+  spotifyTokenExpiry  DateTime?
+  nowPlayingJson      String?   @db.Text
+  nowPlayingAt        DateTime?
 
   checkIns    CheckIn[]
   posts       Post[]

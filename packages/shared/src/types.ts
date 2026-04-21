@@ -150,6 +150,8 @@ export interface CreateEventInput {
   lineup?: string
   /** CLUB_NIGHT — venue / promoter brand name */
   venueName?: string
+  /** Link to a PartyRadar venue record (makes event appear on venue page) */
+  venueId?: string
 }
 
 export interface EventDiscoverQuery {

@@ -137,6 +137,12 @@ export default function CreateEventPage() {
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  // Venue linking (for CLUB_NIGHT / CONCERT / PUB_NIGHT)
+  const [venueQuery, setVenueQuery] = useState('')
+  const [venueResults, setVenueResults] = useState<{ id: string; name: string; address: string; lat: number; lng: number; city: string }[]>([])
+  const [venueSearching, setVenueSearching] = useState(false)
+  const [linkedVenue, setLinkedVenue] = useState<{ id: string; name: string } | null>(null)
+  const venueSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!authLoading && !dbUser) router.push('/login')
@@ -153,6 +159,28 @@ export default function CreateEventPage() {
     if (!file) return
     setCoverFile(file)
     setCoverPreview(URL.createObjectURL(file))
+  }
+
+  function searchVenues(q: string) {
+    setVenueQuery(q)
+    if (venueSearchTimer.current) clearTimeout(venueSearchTimer.current)
+    if (!q.trim()) { setVenueResults([]); return }
+    venueSearchTimer.current = setTimeout(async () => {
+      setVenueSearching(true)
+      try {
+        const { api } = await import('@/lib/api')
+        const res = await api.get<{ data: { id: string; name: string; address: string; lat: number; lng: number; city: string }[] }>(`/venues?q=${encodeURIComponent(q)}&limit=6`)
+        setVenueResults(res?.data ?? [])
+      } catch { setVenueResults([]) }
+      finally { setVenueSearching(false) }
+    }, 350)
+  }
+
+  function selectVenue(v: { id: string; name: string; address: string; lat: number; lng: number; city: string }) {
+    setLinkedVenue({ id: v.id, name: v.name })
+    setVenueQuery(v.name)
+    setVenueResults([])
+    update({ address: v.address, lat: v.lat, lng: v.lng, neighbourhood: v.city, venueId: v.id } as any)
   }
 
   function useMyLocation() {
@@ -471,6 +499,57 @@ export default function CreateEventPage() {
         {/* ── Step 2: Location ── */}
         {step === 2 && (
           <div className="space-y-4">
+
+            {/* Venue search (CLUB_NIGHT, CONCERT, PUB_NIGHT) */}
+            {(form.type === 'CLUB_NIGHT' || form.type === 'CONCERT' || form.type === 'PUB_NIGHT') && (
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
+                  LINK TO VENUE (OPTIONAL)
+                </p>
+                <div className="relative">
+                  <input
+                    value={venueQuery}
+                    onChange={(e) => searchVenues(e.target.value)}
+                    placeholder="Search PartyRadar venues…"
+                    className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none"
+                    style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: '#e0f2fe' }}
+                  />
+                  {venueSearching && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" style={{ color: 'var(--accent)' }} />
+                    </div>
+                  )}
+                </div>
+                {venueResults.length > 0 && (
+                  <div className="mt-1 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+                    {venueResults.map((v) => (
+                      <button key={v.id} onClick={() => selectVenue(v)}
+                        className="w-full flex flex-col px-3 py-2.5 text-left transition-all"
+                        style={{ background: 'rgba(var(--accent-rgb),0.04)', borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                        <span className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{v.name}</span>
+                        <span className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>{v.address}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {linkedVenue && (
+                  <div className="mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
+                    style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.2)' }}>
+                    <span className="text-[10px]" style={{ color: '#00ff88' }}>✓ Linked: {linkedVenue.name}</span>
+                    <button onClick={() => { setLinkedVenue(null); setVenueQuery(''); update({ venueId: undefined } as any) }}
+                      className="ml-auto text-[10px]" style={{ color: 'rgba(255,0,110,0.6)' }}>
+                      Remove
+                    </button>
+                  </div>
+                )}
+                {!linkedVenue && (
+                  <p className="text-[9px] mt-1" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>
+                    Linking shows your event on the venue&apos;s page and in pub crawl routes
+                  </p>
+                )}
+              </div>
+            )}
+
             <CyberInput
               label="FULL ADDRESS *"
               value={form.address ?? ''}

@@ -158,13 +158,14 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
     const latDelta = radiusKm / 111
     const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180))
 
-    const candidates = await prisma.venue.findMany({
-      where: {
-        lat: { gte: lat - latDelta, lte: lat + latDelta },
-        lng: { gte: lng - lngDelta, lte: lng + lngDelta },
-        isBanned: false,
-        type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] },
-      },
+    const venueWhere = {
+      lat: { gte: lat - latDelta, lte: lat + latDelta },
+      lng: { gte: lng - lngDelta, lte: lng + lngDelta },
+      type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as const },
+    }
+
+    let candidates = await prisma.venue.findMany({
+      where: venueWhere,
       select: {
         id: true, name: true, address: true, city: true,
         lat: true, lng: true, type: true,
@@ -174,8 +175,28 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
       take: 40,
     })
 
+    // Fallback: widen to 10 km if not enough venues in 3 km radius
     if (candidates.length < 2) {
-      return res.status(404).json({ error: { message: 'Not enough venues found in this area. Try moving the map.' } })
+      const wideLatDelta = (radiusKm * 3.5) / 111
+      const wideLngDelta = (radiusKm * 3.5) / (111 * Math.cos((lat * Math.PI) / 180))
+      candidates = await prisma.venue.findMany({
+        where: {
+          lat: { gte: lat - wideLatDelta, lte: lat + wideLatDelta },
+          lng: { gte: lng - wideLngDelta, lte: lng + wideLngDelta },
+          type: { in: ['PUB', 'BAR', 'LOUNGE', 'ROOFTOP_BAR', 'NIGHTCLUB', 'CONCERT_HALL'] as const },
+        },
+        select: {
+          id: true, name: true, address: true, city: true,
+          lat: true, lng: true, type: true,
+          photoUrl: true, vibeTags: true,
+          rating: true, isClaimed: true,
+        },
+        take: 40,
+      })
+    }
+
+    if (candidates.length < 2) {
+      return res.status(404).json({ error: { message: 'Not enough venues found nearby. Open the Venues map first to load venues in your area, then try again.' } })
     }
 
     // ── 2. Score & sort ────────────────────────────────────────────────────────

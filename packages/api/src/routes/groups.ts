@@ -259,14 +259,16 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
         })
       : null
 
-    // Private groups: only members can read messages
-    if (group.isPrivate && !membership) {
+    // Private/paid groups: only members can read messages
+    const isOwnerLocked = group.createdById === userId
+    if (group.isPrivate && !membership && !isOwnerLocked) {
       res.json({
         data: {
           group: {
             id: group.id, slug: group.slug, name: group.name, emoji: group.emoji,
             coverColor: group.coverColor, memberCount: group.memberCount,
-            isPrivate: true, isJoined: false, notificationsEnabled: false,
+            isPrivate: true, isPaid: group.isPaid, priceMonthly: group.priceMonthly,
+            isJoined: false, isSubscribed: false, notificationsEnabled: false,
           },
           messages: [],
           locked: true,
@@ -274,6 +276,15 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
       })
       return
     }
+
+    // Check subscription status for paid groups
+    const isOwnerOfGroup = group.createdById === userId
+    const groupSub = userId && group.isPaid && !isOwnerOfGroup
+      ? await prisma.groupSubscription.findUnique({
+          where: { groupId_userId: { groupId: group.id, userId } },
+        })
+      : null
+    const isSubscribed = isOwnerOfGroup || (!!groupSub && (!groupSub.currentPeriodEnd || groupSub.currentPeriodEnd > new Date()))
 
     const messages = await prisma.groupMessage.findMany({
       where: { groupId: group.id },
@@ -300,12 +311,16 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
           id: group.id,
           slug: group.slug,
           name: group.name,
+          description: group.description,
           emoji: group.emoji,
           coverColor: group.coverColor,
           memberCount: group.memberCount,
           isPrivate: group.isPrivate,
-          isOwner: group.createdById === userId,
-          myRole: group.createdById === userId
+          isPaid: group.isPaid,
+          priceMonthly: group.priceMonthly,
+          isOwner: isOwnerOfGroup,
+          isSubscribed,
+          myRole: isOwnerOfGroup
             ? 'OWNER'
             : ((membership as any)?.role ?? (membership ? 'MEMBER' : null)),
           isJoined: !!membership,
