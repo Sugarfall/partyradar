@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Map, { Marker, Popup, NavigationControl } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { Search, MapPin, Phone, Globe, Zap, CheckCircle, X, Loader2, Compass } from 'lucide-react'
+import { Search, MapPin, Phone, Globe, Zap, CheckCircle, X, Loader2, Compass, Map as MapIcon } from 'lucide-react'
 
 import { api } from '@/lib/api'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
@@ -83,8 +83,82 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 // ─── VenueCard ────────────────────────────────────────────────────────────────
 
-function VenueCard({ venue, onClick, distanceKm }: { venue: Venue; onClick: () => void; distanceKm?: number }) {
+function VenueCard({ venue, onClick, distanceKm, expanded = false }: { venue: Venue; onClick: () => void; distanceKm?: number; expanded?: boolean }) {
   const color = TYPE_COLORS[venue.type]
+
+  if (expanded && venue.photoUrl) {
+    // Richer card with full-width banner image
+    return (
+      <button
+        onClick={onClick}
+        className="w-full text-left transition-all duration-200 border-b overflow-hidden"
+        style={{ borderColor: 'rgba(var(--accent-rgb),0.06)', background: 'transparent' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(var(--accent-rgb),0.03)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+      >
+        {/* Banner image */}
+        <div className="w-full h-32 relative overflow-hidden">
+          <img src={venue.photoUrl} alt={venue.name} className="w-full h-full object-cover" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(7,7,26,0.9) 0%, rgba(7,7,26,0.2) 60%, transparent 100%)' }} />
+          {/* distance badge top-right */}
+          {distanceKm != null && (
+            <span className="absolute top-2 right-2 text-[10px] font-black px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(7,7,26,0.8)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.3)', backdropFilter: 'blur(4px)' }}>
+              {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
+            </span>
+          )}
+          {/* name over image */}
+          <div className="absolute bottom-2 left-3 right-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-black" style={{ color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{venue.name}</span>
+              {venue.rating && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ color: '#ffd600', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,214,0,0.3)' }}>
+                  ★ {venue.rating.toFixed(1)}
+                </span>
+              )}
+              {venue.isClaimed && (
+                <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ color: 'var(--accent)', background: 'rgba(7,7,26,0.7)', border: '1px solid rgba(var(--accent-rgb),0.35)' }}>
+                  <CheckCircle size={8} /> CLAIMED
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        {/* Info row below image */}
+        <div className="px-4 py-2.5">
+          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded"
+              style={{ color, background: `${color}15`, border: `1px solid ${color}30` }}>
+              {TYPE_LABELS[venue.type]}
+            </span>
+            {venue.city && (
+              <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>{venue.city}</span>
+            )}
+            {(venue.upcomingEventsCount ?? 0) > 0 && (
+              <span className="text-[10px] font-bold" style={{ color: '#00ff88' }}>
+                {venue.upcomingEventsCount} upcoming
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] mb-1.5 truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>{venue.address}</p>
+          {venue.vibeTags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {venue.vibeTags.slice(0, 6).map((tag) => (
+                <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded"
+                  style={{ color: 'rgba(var(--accent-rgb),0.5)', background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </button>
+    )
+  }
+
+  // Default compact card
   return (
     <button
       onClick={onClick}
@@ -200,6 +274,7 @@ export default function VenuesPage() {
   const [discoveredCount, setDiscoveredCount] = useState(0)
   const [cityLabel, setCityLabel] = useState('NEARBY')
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [mapVisible, setMapVisible] = useState(true)
   const [viewState, setViewState] = useState({
     latitude: 55.8642,
     longitude: -4.2518,
@@ -209,6 +284,7 @@ export default function VenuesPage() {
   // Track last discovered center to avoid re-fetching same area
   const lastDiscoverRef = useRef<{ lat: number; lng: number; zoom: number } | null>(null)
   const discoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   // Request user's geolocation on mount
   useEffect(() => {
@@ -319,6 +395,18 @@ export default function VenuesPage() {
     return () => clearTimeout(t)
   }, [viewState.latitude, viewState.longitude])
 
+  // Hide map when user scrolls the venue list down; restore when scrolled back to top
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const onScroll = () => {
+      if (el.scrollTop > 24) setMapVisible(false)
+      else if (el.scrollTop < 4) setMapVisible(true)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
   // Filtered venues for display, sorted by proximity when user location is available
   const filteredVenues = typeFilter === 'ALL'
     ? venues
@@ -410,8 +498,11 @@ export default function VenuesPage() {
       {/* ─── Two-column layout ─── */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden" style={{ minHeight: 0 }}>
 
-        {/* Map (top on mobile, right on desktop) */}
-        <div className="w-full h-64 md:h-auto md:w-[60%] order-1 md:order-2 relative">
+        {/* Map (top on mobile, right on desktop) — collapses when list is scrolled */}
+        <div
+          className="w-full md:h-auto md:w-[60%] order-1 md:order-2 relative overflow-hidden shrink-0 transition-all duration-300 ease-in-out"
+          style={{ height: mapVisible ? 256 : 0 }}
+        >
           <Map
             {...viewState}
             onMove={(evt) => setViewState(evt.viewState)}
@@ -495,7 +586,11 @@ export default function VenuesPage() {
         </div>
 
         {/* Venue list (bottom on mobile, left on desktop) */}
-        <div className="w-full md:w-[40%] order-2 md:order-1 overflow-y-auto" style={{ borderRight: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+        <div
+          ref={listRef}
+          className="w-full md:w-[40%] order-2 md:order-1 overflow-y-auto relative"
+          style={{ borderRight: '1px solid rgba(var(--accent-rgb),0.06)' }}
+        >
           {loading ? (
             <VenueSkeleton />
           ) : displayVenues.length === 0 ? (
@@ -511,6 +606,7 @@ export default function VenuesPage() {
               <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.06)' }}>
                 <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                   {displayVenues.length} VENUE{displayVenues.length !== 1 ? 'S' : ''}
+                  {userLocation && <span style={{ color: 'rgba(var(--accent-rgb),0.25)' }}> · CLOSEST FIRST</span>}
                 </span>
                 {discovering && (
                   <Loader2 size={10} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
@@ -520,6 +616,7 @@ export default function VenuesPage() {
                 <VenueCard
                   key={venue.id}
                   venue={venue}
+                  expanded={!mapVisible}
                   distanceKm={userLocation ? haversineKm(userLocation.lat, userLocation.lng, venue.lat, venue.lng) : undefined}
                   onClick={() => {
                     setViewState((v) => ({ ...v, latitude: venue.lat, longitude: venue.lng, zoom: 15 }))
@@ -529,6 +626,27 @@ export default function VenuesPage() {
                 />
               ))}
             </div>
+          )}
+
+          {/* Floating "MAP" pill — appears on mobile when map is hidden */}
+          {!mapVisible && (
+            <button
+              onClick={() => {
+                setMapVisible(true)
+                listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              className="md:hidden fixed bottom-6 right-4 flex items-center gap-1.5 px-4 py-2.5 rounded-full z-50 transition-all duration-200 active:scale-95"
+              style={{
+                background: 'rgba(var(--accent-rgb),0.15)',
+                border: '1px solid rgba(var(--accent-rgb),0.35)',
+                color: 'var(--accent)',
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+              }}
+            >
+              <MapIcon size={13} />
+              <span className="text-[11px] font-black tracking-widest">MAP</span>
+            </button>
           )}
         </div>
       </div>
