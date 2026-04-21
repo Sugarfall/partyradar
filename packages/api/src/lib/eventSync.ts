@@ -6,6 +6,47 @@
 import { prisma } from '@partyradar/db'
 import { createHash } from 'crypto'
 
+// ── Geocoding helpers ─────────────────────────────────────────────────────────
+
+const GOOGLE_API_KEY = process.env['GOOGLE_PLACES_API_KEY'] ?? ''
+
+/**
+ * Reverse-geocode a lat/lng pair to a full formatted street address.
+ * Returns null if the API key is missing, the request fails, or no results.
+ */
+async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  if (!GOOGLE_API_KEY) return null
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_API_KEY}`
+    const r = await fetch(url)
+    const data = await r.json() as {
+      status: string
+      results: Array<{ formatted_address: string; types: string[] }>
+    }
+    if (data.status !== 'OK' || !data.results.length) return null
+    // Prefer a result typed as street_address, premise, or establishment
+    const preferred = data.results.find(
+      (res) =>
+        res.types.includes('street_address') ||
+        res.types.includes('premise') ||
+        res.types.includes('establishment')
+    )
+    return (preferred ?? data.results[0])?.formatted_address ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Returns true when an address string is too vague to be useful (just city/Unknown). */
+function isVagueAddress(address: string, city: string): boolean {
+  const a = address.toLowerCase().trim()
+  const c = city.toLowerCase().trim()
+  if (a === 'unknown' || a === '') return true
+  if (a === c) return true
+  // Less than 2 comma-separated parts almost always means it's just a city/region
+  return a.split(',').length < 2
+}
+
 // ── Throttle ──────────────────────────────────────────────────────────────────
 
 const lastSyncTime = new Map<string, number>()
@@ -110,7 +151,10 @@ interface TMPriceRange {
 interface TMVenue {
   name?: string
   city?: { name?: string }
-  address?: { line1?: string }
+  state?: { name?: string; stateCode?: string }
+  country?: { name?: string; countryCode?: string }
+  address?: { line1?: string; line2?: string }
+  postalCode?: string
   location?: { latitude?: string; longitude?: string }
 }
 
@@ -189,8 +233,22 @@ async function syncTicketmaster(
       const venue = ev._embedded?.venues?.[0]
       const evLat = parseFloat(venue?.location?.latitude ?? String(lat))
       const evLng = parseFloat(venue?.location?.longitude ?? String(lng))
-      const address = [venue?.address?.line1, venue?.city?.name].filter(Boolean).join(', ') || venue?.city?.name || 'Unknown'
-      const neighbourhood = venue?.city?.name ?? address.split(',')[0] ?? 'Unknown'
+      const cityName = venue?.city?.name ?? ''
+      // Build the fullest possible address from Ticketmaster venue fields
+      const addrParts = [
+        venue?.address?.line1 || venue?.name,  // street or venue name as fallback
+        venue?.address?.line2,
+        cityName,
+        venue?.state?.stateCode ?? venue?.state?.name,
+        venue?.postalCode,
+      ].filter(Boolean)
+      let address = addrParts.join(', ') || cityName || 'Unknown'
+      // If still vague, reverse-geocode the exact coordinates
+      if (isVagueAddress(address, cityName)) {
+        const geo = await reverseGeocode(evLat, evLng)
+        if (geo) address = geo
+      }
+      const neighbourhood = (cityName || address.split(',')[0]) ?? 'Unknown'
       const name = ev.name ?? 'Unnamed Event'
       const description = truncateDescription(ev.info ?? ev.pleaseNote, name)
 
@@ -260,8 +318,11 @@ async function syncTicketmaster(
 // ── Skiddle ───────────────────────────────────────────────────────────────────
 
 interface SkiddleVenue {
+  name?: string
   address?: string
   town?: string
+  postcode?: string
+  country?: string
   latitude?: string | number
   longitude?: string | number
 }
@@ -325,8 +386,20 @@ async function syncSkiddle(
     try {
       const evLat = parseFloat(String(ev.venue?.latitude ?? lat))
       const evLng = parseFloat(String(ev.venue?.longitude ?? lng))
-      const address = ev.venue?.address ?? ev.venue?.town ?? 'Unknown'
-      const neighbourhood = ev.venue?.town ?? ev.venue?.address?.split(',')[0] ?? 'Unknown'
+      const townName = ev.venue?.town ?? ''
+      // Build full address: venue name + street address + town + postcode
+      const addrParts = [
+        ev.venue?.address && ev.venue.address !== townName ? ev.venue.address : ev.venue?.name,
+        townName,
+        ev.venue?.postcode,
+      ].filter(Boolean)
+      let address = addrParts.join(', ') || townName || 'Unknown'
+      // If still vague, reverse-geocode the exact coordinates
+      if (isVagueAddress(address, townName)) {
+        const geo = await reverseGeocode(evLat, evLng)
+        if (geo) address = geo
+      }
+      const neighbourhood = (townName || address.split(',')[0]) ?? 'Unknown'
       const name = ev.eventname ?? 'Unnamed Event'
       const description = truncateDescription(ev.description, name)
 
@@ -647,8 +720,16 @@ async function syncSerpApi(
       if (!type) { skipped++; continue }
 
       const serpApiId = stableHash(`${name}|${ev.date?.start_date ?? ''}|${ev.address?.[0] ?? ''}`)
-      const address = ev.address?.join(', ') ?? city
-      const neighbourhood = ev.venue?.name ?? address.split(',')[0] ?? city
+      // SerpAPI returns address as an array — e.g. ["123 High St", "Glasgow, Scotland"]
+      // Prepend venue name if it isn't already in the address array
+      const venueName = ev.venue?.name ?? ''
+      const addrArray = ev.address ?? []
+      const fullAddrParts = [
+        venueName && !addrArray.some(a => a.toLowerCase().includes(venueName.toLowerCase())) ? venueName : null,
+        ...addrArray,
+      ].filter(Boolean) as string[]
+      const address = fullAddrParts.length > 0 ? fullAddrParts.join(', ') : city
+      const neighbourhood = (venueName || address.split(',')[0]) ?? city
       const coverImageUrl = ev.thumbnail ?? null
       const socialSourceUrl = ev.ticket_info?.find((t) => t.link)?.link ?? ev.link
       const isPaid = ev.ticket_info?.some((t) => t.is_paid) ?? false
@@ -738,7 +819,9 @@ async function syncPerplexity(
     `DO NOT include: family events, kids events, sports, fitness, theatre, cinema, exhibitions, ` +
     `craft fairs, church, conferences, funerals, weddings, or corporate events.\n\n` +
     `Return ONLY a valid JSON array (no markdown, no prose):\n` +
-    `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"exact venue name","address":"full address, ${city}","price":0,"type":"PUB_NIGHT","description":"what happens — music/host/atmosphere","url":"direct link","imageUrl":""}]\n` +
+    `[{"name":"","date":"ISO8601","endDate":"ISO8601 or null","venue":"exact venue name","address":"FULL street address including street number, street name, city, postcode — e.g. 22 Jamaica St, Glasgow G1 4QD","price":0,"type":"PUB_NIGHT","description":"what happens — music/host/atmosphere","url":"direct link","imageUrl":""}]\n` +
+    `CRITICAL: "address" must be a FULL street address (number + street + city + postcode), NOT just the city name. ` +
+    `If you don't know the full address, look it up from the venue name.\n` +
     `type must be one of: CONCERT | CLUB_NIGHT | PUB_NIGHT | HOME_PARTY | BEACH_PARTY | YACHT_PARTY\n` +
     `price is a number (0 if free). Only REAL future events with real venue names — no placeholders.`
 
@@ -789,7 +872,17 @@ async function syncPerplexity(
 
       const endsAt = ev.endDate ? new Date(ev.endDate) : undefined
       const aiEventId = stableHash(`perplexity|${name}|${ev.date ?? ''}|${city}`)
-      const address = ev.address ?? ev.venue ?? city
+      // Build the fullest address from AI response: prefer explicit address > venue name + city
+      let address = ev.address && !isVagueAddress(ev.address, city)
+        ? ev.address
+        : ev.venue
+          ? `${ev.venue}, ${city}`
+          : city
+      // If still vague, geocode using the stored lat/lng
+      if (isVagueAddress(address, city)) {
+        const geo = await reverseGeocode(lat, lng)
+        if (geo) address = geo
+      }
       const neighbourhood = ev.venue ?? address.split(',')[0] ?? city
       const description = truncateDescription(ev.description, name)
 
@@ -858,7 +951,10 @@ export async function syncExternalEvents(
       interests: [],
       subscriptionTier: 'FREE',
     },
-    update: { displayName: 'PartyRadar Assistant' },
+    update: {
+      displayName: 'PartyRadar Assistant',
+      photoUrl: 'https://partyradar.app/icons/icon-192.png',
+    },
   })
   const hostId = systemUser.id
 

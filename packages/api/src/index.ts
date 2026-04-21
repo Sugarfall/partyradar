@@ -581,7 +581,10 @@ cron.schedule('0 * * * *', async () => {
         interests: [],
         subscriptionTier: 'FREE',
       },
-      update: { displayName: 'PartyRadar Assistant' },
+      update: {
+        displayName: 'PartyRadar Assistant',
+        photoUrl: 'https://partyradar.app/icons/icon-192.png',
+      },
     })
 
     // Migrate externally-synced events whose host displayName is still "demo" (legacy admin)

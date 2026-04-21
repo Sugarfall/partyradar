@@ -266,10 +266,16 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
       })
 
       if (existing) {
-        // Update rating and photo if newer data available
+        // Update rating, photo, and address when better data is available
         const updates: Record<string, unknown> = {}
         if (place.rating && place.rating !== existing.rating) updates['rating'] = place.rating
         if (photoUrl && !existing.photoUrl) updates['photoUrl'] = photoUrl
+        // Refresh address if it looks vague (just a city name or missing street)
+        const addressIsVague = !existing.address || existing.address.split(',').length < 2
+        if (addressIsVague) {
+          const details = await fetchPlaceDetails(googlePlaceId)
+          if (details?.formatted_address) updates['address'] = details.formatted_address
+        }
         if (Object.keys(updates).length > 0) {
           await prisma.venue.update({ where: { id: existing.id }, data: updates })
         }
