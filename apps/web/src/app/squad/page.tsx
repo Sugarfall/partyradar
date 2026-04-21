@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight, Loader2 } from 'lucide-react'
+import { Users, Plus, X, Search, ArrowRight, Zap, ChevronRight, Loader2, PoundSterling } from 'lucide-react'
 
 import { api } from '@/lib/api'
 
@@ -159,6 +159,8 @@ function CreateSquadModal({ onClose, onCreate }: {
 function PlanTonightModal({ squad, onClose }: { squad: Squad; onClose: () => void }) {
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
+  const [budget, setBudget] = useState('')
+  const [budgetFocused, setBudgetFocused] = useState(false)
   const [sent, setSent] = useState(false)
 
   function handleShare() {
@@ -221,6 +223,37 @@ function PlanTonightModal({ squad, onClose }: { squad: Squad; onClose: () => voi
           </div>
         </div>
 
+        {/* Budget per person */}
+        <div>
+          <label className="text-[10px] font-bold tracking-[0.15em] block mb-2" style={{ color: 'rgba(168,85,247,0.5)' }}>
+            BUDGET PER PERSON (OPTIONAL)
+          </label>
+          <div className="relative">
+            <PoundSterling size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(168,85,247,0.4)' }} />
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+              onFocus={() => setBudgetFocused(true)}
+              onBlur={() => setBudgetFocused(false)}
+              placeholder="e.g. 30"
+              className="w-full pl-8 pr-4 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all duration-200"
+              style={{
+                background: 'rgba(168,85,247,0.05)',
+                border: budgetFocused ? '1px solid rgba(168,85,247,0.45)' : '1px solid rgba(168,85,247,0.15)',
+                color: '#e0f2fe',
+              }}
+            />
+          </div>
+          {budget && (
+            <p className="text-[10px] mt-1.5 font-bold" style={{ color: 'rgba(168,85,247,0.5)' }}>
+              Squad total: ~£{(Number(budget) * squad.members.length).toFixed(0)} for {squad.members.length} people
+            </p>
+          )}
+        </div>
+
         {/* Members who'll see it */}
         <div
           className="p-3 rounded-xl flex items-center gap-3"
@@ -229,6 +262,7 @@ function PlanTonightModal({ squad, onClose }: { squad: Squad; onClose: () => voi
           <Users size={13} style={{ color: 'rgba(168,85,247,0.5)' }} />
           <p className="text-xs" style={{ color: 'rgba(224,242,254,0.6)' }}>
             Sending to <span style={{ color: '#a855f7', fontWeight: 700 }}>{squad.members.length} member{squad.members.length !== 1 ? 's' : ''}</span> in {squad.emoji} {squad.name}
+            {budget && <span style={{ color: 'rgba(168,85,247,0.6)' }}> · £{budget}/person budget</span>}
           </p>
         </div>
 

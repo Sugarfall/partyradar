@@ -71,7 +71,7 @@ export default function GlobeLanding() {
   const [userLat, setUserLat] = useState(51.505)
   const [userLng, setUserLng] = useState(-0.09)
   const [nearestEvent, setNearestEvent] = useState<{
-    id: string; name: string; neighbourhood?: string; price?: number; ticketsLeft?: number
+    id: string; name: string; neighbourhood?: string; city?: string; price?: number
   } | null>(null)
 
   // Expose phase setter for dev preview
@@ -97,10 +97,13 @@ export default function GlobeLanding() {
 
   const fetchNearestEvent = useCallback(async (lat: number, lng: number) => {
     try {
-      const json = await api.get<{ data: Array<{ id: string; name: string; neighbourhood?: string; price?: number; ticketsLeft?: number }> }>(
-        `/events?lat=${lat}&lng=${lng}&radius=50&limit=1`
+      // radius=10 keeps it genuinely local; radius=50 could pull in far-away events
+      const json = await api.get<{ data: Array<{ id: string; name: string; neighbourhood?: string; city?: string; price?: number }> }>(
+        `/events?lat=${lat}&lng=${lng}&radius=10&limit=5`
       )
-      const first = json?.data?.[0]
+      // Pick the soonest event that has a name
+      const events = json?.data ?? []
+      const first = events.find((e) => !!e.name) ?? events[0]
       if (first) setNearestEvent(first)
     } catch { /* silent — just don't show the card */ }
   }, [])
@@ -641,8 +644,7 @@ export default function GlobeLanding() {
                     </p>
                     <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
                       {[
-                        nearestEvent.neighbourhood,
-                        nearestEvent.ticketsLeft != null ? `${nearestEvent.ticketsLeft} tickets left` : null,
+                        nearestEvent.neighbourhood ?? nearestEvent.city,
                         nearestEvent.price === 0 ? 'Free entry' : nearestEvent.price != null ? `£${nearestEvent.price}` : null,
                       ].filter(Boolean).join(' · ')}
                     </p>

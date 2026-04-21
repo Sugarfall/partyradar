@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation'
 import {
   Beer, Users, Clock, MapPin, Zap, ChevronRight,
   Navigation, Loader2, Sparkles, ArrowRight, Star,
-  CheckCircle, RotateCcw, Share2, Route,
+  CheckCircle, RotateCcw, Share2, Route, UserCheck,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/useAuth'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,6 +213,7 @@ function WalkConnector({ stop }: { stop: CrawlStop }) {
 
 export default function PubCrawlPage() {
   const router = useRouter()
+  const { dbUser } = useAuth()
 
   const [groupSize, setGroupSize] = useState(6)
   const [startTime, setStartTime] = useState('19:00')
@@ -222,6 +224,10 @@ export default function PubCrawlPage() {
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState<CrawlResult | null>(null)
   const [error, setError] = useState('')
+  // Group opt-in state
+  const [optIns, setOptIns] = useState<string[]>([])
+  const [optInInput, setOptInInput] = useState('')
+  const [hasOptedIn, setHasOptedIn] = useState(false)
 
   // Request geolocation on mount
   useEffect(() => {
@@ -252,6 +258,8 @@ export default function PubCrawlPage() {
     setGenerating(true)
     setError('')
     setResult(null)
+    setOptIns([])
+    setHasOptedIn(false)
     try {
       const json = await api.post<{ data: CrawlResult }>('/pub-crawl/generate', {
         lat: location.lat,
@@ -500,7 +508,7 @@ export default function PubCrawlPage() {
             </div>
 
             {/* Finish banner */}
-            <div className="mt-2 rounded-2xl px-5 py-4 flex items-center gap-3 mb-6"
+            <div className="mt-2 rounded-2xl px-5 py-4 flex items-center gap-3 mb-5"
               style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.2)' }}>
               <span className="text-2xl">🎉</span>
               <div>
@@ -508,6 +516,132 @@ export default function PubCrawlPage() {
                 <p className="text-[10px] mt-0.5" style={{ color: 'rgba(0,255,136,0.5)' }}>
                   {formatDuration(result.totalDurationMins)} total · {result.totalDistanceKm}km on foot
                 </p>
+              </div>
+            </div>
+
+            {/* ── Who's In? opt-in section ── */}
+            <div className="rounded-2xl overflow-hidden mb-5"
+              style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)' }}>
+              <div className="px-4 py-3 flex items-center justify-between"
+                style={{ borderBottom: '1px solid rgba(168,85,247,0.12)' }}>
+                <div className="flex items-center gap-2">
+                  <UserCheck size={13} style={{ color: '#a855f7' }} />
+                  <span className="text-[11px] font-black tracking-widest" style={{ color: '#a855f7' }}>
+                    WHO&apos;S IN? {optIns.length > 0 && `· ${optIns.length}/${result.groupSize}`}
+                  </span>
+                </div>
+                {optIns.length > 0 && (
+                  <span className="text-[10px]" style={{ color: 'rgba(168,85,247,0.5)' }}>
+                    {result.groupSize - optIns.length} spot{result.groupSize - optIns.length !== 1 ? 's' : ''} left
+                  </span>
+                )}
+              </div>
+
+              <div className="px-4 py-3 space-y-3">
+                {/* Opt-in list */}
+                {optIns.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {optIns.map((name) => (
+                      <div key={name} className="flex items-center gap-1 px-2.5 py-1 rounded-full"
+                        style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)' }}>
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#00ff88' }} />
+                        <span className="text-[10px] font-bold" style={{ color: '#a855f7' }}>{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* "I'm In" quick button or custom name input */}
+                {!hasOptedIn ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const name = dbUser?.displayName ?? 'Me'
+                        if (!optIns.includes(name)) setOptIns((prev) => [...prev, name])
+                        setHasOptedIn(true)
+                      }}
+                      className="flex-1 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                      style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.35)', color: '#00ff88', letterSpacing: '0.08em' }}
+                    >
+                      🙋 I&apos;M IN
+                    </button>
+                    <div className="flex gap-1.5 flex-1">
+                      <input
+                        value={optInInput}
+                        onChange={(e) => setOptInInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && optInInput.trim()) {
+                            const name = optInInput.trim()
+                            if (!optIns.includes(name)) setOptIns((prev) => [...prev, name])
+                            setOptInInput('')
+                          }
+                        }}
+                        placeholder="Add a name…"
+                        className="flex-1 px-3 py-2 rounded-xl text-xs outline-none"
+                        style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }}
+                      />
+                      <button
+                        onClick={() => {
+                          const name = optInInput.trim()
+                          if (name && !optIns.includes(name)) {
+                            setOptIns((prev) => [...prev, name])
+                            setOptInInput('')
+                          }
+                        }}
+                        disabled={!optInInput.trim()}
+                        className="px-3 py-2 rounded-xl text-xs font-black disabled:opacity-40 transition-all"
+                        style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7' }}
+                      >
+                        + ADD
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center gap-2 py-2 px-3 rounded-xl"
+                      style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
+                      <CheckCircle size={12} style={{ color: '#00ff88' }} />
+                      <span className="text-[11px] font-black" style={{ color: '#00ff88' }}>YOU&apos;RE IN!</span>
+                    </div>
+                    {/* Add more people */}
+                    <div className="flex gap-1.5 flex-1">
+                      <input
+                        value={optInInput}
+                        onChange={(e) => setOptInInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && optInInput.trim()) {
+                            const name = optInInput.trim()
+                            if (!optIns.includes(name)) setOptIns((prev) => [...prev, name])
+                            setOptInInput('')
+                          }
+                        }}
+                        placeholder="Add friend…"
+                        className="flex-1 px-3 py-2 rounded-xl text-xs outline-none"
+                        style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', color: '#e0f2fe' }}
+                      />
+                      <button
+                        onClick={() => {
+                          const name = optInInput.trim()
+                          if (name && !optIns.includes(name)) {
+                            setOptIns((prev) => [...prev, name])
+                            setOptInInput('')
+                          }
+                        }}
+                        disabled={!optInInput.trim()}
+                        className="px-3 py-2 rounded-xl text-xs font-black disabled:opacity-40 transition-all"
+                        style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7' }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {optIns.length === 0 && (
+                  <p className="text-[10px] text-center" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                    Tap &quot;I&apos;m In&quot; to commit to the crawl, or add your crew&apos;s names above
+                  </p>
+                )}
               </div>
             </div>
 

@@ -358,6 +358,8 @@ export default function NearbyPage() {
   }, [])
 
   useEffect(() => {
+    // Only request GPS for paid users — FREE users see the paywall and don't need it
+    if (!dbUser || dbUser.subscriptionTier === 'FREE') return
     if (typeof window === 'undefined' || !navigator.geolocation) { setLocationDenied(true); return }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -369,7 +371,7 @@ export default function NearbyPage() {
       () => setLocationDenied(true),
       { timeout: 8000 },
     )
-  }, [])
+  }, [dbUser?.id, dbUser?.subscriptionTier])
 
   async function toggleFollow(userId: string, currentlyFollowing: boolean) {
     // Bug 1 fix: optimistically flip isFollowing directly in the people array
@@ -502,10 +504,31 @@ export default function NearbyPage() {
           </div>
 
           {locationDenied && (
-            <div className="py-16 text-center space-y-3">
-              <MapPin size={36} style={{ color: 'rgba(var(--accent-rgb),0.2)', margin: '0 auto' }} />
-              <p className="text-sm font-black" style={{ color: 'rgba(224,242,254,0.5)' }}>Location needed</p>
-              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Enable location access to see who&apos;s nearby</p>
+            <div className="flex flex-col items-center py-10 gap-4 text-center">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}
+              >
+                <MapPin size={32} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-base font-black tracking-wider" style={{ color: '#e0f2fe' }}>LOCATION ACCESS NEEDED</p>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.4)', maxWidth: 260 }}>
+                  Nearby needs your location to show who&apos;s around you. Enable it in your browser settings.
+                </p>
+              </div>
+              <div className="w-full max-w-xs space-y-2">
+                <FeatureRow>Tap the 🔒 lock icon in your browser bar</FeatureRow>
+                <FeatureRow>Set Location to &quot;Allow&quot;</FeatureRow>
+                <FeatureRow>Refresh the page to continue</FeatureRow>
+              </div>
+              <button
+                onClick={() => window.location.reload()}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black tracking-widest transition-all"
+                style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)', letterSpacing: '0.12em' }}
+              >
+                <RefreshCw size={13} /> REFRESH PAGE
+              </button>
             </div>
           )}
           {!locationDenied && nearbyLoading && people.length === 0 && (

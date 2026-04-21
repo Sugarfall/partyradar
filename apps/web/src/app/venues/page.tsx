@@ -421,7 +421,7 @@ export default function VenuesPage() {
     : filteredVenues
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#0d0d0f', paddingTop: 56 }}>
+    <div className="flex flex-col overflow-hidden" style={{ background: '#0d0d0f', paddingTop: 56, height: '100dvh' }}>
 
       {/* ─── Header ─── */}
       <div className="px-4 pt-6 pb-4" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
@@ -588,7 +588,7 @@ export default function VenuesPage() {
         {/* Venue list (bottom on mobile, left on desktop) */}
         <div
           ref={listRef}
-          className="w-full md:w-[40%] order-2 md:order-1 overflow-y-auto relative"
+          className="w-full md:w-[40%] order-2 md:order-1 overflow-y-auto relative flex-1 min-h-0"
           style={{ borderRight: '1px solid rgba(var(--accent-rgb),0.06)' }}
         >
           {loading ? (
