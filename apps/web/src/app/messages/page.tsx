@@ -831,6 +831,8 @@ function GroupChatView({
   const [crawlName, setCrawlName] = useState('')
   const [crawlStops, setCrawlStops] = useState([{ name: '', address: '' }, { name: '', address: '' }])
   const [crawlCreating, setCrawlCreating] = useState(false)
+  const [aiSuggesting, setAiSuggesting] = useState(false)
+  const [aiError, setAiError] = useState('')
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -887,6 +889,41 @@ function GroupChatView({
       if (j.data) { setCrawl(j.data); setShowCreateCrawl(false); setCrawlName(''); setCrawlStops([{ name: '', address: '' }, { name: '', address: '' }]) }
     } catch {}
     finally { setCrawlCreating(false) }
+  }
+
+  async function suggestWithAI() {
+    setAiSuggesting(true)
+    setAiError('')
+    try {
+      // Try geolocation, fall back to Glasgow
+      const loc = await new Promise<{ lat: number; lng: number }>((resolve) => {
+        if (!navigator.geolocation) { resolve({ lat: 55.8642, lng: -4.2518 }); return }
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude }),
+          () => resolve({ lat: 55.8642, lng: -4.2518 }),
+          { enableHighAccuracy: false, timeout: 6000 },
+        )
+      })
+      const memberCount = group?.memberCount ?? 4
+      const json = await api.post<{ data: { crawlTitle: string; route: Array<{ name: string; address: string }> } }>('/pub-crawl/generate', {
+        lat: loc.lat,
+        lng: loc.lng,
+        groupSize: memberCount,
+        startTime: '20:00',
+        vibes: [],
+        stops: Math.max(crawlStops.length, 4),
+      })
+      if (json?.data) {
+        setCrawlName(json.data.crawlTitle)
+        setCrawlStops(json.data.route.map((s) => ({ name: s.name, address: s.address ?? '' })))
+      } else {
+        setAiError('No suggestions returned — try again')
+      }
+    } catch (err: any) {
+      setAiError(err?.message ?? 'AI suggestion failed')
+    } finally {
+      setAiSuggesting(false)
+    }
   }
 
   async function checkIn(stopId: string) {
@@ -1233,14 +1270,55 @@ function GroupChatView({
           {showCreateCrawl && (
             <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
               style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
-              onClick={() => setShowCreateCrawl(false)}>
-              <div className="w-full max-w-sm rounded-2xl p-5 space-y-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
+              onClick={() => { setShowCreateCrawl(false); setAiError('') }}>
+              <div className="w-full max-w-sm rounded-2xl p-5 space-y-4 max-h-[82vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
                 style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                <p className="text-sm font-black" style={{ color: '#f59e0b' }}>🍺 PLAN PUB CRAWL</p>
+
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-black" style={{ color: '#f59e0b' }}>🍺 PLAN PUB CRAWL</p>
+                  <button onClick={() => { setShowCreateCrawl(false); setAiError('') }}
+                    style={{ color: 'rgba(74,96,128,0.5)' }}>
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {/* ✨ AI Suggest button */}
+                <button
+                  onClick={suggestWithAI}
+                  disabled={aiSuggesting}
+                  className="w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                  style={{
+                    background: aiSuggesting ? 'rgba(168,85,247,0.06)' : 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(245,158,11,0.12) 100%)',
+                    border: '1px solid rgba(168,85,247,0.4)',
+                    color: '#a855f7',
+                    letterSpacing: '0.08em',
+                    boxShadow: aiSuggesting ? 'none' : '0 0 16px rgba(168,85,247,0.15)',
+                  }}
+                >
+                  {aiSuggesting
+                    ? <><span className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'rgba(168,85,247,0.3)', borderTopColor: '#a855f7' }} /> AI PICKING STOPS…</>
+                    : <><span>✨</span> AI SUGGEST STOPS</>
+                  }
+                </button>
+                {aiError && (
+                  <p className="text-[10px]" style={{ color: 'rgba(255,0,110,0.7)' }}>{aiError}</p>
+                )}
+
+                {/* Divider */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px" style={{ background: 'rgba(245,158,11,0.1)' }} />
+                  <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(245,158,11,0.35)' }}>OR ENTER MANUALLY</span>
+                  <div className="flex-1 h-px" style={{ background: 'rgba(245,158,11,0.1)' }} />
+                </div>
+
+                {/* Crawl name */}
                 <input type="text" placeholder="Crawl name (e.g. Friday Night Crawl)" value={crawlName}
                   onChange={(e) => setCrawlName(e.target.value.slice(0, 50))}
                   className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
                   style={{ border: '1px solid rgba(245,158,11,0.2)', color: '#e0f2fe' }} />
+
+                {/* Stops */}
                 <div className="space-y-2">
                   <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(245,158,11,0.5)' }}>STOPS</p>
                   {crawlStops.map((stop, i) => (
@@ -1267,6 +1345,8 @@ function GroupChatView({
                     </button>
                   )}
                 </div>
+
+                {/* Start button */}
                 <button onClick={createCrawl} disabled={crawlCreating || !crawlName.trim() || crawlStops.filter((s) => s.name.trim()).length < 2}
                   className="w-full py-3 rounded-xl text-xs font-black tracking-widest disabled:opacity-40"
                   style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b' }}>
