@@ -289,11 +289,11 @@ export default function PubCrawlPage() {
             <h1 className="text-base font-black tracking-[0.2em]" style={{ color: 'var(--accent)' }}>PUB CRAWL</h1>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
               style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' }}>
-              <Sparkles size={8} /> AI PLANNER
+              <Sparkles size={8} /> PARTYRADAR PLANNER
             </span>
           </div>
           <p className="text-xs" style={{ color: 'rgba(224,242,254,0.4)' }}>
-            AI picks the best venues nearby, builds a walking route, and times each stop for your group.
+            PartyRadar picks the best venues nearby, builds a walking route, and times each stop for your group.
           </p>
         </div>
       </div>
@@ -447,7 +447,7 @@ export default function PubCrawlPage() {
             }}>
             {generating
               ? <><Loader2 size={15} className="animate-spin" /> BUILDING YOUR ROUTE…</>
-              : <><Sparkles size={15} /> GENERATE AI ROUTE <ArrowRight size={14} /></>
+              : <><Sparkles size={15} /> GENERATE PARTYRADAR ROUTE <ArrowRight size={14} /></>
             }
           </button>
         )}
@@ -467,7 +467,7 @@ export default function PubCrawlPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-black tracking-[0.2em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
-                      AI-GENERATED ROUTE
+                      PARTYRADAR ROUTE
                     </p>
                     <h2 className="text-lg font-black leading-tight mb-1.5" style={{ color: '#e0f2fe' }}>
                       {result.crawlTitle}

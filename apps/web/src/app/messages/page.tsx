@@ -823,12 +823,11 @@ function GroupChatView({
   const [showSubModal, setShowSubModal] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  // Pub crawl — active saved crawl
+  // Pub crawl
   const [activeTab, setActiveTab] = useState<'chat' | 'crawl'>('chat')
   const [crawl, setCrawl] = useState<any>(null)
   const [crawlLoading, setCrawlLoading] = useState(false)
   const [crawlCreating, setCrawlCreating] = useState(false)
-  // Pub crawl — AI planner panel (replaces old manual modal)
   const [showPlanner, setShowPlanner] = useState(false)
   const [plannerGroupSize, setPlannerGroupSize] = useState(4)
   const [plannerStartTime, setPlannerStartTime] = useState('20:00')
@@ -883,7 +882,6 @@ function GroupChatView({
     if (activeTab === 'crawl') loadCrawl()
   }, [activeTab, loadCrawl])
 
-  // Open planner and sync group size from group member count
   function openPlanner() {
     if (group?.memberCount) setPlannerGroupSize(group.memberCount)
     setPlannerResult(null)
@@ -906,12 +904,9 @@ function GroupChatView({
         )
       })
       const json = await api.post<{ data: any }>('/pub-crawl/generate', {
-        lat: loc.lat,
-        lng: loc.lng,
-        groupSize: plannerGroupSize,
-        startTime: plannerStartTime,
-        vibes: plannerVibes,
-        stops: plannerNumStops,
+        lat: loc.lat, lng: loc.lng,
+        groupSize: plannerGroupSize, startTime: plannerStartTime,
+        vibes: plannerVibes, stops: plannerNumStops,
       })
       if (json?.data) setPlannerResult(json.data)
       else setPlannerError('No route generated — try a different area or fewer stops.')
@@ -927,15 +922,8 @@ function GroupChatView({
     setCrawlCreating(true)
     try {
       const stops = plannerResult.route.map((s: any) => ({ name: s.name, address: s.address ?? '' }))
-      const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, {
-        name: plannerResult.crawlTitle,
-        stops,
-      })
-      if (j.data) {
-        setCrawl(j.data)
-        setShowPlanner(false)
-        setPlannerResult(null)
-      }
+      const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, { name: plannerResult.crawlTitle, stops })
+      if (j.data) { setCrawl(j.data); setShowPlanner(false); setPlannerResult(null) }
     } catch {}
     finally { setCrawlCreating(false) }
   }
@@ -1187,12 +1175,12 @@ function GroupChatView({
             <div className="flex flex-col items-center gap-4 py-12 text-center">
               <span className="text-4xl">🍺</span>
               <p className="text-sm font-black tracking-wide" style={{ color: 'rgba(245,158,11,0.8)' }}>NO ACTIVE PUB CRAWL</p>
-              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Use the AI planner to build a walking route with timed stops for your group.</p>
+              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Use the PartyRadar Planner to build a walking route with timed stops for your group.</p>
               {dbUserId && (
                 <button onClick={openPlanner}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
                   style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(245,158,11,0.12))', border: '1px solid rgba(168,85,247,0.4)', color: '#a855f7' }}>
-                  ✨ PLAN WITH AI
+                  🗺 PLAN PUB CRAWL
                 </button>
               )}
             </div>
@@ -1299,7 +1287,7 @@ function GroupChatView({
                       <span className="text-sm font-black tracking-widest" style={{ color: '#f59e0b' }}>PUB CRAWL</span>
                       <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
                         style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)' }}>
-                        ✨ AI PLANNER
+                        🗺 PARTYRADAR PLANNER
                       </span>
                     </div>
                     <button onClick={() => setShowPlanner(false)} style={{ color: 'rgba(74,96,128,0.5)' }}>
@@ -1391,7 +1379,7 @@ function GroupChatView({
                         }}>
                         {plannerGenerating
                           ? <><span className="inline-block w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(var(--accent-rgb),0.2)', borderTopColor: 'var(--accent)' }} /> BUILDING ROUTE…</>
-                          : <>✨ GENERATE AI ROUTE &rarr;</>
+                          : <>🗺 GENERATE PARTYRADAR ROUTE &rarr;</>
                         }
                       </button>
                     </>
@@ -1405,7 +1393,7 @@ function GroupChatView({
                         style={{ background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.1) 0%, rgba(168,85,247,0.1) 100%)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
                         <div className="h-0.5" style={{ background: 'linear-gradient(90deg, var(--accent), #a855f7)' }} />
                         <div className="px-4 py-3">
-                          <p className="text-[9px] font-black tracking-[0.2em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>AI-GENERATED ROUTE</p>
+                          <p className="text-[9px] font-black tracking-[0.2em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>PARTYRADAR ROUTE</p>
                           <p className="text-base font-black leading-tight mb-1" style={{ color: '#e0f2fe' }}>{plannerResult.crawlTitle}</p>
                           <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.5)' }}>{plannerResult.openingLine}</p>
                           <div className="flex flex-wrap gap-3 mt-3 pt-3" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.1)' }}>
