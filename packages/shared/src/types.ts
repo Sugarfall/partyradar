@@ -99,6 +99,7 @@ export interface Event {
   isInviteOnly: boolean
   inviteToken?: string | null
   isPublished: boolean
+  djRequestsEnabled: boolean
   /** HOME_PARTY only — emoji-coded vibe signals */
   partySigns?: string[] | null
   /** Lineup / performers for club nights / concerts */

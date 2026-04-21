@@ -1143,6 +1143,7 @@ export default function EventDetailPage() {
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
   const [publishLoading, setPublishLoading] = useState(false)
+  const [djToggleLoading, setDjToggleLoading] = useState(false)
   const [friendsGoing, setFriendsGoing] = useState<{ count: number; friends: Array<{ id: string; displayName: string; photoUrl: string | null }> }>({ count: 0, friends: [] })
   const [msgOpen, setMsgOpen] = useState(false)
   const [msgText, setMsgText] = useState('')
@@ -1267,6 +1268,19 @@ export default function EventDetailPage() {
       setActionError(err instanceof Error ? err.message : 'Failed')
     } finally {
       setPublishLoading(false)
+    }
+  }
+
+  async function handleToggleDjRequests() {
+    setDjToggleLoading(true)
+    try {
+      await updateEvent(event!.id, { djRequestsEnabled: !event!.djRequestsEnabled } as any)
+      if (!DEV_MODE) await mutate()
+      else router.refresh()
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setDjToggleLoading(false)
     }
   }
 
@@ -1722,12 +1736,14 @@ export default function EventDetailPage() {
         {/* ── Highlights of the Night ── */}
         <HighlightsOfTheNight event={event} color={tc.color} />
 
-        {/* ── DJ Song Requests ── */}
-        <DjRequestPanel
-          eventId={event.id}
-          isHost={isHost}
-          userTier={dbUser?.subscriptionTier}
-        />
+        {/* ── DJ Song Requests — shown when host has enabled it ── */}
+        {event.djRequestsEnabled && (
+          <DjRequestPanel
+            eventId={event.id}
+            isHost={isHost}
+            userTier={dbUser?.subscriptionTier}
+          />
+        )}
 
         {/* ── Venue Community Chat ── */}
         {(event as any).venue && (
@@ -1807,6 +1823,21 @@ export default function EventDetailPage() {
                   }
                 </button>
               )}
+              {/* DJ Requests toggle */}
+              <button
+                onClick={handleToggleDjRequests}
+                disabled={djToggleLoading}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 disabled:opacity-50"
+                style={{
+                  border: `1px solid ${event.djRequestsEnabled ? 'rgba(168,85,247,0.45)' : 'rgba(168,85,247,0.15)'}`,
+                  color: event.djRequestsEnabled ? '#a855f7' : 'rgba(168,85,247,0.45)',
+                  letterSpacing: '0.1em',
+                }}>
+                {djToggleLoading
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <><Music2 size={12} /> DJ {event.djRequestsEnabled ? 'REQUESTS ON' : 'REQUESTS OFF'}</>
+                }
+              </button>
               {/* Cancel event */}
               {!event.isCancelled && (
                 <button

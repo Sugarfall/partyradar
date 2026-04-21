@@ -72,6 +72,7 @@ const defaultForm: Partial<CreateEventInput> = {
   alcoholPolicy: 'NONE',
   ageRestriction: 'ALL_AGES',
   isInviteOnly: false,
+  djRequestsEnabled: false,
   showNeighbourhoodOnly: false,
   whatToBring: [],
   vibeTags: [],
@@ -947,6 +948,32 @@ export default function CreateEventPage() {
                 <p className="text-sm font-bold" style={{ color: form.isInviteOnly ? '#ff006e' : '#e0f2fe' }}>🔒 Invite Only</p>
                 <p className="text-xs mt-0.5" style={{ color: 'rgba(74,96,128,0.8)' }}>
                   Hidden from public discovery — only people with your invite link can see it
+                </p>
+              </div>
+            </button>
+
+            {/* DJ Song Requests */}
+            <button
+              onClick={() => update({ djRequestsEnabled: !(form as any).djRequestsEnabled })}
+              className="flex items-start gap-3 p-4 rounded-xl w-full text-left transition-all duration-200"
+              style={{
+                background: (form as any).djRequestsEnabled ? 'rgba(168,85,247,0.06)' : 'rgba(var(--accent-rgb),0.02)',
+                border: (form as any).djRequestsEnabled ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(var(--accent-rgb),0.1)',
+              }}
+            >
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{
+                  border: (form as any).djRequestsEnabled ? '1px solid rgba(168,85,247,0.6)' : '1px solid rgba(var(--accent-rgb),0.2)',
+                  background: (form as any).djRequestsEnabled ? '#a855f7' : 'transparent',
+                }}
+              >
+                {(form as any).djRequestsEnabled && <Check size={12} color="#04040d" strokeWidth={3} />}
+              </div>
+              <div>
+                <p className="text-sm font-bold" style={{ color: (form as any).djRequestsEnabled ? '#a855f7' : '#e0f2fe' }}>🎵 DJ Song Requests</p>
+                <p className="text-xs mt-0.5" style={{ color: 'rgba(74,96,128,0.8)' }}>
+                  Guests can request songs — free with Basic+ plan, or £1 per request for others
                 </p>
               </div>
             </button>

@@ -32,6 +32,7 @@ const eventSchema = z.object({
   houseRules: z.string().max(1000).optional(),
   vibeTags: z.array(z.string()).max(8).default([]),
   isInviteOnly: z.boolean().default(false),
+  djRequestsEnabled: z.boolean().default(false),
   partySigns: z.array(z.string()).max(16).default([]),
   lineup: z.string().max(500).optional(),
   venueName: z.string().max(200).optional(),

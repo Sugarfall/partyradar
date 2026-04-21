@@ -122,6 +122,7 @@ export default function EditEventPage() {
         houseRules: (event as any).houseRules ?? '',
         vibeTags: event.vibeTags ?? [],
         isInviteOnly: event.isInviteOnly ?? false,
+        djRequestsEnabled: event.djRequestsEnabled ?? false,
         showNeighbourhoodOnly: event.showNeighbourhoodOnly ?? false,
         venueName: (event as any).venueName ?? '',
         lineup: (event as any).lineup ?? '',
@@ -530,6 +531,20 @@ export default function EditEventPage() {
           <div>
             <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>Invite Only</p>
             <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.6)' }}>Guests need an invite link to RSVP</p>
+          </div>
+        </div>
+
+        {/* DJ Requests */}
+        <div className="flex items-center gap-3 p-4 rounded-xl cursor-pointer"
+          style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
+          onClick={() => update({ djRequestsEnabled: !(form as any).djRequestsEnabled })}>
+          <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all"
+            style={{ background: (form as any).djRequestsEnabled ? 'var(--accent)' : 'transparent', border: `2px solid ${(form as any).djRequestsEnabled ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)'}` }}>
+            {(form as any).djRequestsEnabled && <Check size={11} color="#04040d" strokeWidth={3} />}
+          </div>
+          <div>
+            <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>🎵 DJ Song Requests</p>
+            <p className="text-[10px]" style={{ color: 'rgba(74,96,128,0.6)' }}>Guests can request songs — free with Basic+ plan, or £1 per request for others</p>
           </div>
         </div>
 

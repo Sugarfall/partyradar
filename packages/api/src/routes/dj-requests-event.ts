@@ -62,9 +62,13 @@ router.post('/:id/dj-requests', requireAuth, async (req: AuthRequest, res, next)
 
     if (!song?.trim()) throw new AppError('Song name is required', 400)
 
-    // Verify event exists
-    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true } })
+    // Verify event exists and has DJ requests enabled
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, djRequestsEnabled: true },
+    })
     if (!event) throw new AppError('Event not found', 404)
+    if (!event.djRequestsEnabled) throw new AppError('Song requests are not enabled for this event', 403)
 
     const userTier = getTier(tier)
     const mustPay  = !userTier.canRequestDJ // FREE tier must pay
