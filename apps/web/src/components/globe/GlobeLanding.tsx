@@ -105,6 +105,18 @@ export default function GlobeLanding() {
     } catch { /* silent — just don't show the card */ }
   }, [])
 
+  // Declared before getLocationAndZoom so TypeScript can see it in the dep array
+  const zoomToCoords = useCallback((lat: number, lng: number) => {
+    if (!globeRef.current) {
+      setTimeout(() => zoomToCoords(lat, lng), 200)
+      return
+    }
+    const ctrl = globeRef.current.controls()
+    ctrl.autoRotate = false
+    globeRef.current.pointOfView({ lat, lng, altitude: 0.25 }, 2200)
+    setTimeout(() => setPhase('choice'), 2500)
+  }, [])
+
   const getLocationAndZoom = useCallback(() => {
     setPhase('zooming')
     navigator.geolocation?.getCurrentPosition(
@@ -122,18 +134,6 @@ export default function GlobeLanding() {
       { timeout: 4000 }
     )
   }, [fetchNearestEvent, zoomToCoords])
-
-  const zoomToCoords = useCallback((lat: number, lng: number) => {
-    if (!globeRef.current) {
-      setTimeout(() => zoomToCoords(lat, lng), 200)
-      return
-    }
-    const ctrl = globeRef.current.controls()
-    ctrl.autoRotate = false
-    // Zoom in over 2.2 seconds
-    globeRef.current.pointOfView({ lat, lng, altitude: 0.25 }, 2200)
-    setTimeout(() => setPhase('choice'), 2500)
-  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
