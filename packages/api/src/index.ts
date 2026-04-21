@@ -700,6 +700,36 @@ cron.schedule('0 * * * *', async () => {
         console.log(`[Startup] Deleted ${deletedPosts.count} bot post(s) from demo accounts`)
       }
     }
+
+    // Backfill PostMedia for legacy posts. Any post that has a populated
+    // `imageUrl` but no `media` rows yet (i.e. was created before Phase 1
+    // of the feed refactor) gets one PostMedia row synthesised so the new
+    // carousel renderers don't have to special-case legacy data.
+    // Idempotent — safe to run on every boot; the `none: {}` filter skips
+    // posts already backfilled.
+    const legacyPosts = await prisma.post.findMany({
+      where: {
+        imageUrl: { not: null },
+        media: { none: {} },
+      },
+      select: { id: true, imageUrl: true },
+      take: 1000, // cap per boot so a massive backfill doesn't stall startup
+    })
+    if (legacyPosts.length > 0) {
+      await prisma.postMedia.createMany({
+        data: legacyPosts
+          .filter((p) => p.imageUrl)
+          .map((p) => ({
+            postId: p.id,
+            url: p.imageUrl!,
+            // We can't reliably tell images from videos by URL alone here,
+            // but Cloudinary URLs include /video/ for videos — detect that.
+            type: p.imageUrl!.includes('/video/') ? ('VIDEO' as const) : ('IMAGE' as const),
+            sortOrder: 0,
+          })),
+      })
+      console.log(`[Startup] Backfilled PostMedia for ${legacyPosts.length} legacy post(s)`)
+    }
   } catch (err) {
     console.error('[Startup] Cleanup error:', err)
   }

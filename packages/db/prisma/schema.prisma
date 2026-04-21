@@ -171,6 +171,8 @@ model User {
   posts            Post[]
   postLikes        PostLike[]
   postComments     PostComment[]
+  postTags         PostTag[]     @relation("PostTaggedUser")
+  postShares       PostShare[]   @relation("PostShares")
   reviews          EventReview[]
   createdSquads    Squad[]       @relation("CreatedSquads")
   squadMemberships SquadMember[]
@@ -452,6 +454,7 @@ model Venue {
 
   checkIns    CheckIn[]
   posts       Post[]
+  postTags    PostTag[] @relation("PostTaggedVenue")
   partnership VenuePartnership?
 
   @@index([lat, lng])
@@ -552,6 +555,8 @@ model Post {
   event         Event?         @relation(fields: [eventId], references: [id], onDelete: SetNull)
   venueId       String?
   venue         Venue?         @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  /// DEPRECATED: Use `media` for new posts. Kept populated with the first
+  /// image URL for backwards compat with existing readers.
   imageUrl      String?
   text          String?        @db.Text
   isStory       Boolean        @default(false)
@@ -559,15 +564,106 @@ model Post {
   likesCount    Int            @default(0)
   commentsCount Int            @default(0)
   viewCount     Int            @default(0)
+  sharesCount   Int            @default(0)
+  repostsCount  Int            @default(0)
+  /// If set, this post is a repost of another post. `user` is still the
+  /// reposter — the original author lives on `originalPost.user`. The
+  /// text field on a repost holds the reposter's optional caption.
+  originalPostId String?
+  originalPost   Post?         @relation("PostReposts", fields: [originalPostId], references: [id], onDelete: SetNull)
+  reposts        Post[]        @relation("PostReposts")
   createdAt     DateTime       @default(now())
 
   likes    PostLike[]
   comments PostComment[]
+  media    PostMedia[]
+  tags     PostTag[]
+  shares   PostShare[]
 
   @@index([userId])
   @@index([eventId])
   @@index([createdAt])
   @@index([isStory, expiresAt])
+  @@index([originalPostId])
+}
+
+enum PostMediaType {
+  IMAGE
+  VIDEO
+}
+
+/// Ordered media items attached to a post — enables carousels (up to ~10 items)
+/// and mixed image/video posts. The Post.imageUrl field is kept populated with
+/// media[0].url for backwards compatibility with older readers.
+model PostMedia {
+  id                 String        @id @default(cuid())
+  postId             String
+  post               Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  type               PostMediaType @default(IMAGE)
+  url                String
+  /// Cloudinary public_id — needed to delete from Cloudinary when the post
+  /// is deleted. Null if the media came from some other source.
+  cloudinaryPublicId String?
+  /// Render order in the carousel. Lower = shown first.
+  sortOrder          Int           @default(0)
+  width              Int?
+  height             Int?
+  /// Video-only: duration in seconds (nullable for images).
+  durationSec        Int?
+  /// Video-only: thumbnail/poster URL for before-playback display.
+  thumbnailUrl       String?
+  createdAt          DateTime      @default(now())
+
+  tags PostTag[]
+
+  @@index([postId, sortOrder])
+}
+
+/// Polymorphic tag attached to a post or a specific media item within a post.
+/// Exactly one of `taggedUserId` or `taggedVenueId` must be set (enforced at
+/// app level — Prisma doesn't express XOR constraints). If `mediaId` is
+/// set, the tag is pinned to that carousel item; otherwise it applies to
+/// the post as a whole. Optional bounding-box fields (percentages 0-1) let
+/// the UI place face/object tags Instagram-style.
+model PostTag {
+  id            String     @id @default(cuid())
+  postId        String
+  post          Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  mediaId       String?
+  media         PostMedia? @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  taggedUserId  String?
+  taggedUser    User?      @relation("PostTaggedUser", fields: [taggedUserId], references: [id], onDelete: Cascade)
+  taggedVenueId String?
+  taggedVenue   Venue?     @relation("PostTaggedVenue", fields: [taggedVenueId], references: [id], onDelete: Cascade)
+
+  bboxX         Float?
+  bboxY         Float?
+  bboxW         Float?
+  bboxH         Float?
+
+  createdAt     DateTime   @default(now())
+
+  @@index([postId])
+  @@index([taggedUserId])
+  @@index([taggedVenueId])
+}
+
+/// One row per share/repost/copy-link action. Drives the share counter on
+/// the post card and the per-post analytics view. `method` is a plain
+/// string ("native", "copy", "repost") rather than an enum so we can add
+/// new share channels without a migration.
+model PostShare {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("PostShares", fields: [userId], references: [id], onDelete: Cascade)
+  method    String
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+  @@index([userId])
 }
 
 model PostLike {
