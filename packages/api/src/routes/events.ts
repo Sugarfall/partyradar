@@ -8,6 +8,7 @@ import { stripe } from '../lib/stripe'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
 import type { SubscriptionTier } from '@partyradar/shared'
+import { dedupeEvents } from '../lib/dedupeEvents'
 
 const router = Router()
 
@@ -132,26 +133,33 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       getCityName().then((city) => syncExternalEvents(city, latN, lngN, 'system')).catch(() => {})
     }
 
-    const [events, total] = await Promise.all([
-      prisma.event.findMany({
-        where,
-        skip,
-        take: Number(limit),
-        orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
-        include: {
-          host: { select: userSelect },
-          _count: {
-            select: {
-              guests: { where: { status: 'CONFIRMED' } },
-              savedBy: true,
-            },
+    // Cross-source dedup (e.g. one concert synced from Ticketmaster + Skiddle
+    // + SerpAPI = 3 DB rows) requires us to fetch a widened window and
+    // collapse in JS before paginating. Prisma can't dedupe on a derived
+    // fingerprint (first-word + day + rounded geo). The cap of 500 is an order
+    // of magnitude more than any geo-bounded page needs and keeps the request
+    // bounded regardless of how noisy the external feeds get.
+    const MAX_FETCH = 500
+    const allEvents = await prisma.event.findMany({
+      where,
+      take: MAX_FETCH,
+      orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
+      include: {
+        host: { select: userSelect },
+        _count: {
+          select: {
+            guests: { where: { status: 'CONFIRMED' } },
+            savedBy: true,
           },
         },
-      }),
-      prisma.event.count({ where }),
-    ])
+      },
+    })
 
-    const data = events.map((e) => ({
+    const deduped = dedupeEvents(allEvents)
+    const total = deduped.length
+    const paged = deduped.slice(skip, skip + Number(limit))
+
+    const data = paged.map((e) => ({
       ...e,
       // Hide exact address for neighbourhood-only events
       address: e.showNeighbourhoodOnly && !req.user ? e.neighbourhood : e.address,
