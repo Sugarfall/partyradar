@@ -69,15 +69,30 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
       }),
     ])
 
-    // Merge all items into a unified feed
+    // Batch-fetch which posts the current user has liked
+    const postIds = posts.map((p) => p.id)
+    const likedRows = postIds.length > 0
+      ? await prisma.postLike.findMany({
+          where: { userId, postId: { in: postIds } },
+          select: { postId: true },
+        })
+      : []
+    const likedSet = new Set(likedRows.map((l) => l.postId))
+
+    // Merge all items into a unified, FLAT feed structure
     const feedItems = [
       ...rsvps.map((r) => ({
         type: 'RSVP' as const,
         user: r.user,
         event: r.event,
-        venue: null,
-        post: null,
-        checkin: null,
+        venue: null as null,
+        crowdLevel: null as string | null,
+        id: null as string | null,
+        text: null as string | null,
+        imageUrl: null as string | null,
+        likesCount: 0,
+        commentsCount: 0,
+        hasLiked: false,
         createdAt: r.invitedAt,
       })),
       ...checkIns.map((c) => ({
@@ -85,8 +100,13 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         user: c.user,
         event: c.event,
         venue: c.venue,
-        post: null,
-        checkin: { id: c.id, crowdLevel: c.crowdLevel },
+        crowdLevel: c.crowdLevel as string | null,
+        id: null as string | null,
+        text: null as string | null,
+        imageUrl: null as string | null,
+        likesCount: 0,
+        commentsCount: 0,
+        hasLiked: false,
         createdAt: c.createdAt,
       })),
       ...posts.map((p) => ({
@@ -94,8 +114,13 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         user: p.user,
         event: p.event,
         venue: p.venue,
-        post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount, viewCount: p.viewCount },
-        checkin: null,
+        crowdLevel: null as string | null,
+        id: p.id,
+        text: p.text,
+        imageUrl: p.imageUrl,
+        likesCount: p.likesCount,
+        commentsCount: p.commentsCount,
+        hasLiked: likedSet.has(p.id),
         createdAt: p.createdAt,
       })),
     ]
@@ -126,7 +151,7 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     const viewerId = req.user?.dbUser?.id ?? null
 
-    // Fetch all real posts (non-story, or active story) from the last 7 days
+    // Fetch all real posts (non-story) from the last 7 days
     const posts = await prisma.post.findMany({
       where: {
         createdAt: { gte: sevenDaysAgo },
@@ -142,6 +167,16 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
       },
     })
 
+    // Batch-fetch which posts the viewer has liked
+    const postIds = posts.map((p) => p.id)
+    const likedRows = viewerId && postIds.length > 0
+      ? await prisma.postLike.findMany({
+          where: { userId: viewerId, postId: { in: postIds } },
+          select: { postId: true },
+        })
+      : []
+    const likedSet = new Set(likedRows.map((l) => l.postId))
+
     // Prioritise: viewer's own posts + posts with media first, then text-only
     const sorted = [
       ...posts.filter(p => p.userId === viewerId),
@@ -153,13 +188,19 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
     const seen = new Set<string>()
     const deduped = sorted.filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true })
 
+    // Return flat structure matching the FeedItem interface
     const items = deduped.map((p) => ({
       type: 'POST' as const,
       user: p.user,
       event: p.event,
       venue: p.venue,
-      post: { id: p.id, imageUrl: p.imageUrl, text: p.text, isStory: p.isStory, likesCount: p.likesCount, viewCount: p.viewCount },
-      checkin: null,
+      crowdLevel: null as string | null,
+      id: p.id,
+      text: p.text,
+      imageUrl: p.imageUrl,
+      likesCount: p.likesCount,
+      commentsCount: p.commentsCount,
+      hasLiked: likedSet.has(p.id),
       createdAt: p.createdAt,
     }))
 
