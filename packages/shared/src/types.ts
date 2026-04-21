@@ -144,6 +144,7 @@ export interface CreateEventInput {
   houseRules?: string
   vibeTags: string[]
   isInviteOnly: boolean
+  djRequestsEnabled?: boolean
   coverImageUrl?: string
   /** HOME_PARTY only — emoji-coded vibe signals visible to attendees */
   partySigns?: string[]
