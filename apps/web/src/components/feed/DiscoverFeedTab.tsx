@@ -1,10 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Heart, Flag, Camera, X, ImagePlus, MapPin, Calendar, Zap, Video } from 'lucide-react'
+import { Heart, Flag, Camera, MapPin, Calendar, Zap, Share2, BarChart2 } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import { uploadImage, uploadVideo, isVideoUrl } from '@/lib/cloudinary'
+import { isVideoUrl } from '@/lib/cloudinary'
+import ComposePostModal from './ComposePostModal'
+import PostMediaViewer, { type MediaItem, type PostTagLite } from './PostMediaViewer'
+import ShareSheet from './ShareSheet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +40,13 @@ interface FeedPost {
   isStory: boolean
   likesCount: number
   viewCount?: number
+  /** Phase 2: ordered carousel media (falls back to `imageUrl` when empty). */
+  media?: MediaItem[] | null
+  /** Phase 2: resolved tags with nested user/venue records. */
+  tags?: PostTagLite[] | null
+  /** Phase 4: share + repost counters (optional until the feed endpoint returns them). */
+  sharesCount?: number
+  repostsCount?: number
 }
 
 interface FeedCheckin {
@@ -52,13 +62,6 @@ interface FeedItem {
   post?: FeedPost | null
   checkin?: FeedCheckin | null
   createdAt: string
-}
-
-interface NearbyVenue {
-  id: string
-  name: string
-  type: string
-  address?: string | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -104,39 +107,26 @@ function Avatar({ user, size = 36 }: { user: { displayName: string; photoUrl?: s
 // ─── Post Card ────────────────────────────────────────────────────────────────
 
 function PostCard({
-  item, liked, onLike, reported, onReport,
+  item, liked, onLike, reported, onReport, currentUserId,
 }: {
   item: FeedItem
   liked: boolean
   onLike: () => void
   reported: boolean
   onReport: () => void
+  /** Used to decide whether to show the owner-only Insights link. */
+  currentUserId?: string | null
 }) {
   const post = item.post!
-  const [imgLoaded, setImgLoaded] = useState(false)
-  const [showHeart, setShowHeart] = useState(false)
-  const [localViews, setLocalViews] = useState(post.viewCount ?? 0)
-  const lastTapRef = useRef(0)
-  const viewedRef = useRef(false)
-  const isVideo = post.imageUrl ? isVideoUrl(post.imageUrl) : false
-
-  function handleVideoPlay() {
-    if (viewedRef.current) return
-    viewedRef.current = true
-    setLocalViews(v => v + 1)
-    api.post(`/posts/${post.id}/view`, {}).catch(() => {})
-  }
-
-  function handleMediaTap() {
-    const now = Date.now()
-    if (now - lastTapRef.current < 350) {
-      // double tap → like
-      if (!liked) onLike()
-      setShowHeart(true)
-      setTimeout(() => setShowHeart(false), 800)
-    }
-    lastTapRef.current = now
-  }
+  const isOwner = !!(currentUserId && item.user.id === currentUserId)
+  const [sharing, setSharing] = useState(false)
+  // Optimistic share counter: bumped in-place when the user acts, snapping
+  // back to the server value on the next feed refresh.
+  const [localShares, setLocalShares] = useState(post.sharesCount ?? 0)
+  // Determine whether this post has any video for the view-count Instagram
+  // footer. We check `media` first (preferred) and fall back to `imageUrl`.
+  const hasVideo = (post.media ?? []).some((m) => m.type === 'VIDEO')
+    || (!post.media?.length && post.imageUrl ? isVideoUrl(post.imageUrl) : false)
 
   return (
     <div className="overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -155,12 +145,6 @@ function PostCard({
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
                 style={{ background: 'rgba(236,72,153,0.15)', color: '#ec4899', border: '1px solid rgba(236,72,153,0.3)' }}>
                 STORY
-              </span>
-            )}
-            {isVideo && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
-                style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}>
-                <Video size={8} />VIDEO
               </span>
             )}
           </div>
@@ -183,50 +167,22 @@ function PostCard({
         </div>
       </div>
 
-      {/* Media — image or video, double-tap to like */}
-      {post.imageUrl && (
-        <div className="relative cursor-pointer" onClick={handleMediaTap}
-          style={{ background: 'rgba(0,0,0,0.4)' }}>
-          {isVideo ? (
-            <video
-              src={post.imageUrl}
-              controls
-              playsInline
-              className="w-full block"
-              style={{ maxHeight: 480, background: '#000' }}
-              onPlay={handleVideoPlay}
-            />
-          ) : (
-            <img
-              src={post.imageUrl} alt=""
-              className="w-full object-cover block transition-opacity duration-300"
-              style={{ maxHeight: 480, opacity: imgLoaded ? 1 : 0 }}
-              onLoad={() => setImgLoaded(true)}
-            />
-          )}
-
-          {/* Double-tap heart flash */}
-          {showHeart && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <Heart
-                size={80}
-                fill="#ec4899"
-                style={{
-                  color: '#ec4899',
-                  filter: 'drop-shadow(0 0 20px rgba(236,72,153,0.9))',
-                  transform: 'scale(1.1)',
-                  transition: 'opacity 0.3s',
-                }}
-              />
-            </div>
-          )}
-        </div>
+      {/* Media — carousel + autoplay video + tag overlays. Double-tap to like. */}
+      {(post.imageUrl || (post.media && post.media.length > 0)) && (
+        <PostMediaViewer
+          postId={post.id}
+          media={post.media}
+          imageUrl={post.imageUrl}
+          tags={post.tags}
+          onDoubleTap={() => { if (!liked) onLike() }}
+          maxHeight={480}
+        />
       )}
 
       {/* View count — videos only, Instagram-style */}
-      {isVideo && localViews > 0 && (
+      {hasVideo && (post.viewCount ?? 0) > 0 && (
         <p className="px-4 pt-2 pb-0 text-xs font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>
-          {formatViews(localViews)} views
+          {formatViews(post.viewCount ?? 0)} views
         </p>
       )}
 
@@ -249,17 +205,60 @@ function PostCard({
             <span className="text-xs font-bold">{post.likesCount + (liked ? 1 : 0)}</span>
           )}
         </button>
-        <div className="ml-auto">
-          <button
-            onClick={onReport}
-            disabled={reported}
-            style={{ color: reported ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.15)' }}
-            title="Report post"
-          >
-            <Flag size={13} />
-          </button>
+
+        {/* Share — opens the share sheet (native share / copy link / repost) */}
+        <button
+          onClick={() => setSharing(true)}
+          className="flex items-center gap-1.5 transition-all duration-200 active:scale-110"
+          style={{ color: 'rgba(255,255,255,0.35)' }}
+          title="Share"
+        >
+          <Share2 size={16} />
+          {localShares > 0 && (
+            <span className="text-xs font-bold">{localShares}</span>
+          )}
+        </button>
+
+        <div className="ml-auto flex items-center gap-3">
+          {isOwner ? (
+            <Link
+              href={`/feed/${post.id}/insights`}
+              title="View insights"
+              className="transition-colors"
+              style={{ color: 'rgba(var(--accent-rgb),0.65)' }}
+            >
+              <BarChart2 size={13} />
+            </Link>
+          ) : (
+            <button
+              onClick={onReport}
+              disabled={reported}
+              style={{ color: reported ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.15)' }}
+              title="Report post"
+            >
+              <Flag size={13} />
+            </button>
+          )}
         </div>
       </div>
+
+      {sharing && (
+        <ShareSheet
+          post={{
+            id: post.id,
+            text: post.text,
+            imageUrl: post.imageUrl,
+            user: item.user,
+            media: (post.media ?? []).map((m) => ({
+              id: m.id ?? `${post.id}-${m.sortOrder ?? 0}`,
+              url: m.url,
+              type: (m.type ?? 'IMAGE') as 'IMAGE' | 'VIDEO',
+            })),
+          }}
+          onShared={() => setLocalShares((c) => c + 1)}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </div>
   )
 }
@@ -303,239 +302,6 @@ function CheckinCard({ item }: { item: FeedItem }) {
   )
 }
 
-// ─── Compose Modal ────────────────────────────────────────────────────────────
-
-function ComposeModal({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
-  const [text, setText] = useState('')
-  const [mediaFile, setMediaFile] = useState<File | null>(null)
-  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  // ── Venue location tagging — @ search ────────────────────────────────────
-  const [venueSearch, setVenueSearch] = useState('')
-  const [venueSuggestions, setVenueSuggestions] = useState<NearbyVenue[]>([])
-  const [venueSearchLoading, setVenueSearchLoading] = useState(false)
-  const [selectedVenue, setSelectedVenue] = useState<NearbyVenue | null>(null)
-
-  useEffect(() => {
-    const q = venueSearch.trim()
-    if (!q) { setVenueSuggestions([]); return }
-    const t = setTimeout(async () => {
-      setVenueSearchLoading(true)
-      try {
-        const res = await api.get<{ data: NearbyVenue[] }>(`/venues?q=${encodeURIComponent(q)}&limit=8`)
-        setVenueSuggestions(res.data ?? [])
-      } catch {}
-      setVenueSearchLoading(false)
-    }, 300)
-    return () => clearTimeout(t)
-  }, [venueSearch])
-
-  function pickMedia(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const isVid = file.type.startsWith('video/')
-    setMediaFile(file)
-    setMediaType(isVid ? 'video' : 'image')
-    setPreview(URL.createObjectURL(file))
-  }
-
-  function clearMedia() {
-    setMediaFile(null)
-    setMediaType(null)
-    setPreview(null)
-    if (fileRef.current) fileRef.current.value = ''
-  }
-
-  async function submit() {
-    if (!text.trim() && !mediaFile) { setError('Add a photo, video or write something'); return }
-    setUploading(true)
-    setError('')
-    try {
-      let imageUrl: string | undefined
-      if (mediaFile) {
-        imageUrl = mediaType === 'video'
-          ? await uploadVideo(mediaFile, 'sightings')
-          : await uploadImage(mediaFile, 'sightings')
-      }
-      await api.post('/posts', {
-        text: text.trim() || undefined,
-        imageUrl,
-        isStory: false,
-        venueId: selectedVenue?.id ?? undefined,
-      })
-      onPosted()
-      onClose()
-    } catch (e: unknown) {
-      setError((e as { message?: string })?.message ?? 'Failed to post')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const venueTypeEmoji: Record<string, string> = {
-    NIGHTCLUB: '🎧', BAR: '🍸', PUB: '🍺',
-    LOUNGE: '🛋️', ROOFTOP_BAR: '🌆', CONCERT_HALL: '🎵',
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-t-3xl overflow-hidden"
-        style={{ background: '#0d0d24', border: '1px solid rgba(236,72,153,0.2)', borderBottom: 'none' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-2">
-          <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
-        </div>
-
-        {/* Title */}
-        <div className="flex items-center justify-between px-5 pb-4">
-          <h2 className="font-black text-white text-base">Share Your Night</h2>
-          <button onClick={onClose}><X size={18} style={{ color: 'rgba(255,255,255,0.4)' }} /></button>
-        </div>
-
-        {/* Media preview */}
-        {preview && (
-          <div className="relative mx-5 mb-4 rounded-2xl overflow-hidden bg-black" style={{ maxHeight: 260 }}>
-            {mediaType === 'video' ? (
-              <video src={preview} controls playsInline className="w-full block" style={{ maxHeight: 260 }} />
-            ) : (
-              <img src={preview} alt="" className="w-full object-cover" style={{ maxHeight: 260 }} />
-            )}
-            <button
-              onClick={clearMedia}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,0,0,0.6)' }}
-            >
-              <X size={13} style={{ color: '#fff' }} />
-            </button>
-          </div>
-        )}
-
-        {/* Text input */}
-        <div className="px-5 mb-3">
-          <textarea
-            value={text}
-            onChange={e => setText(e.target.value)}
-            placeholder="What's happening tonight? 🎉"
-            maxLength={280}
-            rows={3}
-            className="w-full bg-transparent text-white text-sm leading-relaxed resize-none outline-none placeholder-white/20"
-          />
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-[10px]" style={{ color: text.length > 250 ? '#ef4444' : 'rgba(255,255,255,0.2)' }}>
-              {280 - text.length}
-            </span>
-          </div>
-        </div>
-
-        {/* @ Venue search */}
-        <div className="px-5 mb-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <MapPin size={10} style={{ color: 'rgba(0,200,255,0.5)' }} />
-            <span className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,200,255,0.4)' }}>
-              TAG LOCATION
-            </span>
-          </div>
-
-          {selectedVenue ? (
-            /* Selected chip — tap to remove */
-            <button
-              onClick={() => { setSelectedVenue(null); setVenueSearch('') }}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold transition-all"
-              style={{ background: 'rgba(0,200,255,0.15)', color: 'var(--accent)', border: '1px solid rgba(0,200,255,0.4)' }}
-            >
-              <span>{venueTypeEmoji[selectedVenue.type] ?? '📍'}</span>
-              {selectedVenue.name}
-              <X size={10} />
-            </button>
-          ) : (
-            /* @ search input + dropdown */
-            <div className="relative">
-              <div
-                className="flex items-center rounded-full overflow-hidden"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                <span className="pl-3 text-sm font-bold" style={{ color: 'rgba(0,200,255,0.6)' }}>@</span>
-                <input
-                  value={venueSearch}
-                  onChange={e => setVenueSearch(e.target.value)}
-                  placeholder="Search venues by name..."
-                  className="flex-1 px-2 py-1.5 text-[11px] bg-transparent outline-none"
-                  style={{ color: '#e0f2fe' }}
-                />
-                {venueSearchLoading && (
-                  <div className="w-3 h-3 mr-3 rounded-full border-2 animate-spin shrink-0"
-                    style={{ borderColor: 'rgba(0,200,255,0.1)', borderTopColor: 'rgba(0,200,255,0.5)' }} />
-                )}
-              </div>
-
-              {/* Suggestions dropdown */}
-              {venueSuggestions.length > 0 && (
-                <div
-                  className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-20"
-                  style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(0,200,255,0.15)', maxHeight: 160, overflowY: 'auto' }}
-                >
-                  {venueSuggestions.map(v => (
-                    <button
-                      key={v.id}
-                      onClick={() => { setSelectedVenue(v); setVenueSuggestions([]); setVenueSearch('') }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors"
-                      style={{ color: '#e0f2fe', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,200,255,0.06)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <span className="shrink-0">{venueTypeEmoji[v.type] ?? '📍'}</span>
-                      <span className="flex-1 truncate">{v.name}</span>
-                      {v.address && (
-                        <span className="text-[9px] shrink-0 truncate max-w-[100px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{v.address}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Error */}
-        {error && <p className="px-5 pb-3 text-xs font-semibold" style={{ color: '#ef4444' }}>{error}</p>}
-
-        {/* Footer */}
-        <div className="flex items-center gap-3 px-5 pb-6 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          {/* Media picker */}
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="p-2.5 rounded-xl transition-all flex items-center gap-1.5"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
-          >
-            <ImagePlus size={16} style={{ color: 'rgba(255,255,255,0.5)' }} />
-          </button>
-          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={pickMedia} />
-
-          {/* Post button */}
-          <button
-            onClick={submit}
-            disabled={uploading || (!text.trim() && !mediaFile)}
-            className="ml-auto px-5 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
-            style={{ background: 'linear-gradient(135deg, #ec4899, #f97316)', color: '#fff', boxShadow: '0 0 16px rgba(236,72,153,0.3)' }}
-          >
-            {uploading ? (mediaType === 'video' ? 'UPLOADING…' : '…') : 'POST'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -545,6 +311,7 @@ interface Props {
 }
 
 export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
+  const currentUserId = dbUser?.id ?? null
   const [items, setItems] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
@@ -686,6 +453,7 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
               onLike={() => handleLike(item.post!.id)}
               reported={reportedIds.has(item.post!.id)}
               onReport={() => handleReport(item.post!.id)}
+              currentUserId={currentUserId}
             />
           ))
         )}
@@ -715,7 +483,7 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
 
       {/* ── Compose modal ───────────────────────────────────────────────── */}
       {composing && (
-        <ComposeModal
+        <ComposePostModal
           onClose={() => setComposing(false)}
           onPosted={() => {
             // Scroll to top immediately so the new post is visible when the reload completes

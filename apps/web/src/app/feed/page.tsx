@@ -4,13 +4,16 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
   Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket,
-  Flag, MessageCircle, Send, X, Trash2,
+  Flag, MessageCircle, Send, X, Trash2, Camera, Share2, BarChart2,
 } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { silent, logError } from '@/lib/logError'
 import { DEV_MODE } from '@/lib/firebase'
 import { useAuth } from '@/hooks/useAuth'
+import ComposePostModal from '@/components/feed/ComposePostModal'
+import PostMediaViewer, { type MediaItem, type PostTagLite } from '@/components/feed/PostMediaViewer'
+import ShareSheet from '@/components/feed/ShareSheet'
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -41,7 +44,7 @@ const CROWD_CONFIG: Record<string, { color: string; label: string }> = {
 
 type FeedTab = 'foryou' | 'following'
 
-interface FeedUser { id?: string; displayName: string; photoUrl?: string | null }
+interface FeedUser { id?: string; username?: string; displayName: string; photoUrl?: string | null }
 interface FeedEvent { name: string; type?: string }
 interface FeedVenue { name: string }
 
@@ -54,8 +57,14 @@ interface FeedItem {
   crowdLevel?: string
   text?: string | null
   imageUrl?: string | null
+  /** Phase 2/3: ordered carousel media. Falls back to `imageUrl` when empty. */
+  media?: MediaItem[] | null
+  /** Phase 2/3: resolved post tags with nested user/venue records. */
+  tags?: PostTagLite[] | null
   likesCount?: number
   commentsCount?: number
+  /** Phase 4: per-channel share counter (native + copy + repost). */
+  sharesCount?: number
   hasLiked?: boolean
   createdAt: string
 }
@@ -151,6 +160,8 @@ function PostDetailModal({
   const [liked, setLiked] = useState(post.hasLiked ?? false)
   const [likesCount, setLikesCount] = useState(post.likesCount ?? 0)
   const [deleting, setDeleting] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [localShares, setLocalShares] = useState(post.sharesCount ?? 0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const commentsEndRef = useRef<HTMLDivElement>(null)
 
@@ -265,6 +276,16 @@ function PostDetailModal({
             {timeAgo(post.createdAt)}
           </span>
           {isOwner && (
+            <Link
+              href={`/feed/${post.id}/insights`}
+              title="View insights"
+              className="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150"
+              style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}
+            >
+              <BarChart2 size={13} />
+            </Link>
+          )}
+          {isOwner && (
             <button
               onClick={handleDelete}
               disabled={deleting}
@@ -284,14 +305,16 @@ function PostDetailModal({
           </button>
         </div>
 
-        {/* ── Post image ──────────────────────────────────────────── */}
-        {post.imageUrl && (
-          <div className="shrink-0" style={{ maxHeight: '40%', overflow: 'hidden', background: '#000' }}>
-            <img
-              src={post.imageUrl}
-              alt=""
-              className="w-full object-contain"
-              style={{ maxHeight: '40vh' }}
+        {/* ── Post media (carousel + tag overlays + double-tap like) ── */}
+        {(post.imageUrl || (post.media && post.media.length > 0)) && (
+          <div className="shrink-0" style={{ maxHeight: '40vh', overflow: 'hidden' }}>
+            <PostMediaViewer
+              postId={post.id}
+              media={post.media}
+              imageUrl={post.imageUrl}
+              tags={post.tags}
+              onDoubleTap={handleLike}
+              maxHeight={360}
             />
           </div>
         )}
@@ -327,6 +350,17 @@ function PostDetailModal({
             <MessageCircle size={16} />
             <span className="text-xs font-bold">{comments.length > 0 ? comments.length : ''}</span>
           </div>
+          <button
+            onClick={() => setSharing(true)}
+            className="flex items-center gap-1.5 transition-all duration-200 active:scale-110 ml-auto"
+            style={{ color: 'rgba(74,96,128,0.6)' }}
+            title="Share"
+          >
+            <Share2 size={16} />
+            {localShares > 0 && (
+              <span className="text-xs font-bold">{localShares}</span>
+            )}
+          </button>
         </div>
 
         {/* ── Comments list ───────────────────────────────────────── */}
@@ -416,6 +450,29 @@ function PostDetailModal({
           </button>
         </div>
       </div>
+
+      {/* Share sheet (native / copy / repost) — stacks above modal */}
+      {sharing && (
+        <ShareSheet
+          post={{
+            id: post.id,
+            text: post.text ?? null,
+            imageUrl: post.imageUrl ?? null,
+            user: {
+              displayName: post.user.displayName,
+              username: post.user.username ?? (post.user.displayName || 'user'),
+              photoUrl: post.user.photoUrl ?? null,
+            },
+            media: (post.media ?? []).map((m, idx) => ({
+              id: m.id ?? `${post.id}-${idx}`,
+              url: m.url,
+              type: (m.type ?? 'IMAGE') as 'IMAGE' | 'VIDEO',
+            })),
+          }}
+          onClose={() => setSharing(false)}
+          onShared={() => setLocalShares((c) => c + 1)}
+        />
+      )}
     </div>
   )
 }
@@ -512,6 +569,8 @@ function PostCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUs
   const [commentsCount, setCommentsCount] = useState(item.commentsCount ?? 0)
   const [reported, setReported] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [localShares, setLocalShares] = useState(item.sharesCount ?? 0)
 
   const isOwner = !!(currentUserId && item.user.id && currentUserId === item.user.id)
 
@@ -576,10 +635,28 @@ function PostCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUs
           </span>
         </div>
 
-        {/* Image */}
-        {item.imageUrl && (
-          <div style={{ maxHeight: 320, overflow: 'hidden' }}>
-            <img src={item.imageUrl} alt="" className="w-full object-cover" style={{ maxHeight: 320 }} />
+        {/* Media (carousel, autoplay video, tag overlays) */}
+        {item.id && (item.imageUrl || (item.media && item.media.length > 0)) && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <PostMediaViewer
+              postId={item.id}
+              media={item.media}
+              imageUrl={item.imageUrl}
+              tags={item.tags}
+              onDoubleTap={() => {
+                // Reuse handleLike's logic without the event arg.
+                if (!item.id) return
+                void (async () => {
+                  try {
+                    const res = await api.post<{ data: { liked: boolean } }>(`/posts/${item.id}/like`, {})
+                    const nowLiked = res?.data?.liked ?? !liked
+                    setLiked(nowLiked)
+                    setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1))
+                  } catch { /* optimistic no-op */ }
+                })()
+              }}
+              maxHeight={320}
+            />
           </div>
         )}
 
@@ -619,7 +696,33 @@ function PostCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUs
             <span className="text-xs font-bold">{commentsCount > 0 ? commentsCount : ''}</span>
           </button>
 
+          {/* Share */}
+          {item.id && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setSharing(true) }}
+              className="flex items-center gap-1.5 transition-all duration-200 active:scale-110"
+              style={{ color: 'rgba(74,96,128,0.6)' }}
+              title="Share"
+            >
+              <Share2 size={15} />
+              {localShares > 0 && (
+                <span className="text-xs font-bold">{localShares}</span>
+              )}
+            </button>
+          )}
+
           <div className="ml-auto flex items-center gap-2">
+            {isOwner && item.id && (
+              <Link
+                href={`/feed/${item.id}/insights`}
+                onClick={(e) => e.stopPropagation()}
+                title="View insights"
+                style={{ color: 'rgba(var(--accent-rgb),0.6)' }}
+                className="transition-colors hover:text-[var(--accent)]"
+              >
+                <BarChart2 size={13} />
+              </Link>
+            )}
             {isOwner && item.id && (
               <button
                 onClick={async (e) => {
@@ -659,6 +762,29 @@ function PostCard({ item, currentUserId, onDelete }: { item: FeedItem; currentUs
           onCommentAdded={() => setCommentsCount((c) => c + 1)}
           currentUserId={currentUserId}
           onDelete={() => { setShowModal(false); onDelete?.(item.id!) }}
+        />
+      )}
+
+      {/* Share sheet (native / copy / repost) */}
+      {sharing && item.id && (
+        <ShareSheet
+          post={{
+            id: item.id,
+            text: item.text ?? null,
+            imageUrl: item.imageUrl ?? null,
+            user: {
+              displayName: item.user.displayName,
+              username: item.user.username ?? (item.user.displayName || 'user'),
+              photoUrl: item.user.photoUrl ?? null,
+            },
+            media: (item.media ?? []).map((m, idx) => ({
+              id: m.id ?? `${item.id}-${idx}`,
+              url: m.url,
+              type: (m.type ?? 'IMAGE') as 'IMAGE' | 'VIDEO',
+            })),
+          }}
+          onClose={() => setSharing(false)}
+          onShared={() => setLocalShares((c) => c + 1)}
         />
       )}
     </>
@@ -841,8 +967,11 @@ export default function FeedPage() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [composing, setComposing] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const { dbUser } = useAuth()
   const currentUserId = dbUser?.id ?? null
+  const isLoggedIn = !!dbUser
 
   function handlePostDeleted(id: string) {
     setFeedItems((prev) => prev.filter((item) => item.id !== id))
@@ -869,7 +998,7 @@ export default function FeedPage() {
       }
     }
     loadFeed()
-  }, [tab])
+  }, [tab, reloadKey])
 
   return (
     <div className="min-h-screen pb-28" style={{ background: '#04040d' }}>
@@ -975,6 +1104,29 @@ export default function FeedPage() {
           </>
         )}
       </div>
+
+      {/* ── Floating compose button ─────────────────────────────────────── */}
+      {isLoggedIn && (
+        <button
+          onClick={() => setComposing(true)}
+          className="fixed bottom-24 right-5 w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all active:scale-95 z-40"
+          style={{
+            background: 'linear-gradient(135deg, #ec4899, #f97316)',
+            boxShadow: '0 4px 24px rgba(236,72,153,0.4)',
+          }}
+          aria-label="Create post"
+        >
+          <Camera size={22} style={{ color: '#fff' }} />
+        </button>
+      )}
+
+      {/* ── Compose modal ───────────────────────────────────────────────── */}
+      {composing && (
+        <ComposePostModal
+          onClose={() => setComposing(false)}
+          onPosted={() => setReloadKey((k) => k + 1)}
+        />
+      )}
     </div>
   )
 }

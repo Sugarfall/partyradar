@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Heart, MapPin, Calendar, Zap } from 'lucide-react'
 
 import { api } from '@/lib/api'
+import PostMediaViewer, { type MediaItem, type PostTagLite } from '@/components/feed/PostMediaViewer'
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -18,6 +19,10 @@ export interface PostData {
   user: { displayName: string; photoUrl?: string | null }
   text?: string | null
   imageUrl?: string | null
+  /** Phase 2/3: ordered carousel media. */
+  media?: MediaItem[] | null
+  /** Phase 2/3: resolved tags with user/venue records. */
+  tags?: PostTagLite[] | null
   likesCount?: number
   event?: { name: string; id?: string } | null
   venue?: { name: string; id?: string } | null
@@ -110,16 +115,16 @@ export default function PostCard({ post }: PostCardProps) {
         </div>
       </div>
 
-      {/* Image */}
-      {post.imageUrl && (
-        <div className="w-full" style={{ maxHeight: 300, overflow: 'hidden' }}>
-          <img
-            src={post.imageUrl}
-            alt=""
-            className="w-full object-cover"
-            style={{ maxHeight: 300 }}
-          />
-        </div>
+      {/* Media (carousel, autoplay video, tag overlays) */}
+      {(post.imageUrl || (post.media && post.media.length > 0)) && (
+        <PostMediaViewer
+          postId={post.id}
+          media={post.media}
+          imageUrl={post.imageUrl}
+          tags={post.tags}
+          onDoubleTap={() => { if (!liked && !liking) handleLike() }}
+          maxHeight={300}
+        />
       )}
 
       {/* Text */}
