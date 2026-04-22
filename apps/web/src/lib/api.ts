@@ -27,15 +27,25 @@ export class NetworkError extends Error {
   }
 }
 
+// Per-request abort timeout (ms). Railway's proxy accepts TCP connections
+// but the app process may never send an HTTP response (cold start, crash,
+// OOM). Without a timeout the browser's fetch() hangs forever, freezing
+// every loading spinner that awaits it. 12 s is generous enough for a slow
+// Railway cold start but short enough to surface a real error to the user.
+const REQUEST_TIMEOUT_MS = 12_000
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const authHeader = await getAuthHeader()
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   let res: Response
   try {
     res = await fetch(`${API_URL}${path}`, {
       ...options,
+      signal: controller.signal,
       cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
@@ -44,11 +54,14 @@ async function request<T>(
       },
     })
   } catch (err) {
-    // fetch only throws on network/CORS/DNS failures — never on HTTP error
-    // codes. Rethrow with context so the UI can show something useful instead
-    // of the bare "Failed to fetch" that browsers produce by default.
-    console.error(`[api] ${options.method ?? 'GET'} ${path} — network/CORS failure`, err)
+    // fetch only throws on network/CORS/DNS failures, AbortError (timeout),
+    // or CORS rejection — never on HTTP error codes. Rethrow with context so
+    // the UI can show something useful instead of the bare "Failed to fetch".
+    const isTimeout = err instanceof DOMException && err.name === 'AbortError'
+    console.error(`[api] ${options.method ?? 'GET'} ${path} — ${isTimeout ? 'timed out' : 'network/CORS failure'}`, err)
     throw new NetworkError(path, err)
+  } finally {
+    clearTimeout(timeoutId)
   }
 
   // Bug 1 fix: guard against non-JSON bodies (e.g. Railway/Cloudflare 502 HTML pages)
@@ -77,16 +90,22 @@ export const api = {
 
 export async function fetcher(path: string) {
   const authHeader = await getAuthHeader()
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   let res: Response
   try {
     res = await fetch(`${API_URL}${path}`, {
+      signal: controller.signal,
       // Bug 10 fix: disable browser cache so SWR always gets fresh data (e.g. scanned tickets)
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json', ...authHeader },
     })
   } catch (err) {
-    console.error(`[fetcher] GET ${path} — network/CORS failure`, err)
+    const isTimeout = err instanceof DOMException && err.name === 'AbortError'
+    console.error(`[fetcher] GET ${path} — ${isTimeout ? 'timed out' : 'network/CORS failure'}`, err)
     throw new NetworkError(path, err)
+  } finally {
+    clearTimeout(timeoutId)
   }
   const text = await res.text()
   let data: any

@@ -67,8 +67,8 @@ export function useEvents(query: EventDiscoverQuery = {}, skip = false) {
     fetcher,
     {
       shouldRetryOnError: true,
-      errorRetryCount: 5,
-      errorRetryInterval: 3000,
+      errorRetryCount: 2,            // 2 retries max — API timeout is 12s so 5 retries = 60s of stuck loading
+      errorRetryInterval: 4000,
       refreshInterval: 120000,       // refresh every 2 min
       revalidateOnFocus: false,      // don't wipe events on tab switch
       revalidateOnMount: true,
