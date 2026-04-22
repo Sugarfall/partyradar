@@ -20,6 +20,11 @@ export type NotificationType =
   | 'GO_OUT_REQUEST'
   | 'GO_OUT_ACCEPTED'
   | 'PROFILE_VIEW'
+  | 'GROUP_INVITE_RECEIVED'
+  | 'COMMENT_MENTION'
+  | 'POST_COMMENT'
+  | 'MESSAGE'
+  | 'INTEREST_MATCH'
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 

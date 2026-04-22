@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { prisma } from '@partyradar/db'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import type Stripe from 'stripe'
 import { v4 as uuidv4 } from 'uuid'
 import { sendNotificationToMany } from '../lib/fcm'
@@ -13,18 +13,43 @@ const router = Router()
 
 /** POST /api/webhooks/stripe */
 router.post('/stripe', async (req: Request, res: Response) => {
-  const sig = req.headers['stripe-signature']!
-  let event: Stripe.Event
+  const sig = req.headers['stripe-signature']
+  if (!sig || Array.isArray(sig)) {
+    res.status(400).send('Missing stripe-signature header')
+    return
+  }
+  const webhookSecret = process.env['STRIPE_WEBHOOK_SECRET']
+  if (!webhookSecret) {
+    console.error('[webhook] STRIPE_WEBHOOK_SECRET not configured — rejecting webhook')
+    res.status(503).send('Webhook receiver not configured')
+    return
+  }
 
+  let event: Stripe.Event
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body as Buffer,
-      sig,
-      process.env['STRIPE_WEBHOOK_SECRET']!
-    )
+    const stripe = ensureStripe()
+    event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret)
   } catch {
     res.status(400).send('Webhook signature verification failed')
     return
+  }
+
+  // Idempotency guard: Stripe retries on network failure and we must not
+  // re-credit a wallet or re-issue a ticket. A unique-constraint violation on
+  // the `id` primary key means we've already handled this event — ack it and
+  // skip.
+  try {
+    await prisma.processedStripeEvent.create({
+      data: { id: event.id, type: event.type },
+    })
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      res.json({ received: true, duplicate: true })
+      return
+    }
+    console.error('[Webhook idempotency write failed]', err)
+    // Fall through — we'd rather risk a double-process than 500 on Stripe
+    // and let them retry indefinitely.
   }
 
   try {
@@ -118,6 +143,7 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     const { userId: subUserId, tier } = session.metadata ?? {}
     if (!subUserId || !tier) return
 
+    const stripe = ensureStripe()
     const stripeSub = await stripe.subscriptions.retrieve(session.subscription as string)
 
     await prisma.subscription.upsert({
@@ -278,6 +304,7 @@ async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session)
   const { groupId, userId } = session.metadata ?? {}
   if (!groupId || !userId || !session.subscription) return
 
+  const stripe = ensureStripe()
   const stripeSub = await stripe.subscriptions.retrieve(session.subscription as string)
   const periodEnd = new Date(stripeSub.current_period_end * 1000)
 
@@ -330,6 +357,7 @@ async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session)
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
   if (!invoice.subscription) return
+  const stripe = ensureStripe()
   const stripeSub = await stripe.subscriptions.retrieve(invoice.subscription as string)
   const periodEnd = new Date(stripeSub.current_period_end * 1000)
 

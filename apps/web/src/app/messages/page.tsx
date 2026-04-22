@@ -106,6 +106,27 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(h / 24)}d ago`
 }
 
+/** Turn raw DM payload into a readable chat-list preview. Hides internal
+ *  markers ([VOICE], [SNAP], [INVITE_GROUP:…], [E2E]) that the full-message
+ *  renderer decodes — the preview just needs a human label. */
+function prettifyPreview(text: string): string {
+  if (!text) return ''
+  if (text.startsWith('[VOICE]')) return '🎤 Voice message'
+  if (text.startsWith('[SNAP]') || text === '[SNAP_VIEWED]') return '📸 Snap'
+  if (text.startsWith('[E2E]')) return '🔒 Encrypted message'
+  if (text.startsWith('[INVITE_GROUP:')) {
+    const m = text.match(/^\[INVITE_GROUP:[^:\]]+:([^\]]+)\]$/)
+    if (m) {
+      try {
+        const json = JSON.parse(atob(m[1]!)) as { name?: string }
+        if (json?.name) return `🎟️ Invite to ${json.name}`
+      } catch {}
+    }
+    return '🎟️ Group invite'
+  }
+  return text
+}
+
 function Avatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: string | null }; size?: number }) {
   return user.photoUrl ? (
     <img src={user.photoUrl} alt="" className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />
@@ -565,7 +586,7 @@ function GroupBrowser({
               </div>
               {g.lastMessage && (
                 <p className="text-[9px] mt-1.5 truncate" style={{ color: 'rgba(224,242,254,0.25)' }}>
-                  {g.lastMessage.senderName}: {g.lastMessage.text.startsWith('[VOICE]') ? '🎤 Voice message' : g.lastMessage.text}
+                  {g.lastMessage.senderName}: {prettifyPreview(g.lastMessage.text)}
                 </p>
               )}
             </button>
@@ -604,7 +625,7 @@ function GroupBrowser({
                   </div>
                   {g.lastMessage ? (
                     <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>
-                      {g.lastMessage.senderName}: {g.lastMessage.text.startsWith('[VOICE]') ? '🎤 Voice message' : g.lastMessage.text}
+                      {g.lastMessage.senderName}: {prettifyPreview(g.lastMessage.text)}
                     </p>
                   ) : (
                     <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.25)' }}>No messages yet — be first!</p>
@@ -1221,15 +1242,10 @@ function GroupChatView({
     if (invitedIds.has(user.id)) return
     setInvitedIds(prev => new Set(prev).add(user.id))
     try {
-      // Create or get DM conversation then send the invite message
-      const convoRes = await api.post<{ data: { id: string } }>('/dm', { recipientId: user.id })
-      const convoId = convoRes.data?.id
-      if (convoId && group) {
-        const groupUrl = `${window.location.origin}/messages?group=${groupId}`
-        await api.post(`/dm/${convoId}`, {
-          text: `Hey! I think you'd like this group "${group.name}" on PartyRadar — join us: ${groupUrl}`,
-        })
-      }
+      // Backend sends a structured invite DM + push notification. The
+      // recipient's chat detects the [INVITE_GROUP:…] prefix and renders
+      // inline Accept/Decline buttons instead of a plain URL.
+      await api.post(`/groups/${groupId}/invite`, { recipientId: user.id })
     } catch {
       // Revert if send failed
       setInvitedIds(prev => { const n = new Set(prev); n.delete(user.id); return n })
@@ -2485,6 +2501,83 @@ function FollowButtonDm({ targetId }: { targetId: string }) {
   )
 }
 
+// ── Group invite bubble ─────────────────────────────────────────────────────
+// Rendered in place of the raw [INVITE_GROUP:…] DM text — shows the group
+// card inline with Accept (→ join + open chat) and Decline (→ hide locally).
+function InviteBubble({
+  invite, isMe, onAccept, onDecline,
+}: {
+  invite: { groupId: string; name: string; emoji: string | null; coverColor: string | null; inviter: string }
+  isMe: boolean
+  onAccept: () => void
+  onDecline: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const color = invite.coverColor ?? '#a855f7'
+
+  async function accept() {
+    if (busy) return
+    setBusy(true)
+    try { await onAccept() } finally { setBusy(false) }
+  }
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        background: 'rgba(7,7,26,0.95)',
+        border: `1px solid ${color}40`,
+        boxShadow: `0 2px 12px ${color}14`,
+        minWidth: 240,
+      }}
+    >
+      {/* Colour header strip */}
+      <div style={{ height: 4, background: color }} />
+
+      <div className="px-3 py-3">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0"
+            style={{ background: `${color}20`, border: `1px solid ${color}50` }}
+          >
+            {invite.emoji ?? '🎉'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold tracking-widest" style={{ color: `${color}cc` }}>
+              GROUP INVITE
+            </p>
+            <p className="text-sm font-black truncate" style={{ color: '#e0f2fe' }}>
+              {invite.name}
+            </p>
+            <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.5)' }}>
+              {isMe ? 'You invited them' : `${invite.inviter} invited you`}
+            </p>
+          </div>
+        </div>
+
+        {!isMe && (
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={accept}
+              disabled={busy}
+              className="flex-1 py-2 rounded-lg text-[11px] font-black tracking-widest transition-all disabled:opacity-50"
+              style={{ background: `${color}24`, border: `1px solid ${color}60`, color: color }}>
+              {busy ? '...' : 'ACCEPT'}
+            </button>
+            <button
+              onClick={onDecline}
+              disabled={busy}
+              className="flex-1 py-2 rounded-lg text-[11px] font-black tracking-widest transition-all disabled:opacity-50"
+              style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.22)', color: 'rgba(255,0,110,0.75)' }}>
+              DECLINE
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── DM Section ─────────────────────────────────────────────────────────────────
 
 function DmSection({ dbUser }: {
@@ -2687,10 +2780,51 @@ function DmSection({ dbUser }: {
     setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, snapViewed: true, text: '[SNAP_VIEWED]' } : m))
   }
 
+  async function handleInviteAccept(targetGroupId: string, groupName: string) {
+    try {
+      await api.post(`/groups/${targetGroupId}/join`, {})
+      // Redirect to the group chat view within messages
+      window.location.assign(`/messages?group=${targetGroupId}`)
+    } catch (err: any) {
+      const msg = err?.message || err?.body?.error || `Couldn't join "${groupName}"`
+      alert(msg)
+    }
+  }
+
+  function handleInviteDecline(msgId: string) {
+    // Hide locally — we don't have a "reject" endpoint, just swallow the invite
+    // from the user's own view. The sender still sees it was sent.
+    setMessages((prev) => prev.filter((m) => m.id !== msgId))
+  }
+
   function displayText(m: DmMessage): string {
     if (decrypted[m.id]) return decrypted[m.id]
     if (m.text.startsWith('[E2E]')) return '🔒 ...'
+    if (m.text.startsWith('[INVITE_GROUP:')) {
+      const p = parseInvitePayload(m.text)
+      return p ? `🎟️ Invite to "${p.name}"` : '🎟️ Group invite'
+    }
     return m.text
+  }
+
+  /** Parse an invite marker into its payload. Returns null on malformed input. */
+  function parseInvitePayload(text: string): { groupId: string; name: string; emoji: string | null; coverColor: string | null; inviter: string } | null {
+    // Format: [INVITE_GROUP:{groupId}:{base64(JSON)}]
+    const m = text.match(/^\[INVITE_GROUP:([^:\]]+):([^\]]+)\]$/)
+    if (!m) return null
+    try {
+      const json = JSON.parse(atob(m[2]!)) as { name?: string; emoji?: string | null; coverColor?: string | null; inviter?: string }
+      if (!json?.name) return null
+      return {
+        groupId: m[1]!,
+        name: json.name,
+        emoji: json.emoji ?? null,
+        coverColor: json.coverColor ?? null,
+        inviter: json.inviter ?? 'Someone',
+      }
+    } catch {
+      return null
+    }
   }
 
   if (activeConvo) {
@@ -2766,16 +2900,24 @@ function DmSection({ dbUser }: {
             const isMe = m.senderId === dbUser?.id
             const isVoice = m.text.startsWith('[VOICE]')
             const isSnap = m.isSnap || m.text.startsWith('[SNAP]') || m.text === '[SNAP_VIEWED]'
+            const invite = m.text.startsWith('[INVITE_GROUP:') ? parseInvitePayload(m.text) : null
             return (
               <div key={m.id} className={`flex gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
                 {!isMe && activeOther && <Avatar user={activeOther} size={28} />}
-                <div className="max-w-[75%]">
+                <div className="max-w-[85%]">
                   {isVoice ? (
                     <VoiceMessagePlayer url={m.text.replace('[VOICE]', '')} />
                   ) : isSnap ? (
                     <SnapMessageBubble
                       message={m} isMe={isMe}
                       convoId={activeConvo} onViewed={handleSnapViewed}
+                    />
+                  ) : invite ? (
+                    <InviteBubble
+                      invite={invite}
+                      isMe={isMe}
+                      onAccept={() => handleInviteAccept(invite.groupId, invite.name)}
+                      onDecline={() => handleInviteDecline(m.id)}
                     />
                   ) : (
                     <div className="px-3 py-2 rounded-2xl text-sm break-words"
@@ -2944,7 +3086,7 @@ function DmSection({ dbUser }: {
             {c.lastMessage ? (
               <p className="text-[11px] truncate" style={{ color: 'rgba(224,242,254,0.4)' }}>
                 {c.lastMessage.senderId === dbUser?.id ? 'You: ' : ''}
-                {c.lastMessage.text.startsWith('[VOICE]') ? '🎤 Voice message' : c.lastMessage.text}
+                {prettifyPreview(c.lastMessage.text)}
               </p>
             ) : (
               <p className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>No messages yet</p>

@@ -19,6 +19,11 @@ type NotificationType =
   | 'GO_OUT_REQUEST'
   | 'GO_OUT_ACCEPTED'
   | 'PROFILE_VIEW'
+  | 'GROUP_INVITE_RECEIVED'
+  | 'COMMENT_MENTION'
+  | 'POST_COMMENT'
+  | 'MESSAGE'
+  | 'INTEREST_MATCH'
 
 interface AppNotification {
   id: string
@@ -43,6 +48,11 @@ const TYPE_EMOJI: Record<NotificationType, string> = {
   GO_OUT_REQUEST:  '🍻',
   GO_OUT_ACCEPTED: '✅',
   PROFILE_VIEW:    '👁️',
+  GROUP_INVITE_RECEIVED: '👥',
+  COMMENT_MENTION: '💬',
+  POST_COMMENT:    '💭',
+  MESSAGE:         '📩',
+  INTEREST_MATCH:  '💫',
 }
 
 const TYPE_COLOR: Record<NotificationType, string> = {
@@ -57,6 +67,11 @@ const TYPE_COLOR: Record<NotificationType, string> = {
   GO_OUT_REQUEST:   'rgba(245,158,11,0.12)',
   GO_OUT_ACCEPTED:  'rgba(var(--accent-rgb),0.12)',
   PROFILE_VIEW:     'rgba(168,85,247,0.12)',
+  GROUP_INVITE_RECEIVED: 'rgba(168,85,247,0.12)',
+  COMMENT_MENTION:  'rgba(236,72,153,0.12)',
+  POST_COMMENT:     'rgba(var(--accent-rgb),0.12)',
+  MESSAGE:          'rgba(59,130,246,0.12)',
+  INTEREST_MATCH:   'rgba(236,72,153,0.12)',
 }
 
 const TYPE_BORDER: Record<NotificationType, string> = {
@@ -71,6 +86,11 @@ const TYPE_BORDER: Record<NotificationType, string> = {
   GO_OUT_REQUEST:   'rgba(245,158,11,0.25)',
   GO_OUT_ACCEPTED:  'rgba(var(--accent-rgb),0.25)',
   PROFILE_VIEW:     'rgba(168,85,247,0.25)',
+  GROUP_INVITE_RECEIVED: 'rgba(168,85,247,0.25)',
+  COMMENT_MENTION:  'rgba(236,72,153,0.25)',
+  POST_COMMENT:     'rgba(var(--accent-rgb),0.25)',
+  MESSAGE:          'rgba(59,130,246,0.25)',
+  INTEREST_MATCH:   'rgba(236,72,153,0.25)',
 }
 
 function timeAgo(iso: string): string {

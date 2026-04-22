@@ -59,18 +59,81 @@ const CITY_SUFFIX_SET = new Set(CITY_SUFFIXES)
 // space, or at end-of-string). Used to scrub "Tyketto Glasgow" → "Tyketto".
 const CITY_SUFFIX_RE = new RegExp(`(^|\\s+)(${CITY_SUFFIXES.join('|')})\\b`, 'gi')
 
+// Activity tags: lower-cased keyword patterns that identify the TYPE of
+// recurring event (quiz night, open mic, etc). Different sources describe
+// the same weekly pub event with varying wording — e.g. "Nice N Sleazy
+// Open Mic", "Weekly Open Mic at Nice N Sleazy", "Open Mic at Nice N
+// Sleazy" — so nameKey's first-word heuristic splits them. Detecting a
+// shared activity tag + venue + day collapses them reliably.
+//
+// `keyword` is the canonical tag. `patterns` are the substrings (already
+// lower-cased, whitespace-collapsed) that map to it. Order matters —
+// longer/more-specific patterns first so "drag quiz" wins over plain
+// "quiz".
+const ACTIVITY_TAGS: Array<{ tag: string; patterns: RegExp[] }> = [
+  { tag: 'drag-quiz',  patterns: [/\bdrag\s+quiz\b/] },
+  { tag: 'pub-quiz',   patterns: [/\bpub\s+quiz\b/, /\bquiz\s+night\b/, /\bquizzz?\b/, /\btrivia\b/] },
+  { tag: 'open-mic',   patterns: [/\bopen\s+mic\b/, /\bopenmic\b/, /\bjam\s+night\b/] },
+  { tag: 'karaoke',    patterns: [/\bkaraoke\b/, /\bguitaraoke\b/] },
+  { tag: 'comedy',     patterns: [/\bcomedy\s+night\b/, /\bstand[- ]?up\b/, /\bcomedy\s+club\b/, /\bcomedy\s+quiz\b/] },
+  { tag: 'drag',       patterns: [/\bdrag\s+(show|night|brunch|bingo)\b/, /\bdrag\s+race\b/] },
+  { tag: 'bingo',      patterns: [/\bbingo\b/, /\bdrag\s+bingo\b/] },
+  { tag: 'live-music', patterns: [/\blive\s+music\b/, /\blive\s+band\b/, /\blive\s+gig\b/] },
+  { tag: 'dj-night',   patterns: [/\bdj\s+set\b/, /\bclub\s+night\b/, /\bclubnight\b/] },
+]
+
+function extractActivityTags(name: string): string[] {
+  const lower = name.toLowerCase()
+  const found = new Set<string>()
+  for (const { tag, patterns } of ACTIVITY_TAGS) {
+    if (patterns.some((re) => re.test(lower))) found.add(tag)
+  }
+  return [...found]
+}
+
+// Words that describe how-often/when an event runs rather than what it is.
+// Stripped from the name before fingerprinting so "Weekly Quiz Night" and
+// "Quiz Night" produce the same nameKey.
+const FREQUENCY_MODIFIERS = new Set([
+  'weekly', 'nightly', 'monthly', 'daily', 'biweekly', 'bi-weekly',
+  'fortnightly', 'every', 'recurring', 'regular',
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
+])
+
 /** Strip venue/city suffixes, punctuation, and leading articles so
  *  "The Tyketto", "Tyketto Glasgow", and "Tyketto at The Garage" all
- *  normalize to "tyketto". */
-function normalizeName(name: string): string {
+ *  normalize to "tyketto". Pass `venueName` so we can also scrub the
+ *  event's own venue out of the title — sources often bake it in
+ *  ("Nice N Sleazy Open Mic") which otherwise changes the nameKey. */
+function normalizeName(name: string, venueName?: string | null): string {
   let s = name.toLowerCase()
   s = s.replace(/\s+at\s+.+$/i, '')      // "Tyketto at The Garage" → "tyketto"
   s = s.replace(/\s+[-|–—]\s+.+$/i, '')  // "Tyketto - Live in Glasgow" → "tyketto"
   s = s.replace(/\s*\([^)]*\)\s*/g, ' ') // drop parentheticals "(Live)"
+
+  // Strip the venue name itself if it appears in the title — handles the
+  // common pattern where an aggregator titles the event "<venue> <activity>"
+  // while another source has "<activity> at <venue>".
+  if (venueName) {
+    const v = venueName.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').trim()
+    if (v && v.length >= 3) {
+      const escaped = v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+      s = s.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), ' ')
+    }
+  }
+
   s = s.replace(/[^\p{L}\p{N}\s]/gu, '') // strip punctuation, keep letters + digits
   s = s.replace(CITY_SUFFIX_RE, ' ')     // drop trailing city names
   s = s.replace(/\s+/g, ' ').trim()
   s = s.replace(/^(the|a|an)\s+/, '')    // strip leading articles
+
+  // Drop frequency-modifier tokens ("weekly", "monday", ...). They're
+  // descriptive of cadence, not identity.
+  if (s) {
+    const kept = s.split(' ').filter((w) => w && !FREQUENCY_MODIFIERS.has(w))
+    s = kept.join(' ')
+  }
   return s
 }
 
@@ -104,7 +167,7 @@ function makeDedupKeys(event: DedupableEvent): string[] {
   const d = event.startsAt instanceof Date ? event.startsAt : new Date(event.startsAt)
   const day = Number.isNaN(d.getTime()) ? 'nodate' : d.toISOString().slice(0, 10)
 
-  const normalized = normalizeName(event.name)
+  const normalized = normalizeName(event.name, event.venueName)
   const words = normalized.split(' ').filter(Boolean)
   const firstWord = words[0] ?? ''
 
@@ -117,16 +180,28 @@ function makeDedupKeys(event: DedupableEvent): string[] {
 
   const keys: string[] = []
 
+  const activityTags = extractActivityTags(event.name)
+
   // Primary venue key: official venueName if set. Secondary: neighbourhood
   // (some sync paths stash venue name there). Both are discarded if they
   // normalize to a bare city name ("glasgow") — that's too coarse to be a
   // venue identifier and would falsely collapse unrelated events.
   const venueSignals = [event.venueName, event.neighbourhood]
+  const venueKeysSeen: string[] = []
   for (const raw of venueSignals) {
     const v = normalizeVenue(raw)
     if (!v) continue
     if (CITY_SUFFIX_SET.has(v)) continue      // reject bare city names
+    venueKeysSeen.push(v)
     keys.push(`${nameKey}|${day}|venue:${v}`)
+
+    // Activity-tag keys catch the "same recurring event, different titles"
+    // case: three sources describing the same weekly Open Mic at Nice N
+    // Sleazy all emit `activity:open-mic|YYYY-MM-DD|venue:nicensleazy`
+    // regardless of their individual title wording.
+    for (const tag of activityTags) {
+      keys.push(`activity:${tag}|${day}|venue:${v}`)
+    }
   }
 
   if (event.lat != null && event.lng != null) {
@@ -134,6 +209,9 @@ function makeDedupKeys(event: DedupableEvent): string[] {
     // source-to-source geocoding drift, narrow enough that genuinely
     // different venues in the same city don't collide.
     keys.push(`${nameKey}|${day}|geo:${event.lat.toFixed(2)}|${event.lng.toFixed(2)}`)
+    for (const tag of activityTags) {
+      keys.push(`activity:${tag}|${day}|geo:${event.lat.toFixed(2)}|${event.lng.toFixed(2)}`)
+    }
   }
 
   if (keys.length === 0) {

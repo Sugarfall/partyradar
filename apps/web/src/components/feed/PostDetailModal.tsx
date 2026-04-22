@@ -10,6 +10,7 @@ import { api } from '@/lib/api'
 import { silent } from '@/lib/logError'
 import PostMediaViewer, { type MediaItem, type PostTagLite } from './PostMediaViewer'
 import ShareSheet from './ShareSheet'
+import MentionAutocomplete from './MentionAutocomplete'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 // Flexible post shape accepted by the modal. Both the main feed page and
@@ -111,6 +112,7 @@ export default function PostDetailModal({
   const [comments, setComments] = useState<PostCommentData[]>([])
   const [loadingComments, setLoadingComments] = useState(true)
   const [commentText, setCommentText] = useState('')
+  const [caretPos, setCaretPos] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [liked, setLiked] = useState(post.hasLiked ?? false)
   const [likesCount, setLikesCount] = useState(post.likesCount ?? 0)
@@ -363,17 +365,35 @@ export default function PostDetailModal({
 
         {/* ── Comment input ───────────────────────────────────────── */}
         <div
-          className="px-3 py-3 shrink-0 flex gap-2.5 items-end"
+          className="px-3 py-3 shrink-0 flex gap-2.5 items-end relative"
           style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.08)', background: 'rgba(4,4,13,0.85)' }}
         >
+          <MentionAutocomplete
+            value={commentText}
+            caretPos={caretPos}
+            anchorRef={textareaRef}
+            onChange={(next) => {
+              setCommentText(next)
+            }}
+            onPicked={(nextCaret) => {
+              setCaretPos(nextCaret)
+              requestAnimationFrame(() => {
+                textareaRef.current?.focus()
+                textareaRef.current?.setSelectionRange(nextCaret, nextCaret)
+              })
+            }}
+          />
           <textarea
             ref={textareaRef}
             value={commentText}
             onChange={(e) => {
               setCommentText(e.target.value)
+              setCaretPos(e.target.selectionStart ?? e.target.value.length)
               e.target.style.height = 'auto'
               e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px'
             }}
+            onKeyUp={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+            onClick={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
             onKeyDown={handleKeyDown}
             placeholder="Add a comment… @mention someone"
             rows={1}

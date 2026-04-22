@@ -6,6 +6,22 @@ import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
 import { moderateContent, recordViolation } from '../lib/moderation'
 import { assertOwnImageUrl } from '../lib/cloudinary'
+import { sendNotification } from '../lib/fcm'
+
+/** Extract @username handles from text. Dedupes, caps at 10 to avoid abuse. */
+function extractMentionUsernames(text: string): string[] {
+  const matches = text.match(/@([a-zA-Z0-9_.]{2,30})/g) ?? []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const m of matches) {
+    const handle = m.slice(1).toLowerCase()
+    if (seen.has(handle)) continue
+    seen.add(handle)
+    out.push(handle)
+    if (out.length >= 10) break
+  }
+  return out
+}
 
 const router = Router()
 
@@ -771,7 +787,7 @@ router.post('/:id/comments', requireAuth, async (req: AuthRequest, res, next) =>
     if (!text?.trim()) throw new AppError('Comment text is required', 400)
     if (text.trim().length > 1000) throw new AppError('Comment too long (max 1000 chars)', 400)
 
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } })
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, userId: true } })
     if (!post) throw new AppError('Post not found', 404)
 
     // Moderate content
@@ -780,9 +796,10 @@ router.post('/:id/comments', requireAuth, async (req: AuthRequest, res, next) =>
       throw new AppError('Comment blocked by content filter', 422)
     }
 
+    const trimmed = text.trim()
     const [comment] = await prisma.$transaction([
       prisma.postComment.create({
-        data: { postId, userId, text: text.trim() },
+        data: { postId, userId, text: trimmed },
         include: { user: { select: userSelect } },
       }),
       prisma.post.update({
@@ -790,6 +807,51 @@ router.post('/:id/comments', requireAuth, async (req: AuthRequest, res, next) =>
         data: { commentsCount: { increment: 1 } },
       }),
     ])
+
+    // ── Fire-and-forget notifications ──────────────────────────────
+    // 1) Notify the post owner (unless they're commenting on their own post)
+    // 2) Notify any @mentioned users we can resolve (distinct from owner + self)
+    ;(async () => {
+      const actor = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { username: true, displayName: true },
+      })
+      const actorName = actor?.displayName || actor?.username || 'Someone'
+      const preview = trimmed.length > 80 ? trimmed.slice(0, 77) + '…' : trimmed
+
+      const notifyIds = new Set<string>()
+
+      if (post.userId && post.userId !== userId) {
+        notifyIds.add(post.userId)
+        await sendNotification({
+          userId: post.userId,
+          type: 'POST_COMMENT',
+          title: `${actorName} commented on your post`,
+          body: preview,
+          data: { postId, commentId: comment.id },
+        })
+      }
+
+      const handles = extractMentionUsernames(trimmed)
+      if (handles.length > 0) {
+        const mentioned = await prisma.user.findMany({
+          where: { username: { in: handles, mode: 'insensitive' } },
+          select: { id: true },
+        })
+        for (const m of mentioned) {
+          if (m.id === userId) continue
+          if (notifyIds.has(m.id)) continue
+          notifyIds.add(m.id)
+          await sendNotification({
+            userId: m.id,
+            type: 'COMMENT_MENTION',
+            title: `${actorName} mentioned you in a comment`,
+            body: preview,
+            data: { postId, commentId: comment.id },
+          })
+        }
+      }
+    })().catch((err) => console.error('[comment-notify]', err))
 
     res.status(201).json({ data: comment })
   } catch (err) {

@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import { TIERS } from '@partyradar/shared'
 import { z } from 'zod'
 
@@ -36,9 +36,10 @@ router.get('/status', requireAuth, async (req: AuthRequest, res, next) => {
 router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
   const schema = z.object({ tier: z.enum(['BASIC', 'PRO', 'PREMIUM']) })
   try {
+    const stripe = ensureStripe()
     const { tier } = schema.parse(req.body)
     const priceId = PRICE_IDS[tier]
-    if (!priceId) throw new AppError('Subscription tier unavailable', 400)
+    if (!priceId) throw new AppError(`The ${tier} subscription is not configured yet — try again later.`, 503)
 
     const userId = req.user!.dbUser.id
     let stripeCustomerId = (await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } }))?.stripeCustomerId
@@ -68,6 +69,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
 /** POST /api/subscriptions/portal */
 router.post('/portal', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const stripe = ensureStripe()
     const user = await prisma.user.findUnique({
       where: { id: req.user!.dbUser.id },
       select: { stripeCustomerId: true },
@@ -89,6 +91,7 @@ router.post('/portal', requireAuth, async (req: AuthRequest, res, next) => {
 /** DELETE /api/subscriptions */
 router.delete('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const stripe = ensureStripe()
     const sub = await prisma.subscription.findUnique({ where: { userId: req.user!.dbUser.id } })
     if (!sub?.stripeSubscriptionId) throw new AppError('No active subscription', 400)
 

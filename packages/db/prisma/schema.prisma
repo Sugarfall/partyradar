@@ -64,6 +64,9 @@ enum NotificationType {
   NUDGE
   GO_OUT_REQUEST
   GO_OUT_ACCEPTED
+  GROUP_INVITE_RECEIVED
+  COMMENT_MENTION
+  POST_COMMENT
 }
 
 enum Gender {
@@ -1047,6 +1050,18 @@ model PlatformRevenue {
 
   @@index([source, createdAt])
   @@index([createdAt])
+}
+
+/// Idempotency ledger for Stripe webhook events. We record the Stripe event
+/// ID before processing — if the same event ID arrives again (Stripe retries
+/// on network failure), the insert violates the primary key and we bail out
+/// without re-crediting the wallet or double-issuing tickets.
+model ProcessedStripeEvent {
+  id          String   @id  // Stripe event.id
+  type        String
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
 }
 
 // ─── Social Graph ─────────────────────────────────────────────────────────────

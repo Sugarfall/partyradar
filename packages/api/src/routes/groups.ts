@@ -4,10 +4,25 @@ import { optionalAuth, requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { GROUP_PRICE_TIERS } from '@partyradar/shared'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import { moderateContent, recordViolation } from '../lib/moderation'
 import { hashPassword, verifyPassword, isHashed } from '../lib/passwordHash'
 import { assertOwnImageUrl } from '../lib/cloudinary'
+import { sendNotification } from '../lib/fcm'
+
+/** Marker prefix used to encode a structured group invite inside a DM.
+ *  Format: [INVITE_GROUP:{groupId}:{base64(JSON({name,emoji,coverColor,inviterName}))}]
+ *  The UI detects this and renders inline Accept/Decline buttons.
+ */
+function encodeInviteDmText(payload: { groupId: string; name: string; emoji: string | null; coverColor: string | null; inviterName: string }) {
+  const body = Buffer.from(JSON.stringify({
+    name: payload.name,
+    emoji: payload.emoji,
+    coverColor: payload.coverColor,
+    inviter: payload.inviterName,
+  })).toString('base64')
+  return `[INVITE_GROUP:${payload.groupId}:${body}]`
+}
 
 const router = Router()
 
@@ -417,6 +432,100 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+/** POST /api/groups/:id/invite
+ *  Owner-only: sends a structured group invite DM to another user with a
+ *  push notification. The recipient's chat renders inline Accept/Decline
+ *  buttons instead of a plain URL.
+ */
+router.post('/:id/invite', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { recipientId } = (req.body ?? {}) as { recipientId?: string }
+    if (!recipientId) throw new AppError('recipientId required', 400)
+    if (recipientId === userId) throw new AppError('Cannot invite yourself', 400)
+
+    const group = await prisma.groupChat.findUnique({
+      where: { id: req.params['id'] },
+      select: { id: true, name: true, emoji: true, coverColor: true, createdById: true },
+    })
+    if (!group) throw new AppError('Group not found', 404)
+    if (group.createdById !== userId) throw new AppError('Only the group owner can send invites', 403)
+
+    const inviter = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, username: true },
+    })
+    const inviterName = inviter?.displayName || inviter?.username || 'Someone'
+
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { id: true },
+    })
+    if (!recipient) throw new AppError('Recipient not found', 404)
+
+    // Get or create the DM conversation (same rules as POST /api/dm).
+    const existing = await prisma.conversation.findFirst({
+      where: {
+        AND: [
+          { participants: { some: { userId } } },
+          { participants: { some: { userId: recipientId } } },
+        ],
+      },
+      select: { id: true },
+    })
+    let convoId = existing?.id
+    if (!convoId) {
+      const followExists = await prisma.follow.findFirst({
+        where: {
+          OR: [
+            { followerId: userId, followingId: recipientId },
+            { followerId: recipientId, followingId: userId },
+          ],
+        },
+      })
+      const isRequest = !followExists
+      const convo = await prisma.conversation.create({
+        data: {
+          isRequest,
+          participants: { create: [{ userId }, { userId: recipientId }] },
+        },
+      })
+      convoId = convo.id
+    }
+
+    const dmText = encodeInviteDmText({
+      groupId: group.id,
+      name: group.name,
+      emoji: group.emoji,
+      coverColor: group.coverColor,
+      inviterName,
+    })
+
+    await prisma.$transaction([
+      prisma.directMessage.create({
+        data: { conversationId: convoId, senderId: userId, text: dmText },
+      }),
+      prisma.conversation.update({
+        where: { id: convoId },
+        data: { lastMessage: `🎟️ Invite: ${group.name}`, lastAt: new Date() },
+      }),
+    ])
+
+    // Push notification + in-app notification center entry
+    await sendNotification({
+      userId: recipientId,
+      type: 'GROUP_INVITE_RECEIVED',
+      title: `${inviterName} invited you to a group`,
+      body: `${group.emoji ?? '🎉'} ${group.name}`,
+      data: { groupId: group.id, conversationId: convoId },
+    }).catch((err) => console.error('[group-invite-notify]', err))
+
+    res.json({ data: { ok: true, conversationId: convoId } })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** POST /api/groups/:id/subscribe — subscribe to a paid group */
 router.post('/:id/subscribe', requireAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -453,6 +562,7 @@ router.post('/:id/subscribe', requireAuth, async (req: AuthRequest, res, next) =
     }
 
     // Get or create Stripe customer
+    const stripe = ensureStripe()
     let stripeCustomerId = (await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } }))?.stripeCustomerId
 
     if (!stripeCustomerId) {

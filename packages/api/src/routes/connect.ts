@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 
 const router = Router()
 
@@ -34,6 +34,7 @@ async function syncConnectFlags(userId: string, account: { charges_enabled: bool
  */
 router.post('/onboard', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const stripe = ensureStripe()
     const user = req.user!.dbUser
     const full = await prisma.user.findUnique({
       where: { id: user.id },
@@ -89,6 +90,7 @@ router.get('/status', requireAuth, async (req: AuthRequest, res, next) => {
       return
     }
 
+    const stripe = ensureStripe()
     const account = await stripe.accounts.retrieve(full.stripeConnectAccountId)
     await syncConnectFlags(full.id, account)
 
@@ -111,6 +113,7 @@ router.get('/status', requireAuth, async (req: AuthRequest, res, next) => {
  */
 router.post('/dashboard', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const stripe = ensureStripe()
     const user = req.user!.dbUser
     const full = await prisma.user.findUnique({
       where: { id: user.id },

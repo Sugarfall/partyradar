@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
 import { z } from 'zod'
 
@@ -101,6 +101,7 @@ router.post('/blast', requireAuth, async (req: AuthRequest, res, next) => {
     message:  z.string().min(1).max(120),
   })
   try {
+    const stripe = ensureStripe()
     const { eventId, tierId, message } = schema.parse(req.body)
 
     const event = await prisma.event.findUnique({ where: { id: eventId } })

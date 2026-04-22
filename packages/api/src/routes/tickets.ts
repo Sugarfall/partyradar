@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { stripe, platformFeeCents } from '../lib/stripe'
+import { ensureStripe, platformFeeCents } from '../lib/stripe'
 import { z } from 'zod'
 
 const router = Router()
@@ -25,6 +25,7 @@ const eventSelect = {
 router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
   const schema = z.object({ eventId: z.string(), quantity: z.number().int().min(1).max(10).default(1) })
   try {
+    const stripe = ensureStripe()
     const { eventId, quantity } = schema.parse(req.body)
     const event = await prisma.event.findUnique({ where: { id: eventId }, select: eventSelect })
     if (!event) throw new AppError('Event not found', 404)

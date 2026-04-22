@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAdmin, requireAuth, requireAppRole, hasRole } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import { seedGroupChats } from './groups'
 
 const router = Router()
@@ -315,6 +315,7 @@ router.put('/feedback/:id/hide', requireAuth, requireAppRole('MODERATOR'), async
 router.get('/revenue', requireAdmin, async (_req, res, next) => {
   try {
     // Get Stripe balance
+    const stripe = ensureStripe()
     const balance = await stripe.balance.retrieve()
 
     // Platform revenue from ticket fees

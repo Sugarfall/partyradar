@@ -4,7 +4,7 @@ import { requireAuth, optionalAuth, hasRole } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { getTier } from '@partyradar/shared'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
 import type { SubscriptionTier } from '@partyradar/shared'
@@ -417,6 +417,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     // Create Stripe product + price for paid events
     if (event.price > 0) {
+      const stripe = ensureStripe()
       const product = await stripe.products.create({ name: event.name })
       const price = await stripe.prices.create({
         product: product.id,

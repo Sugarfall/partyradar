@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
 
 const router = Router()
@@ -11,6 +11,7 @@ const router = Router()
 // POST /api/blast — create Stripe checkout for push blast, then schedule notification
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const stripe = ensureStripe()
     const { eventId, tierId, message } = req.body as { eventId: string; tierId: string; message: string }
     const userId = req.user!.dbUser.id
 

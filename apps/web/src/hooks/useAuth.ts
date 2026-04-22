@@ -99,7 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // dbUser and then setLoading(false) itself — don't fire setLoading(false) here yet,
         // or components will briefly see loading:false + dbUser:null and redirect to /login.
         if (!syncingRef.current) {
-          try { await syncUser(user) } catch {
+          try { await syncUser(user) } catch (err) {
+            // Mock fallback keeps the UI alive during API outages / network
+            // flaps, but emit a loud console warning so we catch prod breakage
+            // instead of silently running on a fake user forever.
+            console.error('[auth] /auth/sync failed — falling back to local mock user. Real DB user is NOT loaded.', err)
             setDbUser(makeMockDbUser(user.email ?? 'demo@partyradar.app'))
           }
           setLoading(false)

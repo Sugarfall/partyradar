@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 
 const router = Router()
 
@@ -208,6 +208,7 @@ router.get('/events/:id/attendees', requireAuth, async (req: AuthRequest, res, n
 // ── POST /api/dashboard/blast — queue a push blast with conflict handling ─────
 router.post('/blast', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const stripe = ensureStripe()
     const userId = req.user!.dbUser.id
     const { eventId, tierId, title, body } = req.body as {
       eventId: string; tierId: string; title: string; body: string

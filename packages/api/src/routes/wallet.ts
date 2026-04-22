@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { stripe } from '../lib/stripe'
+import { ensureStripe } from '../lib/stripe'
 import { WALLET_CONFIG, WALLET_TOP_UP_TIERS, CARD_DESIGNS, REVENUE_MODEL } from '@partyradar/shared'
 import { z } from 'zod'
 
@@ -71,6 +71,7 @@ router.post('/top-up', requireAuth, async (req: AuthRequest, res, next) => {
     amount: z.number().min(WALLET_CONFIG.MIN_TOP_UP).max(WALLET_CONFIG.MAX_TOP_UP).optional(),
   })
   try {
+    const stripe = ensureStripe()
     const body = schema.parse(req.body)
     const userId = req.user!.dbUser.id
     const wallet = await getOrCreateWallet(userId)
@@ -149,6 +150,7 @@ router.post('/payment-intent', requireAuth, async (req: AuthRequest, res, next) 
     amount: z.number().min(WALLET_CONFIG.MIN_TOP_UP).max(WALLET_CONFIG.MAX_TOP_UP).optional(),
   })
   try {
+    const stripe = ensureStripe()
     const body = schema.parse(req.body)
     const userId = req.user!.dbUser.id
     const wallet = await getOrCreateWallet(userId)
@@ -380,41 +382,48 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
       }
 
       const newBalance = Number((wallet.balance - price).toFixed(2))
-      await prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: newBalance, lifetimeSpent: { increment: price } },
+
+      // Atomicity: balance update + tx log + order row must either all
+      // succeed or all fail — otherwise we can debit a user with no order
+      // (lost money) or mint an order without debiting (free card).
+      const order = await prisma.$transaction(async (tx) => {
+        await tx.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: newBalance, lifetimeSpent: { increment: price } },
+        })
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: 'CARD_ORDER',
+            amount: -price,
+            balanceAfter: newBalance,
+            description: `Physical card: ${cardDesign.name}`,
+          },
+        })
+        return tx.cardOrder.create({
+          data: {
+            walletId: wallet.id,
+            userId,
+            design: body.design as any,
+            customImageUrl: body.customImageUrl,
+            nameOnCard: body.nameOnCard,
+            shippingAddress: body.shippingAddress,
+            shippingCity: body.shippingCity,
+            shippingPostcode: body.shippingPostcode,
+            price,
+          },
+        })
       })
 
-      await prisma.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: 'CARD_ORDER',
-          amount: -price,
-          balanceAfter: newBalance,
-          description: `Physical card: ${cardDesign.name}`,
-        },
-      })
-
-      const order = await prisma.cardOrder.create({
-        data: {
-          walletId: wallet.id,
-          userId,
-          design: body.design as any,
-          customImageUrl: body.customImageUrl,
-          nameOnCard: body.nameOnCard,
-          shippingAddress: body.shippingAddress,
-          shippingCity: body.shippingCity,
-          shippingPostcode: body.shippingPostcode,
-          price,
-        },
-      })
-
-      // Record platform revenue (card sale margin)
+      // Record platform revenue (card sale margin) — safe to run outside the
+      // tx; at worst we miss a bookkeeping row on crash, order + debit are
+      // already consistent.
       await recordPlatformRevenue('card_sale', price - REVENUE_MODEL.CARD_COST_OF_GOODS, order.id, `${cardDesign.name} card order`)
 
       res.json({ data: { order, paidWith: 'wallet' } })
     } else {
       // Pay with Stripe
+      const stripe = ensureStripe()
       let stripeCustomerId = wallet.stripeCustomerId
       if (!stripeCustomerId) {
         const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
