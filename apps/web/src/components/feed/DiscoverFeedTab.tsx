@@ -357,6 +357,7 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   const currentUserId = dbUser?.id ?? null
   const [items, setItems] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [feedError, setFeedError] = useState(false)
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set())
   const [composing, setComposing] = useState(false)
@@ -368,11 +369,18 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true)
+    if (!silent) { setLoading(true); setFeedError(false) }
     try {
       const feedRes = await api.get<{ data: FeedItem[] }>('/feed/discover')
       setItems(feedRes.data ?? [])
-    } catch {}
+      setFeedError(false)
+    } catch (err) {
+      // Log the error so it appears in Vercel/browser console instead of
+      // disappearing silently, and expose an error state so the UI can show
+      // a retry button rather than an infinite loading spinner.
+      logError('feed:discover', err)
+      if (!silent) setFeedError(true)
+    }
     if (!silent) setLoading(false)
   }, [])
 
@@ -438,6 +446,24 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
             <div className="h-2.5 w-3/4 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
           </div>
         ))}
+      </div>
+    )
+  }
+
+  // Error state — show retry rather than an infinite spinner
+  if (feedError) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-16">
+        <p className="text-sm text-center" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          Couldn't load the feed right now.
+        </p>
+        <button
+          onClick={() => load()}
+          className="px-5 py-2.5 rounded-xl text-sm font-bold"
+          style={{ background: 'var(--accent)', color: '#fff' }}
+        >
+          Try again
+        </button>
       </div>
     )
   }

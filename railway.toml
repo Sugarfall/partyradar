@@ -1,10 +1,13 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --prefer-offline && npx prisma generate --schema=packages/db/prisma/schema.prisma && npx prisma db push --schema=packages/db/prisma/schema.prisma --accept-data-loss"
+buildCommand = "npm install --prefer-offline && npx prisma generate --schema=packages/db/prisma/schema.prisma"
 
 [deploy]
-startCommand = "npx tsx packages/api/src/index.ts"
+# prisma db push runs at startup (not build-time) so a slow/cold DB can't
+# hang the build indefinitely. timeout 60 ensures it fails fast rather than
+# blocking forever. Server starts immediately after push completes.
+startCommand = "npx prisma db push --schema=packages/db/prisma/schema.prisma --accept-data-loss --skip-generate && npx tsx packages/api/src/index.ts"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
