@@ -199,8 +199,17 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   const already = await prisma.ticket.findFirst({ where: { stripeSessionId: session.id } })
   if (already) return
 
-  // Atomically: create tickets, decrement capacity, upsert guest, record revenue.
-  // If any step fails, nothing is written — capacity stays correct.
+  // Capacity guard: prevent overselling when two webhooks arrive simultaneously
+  // for the last remaining tickets. We re-check inside the transaction so the
+  // pre-check + decrement are effectively atomic at the DB level.
+  if (event.ticketsRemaining < qty) {
+    console.warn(
+      `[Webhook] Oversell guard: event ${eventId} has ${event.ticketsRemaining} ticket(s) remaining, ` +
+      `requested ${qty}. Session ${session.id} not fulfilled.`,
+    )
+    return
+  }
+
   const ticketData = Array.from({ length: qty }, () => ({
     eventId,
     userId,
@@ -211,30 +220,40 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     platformFee,
   }))
 
-  await prisma.$transaction([
-    prisma.ticket.createMany({ data: ticketData }),
-    prisma.event.update({
+  // Atomically: create tickets, decrement capacity, upsert guest, record revenue.
+  // Uses an interactive transaction so we can re-validate capacity inside the
+  // serialisation boundary — prevents a second concurrent webhook from also
+  // decrementing past zero if both passed the pre-check above.
+  await prisma.$transaction(async (tx) => {
+    const fresh = await tx.event.findUnique({
+      where: { id: eventId },
+      select: { ticketsRemaining: true },
+    })
+    if (!fresh || fresh.ticketsRemaining < qty) {
+      throw Object.assign(new Error('Sold out'), { code: 'SOLD_OUT' })
+    }
+
+    await tx.ticket.createMany({ data: ticketData })
+    await tx.event.update({
       where: { id: eventId },
       data: { ticketsRemaining: { decrement: qty } },
-    }),
-    prisma.eventGuest.upsert({
+    })
+    await tx.eventGuest.upsert({
       where: { eventId_userId: { eventId, userId } },
       create: { eventId, userId, status: 'CONFIRMED' },
       update: { status: 'CONFIRMED' },
-    }),
-    ...(totalPlatformRevenue > 0
-      ? [
-          prisma.platformRevenue.create({
-            data: {
-              source: 'ticket_fee',
-              amount: totalPlatformRevenue,
-              referenceId: eventId,
-              description: `Ticket fee · ${qty}× ${event.name}`,
-            },
-          }),
-        ]
-      : []),
-  ])
+    })
+    if (totalPlatformRevenue > 0) {
+      await tx.platformRevenue.create({
+        data: {
+          source: 'ticket_fee',
+          amount: totalPlatformRevenue,
+          referenceId: eventId,
+          description: `Ticket fee · ${qty}× ${event.name}`,
+        },
+      })
+    }
+  })
 
   // Referral credit runs outside the transaction — it's secondary bookkeeping
   // and should never block the ticket from being recorded if it fails.
