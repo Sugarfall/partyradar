@@ -697,11 +697,12 @@ interface VenuesListProps {
   venueSource: 'google' | 'database' | 'google_places' | null   // null = never fetched yet
   mapCenter: { lat: number; lng: number } | null
   isTracking: boolean
+  locationReady: boolean
   onCitySearch: (city: string, lat: number, lng: number, currency?: string) => void
   onWiderSearch: () => void
 }
 
-function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCenter, isTracking, onCitySearch, onWiderSearch }: VenuesListProps) {
+function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCenter, isTracking, locationReady, onCitySearch, onWiderSearch }: VenuesListProps) {
   const [venueSearch, setVenueSearch] = useState('')
   const [cityInput, setCityInput] = useState('')
   const [citySearching, setCitySearching] = useState(false)
@@ -1864,6 +1865,7 @@ export default function DiscoverPage() {
           venueSource={venueSource}
           mapCenter={mapCenter}
           isTracking={isTracking}
+          locationReady={locationReady}
           onCitySearch={handleCitySearch}
           onWiderSearch={handleVenueWiderSearch}
         />
