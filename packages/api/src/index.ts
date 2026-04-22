@@ -617,117 +617,140 @@ cron.schedule('0 * * * *', async () => {
 })
 
 // ─── Startup cleanup ──────────────────────────────────────────────────────────
-// Runs once on boot: purges external events that expired or were synced for wrong cities
+// Runs once on boot: purges expired external events and backfills legacy data.
+// Wrapped in a 20s timeout so slow/cold DB connections never exhaust the
+// Prisma connection pool and starve real request handlers. Each operation
+// is individually wrapped so one slow query doesn't block the rest.
 ;(async () => {
+  const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T | null> =>
+    Promise.race([
+      p,
+      new Promise<null>((resolve) => setTimeout(() => {
+        console.warn(`[Startup] ${label} timed out after ${ms}ms — skipped`)
+        resolve(null)
+      }, ms)),
+    ])
   try {
     const cutoff = new Date(Date.now() - 8 * 3_600_000)
 
     // 1. Delete expired externally-synced events (Ticketmaster, Skiddle, Perplexity, etc.)
     //    User-created events are never auto-deleted.
-    const expiredExternal = await prisma.event.deleteMany({
-      where: {
-        externalSource: { not: null },
-        startsAt: { lt: cutoff },
-      },
-    })
-    if (expiredExternal.count > 0) {
+    const expiredExternal = await withTimeout(
+      prisma.event.deleteMany({
+        where: { externalSource: { not: null }, startsAt: { lt: cutoff } },
+      }),
+      8000, 'delete expired events',
+    )
+    if (expiredExternal && expiredExternal.count > 0) {
       console.log(`[Startup] Deleted ${expiredExternal.count} expired external events`)
     }
 
     // 2. Unpublish external events outside the UK/Ireland bounding box
     //    (catches Amsterdam, US, or other mis-geocoded events that slipped through)
     //    UK+Ireland rough bbox: lat 49–60, lng -11 to 2
-    const overseas = await prisma.event.updateMany({
-      where: {
-        externalSource: { not: null },
-        isPublished: true,
-        OR: [
-          { lat: { lt: 49 } },
-          { lat: { gt: 60 } },
-          { lng: { lt: -11 } },
-          { lng: { gt: 2 } },
-        ],
-      },
-      data: { isPublished: false },
-    })
-    if (overseas.count > 0) {
+    const overseas = await withTimeout(
+      prisma.event.updateMany({
+        where: {
+          externalSource: { not: null },
+          isPublished: true,
+          OR: [
+            { lat: { lt: 49 } },
+            { lat: { gt: 60 } },
+            { lng: { lt: -11 } },
+            { lng: { gt: 2 } },
+          ],
+        },
+        data: { isPublished: false },
+      }),
+      8000, 'unpublish overseas events',
+    )
+    if (overseas && overseas.count > 0) {
       console.log(`[Startup] Unpublished ${overseas.count} out-of-region external events`)
     }
 
     // 3. Ensure the PartyRadar Assistant system account exists and reassign any external
     //    events that are still pointing to an old "demo" admin user as host.
-    const systemUser = await prisma.user.upsert({
-      where: { firebaseUid: 'partyradar_system' },
-      create: {
-        firebaseUid: 'partyradar_system',
-        email: 'assistant@partyradar.app',
-        username: 'partyradar',
-        displayName: 'PartyRadar Assistant',
-        photoUrl: 'https://partyradar.app/icons/icon-192.png',
-        interests: [],
-        subscriptionTier: 'FREE',
-      },
-      update: {
-        displayName: 'PartyRadar Assistant',
-        photoUrl: 'https://partyradar.app/icons/icon-192.png',
-      },
-    })
+    const systemUser = await withTimeout(
+      prisma.user.upsert({
+        where: { firebaseUid: 'partyradar_system' },
+        create: {
+          firebaseUid: 'partyradar_system',
+          email: 'assistant@partyradar.app',
+          username: 'partyradar',
+          displayName: 'PartyRadar Assistant',
+          photoUrl: 'https://partyradar.app/icons/icon-192.png',
+          interests: [],
+          subscriptionTier: 'FREE',
+        },
+        update: {
+          displayName: 'PartyRadar Assistant',
+          photoUrl: 'https://partyradar.app/icons/icon-192.png',
+        },
+      }),
+      8000, 'upsert system user',
+    )
 
     // Migrate externally-synced events whose host displayName is still "demo" (legacy admin)
-    const migrated = await prisma.event.updateMany({
-      where: {
-        externalSource: { not: null },
-        host: { displayName: 'demo' },
-        hostId: { not: systemUser.id },
-      },
-      data: { hostId: systemUser.id },
-    })
-    if (migrated.count > 0) {
-      console.log(`[Startup] Reassigned ${migrated.count} external events from "demo" → PartyRadar Assistant`)
+    if (systemUser) {
+      const migrated = await withTimeout(
+        prisma.event.updateMany({
+          where: {
+            externalSource: { not: null },
+            host: { displayName: 'demo' },
+            hostId: { not: systemUser.id },
+          },
+          data: { hostId: systemUser.id },
+        }),
+        8000, 'migrate demo-host events',
+      )
+      if (migrated && migrated.count > 0) {
+        console.log(`[Startup] Reassigned ${migrated.count} external events from "demo" → PartyRadar Assistant`)
+      }
     }
 
     // Delete all posts created by demo/bot accounts — feed shows real users only
-    const botUsers = await prisma.user.findMany({
-      where: { firebaseUid: { startsWith: 'demo_' } },
-      select: { id: true },
-    })
-    if (botUsers.length > 0) {
+    const botUsers = await withTimeout(
+      prisma.user.findMany({
+        where: { firebaseUid: { startsWith: 'demo_' } },
+        select: { id: true },
+      }),
+      6000, 'find demo users',
+    )
+    if (botUsers && botUsers.length > 0) {
       const botIds = botUsers.map((u) => u.id)
-      const deletedPosts = await prisma.post.deleteMany({
-        where: { userId: { in: botIds } },
-      })
-      if (deletedPosts.count > 0) {
+      const deletedPosts = await withTimeout(
+        prisma.post.deleteMany({ where: { userId: { in: botIds } } }),
+        6000, 'delete bot posts',
+      )
+      if (deletedPosts && deletedPosts.count > 0) {
         console.log(`[Startup] Deleted ${deletedPosts.count} bot post(s) from demo accounts`)
       }
     }
 
-    // Backfill PostMedia for legacy posts. Any post that has a populated
-    // `imageUrl` but no `media` rows yet (i.e. was created before Phase 1
-    // of the feed refactor) gets one PostMedia row synthesised so the new
-    // carousel renderers don't have to special-case legacy data.
-    // Idempotent — safe to run on every boot; the `none: {}` filter skips
-    // posts already backfilled.
-    const legacyPosts = await prisma.post.findMany({
-      where: {
-        imageUrl: { not: null },
-        media: { none: {} },
-      },
-      select: { id: true, imageUrl: true },
-      take: 1000, // cap per boot so a massive backfill doesn't stall startup
-    })
-    if (legacyPosts.length > 0) {
-      await prisma.postMedia.createMany({
-        data: legacyPosts
-          .filter((p) => p.imageUrl)
-          .map((p) => ({
-            postId: p.id,
-            url: p.imageUrl!,
-            // We can't reliably tell images from videos by URL alone here,
-            // but Cloudinary URLs include /video/ for videos — detect that.
-            type: p.imageUrl!.includes('/video/') ? ('VIDEO' as const) : ('IMAGE' as const),
-            sortOrder: 0,
-          })),
-      })
+    // Backfill PostMedia for legacy posts (idempotent — skips already-backfilled).
+    // `media: { none: {} }` uses a NOT EXISTS subquery which can be slow; cap at 6s.
+    const legacyPosts = await withTimeout(
+      prisma.post.findMany({
+        where: { imageUrl: { not: null }, media: { none: {} } },
+        select: { id: true, imageUrl: true },
+        take: 200, // tighter cap — 1000 could take many seconds on cold DB
+      }),
+      6000, 'find legacy posts for backfill',
+    )
+    if (legacyPosts && legacyPosts.length > 0) {
+      await withTimeout(
+        prisma.postMedia.createMany({
+          data: legacyPosts
+            .filter((p) => p.imageUrl)
+            .map((p) => ({
+              postId: p.id,
+              url: p.imageUrl!,
+              type: p.imageUrl!.includes('/video/') ? ('VIDEO' as const) : ('IMAGE' as const),
+              sortOrder: 0,
+            })),
+        }),
+        6000, 'backfill PostMedia',
+      )
       console.log(`[Startup] Backfilled PostMedia for ${legacyPosts.length} legacy post(s)`)
     }
   } catch (err) {
