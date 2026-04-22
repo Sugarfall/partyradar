@@ -62,6 +62,16 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
           user: { select: userSelect },
           event: { select: eventSelect },
           venue: { select: venueSelect },
+          // Phase 2/3/4: hydrate carousel media, tags, and counters so the
+          // feed cards render with full fidelity (viewer overlays, share
+          // count, video autoplay) without extra round-trips.
+          media: { orderBy: { sortOrder: 'asc' as const } },
+          tags: {
+            include: {
+              taggedUser: { select: userSelect },
+              taggedVenue: { select: { id: true, name: true, address: true, photoUrl: true, type: true } },
+            },
+          },
         },
       }),
     ])
@@ -87,8 +97,14 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         id: null as string | null,
         text: null as string | null,
         imageUrl: null as string | null,
+        isStory: false,
         likesCount: 0,
         commentsCount: 0,
+        viewCount: 0,
+        sharesCount: 0,
+        repostsCount: 0,
+        media: null as null,
+        tags: null as null,
         hasLiked: false,
         createdAt: r.invitedAt,
       })),
@@ -101,8 +117,14 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         id: null as string | null,
         text: null as string | null,
         imageUrl: null as string | null,
+        isStory: false,
         likesCount: 0,
         commentsCount: 0,
+        viewCount: 0,
+        sharesCount: 0,
+        repostsCount: 0,
+        media: null as null,
+        tags: null as null,
         hasLiked: false,
         createdAt: c.createdAt,
       })),
@@ -115,8 +137,14 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         id: p.id,
         text: p.text,
         imageUrl: p.imageUrl,
+        isStory: p.isStory,
         likesCount: p.likesCount,
         commentsCount: p.commentsCount,
+        viewCount: p.viewCount,
+        sharesCount: p.sharesCount,
+        repostsCount: p.repostsCount,
+        media: p.media,
+        tags: p.tags,
         hasLiked: likedSet.has(p.id),
         createdAt: p.createdAt,
       })),
@@ -161,6 +189,14 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
         user: { select: userSelect },
         event: { select: eventSelect },
         venue: { select: venueSelect },
+        // Phase 2/3/4: carousel media, tags, and counters — same as /feed.
+        media: { orderBy: { sortOrder: 'asc' as const } },
+        tags: {
+          include: {
+            taggedUser: { select: userSelect },
+            taggedVenue: { select: { id: true, name: true, address: true, photoUrl: true, type: true } },
+          },
+        },
       },
     })
 
@@ -195,8 +231,14 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
       id: p.id,
       text: p.text,
       imageUrl: p.imageUrl,
+      isStory: p.isStory,
       likesCount: p.likesCount,
       commentsCount: p.commentsCount,
+      viewCount: p.viewCount,
+      sharesCount: p.sharesCount,
+      repostsCount: p.repostsCount,
+      media: p.media,
+      tags: p.tags,
       hasLiked: likedSet.has(p.id),
       createdAt: p.createdAt,
     }))

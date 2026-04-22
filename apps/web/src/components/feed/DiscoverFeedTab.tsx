@@ -33,34 +33,30 @@ interface FeedVenue {
   photoUrl?: string | null
 }
 
-interface FeedPost {
-  id: string
-  imageUrl?: string | null
-  text?: string | null
-  isStory: boolean
-  likesCount: number
-  viewCount?: number
-  /** Phase 2: ordered carousel media (falls back to `imageUrl` when empty). */
-  media?: MediaItem[] | null
-  /** Phase 2: resolved tags with nested user/venue records. */
-  tags?: PostTagLite[] | null
-  /** Phase 4: share + repost counters (optional until the feed endpoint returns them). */
-  sharesCount?: number
-  repostsCount?: number
-}
-
-interface FeedCheckin {
-  id: string
-  crowdLevel?: string | null
-}
-
+// Server returns a FLAT shape per item — post fields live at the top level
+// on POST items, checkin fields on CHECKIN items. No nested `post` wrapper.
 interface FeedItem {
   type: 'POST' | 'CHECKIN' | 'RSVP'
   user: FeedUser
   event?: FeedEvent | null
   venue?: FeedVenue | null
-  post?: FeedPost | null
-  checkin?: FeedCheckin | null
+  // Post fields (present on POST items)
+  id?: string | null
+  imageUrl?: string | null
+  text?: string | null
+  isStory?: boolean
+  likesCount?: number
+  commentsCount?: number
+  viewCount?: number
+  /** Phase 2: ordered carousel media (falls back to `imageUrl` when empty). */
+  media?: MediaItem[] | null
+  /** Phase 2: resolved tags with nested user/venue records. */
+  tags?: PostTagLite[] | null
+  /** Phase 4: share + repost counters. */
+  sharesCount?: number
+  repostsCount?: number
+  // Checkin fields (present on CHECKIN items)
+  crowdLevel?: string | null
   createdAt: string
 }
 
@@ -117,7 +113,9 @@ function PostCard({
   /** Used to decide whether to show the owner-only Insights link. */
   currentUserId?: string | null
 }) {
-  const post = item.post!
+  // Flat-shape alias — the server keeps post fields at the top level of
+  // the feed item, so `post.X` reads the same field as `item.X`.
+  const post = item as FeedItem & { id: string; likesCount: number }
   const isOwner = !!(currentUserId && item.user.id === currentUserId)
   const [sharing, setSharing] = useState(false)
   // Optimistic share counter: bumped in-place when the user acts, snapping
@@ -266,8 +264,7 @@ function PostCard({
 // ─── Check-in Card ────────────────────────────────────────────────────────────
 
 function CheckinCard({ item }: { item: FeedItem }) {
-  const checkin = item.checkin
-  const crowd = checkin?.crowdLevel ? CROWD[checkin.crowdLevel] : null
+  const crowd = item.crowdLevel ? CROWD[item.crowdLevel] : null
 
   return (
     <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -396,7 +393,7 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   }
 
   // Only show real posts — API now returns POST type only but guard here too
-  const allItems = items.filter(i => i.type === 'POST' && i.post)
+  const allItems = items.filter(i => i.type === 'POST' && !!i.id)
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -447,12 +444,12 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
         ) : (
           allItems.map((item, idx) => (
             <PostCard
-              key={`${item.post!.id}-${idx}`}
+              key={`${item.id}-${idx}`}
               item={item}
-              liked={likedIds.has(item.post!.id)}
-              onLike={() => handleLike(item.post!.id)}
-              reported={reportedIds.has(item.post!.id)}
-              onReport={() => handleReport(item.post!.id)}
+              liked={likedIds.has(item.id!)}
+              onLike={() => handleLike(item.id!)}
+              reported={reportedIds.has(item.id!)}
+              onReport={() => handleReport(item.id!)}
               currentUserId={currentUserId}
             />
           ))
