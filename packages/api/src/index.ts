@@ -446,6 +446,20 @@ app.use('/api/connect', connectRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
+// DB connectivity probe — hits the DB with a 10s timeout so we can distinguish
+// "API up, DB down" from "API down". Safe to call unauthenticated.
+app.get('/api/health/db', async (_req, res) => {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timed out after 10s')), 10_000)),
+    ])
+    res.json({ status: 'ok', db: 'connected' })
+  } catch (err: any) {
+    res.status(503).json({ status: 'error', db: 'unreachable', error: err?.message ?? String(err) })
+  }
+})
+
 app.use(errorHandler)
 
 // ─── Cron Jobs ────────────────────────────────────────────────────────────────
