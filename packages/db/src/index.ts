@@ -21,12 +21,16 @@ function buildDatasourceUrl(): string {
     const url = new URL(base)
 
     // Auto-convert direct Neon endpoint → pooler endpoint.
-    // Direct:  ep-<name>.c-N.us-east-1.aws.neon.tech
-    // Pooler:  ep-<name>-pooler.c-N.us-east-1.aws.neon.tech
+    // Direct:  ep-<name>[.<prefix>].<region>.aws.neon.tech
+    // Pooler:  ep-<name>-pooler[.<prefix>].<region>.aws.neon.tech
     // Only rewrite if the URL isn't already using a pooler or a non-Neon host.
-    if (url.hostname.match(/^ep-[a-z0-9-]+\.[\w-]+\.aws\.neon\.tech$/) &&
+    // Use a simple string check (startsWith + includes) rather than a strict regex
+    // so it works across all Neon endpoint URL formats (c-N prefix, no prefix, etc.).
+    if (url.hostname.startsWith('ep-') &&
+        url.hostname.includes('.aws.neon.tech') &&
         !url.hostname.includes('-pooler.')) {
-      url.hostname = url.hostname.replace(/^(ep-[a-z0-9-]+)(\..+)$/, '$1-pooler$2')
+      // Insert -pooler immediately after the endpoint slug (first dot-segment)
+      url.hostname = url.hostname.replace(/^(ep-[a-z0-9-]+)(\..*)$/, '$1-pooler$2')
       if (!url.searchParams.has('pgbouncer')) url.searchParams.set('pgbouncer', 'true')
     }
 
