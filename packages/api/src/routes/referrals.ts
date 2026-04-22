@@ -181,20 +181,23 @@ router.post('/payout', requireAuth, async (req: AuthRequest, res, next) => {
       throw new AppError(`Minimum payout is £${REFERRAL_CONFIG.MIN_PAYOUT.toFixed(2)}`, 400)
     }
 
-    // Mark referrals as paid and reset balance
-    const amount = user.referralBalance
-    await prisma.referral.updateMany({
-      where: { referrerId: userId, isPaidOut: false },
-      data: { isPaidOut: true },
-    })
-    await prisma.user.update({
-      where: { id: userId },
-      data: { referralBalance: 0 },
+    // Atomic: re-read balance inside a transaction so concurrent requests
+    // cannot both pass the pre-check above and double-pay the same balance.
+    const { paidOut } = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.user.findUnique({ where: { id: userId }, select: { referralBalance: true } })
+      if (!fresh || fresh.referralBalance < REFERRAL_CONFIG.MIN_PAYOUT) {
+        throw new AppError(`Minimum payout is £${REFERRAL_CONFIG.MIN_PAYOUT.toFixed(2)}`, 400)
+      }
+      await tx.referral.updateMany({
+        where: { referrerId: userId, isPaidOut: false },
+        data: { isPaidOut: true },
+      })
+      await tx.user.update({ where: { id: userId }, data: { referralBalance: 0 } })
+      return { paidOut: fresh.referralBalance }
     })
 
-    // In production, trigger Stripe payout here
-    // For now just mark as processed
-    res.json({ data: { paidOut: amount, message: `£${amount.toFixed(2)} payout requested — will be processed within 3-5 business days` } })
+    // In production, trigger Stripe payout here — for now just mark processed
+    res.json({ data: { paidOut, message: `£${paidOut.toFixed(2)} payout requested — will be processed within 3-5 business days` } })
   } catch (err) {
     next(err)
   }

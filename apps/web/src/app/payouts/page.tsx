@@ -50,6 +50,7 @@ function PayoutsInner() {
     try {
       const res = await api.post<{ data: { url: string } }>('/connect/onboard', {})
       if (res.data?.url) window.location.href = res.data.url
+      else throw new Error('No onboarding URL returned — please try again')
     } catch (e: any) {
       setError(e?.message ?? 'Could not start Stripe onboarding')
       logError('payouts:onboard', e)
