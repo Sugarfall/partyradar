@@ -509,32 +509,31 @@ async function handleWalletTopUp(session: Stripe.Checkout.Session) {
   const bonusAmount = Number((amount * bonus / 100).toFixed(2))
   const totalCredit = amount + bonusAmount
 
-  const wallet = await prisma.wallet.findUnique({ where: { id: walletId } })
-  if (!wallet) return
+  // Atomic interactive transaction: increment balance and record tx in one DB round-trip.
+  // Using increment (not read-then-write) prevents a stale balance if two top-ups
+  // complete for the same wallet within the same millisecond.
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.wallet.update({
+      where: { id: walletId },
+      data: {
+        balance: { increment: totalCredit },
+        lifetimeTopUp: { increment: amount },
+      },
+    })
 
-  const newBalance = Number((wallet.balance + totalCredit).toFixed(2))
-
-  await prisma.wallet.update({
-    where: { id: walletId },
-    data: {
-      balance: newBalance,
-      lifetimeTopUp: { increment: amount },
-    },
-  })
-
-  // Main top-up transaction
-  await prisma.walletTransaction.create({
-    data: {
-      walletId,
-      type: 'TOP_UP',
-      amount: totalCredit,
-      balanceAfter: newBalance,
-      description: bonusAmount > 0
-        ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
-        : `Top-up £${amount}`,
-      stripePaymentId: session.payment_intent as string,
-      stripeSessionId: session.id,
-    },
+    await tx.walletTransaction.create({
+      data: {
+        walletId,
+        type: 'TOP_UP',
+        amount: totalCredit,
+        balanceAfter: updated.balance,
+        description: bonusAmount > 0
+          ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
+          : `Top-up £${amount}`,
+        stripePaymentId: session.payment_intent as string,
+        stripeSessionId: session.id,
+      },
+    })
   })
 
   // Record platform revenue (we hold the float)
@@ -563,31 +562,28 @@ async function handleWalletTopUpFromIntent(pi: Stripe.PaymentIntent) {
   const bonusAmount = Number((amount * bonus / 100).toFixed(2))
   const totalCredit = amount + bonusAmount
 
-  const wallet = await prisma.wallet.findUnique({ where: { id: walletId } })
-  if (!wallet) return
+  // Atomic interactive transaction: increment balance and record tx in one DB round-trip.
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.wallet.update({
+      where: { id: walletId },
+      data: {
+        balance: { increment: totalCredit },
+        lifetimeTopUp: { increment: amount },
+      },
+    })
 
-  const newBalance = Number((wallet.balance + totalCredit).toFixed(2))
-
-  await prisma.wallet.update({
-    where: { id: walletId },
-    data: {
-      balance: newBalance,
-      lifetimeTopUp: { increment: amount },
-    },
-  })
-
-  // Main top-up transaction
-  await prisma.walletTransaction.create({
-    data: {
-      walletId,
-      type: 'TOP_UP',
-      amount: totalCredit,
-      balanceAfter: newBalance,
-      description: bonusAmount > 0
-        ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
-        : `Top-up £${amount}`,
-      stripePaymentId: pi.id,
-    },
+    await tx.walletTransaction.create({
+      data: {
+        walletId,
+        type: 'TOP_UP',
+        amount: totalCredit,
+        balanceAfter: updated.balance,
+        description: bonusAmount > 0
+          ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
+          : `Top-up £${amount}`,
+        stripePaymentId: pi.id,
+      },
+    })
   })
 
   // Record platform revenue (we hold the float)

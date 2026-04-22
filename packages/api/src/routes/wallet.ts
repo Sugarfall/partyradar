@@ -243,37 +243,41 @@ router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {
     const commissionRate = partnership?.commissionRate ?? REVENUE_MODEL.VENUE_COMMISSION_PERCENT
     const platformCut = Number((amount * commissionRate / 100).toFixed(2))
 
-    // Deduct from wallet
-    const newBalance = Number((wallet.balance - amount).toFixed(2))
     const pointsEarned = Math.floor(amount * WALLET_CONFIG.POINTS_PER_POUND)
-    const newPoints = wallet.rewardPoints + pointsEarned
 
-    // Check if this pushes them to a new free drink
-    const oldDrinkCount = Math.floor(wallet.rewardPoints / WALLET_CONFIG.POINTS_PER_FREE_DRINK)
-    const newDrinkCount = Math.floor(newPoints / WALLET_CONFIG.POINTS_PER_FREE_DRINK)
-    const drinksEarned = newDrinkCount - oldDrinkCount
+    // Interactive transaction: re-validate balance and atomically update all wallet fields
+    const { updated, drinksEarned, newPoints } = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.wallet.findUnique({ where: { id: wallet.id } })
+      if (!fresh || fresh.balance < amount) throw new AppError('Insufficient wallet balance', 400)
 
-    const updated = await prisma.wallet.update({
-      where: { id: wallet.id },
-      data: {
-        balance: newBalance,
-        lifetimeSpent: { increment: amount },
-        rewardPoints: newPoints,
-        freeDrinksEarned: { increment: drinksEarned },
-      },
-    })
+      const oldDrinkCount = Math.floor(fresh.rewardPoints / WALLET_CONFIG.POINTS_PER_FREE_DRINK)
+      const updatedPoints = fresh.rewardPoints + pointsEarned
+      const newDrinkCount = Math.floor(updatedPoints / WALLET_CONFIG.POINTS_PER_FREE_DRINK)
+      const drinks = newDrinkCount - oldDrinkCount
 
-    // Record transaction
-    await prisma.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        type: 'VENUE_SPEND',
-        amount: -amount,
-        balanceAfter: newBalance,
-        description: description ?? `Spent at venue`,
-        venueId,
-        metadata: items ? { items } : undefined,
-      },
+      const u = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: {
+          balance: { decrement: amount },
+          lifetimeSpent: { increment: amount },
+          rewardPoints: { increment: pointsEarned },
+          freeDrinksEarned: { increment: drinks },
+        },
+      })
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: 'VENUE_SPEND',
+          amount: -amount,
+          balanceAfter: u.balance,
+          description: description ?? `Spent at venue`,
+          venueId,
+          metadata: items ? { items } : undefined,
+        },
+      })
+
+      return { updated: u, drinksEarned: drinks, newPoints: updatedPoints }
     })
 
     // Record platform revenue
@@ -321,26 +325,33 @@ router.post('/redeem-drink', requireAuth, async (req: AuthRequest, res, next) =>
       throw new AppError('No free drinks available', 400)
     }
 
-    await prisma.wallet.update({
-      where: { id: wallet.id },
-      data: { freeDrinksUsed: { increment: 1 } },
-    })
-
-    await prisma.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        type: 'DRINK_REWARD',
-        amount: 0,
-        balanceAfter: wallet.balance,
-        description: '🍹 Free drink redeemed',
-        venueId,
-      },
+    // Interactive transaction: re-validate inside DB lock to prevent concurrent double-redemption
+    const remaining = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.wallet.findUnique({ where: { id: wallet.id } })
+      if (!fresh || fresh.freeDrinksEarned - fresh.freeDrinksUsed <= 0) {
+        throw new AppError('No free drinks available', 400)
+      }
+      await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { freeDrinksUsed: { increment: 1 } },
+      })
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: 'DRINK_REWARD',
+          amount: 0,
+          balanceAfter: fresh.balance,
+          description: '🍹 Free drink redeemed',
+          venueId,
+        },
+      })
+      return fresh.freeDrinksEarned - fresh.freeDrinksUsed - 1
     })
 
     res.json({
       data: {
         success: true,
-        freeDrinksRemaining: available - 1,
+        freeDrinksRemaining: remaining,
         message: '🍹 Free drink redeemed! Show this to the bartender.',
       },
     })
@@ -381,22 +392,24 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
         throw new AppError('Insufficient wallet balance', 400)
       }
 
-      const newBalance = Number((wallet.balance - price).toFixed(2))
-
       // Atomicity: balance update + tx log + order row must either all
       // succeed or all fail — otherwise we can debit a user with no order
       // (lost money) or mint an order without debiting (free card).
+      // Re-check balance inside the transaction to prevent overdraft from
+      // concurrent wallet operations.
       const order = await prisma.$transaction(async (tx) => {
-        await tx.wallet.update({
+        const fresh = await tx.wallet.findUnique({ where: { id: wallet.id }, select: { balance: true } })
+        if (!fresh || fresh.balance < price) throw new AppError('Insufficient wallet balance', 400)
+        const updated = await tx.wallet.update({
           where: { id: wallet.id },
-          data: { balance: newBalance, lifetimeSpent: { increment: price } },
+          data: { balance: { decrement: price }, lifetimeSpent: { increment: price } },
         })
         await tx.walletTransaction.create({
           data: {
             walletId: wallet.id,
             type: 'CARD_ORDER',
             amount: -price,
-            balanceAfter: newBalance,
+            balanceAfter: updated.balance,
             description: `Physical card: ${cardDesign.name}`,
           },
         })
