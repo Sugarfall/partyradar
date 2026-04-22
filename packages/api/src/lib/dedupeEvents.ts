@@ -185,6 +185,11 @@ interface DedupableEvent {
   /** `neighbourhood` is often where external sync stashed the venue name
    *  (Perplexity, SerpAPI). We treat it as a secondary venue signal. */
   neighbourhood?: string | null
+  /** Full street address. Used for merge-and-enrich scoring so that when
+   *  dedupe picks a winner, the best available address survives regardless
+   *  of which source supplied it. Some sources (Perplexity) hallucinate
+   *  addresses; others (Ticketmaster) return canonical postcoded strings. */
+  address?: string | null
   externalSource?: Source
 }
 
@@ -303,39 +308,165 @@ export function makeDedupKey(event: DedupableEvent): string {
   return makeDedupKeys(event)[0]!
 }
 
+// ── Field-quality scoring for merge-and-enrich ────────────────────────────────
+
+/** Score an address string for specificity. Higher = more trustworthy.
+ *  Used when two duplicate rows disagree: "Manchester" loses to
+ *  "Victoria Station, Hunts Bank, Manchester M3 1AR". */
+function addressScore(addr: string | null | undefined): number {
+  if (!addr) return -1
+  const a = addr.toLowerCase().trim()
+  if (!a) return -1
+  if (GENERIC_VENUES.has(a)) return -1
+  // "Glasgow, Glasgow" / "Manchester City Centre" / just a city
+  if (/^(?:[a-z]+\s*(?:city\s+(?:centre|center))?\s*,?\s*)+$/i.test(a)) {
+    // Accept if the address is actually more detailed than just city tokens
+    const tokens = a.replace(/[,\s]+/g, ' ').split(' ').filter(Boolean)
+    if (tokens.every((t) => CITY_SUFFIXES.includes(t) || t === 'centre' || t === 'center' || t === 'city')) {
+      return 0
+    }
+  }
+  let score = 0
+  if (/\d/.test(a)) score += 3                       // has a number (street or postcode)
+  if (/\b[a-z]{1,2}\d[a-z\d]?\s*\d[a-z]{2}\b/i.test(addr)) score += 3 // UK postcode
+  if (a.split(',').length >= 2) score += 2           // comma-separated parts
+  if (a.length > 20) score += 1                      // longer strings tend to be fuller
+  if (a.length > 40) score += 1
+  return score
+}
+
+/** Score a venue-name string. Prefer specific named venues over null or
+ *  generic placeholders. */
+function venueNameScore(name: string | null | undefined): number {
+  if (!name) return -1
+  const n = name.toLowerCase().trim()
+  if (!n) return -1
+  if (GENERIC_VENUES.has(n)) return -1
+  let score = 0
+  if (n.length >= 3) score += 1
+  if (n.split(' ').length >= 2) score += 1
+  return score
+}
+
+/** Pick the best value from a list by maximum score. Ties → first non-nullish. */
+function pickBest<V>(values: V[], score: (v: V) => number): V | undefined {
+  let best: V | undefined
+  let bestScore = -Infinity
+  for (const v of values) {
+    if (v == null) continue
+    const s = score(v)
+    if (s > bestScore) {
+      best = v
+      bestScore = s
+    }
+  }
+  return best
+}
+
+/** Build the enriched winner by starting from the winner and filling each
+ *  address-like field with the highest-scored value found across the family.
+ *  Fields NOT in the enrichable set (ids, external source, etc.) stay with
+ *  the winner untouched — the winner's identity is preserved. */
+function enrichWinner<T extends DedupableEvent>(winner: T, family: T[]): T {
+  if (family.length <= 1) return winner
+  // Prefer the winner's value when scores tie — list it first.
+  const ordered = [winner, ...family.filter((e) => e !== winner)]
+
+  const bestAddress = pickBest(
+    ordered.map((e) => e.address ?? null),
+    addressScore,
+  )
+  const bestVenueName = pickBest(
+    ordered.map((e) => e.venueName ?? null),
+    venueNameScore,
+  )
+  const bestNeighbourhood = pickBest(
+    ordered.map((e) => e.neighbourhood ?? null),
+    venueNameScore, // same scoring: reject cities + generic placeholders
+  )
+
+  // Only overwrite if the best non-winner value actually scores higher than
+  // the winner's current value — avoids gratuitous rewrites when winner is
+  // already best.
+  const out: T = { ...winner }
+  if (bestAddress && bestAddress !== winner.address && addressScore(bestAddress) > addressScore(winner.address)) {
+    ;(out as DedupableEvent).address = bestAddress
+  }
+  if (
+    bestVenueName &&
+    bestVenueName !== winner.venueName &&
+    venueNameScore(bestVenueName) > venueNameScore(winner.venueName)
+  ) {
+    ;(out as DedupableEvent).venueName = bestVenueName
+  }
+  if (
+    bestNeighbourhood &&
+    bestNeighbourhood !== winner.neighbourhood &&
+    venueNameScore(bestNeighbourhood) > venueNameScore(winner.neighbourhood)
+  ) {
+    ;(out as DedupableEvent).neighbourhood = bestNeighbourhood
+  }
+  return out
+}
+
 /**
- * Collapse cross-source duplicates.
+ * Collapse cross-source duplicates AND enrich the surviving row with the
+ * best address/venue fields from all of its duplicates.
+ *
+ * Why enrichment matters: Ticketmaster is the highest-priority source so its
+ * row wins by default, but Ticketmaster frequently stores neighbourhood
+ * as just a city ("Manchester") while Perplexity's duplicate row has a
+ * specific venue ("AO Arena"). Without merging, the user sees the coarser
+ * of the two. With merging, the winner keeps Ticketmaster's authoritative
+ * address and ticket link but also inherits Perplexity's specific venue
+ * name.
  *
  * Algorithm:
- * 1. Sort by source priority (user-created first, then ticketmaster, etc.)
+ * 1. Sort by source priority (user-created first, then ticketmaster, etc.).
  * 2. Walk the sorted list. For each event compute its set of keys.
- *    - If ANY of those keys has already been claimed by a higher-priority
- *      event, this event is a duplicate → drop it.
- *    - Otherwise keep it and mark ALL of its keys as claimed.
- * 3. Return survivors in original input order (preserves orderBy from DB).
+ *    - If ANY of those keys has already been claimed, this event joins
+ *      that winner's "family" of duplicates and is dropped from the output.
+ *    - Otherwise it becomes a new winner and its keys are claimed.
+ * 3. For each winner, build an enriched version that inherits the
+ *    highest-scored address / venueName / neighbourhood across its family.
+ * 4. Return the enriched winners in original input order.
  */
 export function dedupeEvents<T extends DedupableEvent>(events: T[]): T[] {
   const byPriority = [...events].sort(
     (a, b) => priority(a.externalSource) - priority(b.externalSource),
   )
 
-  const claimed = new Set<string>()
-  const winners = new Set<T>()
+  const claimed = new Map<string, T>()     // key -> winner event
+  const families = new Map<T, T[]>()        // winner -> all members incl. itself
 
   for (const e of byPriority) {
     // User-created events bypass dedup entirely — they're independent data.
     if (!e.externalSource) {
-      winners.add(e)
+      families.set(e, [e])
       continue
     }
 
     const keys = makeDedupKeys(e)
-    const alreadyClaimed = keys.some((k) => claimed.has(k))
-    if (alreadyClaimed) continue // lower-priority dupe, drop silently
+    const existingWinner = keys.map((k) => claimed.get(k)).find((v): v is T => v != null)
+    if (existingWinner) {
+      families.get(existingWinner)!.push(e)
+      continue
+    }
 
-    for (const k of keys) claimed.add(k)
-    winners.add(e)
+    for (const k of keys) claimed.set(k, e)
+    families.set(e, [e])
   }
 
-  return events.filter((e) => winners.has(e))
+  // Build enriched winner objects (original remains unmodified).
+  const enriched = new Map<T, T>()
+  for (const [w, fam] of families) enriched.set(w, enrichWinner(w, fam))
+
+  // Preserve input order: for each original event, emit the enriched winner
+  // if this event is itself a winner. Non-winners are dropped silently.
+  const result: T[] = []
+  for (const e of events) {
+    const w = enriched.get(e)
+    if (w) result.push(w)
+  }
+  return result
 }
