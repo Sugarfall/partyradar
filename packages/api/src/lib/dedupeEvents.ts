@@ -211,6 +211,7 @@ function neighborCells(v: number, mult: number): string[] {
 function makeDedupKeys(event: DedupableEvent): string[] {
   const d = event.startsAt instanceof Date ? event.startsAt : new Date(event.startsAt)
   const day = Number.isNaN(d.getTime()) ? 'nodate' : d.toISOString().slice(0, 10)
+  const source = event.externalSource ?? ''
 
   const normalized = normalizeName(event.name, event.venueName)
   const words = normalized.split(' ').filter(Boolean)
@@ -247,6 +248,27 @@ function makeDedupKeys(event: DedupableEvent): string[] {
     // regardless of their individual title wording.
     for (const tag of activityTags) {
       keys.push(`activity:${tag}|${day}|venue:${v}`)
+    }
+
+    // Cross-day recurring collapse: Perplexity emits weekly recurring events
+    // (Karaoke Night, Open Mic, Pub Quiz, Bingo, House Night, etc.) as a
+    // separate record for EVERY day of its 2-week lookup window. Users see
+    // "Karaoke at Admiral Bar" 3 nights in a row and rightly call it a
+    // duplicate. This day-agnostic key collapses same-venue Perplexity
+    // rows into one winner (the earliest-dated).
+    //
+    // Gated on source=perplexity so Ticketmaster two-night residencies
+    // (Olivia Dean at OVO Hydro Apr 22 + Apr 23) with distinct ticket
+    // listings per night stay separate.
+    //
+    // Gated on activity-tag match so real multi-night artist residencies
+    // (Acid Mothers Temple at Mono Apr 23–25, Brokencyde at Cathouse
+    // Apr 24–25) stay distinct — they have unique artist names, no
+    // activity tag matches.
+    if (source === 'perplexity') {
+      for (const tag of activityTags) {
+        keys.push(`pplx-recur:${tag}|venue:${v}`)
+      }
     }
   }
 

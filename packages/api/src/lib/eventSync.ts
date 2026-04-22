@@ -37,6 +37,67 @@ async function reverseGeocode(lat: number, lng: number): Promise<string | null> 
   }
 }
 
+/**
+ * Google Places Text Search — resolve a venue name in a city to its canonical
+ * address + lat/lng. Used to verify Perplexity-sourced venue addresses because
+ * Perplexity routinely hallucinates street numbers/postcodes that look
+ * plausible (e.g. "The Admiral Bar, 156-158 Great Western Road, Glasgow G4 9AE"
+ * when the real Admiral Bar is at "126 Admiral St, Glasgow G41 1HU"). Cached
+ * in-process for the session to avoid paying for the same venue twice.
+ *
+ * Returns null silently on any failure so callers can fall back to whatever
+ * the source supplied.
+ */
+interface PlaceLookup {
+  formattedAddress: string
+  lat: number
+  lng: number
+}
+const placeCache = new Map<string, PlaceLookup | null>()
+
+async function findPlace(venueName: string, city: string): Promise<PlaceLookup | null> {
+  if (!GOOGLE_API_KEY) return null
+  const key = `${venueName.toLowerCase().trim()}|${city.toLowerCase().trim()}`
+  if (placeCache.has(key)) return placeCache.get(key) ?? null
+  try {
+    const q = encodeURIComponent(`${venueName}, ${city}`)
+    const url =
+      `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
+      `?input=${q}&inputtype=textquery` +
+      `&fields=formatted_address,geometry,name` +
+      `&key=${GOOGLE_API_KEY}`
+    const r = await fetch(url)
+    const data = await r.json() as {
+      status: string
+      candidates?: Array<{
+        formatted_address?: string
+        name?: string
+        geometry?: { location?: { lat: number; lng: number } }
+      }>
+    }
+    if (data.status !== 'OK' || !data.candidates?.length) {
+      placeCache.set(key, null)
+      return null
+    }
+    const best = data.candidates[0]!
+    const loc = best.geometry?.location
+    if (!best.formatted_address || !loc) {
+      placeCache.set(key, null)
+      return null
+    }
+    const result: PlaceLookup = {
+      formattedAddress: best.formatted_address,
+      lat: loc.lat,
+      lng: loc.lng,
+    }
+    placeCache.set(key, result)
+    return result
+  } catch {
+    placeCache.set(key, null)
+    return null
+  }
+}
+
 /** Returns true when an address string is too vague to be useful (just city/Unknown). */
 function isVagueAddress(address: string, city: string): boolean {
   const a = address.toLowerCase().trim()
@@ -737,7 +798,20 @@ async function syncSerpApi(
         venueName && !addrArray.some(a => a.toLowerCase().includes(venueName.toLowerCase())) ? venueName : null,
         ...addrArray,
       ].filter(Boolean) as string[]
-      const address = fullAddrParts.length > 0 ? fullAddrParts.join(', ') : city
+      let address = fullAddrParts.length > 0 ? fullAddrParts.join(', ') : city
+      // Verify the venue address against Google Places so SerpAPI's partial
+      // address arrays get upgraded to canonical postcoded strings when
+      // available. Silent no-op if the lookup fails.
+      let serpLat = lat
+      let serpLng = lng
+      if (venueName) {
+        const place = await findPlace(venueName, city)
+        if (place) {
+          address = place.formattedAddress
+          serpLat = place.lat
+          serpLng = place.lng
+        }
+      }
       const neighbourhood = (venueName || address.split(',')[0]) ?? city
       const coverImageUrl = ev.thumbnail ?? null
       const socialSourceUrl = ev.ticket_info?.find((t) => t.link)?.link ?? ev.link
@@ -746,10 +820,10 @@ async function syncSerpApi(
 
       await prisma.event.upsert({
         where: { serpApiId },
-        update: { name, description, startsAt, address, neighbourhood, venueName: venueName || null, coverImageUrl, socialSourceUrl },
+        update: { name, description, startsAt, lat: serpLat, lng: serpLng, address, neighbourhood, venueName: venueName || null, coverImageUrl, socialSourceUrl },
         create: {
           hostId, name, type, description, startsAt, endsAt: null,
-          lat, lng, address, neighbourhood,
+          lat: serpLat, lng: serpLng, address, neighbourhood,
           venueName: venueName || null,
           showNeighbourhoodOnly: false, capacity: 500, price,
           ticketQuantity: 0, ticketsRemaining: 0,
@@ -888,9 +962,26 @@ async function syncPerplexity(
         : ev.venue
           ? `${ev.venue}, ${city}`
           : city
-      // If still vague, geocode using the stored lat/lng
+      // Verify & replace with Google Places canonical address whenever we
+      // have a venue name — Perplexity routinely hallucinates plausible-but-
+      // wrong street/postcode combos (e.g. two "Admiral Bar" rows with
+      // different G4 / G41 postcodes that don't actually exist). Google
+      // Places Text Search resolves "The Admiral Bar, Glasgow" → the real
+      // canonical address. Also pins lat/lng to the real venue so the
+      // dedupe geo-keys align across sources.
+      let venueLat = lat
+      let venueLng = lng
+      if (ev.venue) {
+        const place = await findPlace(ev.venue, city)
+        if (place) {
+          address = place.formattedAddress
+          venueLat = place.lat
+          venueLng = place.lng
+        }
+      }
+      // If still vague (no venue, no place match), reverse-geocode the city pin
       if (isVagueAddress(address, city)) {
-        const geo = await reverseGeocode(lat, lng)
+        const geo = await reverseGeocode(venueLat, venueLng)
         if (geo) address = geo
       }
       const neighbourhood = ev.venue ?? address.split(',')[0] ?? city
@@ -906,13 +997,16 @@ async function syncPerplexity(
         where: { aiEventId },
         update: {
           name, description, startsAt, endsAt,
+          lat: venueLat, lng: venueLng,
           address, neighbourhood, venueName,
           coverImageUrl: ev.imageUrl ?? null,
           socialSourceUrl: ev.url,
         },
         create: {
           hostId, name, type, description, startsAt,
-          endsAt: endsAt ?? null, lat, lng, address, neighbourhood, venueName,
+          endsAt: endsAt ?? null,
+          lat: venueLat, lng: venueLng,
+          address, neighbourhood, venueName,
           showNeighbourhoodOnly: false, capacity: 300, price,
           ticketQuantity: 0, ticketsRemaining: 0,
           alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
