@@ -552,7 +552,8 @@ app.use(errorHandler)
 // server itself was restarted — this cron prevents suspension while it runs.
 cron.schedule('*/4 * * * *', async () => {
   try {
-    await prisma.$queryRaw`SELECT 1`
+    // Use a model query (not $queryRaw) so it also keeps the ORM query engine warm.
+    await prisma.event.findFirst({ select: { id: true } })
   } catch (err) {
     console.error('[Keepalive] DB ping failed:', err instanceof Error ? err.message : String(err))
   }
@@ -907,10 +908,15 @@ checkEnvVars()
 // reuses the already-open connection — eliminating the zombie state caused by
 // Prisma's native engine doing synchronous blocking work on first pool access.
 ;(async () => {
+  // Two-stage init: raw SELECT 1 wakes Neon/PgBouncer, then a real model
+  // query (findFirst) initialises Prisma's ORM query-engine path.
+  // $queryRaw alone does NOT warm the typed DMMF query pipeline — the first
+  // findMany/findFirst after a cold start would still block synchronously.
   console.log('[Startup] Initialising DB connection before accepting traffic…')
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
-      await prisma.$queryRaw`SELECT 1`
+      await prisma.$queryRaw`SELECT 1`   // wake Neon compute + PgBouncer
+      await prisma.event.findFirst({ select: { id: true } }) // warm ORM engine
       console.log(`[Startup] DB ready (attempt ${attempt}) — opening HTTP port`)
       break
     } catch (err) {
