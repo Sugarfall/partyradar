@@ -891,8 +891,12 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCent
             <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>SCANNING NEARBY VENUES...</p>
           </div>
         )}
-        {/* No venues yet + not loading → location-aware empty state */}
-        {!venuesLoading && !hasRealVenues && venueSource === null && (
+        {/* No venues yet + not loading → location-aware empty state.
+            Only show "LOCATING YOU" when we genuinely don't have coordinates yet.
+            Once locationReady is true we have a position (GPS/IP/Glasgow fallback) —
+            if the API failed (venueSource still null) the static Glasgow list below
+            is already shown via displayVenues, so just hide the confusing message. */}
+        {!venuesLoading && !hasRealVenues && venueSource === null && !locationReady && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
             <span style={{ fontSize: 36 }}>📍</span>
             <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(255,214,0,0.6)', letterSpacing: '0.15em' }}>
