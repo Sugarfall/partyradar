@@ -1,0 +1,8 @@
+node_modules
+.git
+*.log
+.env
+.env.local
+.env.production
+packages/api/.env
+packages/db/src/generated
