@@ -725,98 +725,91 @@ cron.schedule('0 * * * *', async () => {
 })
 
 // ─── Startup cleanup ──────────────────────────────────────────────────────────
-// Deferred 60s after boot so DB connection pool is fully available to serve
-// real requests during the Railway health-check window.
-//
-// IMPORTANT: All queries are fire-and-forget (.then/.catch — never awaited at
-// the top level). The previous await + Promise.race pattern looked like it
-// timed out, but the underlying Prisma query kept running and holding its
-// connection pool slot — starving events/feed routes for the full duration.
-// Fire-and-forget lets each query release its slot the moment it finishes,
-// regardless of how long the others take.
-setTimeout(() => {
+// Deferred 120s (not 60s) so the event-loop is fully settled before any heavy
+// DB work begins. Queries run SEQUENTIALLY (one at a time) — the previous
+// parallel fire-and-forget pattern blasted all 5 queries simultaneously at T=60s
+// which saturated the 3-slot Prisma pool exactly when ai-sync fired its own
+// prisma.user.upsert(), causing the Prisma native engine to block the main JS
+// thread while waiting for a free slot → zombie server.
+setTimeout(async () => {
   const cutoff = new Date(Date.now() - 8 * 3_600_000)
 
-  // 1. Delete expired externally-synced events (independent — fire-and-forget)
+  // 1. Delete expired externally-synced events (sequential — awaited)
   //    User-created events are never auto-deleted.
-  prisma.event.deleteMany({
-    where: { externalSource: { not: null }, startsAt: { lt: cutoff } },
-  })
-    .then((r) => { if (r.count > 0) console.log(`[Startup] Deleted ${r.count} expired external events`) })
-    .catch((err) => console.error('[Startup] delete expired events failed:', err))
-
-  // 2. Unpublish external events outside UK/Ireland bbox (independent — fire-and-forget)
-  //    UK+Ireland rough bbox: lat 49–60, lng -11 to 2
-  prisma.event.updateMany({
-    where: {
-      externalSource: { not: null },
-      isPublished: true,
-      OR: [
-        { lat: { lt: 49 } },
-        { lat: { gt: 60 } },
-        { lng: { lt: -11 } },
-        { lng: { gt: 2 } },
-      ],
-    },
-    data: { isPublished: false },
-  })
-    .then((r) => { if (r.count > 0) console.log(`[Startup] Unpublished ${r.count} out-of-region external events`) })
-    .catch((err) => console.error('[Startup] unpublish overseas events failed:', err))
-
-  // 3 + 4. Upsert system user → then migrate demo-host events (chained, fire-and-forget)
-  prisma.user.upsert({
-    where: { firebaseUid: 'partyradar_system' },
-    create: {
-      firebaseUid: 'partyradar_system',
-      email: 'assistant@partyradar.app',
-      username: 'partyradar',
-      displayName: 'PartyRadar Assistant',
-      photoUrl: 'https://partyradar.app/icons/icon-192.png',
-      interests: [],
-      subscriptionTier: 'FREE',
-    },
-    update: {
-      displayName: 'PartyRadar Assistant',
-      photoUrl: 'https://partyradar.app/icons/icon-192.png',
-    },
-  })
-    .then((systemUser) => {
-      prisma.event.updateMany({
-        where: {
-          externalSource: { not: null },
-          host: { displayName: 'demo' },
-          hostId: { not: systemUser.id },
-        },
-        data: { hostId: systemUser.id },
-      })
-        .then((r) => { if (r.count > 0) console.log(`[Startup] Reassigned ${r.count} external events from "demo" → PartyRadar Assistant`) })
-        .catch((err) => console.error('[Startup] migrate demo-host events failed:', err))
+  try {
+    const r = await prisma.event.deleteMany({
+      where: { externalSource: { not: null }, startsAt: { lt: cutoff } },
     })
-    .catch((err) => console.error('[Startup] upsert system user failed:', err))
+    if (r.count > 0) console.log(`[Startup] Deleted ${r.count} expired external events`)
+  } catch (err) { console.error('[Startup] delete expired events failed:', err) }
 
-  // 5 + 6. Find demo users → then delete bot posts (chained, fire-and-forget)
-  prisma.user.findMany({
-    where: { firebaseUid: { startsWith: 'demo_' } },
-    select: { id: true },
-  })
-    .then((botUsers) => {
-      if (botUsers.length === 0) return
-      const botIds = botUsers.map((u) => u.id)
-      prisma.post.deleteMany({ where: { userId: { in: botIds } } })
-        .then((r) => { if (r.count > 0) console.log(`[Startup] Deleted ${r.count} bot post(s) from demo accounts`) })
-        .catch((err) => console.error('[Startup] delete bot posts failed:', err))
+  // 2. Unpublish external events outside UK/Ireland bbox
+  try {
+    const r = await prisma.event.updateMany({
+      where: {
+        externalSource: { not: null },
+        isPublished: true,
+        OR: [
+          { lat: { lt: 49 } }, { lat: { gt: 60 } },
+          { lng: { lt: -11 } }, { lng: { gt: 2 } },
+        ],
+      },
+      data: { isPublished: false },
     })
-    .catch((err) => console.error('[Startup] find demo users failed:', err))
+    if (r.count > 0) console.log(`[Startup] Unpublished ${r.count} out-of-region external events`)
+  } catch (err) { console.error('[Startup] unpublish overseas events failed:', err) }
 
-  // 7 + 8. Find legacy posts → then backfill PostMedia (chained, fire-and-forget)
-  prisma.post.findMany({
-    where: { imageUrl: { not: null }, media: { none: {} } },
-    select: { id: true, imageUrl: true },
-    take: 200,
-  })
-    .then((legacyPosts) => {
-      if (legacyPosts.length === 0) return
-      prisma.postMedia.createMany({
+  // 3. Upsert system user
+  try {
+    const systemUser = await prisma.user.upsert({
+      where: { firebaseUid: 'partyradar_system' },
+      create: {
+        firebaseUid: 'partyradar_system',
+        email: 'assistant@partyradar.app',
+        username: 'partyradar',
+        displayName: 'PartyRadar Assistant',
+        photoUrl: 'https://partyradar.app/icons/icon-192.png',
+        interests: [],
+        subscriptionTier: 'FREE',
+      },
+      update: {
+        displayName: 'PartyRadar Assistant',
+        photoUrl: 'https://partyradar.app/icons/icon-192.png',
+      },
+    })
+    // 4. Migrate demo-host events to system user
+    const r = await prisma.event.updateMany({
+      where: {
+        externalSource: { not: null },
+        host: { displayName: 'demo' },
+        hostId: { not: systemUser.id },
+      },
+      data: { hostId: systemUser.id },
+    })
+    if (r.count > 0) console.log(`[Startup] Reassigned ${r.count} external events from "demo" → PartyRadar Assistant`)
+  } catch (err) { console.error('[Startup] system user / demo migration failed:', err) }
+
+  // 5. Delete bot posts
+  try {
+    const botUsers = await prisma.user.findMany({
+      where: { firebaseUid: { startsWith: 'demo_' } },
+      select: { id: true },
+    })
+    if (botUsers.length > 0) {
+      const r = await prisma.post.deleteMany({ where: { userId: { in: botUsers.map((u) => u.id) } } })
+      if (r.count > 0) console.log(`[Startup] Deleted ${r.count} bot post(s) from demo accounts`)
+    }
+  } catch (err) { console.error('[Startup] delete bot posts failed:', err) }
+
+  // 6. Backfill PostMedia for legacy posts
+  try {
+    const legacyPosts = await prisma.post.findMany({
+      where: { imageUrl: { not: null }, media: { none: {} } },
+      select: { id: true, imageUrl: true },
+      take: 200,
+    })
+    if (legacyPosts.length > 0) {
+      const r = await prisma.postMedia.createMany({
         data: legacyPosts
           .filter((p) => p.imageUrl)
           .map((p) => ({
@@ -826,11 +819,10 @@ setTimeout(() => {
             sortOrder: 0,
           })),
       })
-        .then((r) => console.log(`[Startup] Backfilled PostMedia for ${r.count} legacy post(s)`))
-        .catch((err) => console.error('[Startup] backfill PostMedia failed:', err))
-    })
-    .catch((err) => console.error('[Startup] find legacy posts failed:', err))
-}, 60_000) // 60s delay — DB must be warm before cleanup queries run
+      console.log(`[Startup] Backfilled PostMedia for ${r.count} legacy post(s)`)
+    }
+  } catch (err) { console.error('[Startup] backfill PostMedia failed:', err) }
+}, 120_000) // 120s — well after keepalive cron has run (4 min) and DB is stable
 
 // ─── Startup: immediate DB pre-warmup ────────────────────────────────────────
 // The very first user request after a cold deploy is almost always ai-sync,

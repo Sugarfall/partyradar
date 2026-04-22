@@ -9,6 +9,11 @@ import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
 import type { SubscriptionTier } from '@partyradar/shared'
 import { dedupeEvents } from '../lib/dedupeEvents'
+// Static import — avoids tsx's dynamic ESM loader blocking the Node.js main
+// thread on the first ai-sync request (the dynamic import() previously
+// triggered a synchronous 54KB TypeScript transformation that froze the
+// event loop, causing the server to appear dead / zombie for 30+ seconds).
+import { syncExternalEvents } from '../lib/eventSync'
 
 const router = Router()
 
@@ -294,12 +299,11 @@ router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
     // Acknowledge immediately — sync runs in background
     res.status(202).json({ data: { status: 'syncing', city } })
 
-    // Fire-and-forget: import is async so this never blocks the response above
-    import('../lib/eventSync').then(({ syncExternalEvents }) => {
-      syncExternalEvents(String(city), Number(lat), Number(lng), 'user', force === true)
-        .then((r) => console.log(`[ai-sync] ${city}: imported ${r.imported}, skipped ${r.skipped}`))
-        .catch((err) => console.error('[ai-sync] sync error:', err))
-    }).catch((err) => console.error('[ai-sync] import error:', err))
+    // Fire-and-forget: syncExternalEvents is statically imported so there is no
+    // dynamic module-loading cost here that could block the event loop.
+    syncExternalEvents(String(city), Number(lat), Number(lng), 'user', force === true)
+      .then((r) => console.log(`[ai-sync] ${city}: imported ${r.imported}, skipped ${r.skipped}`))
+      .catch((err) => console.error('[ai-sync] sync error:', err))
   } catch (err) {
     next(err)
   }
