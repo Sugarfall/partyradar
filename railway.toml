@@ -1,10 +1,10 @@
 [build]
 builder = "nixpacks"
-# Compiles TypeScript → JS so the API runs with plain `node`.
-# Eliminates tsx's ESM loader from the runtime path, which prevents
-# tsx's synchronous esbuild transform from blocking the Node.js event loop
-# during Prisma's native binary initialisation.
-buildCommand = "bash scripts/build-api.sh"
+# Compiles TypeScript → JS so the API runs with plain `node` (no tsx).
+# Eliminates tsx's ESM loader from the runtime path — tsx's synchronous
+# esbuild transform was blocking the Node.js event loop during Prisma's
+# native binary initialisation, causing zombie deploys.
+buildCommand = "npm install --prefer-offline && npx prisma generate --schema=packages/db/prisma/schema.prisma && npm run build -w packages/shared && npm run build -w packages/db && npm run build -w packages/api"
 
 [deploy]
 # prisma db push removed from startCommand — it hangs indefinitely when the

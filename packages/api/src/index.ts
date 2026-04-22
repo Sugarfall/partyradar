@@ -546,14 +546,14 @@ app.use(errorHandler)
 
 // ── Neon keepalive ───────────────────────────────────────────────────────────
 // Neon free-tier computes auto-suspend after 5 minutes of inactivity.
-// A SELECT 1 ping every 4 minutes keeps the compute warm so the first real
-// request after a quiet period is never stalled by a cold-start handshake.
-// The pooler URL rewrite (packages/db/src/index.ts) is the safety net if the
-// server itself was restarted — this cron prevents suspension while it runs.
+// A raw SELECT 1 ping every 4 minutes keeps the compute warm so the first
+// real request after a quiet period is never stalled by a cold-start handshake.
+// Raw query is used intentionally — model queries (findFirst) can trigger
+// Prisma engine initialisation which may block the event loop; SELECT 1 is
+// handled by the raw-query pipeline which is always open after DB init.
 cron.schedule('*/4 * * * *', async () => {
   try {
-    // Use a model query (not $queryRaw) so it also keeps the ORM query engine warm.
-    await prisma.event.findFirst({ select: { id: true } })
+    await prisma.$queryRaw`SELECT 1`
   } catch (err) {
     console.error('[Keepalive] DB ping failed:', err instanceof Error ? err.message : String(err))
   }
@@ -823,7 +823,7 @@ setTimeout(async () => {
       console.log(`[Startup] Backfilled PostMedia for ${r.count} legacy post(s)`)
     }
   } catch (err) { console.error('[Startup] backfill PostMedia failed:', err) }
-}, 120_000) // 120s — well after keepalive cron has run (4 min) and DB is stable
+}, 600_000) // 10 min — well after the server has stabilised and handled its first real requests
 
 
 // ─── Env-var sanity check ────────────────────────────────────────────────────
@@ -902,38 +902,37 @@ function checkEnvVars() {
 checkEnvVars()
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-// DB initialisation runs BEFORE httpServer.listen() so Railway's health check
-// (120 s timeout) cannot pass until the Prisma connection pool is fully open.
-// Once SELECT 1 returns the pool slot is released and every subsequent query
-// reuses the already-open connection — eliminating the zombie state caused by
-// Prisma's native engine doing synchronous blocking work on first pool access.
+// Listen FIRST so Railway's health check passes immediately, then warm up the
+// DB connection in the background. This prevents the health check timeout from
+// killing the deploy if Neon's cold-start takes > 30 seconds.
+//
+// With compiled JS (no tsx runtime loader), Prisma's native binary loads fast
+// (< 100ms) on first model query — no synchronous event-loop blocking.
+// The background SELECT 1 just wakes the Neon compute so the first real
+// HTTP request isn't stalled by a 30-second cold-start handshake.
 ;(async () => {
-  // Two-stage init: raw SELECT 1 wakes Neon/PgBouncer, then a real model
-  // query (findFirst) initialises Prisma's ORM query-engine path.
-  // $queryRaw alone does NOT warm the typed DMMF query pipeline — the first
-  // findMany/findFirst after a cold start would still block synchronously.
-  console.log('[Startup] Initialising DB connection before accepting traffic…')
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    try {
-      await prisma.$queryRaw`SELECT 1`   // wake Neon compute + PgBouncer
-      await prisma.event.findFirst({ select: { id: true } }) // warm ORM engine
-      console.log(`[Startup] DB ready (attempt ${attempt}) — opening HTTP port`)
-      break
-    } catch (err) {
-      console.warn(
-        `[Startup] DB init attempt ${attempt}/5 failed:`,
-        err instanceof Error ? err.message : String(err),
-      )
-      if (attempt < 5) await new Promise<void>((r) => setTimeout(r, 8_000))
-    }
-  }
-
   httpServer.listen(PORT, () => {
     console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
     setInterval(() => {
       console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
     }, 30_000)
   })
+
+  // Warm Neon in background — does NOT block the event loop or the health check.
+  console.log('[Startup] Warming DB connection in background…')
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      console.log(`[Startup] DB ready (attempt ${attempt})`)
+      break
+    } catch (err) {
+      console.warn(
+        `[Startup] DB warm attempt ${attempt}/5 failed:`,
+        err instanceof Error ? err.message : String(err),
+      )
+      if (attempt < 5) await new Promise<void>((r) => setTimeout(r, 8_000))
+    }
+  }
 })()
 
 export default app
