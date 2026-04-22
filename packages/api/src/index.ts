@@ -902,37 +902,58 @@ function checkEnvVars() {
 checkEnvVars()
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-// Listen FIRST so Railway's health check passes immediately, then warm up the
-// DB connection in the background. This prevents the health check timeout from
-// killing the deploy if Neon's cold-start takes > 30 seconds.
+// IMPORTANT: listen() is called AFTER the Prisma engine warmup, not before.
 //
-// With compiled JS (no tsx runtime loader), Prisma's native binary loads fast
-// (< 100ms) on first model query — no synchronous event-loop blocking.
-// The background SELECT 1 just wakes the Neon compute so the first real
-// HTTP request isn't stalled by a 30-second cold-start handshake.
+// Root cause of the "zombie server" bug:
+//   Prisma's default library engine is a native Rust .node addon that
+//   initialises its Rust async runtime synchronously (via N-API) the first
+//   time any model query (findMany, findFirst …) is executed.  On Railway's
+//   CPU-throttled free tier this synchronous block lasts 20-30 s, freezing
+//   the Node.js event loop completely — the health-check endpoint can't
+//   respond, Railway marks the deploy unhealthy, and all requests hang.
+//
+// Fix — pre-initialise BEFORE binding the port:
+//   Running the first model query BEFORE httpServer.listen() means no TCP
+//   port is bound during the synchronous block, so Railway's health-check
+//   cannot fire.  Once the block finishes the Rust runtime is ready; listen()
+//   is then called, the health-check responds instantly, and every subsequent
+//   model query is fully async — no further blocking ever occurs.
+//
+// Timing budget (Railway healthcheckTimeout = 120 s):
+//   Prisma Rust init   ≈ 20-30 s  (synchronous, on first model query)
+//   Neon cold-start    ≈  0-30 s  (async, during Neon compute wake)
+//   Worst case total   ≈ 60 s  →  listen() called at T ≈ 60 s
+//   Health-check fires ≈ T+0 s  →  well within the 120 s window
+//
+//   A 90 s hard timeout guards against edge cases (very slow Neon wakeup).
 ;(async () => {
+  console.log('[Startup] Warming Prisma engine + Neon connection (may take 20-60 s)…')
+  try {
+    // findFirst triggers the Rust N-API init AND wakes the Neon compute.
+    // 90 s timeout: leaves 30 s margin before Railway's 120 s health-check
+    // window expires even in the worst-case cold-start scenario.
+    await Promise.race([
+      prisma.event.findFirst({ select: { id: true } }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Prisma/Neon init timed out after 90 s')), 90_000)
+      ),
+    ])
+    console.log('[Startup] Prisma engine ready — binding port now')
+  } catch (err) {
+    // Timeout or DB error: bind the port anyway so the health-check can pass.
+    // Subsequent model queries will re-attempt connection; the process stays alive.
+    console.warn(
+      '[Startup] Engine pre-init failed/timed out — binding port anyway:',
+      err instanceof Error ? err.message : String(err),
+    )
+  }
+
   httpServer.listen(PORT, () => {
     console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
     setInterval(() => {
       console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
     }, 30_000)
   })
-
-  // Warm Neon in background — does NOT block the event loop or the health check.
-  console.log('[Startup] Warming DB connection in background…')
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    try {
-      await prisma.$queryRaw`SELECT 1`
-      console.log(`[Startup] DB ready (attempt ${attempt})`)
-      break
-    } catch (err) {
-      console.warn(
-        `[Startup] DB warm attempt ${attempt}/5 failed:`,
-        err instanceof Error ? err.message : String(err),
-      )
-      if (attempt < 5) await new Promise<void>((r) => setTimeout(r, 8_000))
-    }
-  }
 })()
 
 export default app

@@ -1,12 +1,5 @@
 generator client {
-  provider   = "prisma-client-js"
-  // binary engine runs the query engine in a separate sidecar process so the
-  // Node.js main thread is never blocked during engine initialisation.
-  // On Railway's CPU-throttled free tier the default library engine (a native
-  // Rust .node addon) blocks the event loop for 20-30 s while JIT-compiling —
-  // causing every first-request zombie. The binary engine communicates via an
-  // async Unix socket, keeping the main thread fully responsive.
-  engineType = "binary"
+  provider = "prisma-client-js"
 }
 
 datasource db {
