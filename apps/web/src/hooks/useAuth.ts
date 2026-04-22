@@ -117,6 +117,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsub
   }, [])
 
+  // Shared helper: attempt /auth/sync, fall back to mock user if API is unreachable.
+  // Firebase auth already succeeded at this point — never block login because the
+  // backend is temporarily down. The real DB user will be loaded next time
+  // onAuthStateChanged fires once the API recovers.
+  async function syncUserOrMock(user: User) {
+    try {
+      await syncUser(user)
+    } catch (err) {
+      console.error('[auth] /auth/sync failed during sign-in — falling back to mock user. API may be temporarily down.', err)
+      setDbUser(makeMockDbUser(user.email ?? 'demo@partyradar.app'))
+    }
+  }
+
   async function signIn(email: string, password: string) {
     syncingRef.current = true
     try {
@@ -125,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!DEV_MODE && !cred.user.emailVerified) {
         sendEmailVerification(cred.user).catch(() => {})
       }
-      await syncUser(cred.user)
+      await syncUserOrMock(cred.user)
     } finally {
       syncingRef.current = false
     }
@@ -136,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password)
       sendEmailVerification(cred.user).catch(() => {})
-      await syncUser(cred.user)
+      await syncUserOrMock(cred.user)
     } finally {
       syncingRef.current = false
     }
@@ -146,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     syncingRef.current = true
     try {
       const cred = await signInWithPopup(auth, googleProvider)
-      await syncUser(cred.user)
+      await syncUserOrMock(cred.user)
     } finally {
       syncingRef.current = false
     }
@@ -156,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     syncingRef.current = true
     try {
       const cred = await firebaseSignInWithApple(auth)
-      await syncUser(cred.user)
+      await syncUserOrMock(cred.user)
     } finally {
       syncingRef.current = false
     }
