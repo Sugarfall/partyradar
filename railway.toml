@@ -1,13 +1,17 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --prefer-offline && npx prisma generate --schema=packages/db/prisma/schema.prisma"
+# Compiles TypeScript → JS so the API runs with plain `node`.
+# Eliminates tsx's ESM loader from the runtime path, which prevents
+# tsx's synchronous esbuild transform from blocking the Node.js event loop
+# during Prisma's native binary initialisation.
+buildCommand = "bash scripts/build-api.sh"
 
 [deploy]
 # prisma db push removed from startCommand — it hangs indefinitely when the
 # Railway Postgres DB is cold/slow, killing every deploy. Schema pushes must
 # be done manually via: railway run npx prisma db push --accept-data-loss
 # when there is an actual schema migration to apply.
-startCommand = "node ./node_modules/.bin/tsx packages/api/src/index.ts"
+startCommand = "node packages/api/dist/index.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"

@@ -8,6 +8,7 @@ import { Router } from 'express'
 import { prisma } from '@partyradar/db'
 import { requireAuth, requireAdmin } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
+import { syncExternalEvents } from '../lib/eventSync'
 import { AppError } from '../middleware/errorHandler'
 
 const router = Router()
@@ -188,7 +189,6 @@ router.post('/sync', requireAdmin, async (req: AuthRequest, res, next) => {
     const lat = parseFloat((req.query['lat'] as string) || (body['lat'] as string) || '55.8642')
     const lng = parseFloat((req.query['lng'] as string) || (body['lng'] as string) || '-4.2518')
 
-    const { syncExternalEvents } = await import('../lib/eventSync')
     const result = await syncExternalEvents(city, lat, lng, req.user!.dbUser.id)
 
     res.json({ data: result })
