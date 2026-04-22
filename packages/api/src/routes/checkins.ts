@@ -95,7 +95,7 @@ router.get('/my', requireAuth, async (req: AuthRequest, res, next) => {
 })
 
 /** GET /api/checkins/event/:eventId — list check-ins for an event */
-router.get('/event/:eventId', async (req, res, next) => {
+router.get('/event/:eventId', requireAuth, async (req, res, next) => {
   try {
     const { eventId } = req.params
     const { page = '1', limit = '20' } = req.query
@@ -128,7 +128,7 @@ router.get('/event/:eventId', async (req, res, next) => {
 })
 
 /** GET /api/checkins/venue/:venueId — live check-ins for a venue (last 3h) */
-router.get('/venue/:venueId', async (req, res, next) => {
+router.get('/venue/:venueId', requireAuth, async (req, res, next) => {
   try {
     const { venueId } = req.params
     const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000)

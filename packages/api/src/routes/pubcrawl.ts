@@ -153,7 +153,12 @@ router.post('/generate', optionalAuth, async (req: AuthRequest, res, next) => {
       return res.status(400).json({ error: { message: 'lat and lng are required' } })
     }
 
-    const numStops = Math.min(8, Math.max(3, Number(requestedStops)))
+    const rawStops = Number(requestedStops)
+    if (isNaN(rawStops)) {
+      res.status(400).json({ error: { message: 'stops must be a number' } })
+      return
+    }
+    const numStops = Math.min(8, Math.max(3, rawStops))
     const radiusKm = 3
 
     // ── 1. Fetch candidate venues ──────────────────────────────────────────────

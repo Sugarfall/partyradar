@@ -83,26 +83,33 @@ router.post('/:id/dj-requests', requireAuth, async (req: AuthRequest, res, next)
         )
       }
 
-      const [, , request] = await prisma.$transaction([
-        prisma.wallet.update({
-          where: { userId },
+      // Interactive transaction: re-read balance inside the serialisation
+      // boundary so concurrent requests cannot both pass the pre-check above
+      // and then both decrement past zero.
+      const request = await prisma.$transaction(async (tx) => {
+        const fresh = await tx.wallet.findUnique({ where: { id: wallet.id }, select: { balance: true } })
+        if (!fresh || fresh.balance < DJ_REQUEST_PRICE) {
+          throw new AppError('Insufficient wallet balance', 402)
+        }
+        const updated = await tx.wallet.update({
+          where: { id: wallet.id },
           data: {
             balance:       { decrement: DJ_REQUEST_PRICE },
             lifetimeSpent: { increment: DJ_REQUEST_PRICE },
           },
-        }),
-        prisma.walletTransaction.create({
+        })
+        await tx.walletTransaction.create({
           data: {
             walletId:    wallet.id,
             type:        'VENUE_SPEND',
             amount:      -DJ_REQUEST_PRICE,
-            balanceAfter: wallet.balance - DJ_REQUEST_PRICE,
+            balanceAfter: updated.balance,
             description: `DJ song request: "${song.trim().slice(0, 60)}"`,
             status:      'COMPLETED',
             eventId,
           },
-        }),
-        prisma.djRequest.create({
+        })
+        return tx.djRequest.create({
           data: {
             userId, eventId,
             song:       song.trim().slice(0, 100),
@@ -114,8 +121,8 @@ router.post('/:id/dj-requests', requireAuth, async (req: AuthRequest, res, next)
           include: {
             user: { select: { id: true, displayName: true, photoUrl: true, username: true } },
           },
-        }),
-      ])
+        })
+      })
 
       return res.status(201).json({
         data: { ...request, hasUpvoted: false, paid: true, cost: DJ_REQUEST_PRICE },
