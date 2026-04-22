@@ -321,8 +321,9 @@ export default function PricingPage() {
     }
     setCheckoutLoading(tier)
     try {
-      const json = await api.post<{ url: string }>('/subscriptions/checkout', { tier })
-      if (json?.url) window.location.href = json.url
+      const json = await api.post<{ data: { url: string } }>('/subscriptions/checkout', { tier })
+      if (json?.data?.url) window.location.href = json.data.url
+      else throw new Error('No checkout URL returned')
     } catch (err: any) {
       alert(err?.message ?? 'Could not start checkout. Please try again.')
     } finally {
