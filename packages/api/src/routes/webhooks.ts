@@ -114,9 +114,15 @@ router.post('/stripe', async (req: Request, res: Response) => {
 async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   const { eventId, userId, quantity } = session.metadata ?? {}
 
-  // Push blast checkout
+  // Push blast checkout (from /api/notifications/blast — uses 'push_blast' type)
   if (session.metadata?.['type'] === 'push_blast') {
     await handlePushBlastPaid(session)
+    return
+  }
+
+  // Dashboard-queued push blast (from /api/dashboard/blast — uses 'push_blast_queued' type)
+  if (session.metadata?.['type'] === 'push_blast_queued') {
+    await handlePushBlastQueued(session)
     return
   }
 
@@ -316,6 +322,91 @@ async function handlePushBlastPaid(session: Stripe.Checkout.Session) {
     title: `🎉 ${event.name}`,
     body: message,
     data: { eventId },
+  })
+}
+
+// Handles dashboard-queued push blasts (type === 'push_blast_queued').
+// Uses `title` + `body` from metadata (not the single `message` field used by
+// the direct notifications/blast route).
+async function handlePushBlastQueued(session: Stripe.Checkout.Session) {
+  const { eventId, tierId, title, body, userId: buyerId, scheduledFor } = session.metadata ?? {}
+  if (!eventId || !tierId || !title || !body) return
+
+  const tier = PUSH_BLAST_TIERS.find((t) => t.id === tierId)
+  if (!tier) return
+
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: { id: true, name: true, lat: true, lng: true, hostId: true },
+  })
+  if (!event) return
+
+  const hostId = buyerId ?? event.hostId
+
+  // Record platform revenue — 100% of blast price is platform revenue
+  if (tier.price > 0) {
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'push_blast',
+        amount: tier.price,
+        referenceId: eventId,
+        description: `Push blast (queued) · ${tier.label}`,
+      },
+    })
+    await creditReferrer(hostId, tier.price)
+  }
+
+  // Find candidate users with FCM tokens
+  const candidates = await prisma.user.findMany({
+    where: { fcmToken: { not: null }, isBanned: false },
+    select: { id: true, lastKnownLat: true, lastKnownLng: true },
+  })
+
+  let targetUserIds: string[]
+  if (tier.radius === 0) {
+    targetUserIds = candidates.map((u) => u.id)
+  } else {
+    targetUserIds = candidates
+      .filter((u) => {
+        if (u.lastKnownLat == null || u.lastKnownLng == null) return false
+        return haversineDistance(
+          event.lat, event.lng,
+          u.lastKnownLat, u.lastKnownLng,
+        ) <= tier.radius
+      })
+      .map((u) => u.id)
+  }
+
+  // Create the PushBlast record (QUEUED → send immediately, update to SENT)
+  const blast = await prisma.pushBlast.create({
+    data: {
+      eventId,
+      hostId,
+      tierId,
+      radius: tier.radius,
+      price: tier.price,
+      reach: tier.reach,
+      title,
+      body,
+      status: 'SENDING',
+      scheduledFor: scheduledFor ? new Date(scheduledFor) : new Date(),
+      stripeSessionId: session.id,
+      recipientCount: targetUserIds.length,
+    },
+  })
+
+  if (targetUserIds.length > 0) {
+    await sendNotificationToMany(targetUserIds, {
+      type: 'PARTY_BLAST',
+      title,
+      body,
+      data: { eventId },
+    })
+  }
+
+  await prisma.pushBlast.update({
+    where: { id: blast.id },
+    data: { status: 'SENT', sentAt: new Date() },
   })
 }
 

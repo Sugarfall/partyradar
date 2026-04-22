@@ -36,7 +36,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       mode: 'payment',
       success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/events/${eventId}?blast=success`,
       cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/events/${eventId}`,
-      metadata: { eventId, tierId, message: message.slice(0, 200), userId },
+      metadata: { type: 'push_blast', eventId, tierId, message: message.slice(0, 200), userId },
     })
 
     res.json({ data: { url: session.url } })
