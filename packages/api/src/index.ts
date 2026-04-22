@@ -83,6 +83,41 @@ const PORT = process.env['PORT'] ?? 4000
 // cross-origin API calls in the browser entirely.
 app.set('trust proxy', 1)
 
+// ─── Early OPTIONS preflight handler ─────────────────────────────────────────
+// Must be registered before rate limiters and all other middleware.
+//
+// Root cause: Railway's Fastly edge can strip the Access-Control-Request-Method
+// header from OPTIONS requests before they reach the origin server. When that
+// header is missing, the cors() middleware does NOT recognise the request as a
+// CORS preflight and calls next() instead of responding 204. The request then
+// flows into the rate limiter → request-timeout middleware → route handlers.
+// None of those send a response for OPTIONS on API paths, so the browser's
+// preflight hangs indefinitely, blocking every cross-origin GET/POST.
+//
+// This explicit handler short-circuits OPTIONS before any other layer can touch
+// the request, and always returns 204 with the correct Access-Control headers.
+app.options('*', (req, res) => {
+  const origin = req.headers.origin ?? ''
+  const allowed =
+    /^https:\/\/partyradar[a-z0-9-]*\.vercel\.app$/i.test(origin) ||
+    /^https:\/\/([a-z0-9-]+\.)?partyradar\.app$/i.test(origin) ||
+    origin === 'http://localhost:3000' ||
+    origin === 'http://localhost:3001' ||
+    (!!process.env['FRONTEND_URL'] && origin === process.env['FRONTEND_URL'])
+  if (allowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS')
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      (req.headers['access-control-request-headers'] as string | undefined) ??
+        'Content-Type,Authorization',
+    )
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+    res.setHeader('Access-Control-Max-Age', '86400')
+  }
+  res.status(204).end()
+})
+
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 
 export const io = new Server(httpServer, {
@@ -925,6 +960,13 @@ checkEnvVars()
 
 httpServer.listen(PORT, () => {
   console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
+
+  // Event-loop heartbeat — logs every 30 s so Railway logs show exactly when
+  // the loop freezes (last heartbeat before silence = zombie onset time).
+  // Safe to leave in production: a single console.log every 30 s is negligible.
+  setInterval(() => {
+    console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
+  }, 30_000)
 })
 
 export default app
