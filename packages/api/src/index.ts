@@ -617,11 +617,15 @@ cron.schedule('0 * * * *', async () => {
 })
 
 // ─── Startup cleanup ──────────────────────────────────────────────────────────
-// Runs once on boot: purges expired external events and backfills legacy data.
-// Wrapped in a 20s timeout so slow/cold DB connections never exhaust the
-// Prisma connection pool and starve real request handlers. Each operation
-// is individually wrapped so one slow query doesn't block the rest.
-;(async () => {
+// Deferred 60s after boot so DB connection pool is fully available to serve
+// real requests during the Railway health-check window. Previously this ran
+// immediately and each awaited Prisma query held a connection slot even with
+// Promise.race timeouts (the underlying query kept running). Deferring ensures
+// health + events routes are responsive before cleanup starts.
+setTimeout(() => void (async () => {
+  // Per-query timeout: resolves null after ms so one slow query doesn't block the rest.
+  // Note: Promise.race resolves the race but doesn't cancel the underlying Prisma query.
+  // That's acceptable here — the query runs out its course in the background while we move on.
   const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T | null> =>
     Promise.race([
       p,
@@ -756,7 +760,7 @@ cron.schedule('0 * * * *', async () => {
   } catch (err) {
     console.error('[Startup] Cleanup error:', err)
   }
-})()
+})(), 60_000) // 60s delay — DB must be warm before cleanup queries run
 
 // ─── Env-var sanity check ────────────────────────────────────────────────────
 
