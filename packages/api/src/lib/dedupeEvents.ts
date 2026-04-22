@@ -54,10 +54,24 @@ const CITY_SUFFIXES = [
   'cambridge', 'uk', 'scotland', 'england', 'wales', 'ireland',
   'city centre', 'city center', 'town centre', 'town center',
 ]
-const CITY_SUFFIX_SET = new Set(CITY_SUFFIXES)
 // Match city names that appear as a whole token (start-of-string, after a
 // space, or at end-of-string). Used to scrub "Tyketto Glasgow" → "Tyketto".
 const CITY_SUFFIX_RE = new RegExp(`(^|\\s+)(${CITY_SUFFIXES.join('|')})\\b`, 'gi')
+
+// Placeholder "venues" that aggregators emit when the real location is a
+// city, multiple locations, or unknown. Treat these exactly like cities —
+// not a usable venue identifier. Without this set, two rows for
+// "Glasgow Cocktail Festival" stored as "Various Venues" vs "Multiple
+// Venues" fail to merge because their venueKeys don't match.
+const GENERIC_VENUES = new Set<string>([
+  ...CITY_SUFFIXES,
+  'various venues', 'various', 'multiple venues', 'multiple locations',
+  'multiple', 'several venues', 'several locations',
+  'tba', 'tbc', 'tbd', 'to be announced', 'to be confirmed',
+  'online', 'virtual', 'livestream', 'streaming',
+  'unknown', 'unspecified', 'none',
+  'venue', 'venues', 'location', 'locations',
+])
 
 // Activity tags: lower-cased keyword patterns that identify the TYPE of
 // recurring event (quiz night, open mic, etc). Different sources describe
@@ -78,8 +92,21 @@ const ACTIVITY_TAGS: Array<{ tag: string; patterns: RegExp[] }> = [
   { tag: 'comedy',     patterns: [/\bcomedy\s+night\b/, /\bstand[- ]?up\b/, /\bcomedy\s+club\b/, /\bcomedy\s+quiz\b/] },
   { tag: 'drag',       patterns: [/\bdrag\s+(show|night|brunch|bingo)\b/, /\bdrag\s+race\b/] },
   { tag: 'bingo',      patterns: [/\bbingo\b/, /\bdrag\s+bingo\b/] },
-  { tag: 'live-music', patterns: [/\blive\s+music\b/, /\blive\s+band\b/, /\blive\s+gig\b/] },
+  { tag: 'live-music', patterns: [/\blive\s+music\b/, /\blive\s+band\b/, /\blive\s+gig\b/, /\blive\s+bands\b/] },
+  { tag: 'acoustic',   patterns: [/\bacoustic\s+(session|set|night|show)\b/, /\blive\s+acoustic\b/] },
   { tag: 'dj-night',   patterns: [/\bdj\s+set\b/, /\bclub\s+night\b/, /\bclubnight\b/] },
+  // Genre-named weekly nights (e.g. "House Night at Sub Club", "Techno Night
+  // at Room 2"). These are venue-specific residencies despite sharing a
+  // generic title across the city — so they must match on venue, not on
+  // the full-name key.
+  { tag: 'genre-night', patterns: [
+      /\bhouse\s+(night|party|session)\b/,
+      /\btechno\s+(night|party|session)\b/,
+      /\bdrum\s*(n|and|&|\+)\s*bass\s+(night|session)\b/,
+      /\b(d\s*n\s*b|dnb)\s+night\b/,
+      /\bdisco\s+(night|party)\b/,
+      /\bhip\s*hop\s+night\b/,
+  ] },
 ]
 
 function extractActivityTags(name: string): string[] {
@@ -161,6 +188,19 @@ interface DedupableEvent {
   externalSource?: Source
 }
 
+/** Emit `{value, value±1}` grid cells at a given decimal multiplier so that
+ *  two events sitting on opposite sides of a cell boundary still share at
+ *  least one key. Returns 3 cell strings at `mult=10` (1dp, ~11km), 3 at
+ *  `mult=100` (2dp, ~1.1km). We widen by one cell in each direction → 3
+ *  cells per axis → 9 cells total when combined via caller. */
+function neighborCells(v: number, mult: number): string[] {
+  const base = Math.round(v * mult)
+  // Using `toFixed` rounds half-to-even in some engines and half-up in
+  // others; compute from the integer base so it's deterministic.
+  const digits = Math.log10(mult)
+  return [base - 1, base, base + 1].map((n) => (n / mult).toFixed(digits))
+}
+
 /** Produce one or more fingerprints for an event. Two events that share
  *  ANY fingerprint are treated as the same real event. */
 function makeDedupKeys(event: DedupableEvent): string[] {
@@ -184,14 +224,15 @@ function makeDedupKeys(event: DedupableEvent): string[] {
 
   // Primary venue key: official venueName if set. Secondary: neighbourhood
   // (some sync paths stash venue name there). Both are discarded if they
-  // normalize to a bare city name ("glasgow") — that's too coarse to be a
-  // venue identifier and would falsely collapse unrelated events.
+  // normalize to a bare city name ("glasgow") or a generic placeholder
+  // ("various venues", "tba") — too coarse to be a venue identifier and
+  // would falsely collapse unrelated events.
   const venueSignals = [event.venueName, event.neighbourhood]
   const venueKeysSeen: string[] = []
   for (const raw of venueSignals) {
     const v = normalizeVenue(raw)
     if (!v) continue
-    if (CITY_SUFFIX_SET.has(v)) continue      // reject bare city names
+    if (GENERIC_VENUES.has(v)) continue       // reject cities + placeholders
     venueKeysSeen.push(v)
     keys.push(`${nameKey}|${day}|venue:${v}`)
 
@@ -206,11 +247,44 @@ function makeDedupKeys(event: DedupableEvent): string[] {
 
   if (event.lat != null && event.lng != null) {
     // 2 decimal places ≈ 1.1 km at the equator. Wide enough to absorb
-    // source-to-source geocoding drift, narrow enough that genuinely
-    // different venues in the same city don't collide.
+    // source-to-source geocoding drift within a venue, narrow enough that
+    // genuinely different venues on the same street don't collide. We
+    // intentionally do NOT widen this grid — Glasgow Merchant City alone
+    // has a dozen venues inside a 1km radius all running karaoke / pub
+    // quiz / open mic every night, and widening here collapses unrelated
+    // pubs' weekly events onto each other.
     keys.push(`${nameKey}|${day}|geo:${event.lat.toFixed(2)}|${event.lng.toFixed(2)}`)
     for (const tag of activityTags) {
       keys.push(`activity:${tag}|${day}|geo:${event.lat.toFixed(2)}|${event.lng.toFixed(2)}`)
+    }
+
+    // Strong fingerprint: full normalized name + day + metro-level geo
+    // (1dp cell + 8 neighbours ≈ 33km span). Fires only when:
+    //   - `normalized` is non-empty, AND
+    //   - the title does NOT match any activity tag. Generic recurring
+    //     titles like "Open Mic" and "Pub Quiz" are intentionally excluded
+    //     because they collide across unrelated venues — those are already
+    //     covered by the activity-tag + venue keys above.
+    //
+    // Neighbour expansion matters HERE specifically because sources often
+    // geocode the same real venue to points 1–3km apart (Ticketmaster
+    // pins a city-centre default, Perplexity hits the actual postcode).
+    // The 1dp cell alone misses those; the 3×3 block absorbs them. And
+    // because we also require a full normalized-name match, the risk of
+    // false collapse stays low: two gigs with the same distinctive title
+    // on the same day within ~33km are virtually always the same event.
+    //
+    // With this key, Ticketmaster's `venueName=null, neighbourhood=Manchester`
+    // row merges with Perplexity's `neighbourhood=AO Arena` row for the same
+    // "Yungblud" gig even though neither side provides a matching venue.
+    if (normalized && activityTags.length === 0) {
+      const latCells1 = neighborCells(event.lat, 10)
+      const lngCells1 = neighborCells(event.lng, 10)
+      for (const cLat of latCells1) {
+        for (const cLng of lngCells1) {
+          keys.push(`fn:${normalized}|${day}|geo1:${cLat}|${cLng}`)
+        }
+      }
     }
   }
 
