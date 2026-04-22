@@ -10,6 +10,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import type { Event } from '@partyradar/shared'
+import { isHappeningNow } from '@/lib/eventTiming'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   live:       { label: 'LIVE',       color: '#00ff88', icon: CheckCircle2  },
@@ -21,10 +22,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
 function getStatus(event: Event) {
   if (event.isCancelled) return 'cancelled'
   if (!event.isPublished) return 'draft'
-  const now = Date.now()
-  const start = new Date(event.startsAt).getTime()
-  const end = event.endsAt ? new Date(event.endsAt).getTime() : start + 6 * 3600000
-  if (now >= start && now <= end) return 'live'
+  // Shared helper — type-aware effective end time. Replaces old 6h fallback.
+  if (isHappeningNow(event)) return 'live'
   return 'upcoming'
 }
 

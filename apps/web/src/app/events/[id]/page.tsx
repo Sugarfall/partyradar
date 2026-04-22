@@ -26,6 +26,7 @@ import type { PushBlastTier } from '@partyradar/shared'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
 import type { EventGuest } from '@partyradar/shared'
+import { effectiveEndMs } from '@/lib/eventTiming'
 
 const TYPE_CONFIG: Record<string, { color: string; glow: string; label: string }> = {
   HOME_PARTY:  { color: '#ff006e', glow: 'rgba(255,0,110,0.25)',   label: 'HOME PARTY'  },
@@ -118,7 +119,7 @@ function WeatherWidget({ lat, lng, eventDate }: { lat: number; lng: number; even
   )
 }
 
-function CountdownTimer({ startsAt, endsAt, color }: { startsAt: string; endsAt?: string | null; color: string }) {
+function CountdownTimer({ startsAt, endsAt, type, color }: { startsAt: string; endsAt?: string | null; type?: string | null; color: string }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
@@ -126,7 +127,9 @@ function CountdownTimer({ startsAt, endsAt, color }: { startsAt: string; endsAt?
   }, [])
 
   const start = new Date(startsAt).getTime()
-  const end = endsAt ? new Date(endsAt).getTime() : start + 6 * 3600000
+  // Use shared helper — type-aware default duration replaces the old 6h fallback
+  // that caused "4h remaining" ghost LIVE states for quiz nights post-midnight.
+  const end = effectiveEndMs({ startsAt, endsAt, type })
   const isLive = now >= start && now <= end
   const isPast = now > end
   const diff = start - now
@@ -1583,7 +1586,7 @@ export default function EventDetailPage() {
         </div>
 
         {/* Countdown timer */}
-        <CountdownTimer startsAt={event.startsAt} endsAt={event.endsAt} color={tc.color} />
+        <CountdownTimer startsAt={event.startsAt} endsAt={event.endsAt} type={event.type} color={tc.color} />
 
         {/* Divider */}
         <div className="mb-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${tc.color}30, transparent)` }} />

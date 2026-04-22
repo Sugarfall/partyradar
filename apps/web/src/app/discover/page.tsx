@@ -16,6 +16,7 @@ import { api, API_URL } from '@/lib/api'
 import { silent } from '@/lib/logError'
 import DiscoverFeedTab from '@/components/feed/DiscoverFeedTab'
 import { formatPrice, detectCurrency } from '@/lib/currency'
+import { isHappeningNow } from '@/lib/eventTiming'
 
 // ── Country → currency mapping (for city search) ─────────────────────────────
 const COUNTRY_CURRENCY_MAP: Record<string, string> = {
@@ -2027,11 +2028,10 @@ export default function DiscoverPage() {
               if (pa !== pb) return pa - pb
               return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
             }
-            const liveEvents = events.filter(e => {
-              const start = new Date(e.startsAt).getTime()
-              const end = e.endsAt ? new Date(e.endsAt).getTime() : start + 6 * 3600000
-              return start <= now && now <= end
-            }).sort(byTypeThenDate)
+            // Shared helper — type-aware effective end time. Replaces the
+            // old 6h fallback which falsely kept past events in LIVE NOW
+            // (e.g. 11am pub quiz still "live" at 3am the next day).
+            const liveEvents = events.filter(e => isHappeningNow(e, now)).sort(byTypeThenDate)
             const upcomingEvents = events.filter(e => new Date(e.startsAt).getTime() > now).sort(byTypeThenDate)
 
             return (

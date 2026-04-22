@@ -185,12 +185,53 @@ const REJECT_KEYWORDS = [
 ]
 
 /**
- * Returns true if the event looks like a nightlife/music event worth importing.
- * Returns false if it matches a blocked keyword (family, tourist, fitness, etc.)
+ * Venue-level blocklist — rejects events whose VENUE/ADDRESS is clearly
+ * not a nightlife establishment, even if the event title/description is
+ * generic. Catches cases where Perplexity/SerpAPI classified Aldi as a
+ * "pub" or a BetFred betting shop as a "bar". Keep entries lower-case
+ * and distinctive (avoid common words like "bar" that legit pubs contain).
  */
-function isNightlifeEvent(name: string, description: string): boolean {
+const VENUE_REJECT_KEYWORDS = [
+  // Betting shops / bookmakers (NOT nightlife)
+  'betfred', 'bet365', 'betting shop', 'bookmaker', 'bookmakers',
+  'paddy power', 'ladbrokes', 'william hill', 'coral betting', 'betting office',
+  // Supermarkets & grocery (NOT nightlife)
+  'aldi', 'tesco', 'sainsbury', "sainsbury's", 'asda', 'lidl', 'morrisons',
+  'waitrose', 'iceland foods', 'marks & spencer', 'm&s food', 'co-operative food',
+  'supermarket', 'grocery store', 'grocery shop', 'corner shop', 'convenience store',
+  // Banks & offices
+  ' bank ', 'barclays', 'hsbc', 'natwest', 'lloyds bank', 'santander bank',
+  'halifax bank', 'post office', 'royal mail',
+  // Health / pharmacy / services (not venues)
+  'pharmacy', 'boots pharmacy', 'superdrug', 'chemist', 'gp surgery',
+  'dentist', 'opticians', 'hospital', 'clinic',
+  // Fitness / gyms (not nightlife)
+  'pure gym', 'puregym', 'the gym group', 'virgin active', 'david lloyd',
+  'fitness first', 'anytime fitness',
+  // Fast food / chains that aren't nightlife venues
+  "mcdonald's", 'mcdonalds', 'kfc', 'burger king', 'subway sandwich',
+  'greggs', 'costa coffee', 'starbucks', "domino's pizza", 'pizza hut',
+  // Retail
+  'primark', 'h&m store', 'zara store', 'next store', 'argos',
+  'b&q', 'ikea', 'home bargains', 'poundland', 'b&m',
+  // Transport / logistics
+  'petrol station', 'gas station', 'car park', 'parking garage',
+  'bus station', 'train station', 'airport terminal',
+]
+
+/**
+ * Returns true if the event looks like a nightlife/music event worth importing.
+ * Returns false if the name, description, OR venue/address matches a blocked
+ * keyword (family, tourist, fitness, betting shop, supermarket, etc.).
+ * The venue check is critical: Perplexity sometimes classifies an Aldi or a
+ * BetFred betting shop as a "PUB_NIGHT", and without this they'd leak through.
+ */
+function isNightlifeEvent(name: string, description: string, venue?: string | null, address?: string | null): boolean {
   const text = `${name} ${description}`.toLowerCase()
-  return !REJECT_KEYWORDS.some((kw) => text.includes(kw))
+  if (REJECT_KEYWORDS.some((kw) => text.includes(kw))) return false
+  const venueText = `${venue ?? ''} ${address ?? ''}`.toLowerCase()
+  if (venueText.trim() && VENUE_REJECT_KEYWORDS.some((kw) => venueText.includes(kw))) return false
+  return true
 }
 
 function stableHash(input: string): string {
@@ -314,8 +355,8 @@ async function syncTicketmaster(
       const name = ev.name ?? 'Unnamed Event'
       const description = truncateDescription(ev.info ?? ev.pleaseNote, name)
 
-      // Skip non-nightlife events
-      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+      // Skip non-nightlife events (also rejects betting shops, supermarkets, etc. by venue name)
+      if (!isNightlifeEvent(name, description, venueName, address)) { skipped++; continue }
 
       const startsAt = ev.dates?.start?.dateTime ? new Date(ev.dates.start.dateTime) : new Date()
       const endsAt = ev.dates?.end?.dateTime ? new Date(ev.dates.end.dateTime) : undefined
@@ -323,7 +364,7 @@ async function syncTicketmaster(
       const coverImageUrl = ev.images?.find(
         (img) => img.ratio === '16_9' && (img.width ?? 0) > 500
       )?.url ?? ev.images?.[0]?.url ?? undefined
-      const type = mapTMEventType(ev.classifications)
+      const type = overrideTypeByVenue(venueName, mapTMEventType(ev.classifications))
 
       await prisma.event.upsert({
         where: { ticketmasterId: ev.id },
@@ -468,13 +509,13 @@ async function syncSkiddle(
       const name = ev.eventname ?? 'Unnamed Event'
       const description = truncateDescription(ev.description, name)
 
-      // Skip non-nightlife events
-      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+      // Skip non-nightlife events (also rejects betting shops, supermarkets, etc. by venue name)
+      if (!isNightlifeEvent(name, description, venueName, address)) { skipped++; continue }
 
       const startsAt = ev.date ? new Date(ev.date) : new Date()
       const endsAt = ev.enddate ? new Date(ev.enddate) : undefined
       const price = parseFloat(String(ev.entryprice ?? '0')) || 0
-      const type = mapSkiddleEventType(ev.genres)
+      const type = overrideTypeByVenue(venueName, mapSkiddleEventType(ev.genres))
 
       await prisma.event.upsert({
         where: { skiddleId: ev.id },
@@ -606,7 +647,8 @@ async function syncEventbrite(
       const description = truncateDescription(ev.description?.text, name)
 
       // Skip non-nightlife events even within music/nightlife categories
-      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+      // (also rejects betting shops, supermarkets, etc. by venue name)
+      if (!isNightlifeEvent(name, description, venueName, address)) { skipped++; continue }
 
       // Also skip if Eventbrite category is not music/nightlife
       const catName = (ev.category?.name ?? '').toLowerCase()
@@ -621,7 +663,7 @@ async function syncEventbrite(
         : parseFloat(ev.ticket_availability?.minimum_ticket_price?.major_value ?? '0') || 0
       const capacity = ev.capacity ?? 100
       const categories = [ev.category?.name ?? '', ev.subcategory?.name ?? '']
-      const type = mapEBEventType(categories)
+      const type = overrideTypeByVenue(venueName, mapEBEventType(categories))
       const coverImageUrl = ev.logo?.original?.url ?? null
 
       await prisma.event.upsert({
@@ -723,8 +765,99 @@ const KNOWN_CLUB_VENUES = [
   'amnesia', 'pacha', 'dc10', 'privilege', 'ushuaia',
 ]
 
-function mapSerpEventType(title: string, description: string): EventTypeName | null {
+// Known concert halls / arenas — events here are always CONCERT, even when
+// sources (especially Perplexity) misclassify them as PUB_NIGHT. The Barrowland
+// bug was a live Perplexity row tagged PUB_NIGHT — this override fixes it.
+const KNOWN_CONCERT_VENUES = [
+  // Glasgow
+  'barrowland', 'barrowlands', 'barrowland ballroom',
+  'ovo hydro', 'sse hydro', 'the hydro',
+  "king tut's", "king tut's wah wah hut",
+  'o2 academy glasgow', 'academy glasgow',
+  'oran mor', 'òran mór',
+  // UK arenas / concert halls
+  'o2 arena', 'o2 academy', 'o2 forum', 'o2 shepherd',
+  'ao arena', 'co-op live', 'royal albert hall',
+  'wembley arena', 'wembley stadium', 'the ovo arena',
+  'alexandra palace', 'brixton academy', 'hammersmith apollo',
+  'manchester apollo', 'first direct arena', 'utilita arena',
+  'sse arena', 'bonus arena', 'p&j live',
+  'symphony hall', 'royal festival hall', 'royal concert hall',
+  'usher hall', 'edinburgh playhouse',
+  // International
+  'madison square garden', 'red rocks', 'the forum inglewood',
+  'greek theatre', 'hollywood bowl',
+]
+
+/**
+ * If the venue name matches a known concert hall, force the type to CONCERT.
+ * Otherwise return the fallback (typically whatever the source returned).
+ * Case-insensitive substring match.
+ */
+function overrideTypeByVenue(venueName: string | null | undefined, fallback: EventTypeName): EventTypeName {
+  if (!venueName) return fallback
+  const v = venueName.toLowerCase()
+  if (KNOWN_CONCERT_VENUES.some((name) => v.includes(name))) return 'CONCERT'
+  if (KNOWN_CLUB_VENUES.some((name) => v.includes(name))) return 'CLUB_NIGHT'
+  return fallback
+}
+
+/**
+ * Parse a Perplexity-returned date string into a Date. When the value is
+ * date-only (YYYY-MM-DD) or parses to exactly 00:00 UTC — which Perplexity
+ * commonly does as a placeholder "I don't actually know the start time" — we
+ * infer a type-appropriate local time (Europe/London) so the event doesn't
+ * display as "starts at 01:00" (BST of midnight UTC).
+ *
+ * Quirk we're fixing: a pub quiz returned as "2026-04-23" was parsed as
+ * 00:00Z → shown as 01:00 BST the next day → with the old 6h LIVE fallback,
+ * it stayed in "HAPPENING NOW" until 07:00 BST, showing "4h remaining at 3am".
+ */
+function parsePerplexityStart(raw: string | undefined, rawType: string): Date {
+  if (!raw) return new Date(NaN)
+  const d = new Date(raw)
+  if (isNaN(d.getTime())) return d
+
+  // Detect date-only or midnight-UTC placeholder.
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())
+  const isMidnightUtc = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0
+  if (!isDateOnly && !isMidnightUtc) return d
+
+  // Type-appropriate local hour (Europe/London — most of our cities are UK).
+  // These are conservative "when do these events usually start".
+  const localHourByType: Record<string, number> = {
+    CLUB_NIGHT:  22,
+    HOME_PARTY:  21,
+    PUB_NIGHT:   20,
+    CONCERT:     19,
+    BEACH_PARTY: 16,
+    YACHT_PARTY: 18,
+  }
+  const localHour = localHourByType[rawType] ?? 20
+
+  // Compose UTC using the date portion of `raw` at the local hour converted
+  // to UTC. Simple fixed-offset approach: Europe/London is UTC+1 in BST and
+  // UTC+0 in GMT. Use Intl.DateTimeFormat to derive the offset for the day.
+  const year = d.getUTCFullYear()
+  const month = d.getUTCMonth()
+  const day = d.getUTCDate()
+  // Pretend the event is at `localHour` Europe/London on that calendar day,
+  // then convert to UTC by figuring out the current offset for that day.
+  const probe = new Date(Date.UTC(year, month, day, localHour, 0, 0))
+  const londonTime = new Date(probe.toLocaleString('en-GB', { timeZone: 'Europe/London' }))
+  const utcTime = new Date(probe.toLocaleString('en-GB', { timeZone: 'UTC' }))
+  const offsetMs = londonTime.getTime() - utcTime.getTime()
+  return new Date(probe.getTime() - offsetMs)
+}
+
+function mapSerpEventType(title: string, description: string, venueName?: string): EventTypeName | null {
   const text = `${title} ${description}`.toLowerCase()
+  const venue = (venueName ?? '').toLowerCase()
+  // Venue-based overrides first — any event at a known concert hall is
+  // CONCERT even if the title says "Quiz Night" (protects against miscategorised
+  // affiliate listings at Barrowland / O2 Academy / etc.)
+  if (venue && KNOWN_CONCERT_VENUES.some(v => venue.includes(v))) return 'CONCERT'
+  if (venue && KNOWN_CLUB_VENUES.some(v => venue.includes(v))) return 'CLUB_NIGHT'
   if (text.includes('concert') || text.includes('live music') || text.includes('festival') || text.includes('gig') || text.includes(' tour')) return 'CONCERT'
   if (
     text.includes('club night') || text.includes('nightclub') || text.includes(' dj ') ||
@@ -782,17 +915,21 @@ async function syncSerpApi(
 
       const description = truncateDescription(ev.description, name)
 
+      // Compute venue + raw address early so isNightlifeEvent can reject
+      // non-nightlife venues (betting shops / supermarkets / offices etc.)
+      const venueName = ev.venue?.name ?? ''
+      const rawAddr = (ev.address ?? []).join(', ')
+
       // Skip non-nightlife events — query filters but Google still returns misc results
-      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+      if (!isNightlifeEvent(name, description, venueName, rawAddr)) { skipped++; continue }
 
       // Skip if type can't be determined from keywords (not nightlife enough)
-      const type = mapSerpEventType(name, ev.description ?? '')
+      const type = mapSerpEventType(name, ev.description ?? '', venueName)
       if (!type) { skipped++; continue }
 
       const serpApiId = stableHash(`${name}|${ev.date?.start_date ?? ''}|${ev.address?.[0] ?? ''}`)
       // SerpAPI returns address as an array — e.g. ["123 High St", "Glasgow, Scotland"]
       // Prepend venue name if it isn't already in the address array
-      const venueName = ev.venue?.name ?? ''
       const addrArray = ev.address ?? []
       const fullAddrParts = [
         venueName && !addrArray.some(a => a.toLowerCase().includes(venueName.toLowerCase())) ? venueName : null,
@@ -951,7 +1088,13 @@ async function syncPerplexity(
   for (const ev of events) {
     try {
       const name = ev.name ?? 'Unnamed Event'
-      const startsAt = new Date(ev.date ?? '')
+      // Infer a reasonable local time when Perplexity returns a date-only
+      // value or a midnight-UTC placeholder. Without this, a "Quiz Night
+      // 2026-04-23" comes back as 00:00Z, which displays as 01:00 BST the
+      // next morning — users saw quiz events "starting at 1am" and, with
+      // the old 6h end fallback, still "live" at 3am the following day.
+      const rawType = (ev.type && typeof ev.type === 'string' ? ev.type : '').toUpperCase()
+      const startsAt = parsePerplexityStart(ev.date, rawType)
       if (isNaN(startsAt.getTime()) || startsAt < new Date()) { skipped++; continue }
 
       const endsAt = ev.endDate ? new Date(ev.endDate) : undefined
@@ -988,9 +1131,15 @@ async function syncPerplexity(
       const venueName = ev.venue ?? null
       const description = truncateDescription(ev.description, name)
 
-      if (!isNightlifeEvent(name, description)) { skipped++; continue }
+      // Reject betting shops, supermarkets, etc. by venue name — Perplexity
+      // occasionally returns Aldi / BetFred etc. classified as "PUB_NIGHT".
+      if (!isNightlifeEvent(name, description, venueName, address)) { skipped++; continue }
 
-      const type: EventTypeName = validTypes.includes(ev.type as EventTypeName) ? (ev.type as EventTypeName) : 'CONCERT'
+      // Start with Perplexity's suggested type, but override with venue-based
+      // lookup so Barrowland / O2 Academy / etc. are always CONCERT regardless
+      // of what the AI guessed.
+      const aiType: EventTypeName = validTypes.includes(ev.type as EventTypeName) ? (ev.type as EventTypeName) : 'CONCERT'
+      const type: EventTypeName = overrideTypeByVenue(venueName, aiType)
       const price = typeof ev.price === 'number' ? ev.price : 0
 
       await prisma.event.upsert({
