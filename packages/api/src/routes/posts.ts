@@ -277,7 +277,19 @@ router.get('/stories', requireAuth, async (req: AuthRequest, res, next) => {
       include: postInclude,
     })
 
-    res.json({ data: stories })
+    // Batch-fetch which stories the viewer has liked so the StoryViewer shows
+    // the filled heart state correctly without an extra round-trip per item.
+    const storyIds = stories.map((s) => s.id)
+    const likedRows = storyIds.length > 0
+      ? await prisma.postLike.findMany({
+          where: { userId, postId: { in: storyIds } },
+          select: { postId: true },
+        })
+      : []
+    const likedSet = new Set(likedRows.map((l) => l.postId))
+
+    const data = stories.map((s) => ({ ...s, hasLiked: likedSet.has(s.id) }))
+    res.json({ data })
   } catch (err) {
     next(err)
   }

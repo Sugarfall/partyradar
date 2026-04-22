@@ -18,7 +18,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  X, ImagePlus, MapPin, Video, GripVertical, AtSign, Tag as TagIcon,
+  X, ImagePlus, MapPin, Video, GripVertical, AtSign, Tag as TagIcon, Clock,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { uploadImage, uploadVideo } from '@/lib/cloudinary'
@@ -135,15 +135,20 @@ export interface ComposePostModalProps {
   onPosted: () => void
   /** If set, the modal opens in "repost" mode quoting this post. */
   repostOf?: RepostableSource
+  /** If true, the modal opens with the Story toggle pre-selected. */
+  storyMode?: boolean
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
-export default function ComposePostModal({ onClose, onPosted, repostOf }: ComposePostModalProps) {
+export default function ComposePostModal({ onClose, onPosted, repostOf, storyMode = false }: ComposePostModalProps) {
   const [text, setText] = useState('')
   const [items, setItems] = useState<PendingMedia[]>([])
   const [posting, setPosting] = useState(false)
   const [error, setError] = useState('')
+  // Stories auto-expire after 24h. Reposts can't be stories (server-enforced),
+  // so we force this off when repostOf is set.
+  const [isStory, setIsStory] = useState<boolean>(!!storyMode && !repostOf)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── Caret-tracked @mention autocomplete ────────────────────────────────
@@ -369,7 +374,8 @@ export default function ComposePostModal({ onClose, onPosted, repostOf }: Compos
       await api.post('/posts', {
         text: text.trim() || undefined,
         media: media.length > 0 ? media : undefined,
-        isStory: false,
+        // Reposts can't be stories (server enforces this — guard client-side too).
+        isStory: repostOf ? false : isStory,
         tags: tags.length > 0 ? tags : undefined,
         originalPostId: repostOf?.id,
       })
@@ -389,7 +395,9 @@ export default function ComposePostModal({ onClose, onPosted, repostOf }: Compos
 
   const submitLabel = repostOf
     ? (posting ? 'REPOSTING…' : 'REPOST')
-    : (posting ? 'POSTING…' : anyUploading ? 'UPLOADING…' : 'POST')
+    : isStory
+      ? (posting ? 'POSTING…' : anyUploading ? 'UPLOADING…' : 'POST STORY')
+      : (posting ? 'POSTING…' : anyUploading ? 'UPLOADING…' : 'POST')
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -418,12 +426,46 @@ export default function ComposePostModal({ onClose, onPosted, repostOf }: Compos
         {/* Title */}
         <div className="flex items-center justify-between px-5 pb-3 shrink-0">
           <h2 className="font-black text-white text-base">
-            {repostOf ? 'Repost' : 'Share Your Night'}
+            {repostOf ? 'Repost' : isStory ? 'Add to Story' : 'Share Your Night'}
           </h2>
           <button onClick={onClose} aria-label="Close">
             <X size={18} style={{ color: 'rgba(255,255,255,0.4)' }} />
           </button>
         </div>
+
+        {/* Post / Story segmented toggle — hidden in repost mode since the
+            server rejects story-reposts anyway. */}
+        {!repostOf && (
+          <div className="px-5 pb-3 shrink-0">
+            <div
+              className="flex rounded-full p-1"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <button
+                onClick={() => setIsStory(false)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black tracking-widest transition-all"
+                style={{
+                  background: !isStory ? 'linear-gradient(135deg, #ec4899, #f97316)' : 'transparent',
+                  color: !isStory ? '#fff' : 'rgba(255,255,255,0.5)',
+                  boxShadow: !isStory ? '0 0 12px rgba(236,72,153,0.3)' : 'none',
+                }}
+              >
+                POST
+              </button>
+              <button
+                onClick={() => setIsStory(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black tracking-widest transition-all"
+                style={{
+                  background: isStory ? 'linear-gradient(135deg, #ec4899, #f97316)' : 'transparent',
+                  color: isStory ? '#fff' : 'rgba(255,255,255,0.5)',
+                  boxShadow: isStory ? '0 0 12px rgba(236,72,153,0.3)' : 'none',
+                }}
+              >
+                <Clock size={10} /> STORY · 24H
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>

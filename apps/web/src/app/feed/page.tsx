@@ -15,6 +15,8 @@ import ComposePostModal from '@/components/feed/ComposePostModal'
 import PostMediaViewer, { type MediaItem, type PostTagLite } from '@/components/feed/PostMediaViewer'
 import ShareSheet from '@/components/feed/ShareSheet'
 import PostDetailModal from '@/components/feed/PostDetailModal'
+import StoryViewer, { type StoryGroup, type StoryPost } from '@/components/feed/StoryViewer'
+import { areAllViewed, countUnviewed } from '@/lib/storyViewed'
 
 function timeAgo(dateStr: string) {
   const s = (Date.now() - new Date(dateStr).getTime()) / 1000
@@ -78,13 +80,8 @@ const DEMO_FEED: FeedItem[] = [
   { type: 'CHECKIN', user: { displayName: 'Ryan T', photoUrl: null },     venue: { name: 'Stereo' }, crowdLevel: 'RAMMED', createdAt: new Date(Date.now() - 3*60*60*1000).toISOString() },
 ]
 
-const DEMO_STORIES = [
-  { name: 'Jamie K', active: true  },
-  { name: 'Sarah M', active: true  },
-  { name: 'Lewis R', active: false },
-  { name: 'Chloe B', active: true  },
-  { name: 'Ryan T',  active: false },
-]
+// DEMO_STORIES removed — the StoriesBar now renders real data from
+// GET /api/posts/stories grouped by author.
 
 // ─── Mention renderer ──────────────────────────────────────────────────────
 function renderMentions(text: string): React.ReactNode {
@@ -531,49 +528,141 @@ function UpcomingEventCard({ event }: { event: UpcomingEvent }) {
 }
 
 // ─── Stories Bar ───────────────────────────────────────────────────────────
-function StoriesBar() {
+// Groups active stories by author, colours the ring by viewed-state, and
+// opens the full-screen StoryViewer on tap. The "YOUR STORY" chip opens the
+// compose modal in story-mode when the user has no active stories, otherwise
+// it opens the viewer focused on their own bubble.
+interface StoriesBarProps {
+  currentUserId: string | null
+  currentUser: { displayName: string; username: string | null; photoUrl: string | null } | null
+  groups: StoryGroup[]
+  loading: boolean
+  onOpenComposeStory: () => void
+  onOpenGroup: (index: number) => void
+}
+
+function StoriesBar({ currentUserId, currentUser, groups, loading, onOpenComposeStory, onOpenGroup }: StoriesBarProps) {
+  // Split own group (if any) so we can render it first under the "Your story"
+  // chip.
+  const ownGroupIndex = currentUserId ? groups.findIndex((g) => g.user.id === currentUserId) : -1
+  const otherGroups = groups
+    .map((g, idx) => ({ g, idx }))
+    .filter((x) => x.idx !== ownGroupIndex)
+
+  const ownStoryCount = ownGroupIndex >= 0 ? groups[ownGroupIndex]!.stories.length : 0
+
+  function renderAvatar(user: StoryPost['user'], fallbackInitial: string, ring: 'pink' | 'gray' | 'dashed') {
+    const ringStyle =
+      ring === 'pink'
+        ? { border: '2.5px solid transparent', backgroundImage: 'linear-gradient(#04040d, #04040d), linear-gradient(135deg, #ec4899, #f97316, #facc15)', backgroundOrigin: 'border-box', backgroundClip: 'padding-box, border-box' }
+        : ring === 'gray'
+          ? { border: '2px solid rgba(120,120,140,0.35)' }
+          : { border: '2px dashed rgba(var(--accent-rgb),0.3)' }
+    if (user.photoUrl) {
+      return (
+        <div className="w-14 h-14 rounded-full overflow-hidden" style={ringStyle}>
+          <img src={user.photoUrl} alt="" className="w-full h-full object-cover rounded-full" style={{ border: '2px solid #04040d' }} />
+        </div>
+      )
+    }
+    return (
+      <div
+        className="w-14 h-14 rounded-full flex items-center justify-center"
+        style={{ ...ringStyle, background: 'rgba(var(--accent-rgb),0.08)' }}
+      >
+        <span className="text-lg font-black" style={{ color: '#e0f2fe' }}>{fallbackInitial}</span>
+      </div>
+    )
+  }
+
   return (
     <div className="overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
       <div className="flex gap-3 px-4" style={{ minWidth: 'max-content' }}>
-        {/* Your Story */}
+        {/* ── Your Story ─────────────────────────────────────────────── */}
         <div className="flex flex-col items-center gap-1.5 shrink-0">
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center relative"
-            style={{
-              background: 'rgba(var(--accent-rgb),0.06)',
-              border: '2px dashed rgba(var(--accent-rgb),0.3)',
-            }}
-          >
-            <Plus size={18} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
-          </div>
-          <span className="text-[9px] font-bold tracking-wide" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>YOUR STORY</span>
+          {ownStoryCount > 0 && currentUser && ownGroupIndex >= 0 ? (
+            // User has active story → bubble opens the viewer, "+" badge opens compose.
+            <div className="relative">
+              <button
+                onClick={() => onOpenGroup(ownGroupIndex)}
+                aria-label="View your story"
+                className="block"
+              >
+                {renderAvatar(
+                  { displayName: currentUser.displayName, username: currentUser.username ?? undefined, photoUrl: currentUser.photoUrl },
+                  currentUser.displayName[0]?.toUpperCase() ?? '?',
+                  areAllViewed(groups[ownGroupIndex]!.stories.map((s) => s.id)) ? 'gray' : 'pink',
+                )}
+              </button>
+              <button
+                onClick={onOpenComposeStory}
+                aria-label="Add to your story"
+                className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center"
+                style={{ background: '#ec4899', border: '2px solid #04040d', color: '#fff' }}
+              >
+                <Plus size={11} />
+              </button>
+            </div>
+          ) : (
+            // No active story → dashed ring; tap opens compose modal in story mode.
+            <button
+              onClick={onOpenComposeStory}
+              className="w-14 h-14 rounded-full flex items-center justify-center relative"
+              style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '2px dashed rgba(var(--accent-rgb),0.3)' }}
+              aria-label="Add your story"
+            >
+              <Plus size={18} style={{ color: 'rgba(var(--accent-rgb),0.7)' }} />
+            </button>
+          )}
+          <span className="text-[9px] font-bold tracking-wide" style={{ color: 'rgba(var(--accent-rgb),0.6)', maxWidth: 56 }}>
+            YOUR STORY
+          </span>
         </div>
 
-        {/* Friend stories — only show demo data in dev mode */}
-        {(DEV_MODE ? DEMO_STORIES : []).map((s) => (
-          <div key={s.name} className="flex flex-col items-center gap-1.5 shrink-0">
-            <div
-              className="w-14 h-14 rounded-full flex items-center justify-center"
-              style={{
-                background: 'rgba(var(--accent-rgb),0.08)',
-                border: s.active
-                  ? '2px solid var(--accent)'
-                  : '2px solid rgba(74,96,128,0.3)',
-                boxShadow: s.active ? '0 0 12px rgba(var(--accent-rgb),0.35)' : 'none',
-              }}
-            >
-              <span className="text-lg font-black" style={{ color: s.active ? 'var(--accent)' : 'rgba(74,96,128,0.6)' }}>
-                {s.name[0]}
-              </span>
-            </div>
-            <span
-              className="text-[9px] font-bold tracking-wide truncate"
-              style={{ color: s.active ? 'rgba(224,242,254,0.7)' : 'rgba(74,96,128,0.5)', maxWidth: 56 }}
-            >
-              {s.name.split(' ')[0]!.toUpperCase()}
-            </span>
-          </div>
-        ))}
+        {/* ── Friend stories ────────────────────────────────────────── */}
+        {loading && otherGroups.length === 0 ? (
+          // Lightweight loading skeleton — three pulsing circles.
+          <>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex flex-col items-center gap-1.5 shrink-0 animate-pulse">
+                <div className="w-14 h-14 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }} />
+                <div className="h-2 w-10 rounded" style={{ background: 'rgba(255,255,255,0.04)' }} />
+              </div>
+            ))}
+          </>
+        ) : (
+          otherGroups.map(({ g, idx }) => {
+            const allViewed = areAllViewed(g.stories.map((s) => s.id))
+            const unviewed = countUnviewed(g.stories.map((s) => s.id))
+            const firstName = g.user.displayName.split(' ')[0] ?? g.user.displayName
+            return (
+              <button
+                key={g.user.id ?? g.user.username ?? idx}
+                onClick={() => onOpenGroup(idx)}
+                className="flex flex-col items-center gap-1.5 shrink-0"
+                aria-label={`View ${g.user.displayName}'s story`}
+              >
+                <div className="relative">
+                  {renderAvatar(g.user, g.user.displayName[0]?.toUpperCase() ?? '?', allViewed ? 'gray' : 'pink')}
+                  {unviewed > 1 && !allViewed && (
+                    <span
+                      className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[9px] font-black"
+                      style={{ background: '#ec4899', color: '#fff', border: '2px solid #04040d' }}
+                    >
+                      {unviewed}
+                    </span>
+                  )}
+                </div>
+                <span
+                  className="text-[9px] font-bold tracking-wide truncate"
+                  style={{ color: allViewed ? 'rgba(74,96,128,0.7)' : 'rgba(224,242,254,0.8)', maxWidth: 56 }}
+                >
+                  {firstName.toUpperCase()}
+                </span>
+              </button>
+            )
+          })
+        )}
       </div>
     </div>
   )
@@ -618,13 +707,28 @@ export default function FeedPage() {
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [composing, setComposing] = useState(false)
+  const [composingStory, setComposingStory] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const { dbUser } = useAuth()
   const currentUserId = dbUser?.id ?? null
   const isLoggedIn = !!dbUser
 
+  // ── Stories state ──────────────────────────────────────────────────────
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([])
+  const [storiesLoading, setStoriesLoading] = useState(true)
+  const [openStoryGroupIndex, setOpenStoryGroupIndex] = useState<number | null>(null)
+
   function handlePostDeleted(id: string) {
     setFeedItems((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  function handleStoryDeleted(id: string) {
+    setStoryGroups((prev) => {
+      const next = prev
+        .map((g) => ({ ...g, stories: g.stories.filter((s) => s.id !== id) }))
+        .filter((g) => g.stories.length > 0)
+      return next
+    })
   }
 
   useEffect(() => {
@@ -649,6 +753,51 @@ export default function FeedPage() {
     }
     loadFeed()
   }, [tab, reloadKey])
+
+  // ── Load active stories (separate from feed — endpoint is /posts/stories) ──
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setStoryGroups([])
+      setStoriesLoading(false)
+      return
+    }
+    let cancelled = false
+    async function loadStories() {
+      setStoriesLoading(true)
+      try {
+        const res = await api.get<{ data: StoryPost[] }>('/posts/stories')
+        if (cancelled) return
+        // Group by author, preserving chronological order within each group
+        // (server returns newest-first; reverse so the oldest plays first).
+        const byUser = new Map<string, StoryPost[]>()
+        for (const s of (res.data ?? [])) {
+          const key = s.user.id ?? s.user.username ?? s.id
+          const arr = byUser.get(key) ?? []
+          arr.push(s)
+          byUser.set(key, arr)
+        }
+        // Group iteration order: entries go oldest-first by the group's most
+        // recent story so fresh updates bubble to the left in the bar.
+        const groups: StoryGroup[] = Array.from(byUser.values())
+          .map((stories) => ({
+            user: stories[0]!.user,
+            stories: [...stories].reverse(), // oldest → newest playback order
+          }))
+          .sort((a, b) => {
+            const aNewest = new Date(a.stories[a.stories.length - 1]!.createdAt).getTime()
+            const bNewest = new Date(b.stories[b.stories.length - 1]!.createdAt).getTime()
+            return bNewest - aNewest
+          })
+        setStoryGroups(groups)
+      } catch {
+        setStoryGroups([])
+      } finally {
+        if (!cancelled) setStoriesLoading(false)
+      }
+    }
+    loadStories()
+    return () => { cancelled = true }
+  }, [isLoggedIn, reloadKey])
 
   return (
     <div className="min-h-screen pb-28" style={{ background: '#04040d' }}>
@@ -704,7 +853,21 @@ export default function FeedPage() {
 
       {/* ── Stories ── */}
       <div className="max-w-xl mx-auto pt-4 mb-1">
-        <StoriesBar />
+        <StoriesBar
+          currentUserId={currentUserId}
+          currentUser={dbUser ? {
+            displayName: dbUser.displayName ?? dbUser.username ?? 'You',
+            username: dbUser.username ?? null,
+            photoUrl: dbUser.photoUrl ?? null,
+          } : null}
+          groups={storyGroups}
+          loading={storiesLoading}
+          onOpenComposeStory={() => {
+            if (!isLoggedIn) return
+            setComposingStory(true)
+          }}
+          onOpenGroup={(idx) => setOpenStoryGroupIndex(idx)}
+        />
       </div>
 
       {/* ── Divider ── */}
@@ -770,11 +933,31 @@ export default function FeedPage() {
         </button>
       )}
 
-      {/* ── Compose modal ───────────────────────────────────────────────── */}
+      {/* ── Compose modal (regular post) ────────────────────────────────── */}
       {composing && (
         <ComposePostModal
           onClose={() => setComposing(false)}
           onPosted={() => setReloadKey((k) => k + 1)}
+        />
+      )}
+
+      {/* ── Compose modal (story — opens from the StoriesBar) ───────────── */}
+      {composingStory && (
+        <ComposePostModal
+          storyMode
+          onClose={() => setComposingStory(false)}
+          onPosted={() => setReloadKey((k) => k + 1)}
+        />
+      )}
+
+      {/* ── Full-screen story viewer ────────────────────────────────────── */}
+      {openStoryGroupIndex !== null && storyGroups[openStoryGroupIndex] && (
+        <StoryViewer
+          groups={storyGroups}
+          startGroupIndex={openStoryGroupIndex}
+          currentUserId={currentUserId}
+          onClose={() => setOpenStoryGroupIndex(null)}
+          onStoryDeleted={handleStoryDeleted}
         />
       )}
     </div>
