@@ -417,7 +417,9 @@ app.use(express.json({ limit: '2mb' }))
 // Admin routes: 120s — seed-venues and seed-activity do bulk DB work that
 // legitimately needs more time (createMany, upserts, group chat seeding).
 app.use((_req, res, next) => {
-  const isAdmin = _req.path.startsWith('/admin')
+  // Top-level middleware sees the full path (e.g. /api/admin/seed-activity),
+  // NOT the router-relative path — so check for '/api/admin', not '/admin'.
+  const isAdmin = _req.path.startsWith('/api/admin')
   const timeoutMs = isAdmin ? 120_000 : 15_000
   const timer = setTimeout(() => {
     if (!res.headersSent) {

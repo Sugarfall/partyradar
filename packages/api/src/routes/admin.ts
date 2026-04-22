@@ -937,69 +937,82 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
       checkInsCreated++
     }
 
-    // ── 7. Seed group chats ───────────────────────────────────────────────────
-    const allVenues = await prisma.venue.findMany({
-      where: { city: 'Glasgow' },
-      select: { id: true, name: true, type: true },
-    })
-    await seedGroupChats(allVenues)
-
-    // Seed starter messages in genre groups (only if empty)
-    const genreSeedMessages: Record<string, { authorKey: string; text: string; minsAgo: number }[]> = {
-      'genre-rave': [
-        { authorKey: 'jamie_radar', text: 'Anyone going to Sub Club tonight? 🎧', minsAgo: 120 },
-        { authorKey: 'lewis_dj',    text: 'SWG3 warehouse tent is the one this weekend, grab tickets now', minsAgo: 90 },
-        { authorKey: 'ross_gla',    text: 'Harri & Domenic residency never misses. Been going for years 🖤', minsAgo: 45 },
-        { authorKey: 'kezia_out',   text: 'Techno massive 🔥 see you on the floor', minsAgo: 20 },
-      ],
-      'genre-house': [
-        { authorKey: 'lewis_dj',    text: 'Buff Club basement is the best house room in Glasgow fight me', minsAgo: 100 },
-        { authorKey: 'sarah_vibes', text: 'Who has recommendations for deep house nights this month?', minsAgo: 75 },
-        { authorKey: 'jamie_radar', text: "Golden Teacher at SWG3 — don't sleep on this one 🏠", minsAgo: 40 },
-        { authorKey: 'kezia_out',   text: 'The crowd at Buff Club last week was unreal ✨', minsAgo: 15 },
-      ],
-      'genre-rnb': [
-        { authorKey: 'sarah_vibes', text: 'Best R&B nights in Glasgow? Drop your recs 🎤', minsAgo: 110 },
-        { authorKey: 'kezia_out',   text: 'The Garage does a solid R&B floor on Fridays', minsAgo: 80 },
-        { authorKey: 'ross_gla',    text: 'Looking for something more underground, not mainstream pop R&B', minsAgo: 50 },
-        { authorKey: 'jamie_radar', text: 'Check the Polo Lounge on Saturdays 💜', minsAgo: 25 },
-      ],
-      'genre-trippy': [
-        { authorKey: 'kezia_out',   text: 'Anyone else into the more experimental stuff? 🌀', minsAgo: 130 },
-        { authorKey: 'lewis_dj',    text: 'Civic House had an incredible psych night last month', minsAgo: 95 },
-        { authorKey: 'sarah_vibes', text: 'Flying Duck basement gets pretty wild on the right night', minsAgo: 60 },
-        { authorKey: 'ross_gla',    text: 'Trip-hop + live visuals + underground venue = 🌀🌀🌀', minsAgo: 30 },
-      ],
-    }
-
-    for (const [slug, messages] of Object.entries(genreSeedMessages)) {
-      const group = await prisma.groupChat.findUnique({ where: { slug } })
-      if (!group) continue
-      const existingCount = await prisma.groupMessage.count({ where: { groupId: group.id } })
-      if (existingCount > 0) continue
-      for (const msg of messages) {
-        const userId = hosts[msg.authorKey]
-        if (!userId) continue
-        const createdAt = new Date(now.getTime() - msg.minsAgo * 60 * 1000)
-        await prisma.groupMessage.create({
-          data: { groupId: group.id, senderId: userId, text: msg.text, createdAt },
+    // ── 7. Seed group chats + genre messages (background — don't block response) ─
+    // seedGroupChats does 90+ sequential upserts (8 genre + 80 venue groups).
+    // The genre message loop adds another ~40 queries. Awaiting both would hold
+    // the response for 30-120s on a cold Neon DB — longer than any sane timeout.
+    // Fire-and-forget: events / posts / check-ins above are already committed;
+    // group chats are cosmetic and can safely finish after the response is sent.
+    const _hostsSnap = { ...hosts }
+    const _nowSnap   = now
+    ;(async () => {
+      try {
+        const allVenues = await prisma.venue.findMany({
+          where: { city: 'Glasgow' },
+          select: { id: true, name: true, type: true },
         })
-        await prisma.groupMembership.upsert({
-          where: { groupId_userId: { groupId: group.id, userId } },
-          create: { groupId: group.id, userId },
-          update: {},
-        })
+        await seedGroupChats(allVenues)
+
+        const genreSeedMessages: Record<string, { authorKey: string; text: string; minsAgo: number }[]> = {
+          'genre-rave': [
+            { authorKey: 'jamie_radar', text: 'Anyone going to Sub Club tonight? 🎧', minsAgo: 120 },
+            { authorKey: 'lewis_dj',    text: 'SWG3 warehouse tent is the one this weekend, grab tickets now', minsAgo: 90 },
+            { authorKey: 'ross_gla',    text: 'Harri & Domenic residency never misses. Been going for years 🖤', minsAgo: 45 },
+            { authorKey: 'kezia_out',   text: 'Techno massive 🔥 see you on the floor', minsAgo: 20 },
+          ],
+          'genre-house': [
+            { authorKey: 'lewis_dj',    text: 'Buff Club basement is the best house room in Glasgow fight me', minsAgo: 100 },
+            { authorKey: 'sarah_vibes', text: 'Who has recommendations for deep house nights this month?', minsAgo: 75 },
+            { authorKey: 'jamie_radar', text: "Golden Teacher at SWG3 — don't sleep on this one 🏠", minsAgo: 40 },
+            { authorKey: 'kezia_out',   text: 'The crowd at Buff Club last week was unreal ✨', minsAgo: 15 },
+          ],
+          'genre-rnb': [
+            { authorKey: 'sarah_vibes', text: 'Best R&B nights in Glasgow? Drop your recs 🎤', minsAgo: 110 },
+            { authorKey: 'kezia_out',   text: 'The Garage does a solid R&B floor on Fridays', minsAgo: 80 },
+            { authorKey: 'ross_gla',    text: 'Looking for something more underground, not mainstream pop R&B', minsAgo: 50 },
+            { authorKey: 'jamie_radar', text: 'Check the Polo Lounge on Saturdays 💜', minsAgo: 25 },
+          ],
+          'genre-trippy': [
+            { authorKey: 'kezia_out',   text: 'Anyone else into the more experimental stuff? 🌀', minsAgo: 130 },
+            { authorKey: 'lewis_dj',    text: 'Civic House had an incredible psych night last month', minsAgo: 95 },
+            { authorKey: 'sarah_vibes', text: 'Flying Duck basement gets pretty wild on the right night', minsAgo: 60 },
+            { authorKey: 'ross_gla',    text: 'Trip-hop + live visuals + underground venue = 🌀🌀🌀', minsAgo: 30 },
+          ],
+        }
+
+        for (const [slug, messages] of Object.entries(genreSeedMessages)) {
+          const group = await prisma.groupChat.findUnique({ where: { slug } })
+          if (!group) continue
+          const existingCount = await prisma.groupMessage.count({ where: { groupId: group.id } })
+          if (existingCount > 0) continue
+          for (const msg of messages) {
+            const userId = _hostsSnap[msg.authorKey]
+            if (!userId) continue
+            const createdAt = new Date(_nowSnap.getTime() - msg.minsAgo * 60 * 1000)
+            await prisma.groupMessage.create({
+              data: { groupId: group.id, senderId: userId, text: msg.text, createdAt },
+            })
+            await prisma.groupMembership.upsert({
+              where: { groupId_userId: { groupId: group.id, userId } },
+              create: { groupId: group.id, userId },
+              update: {},
+            })
+          }
+          const uniqueAuthors = new Set(messages.map((m) => m.authorKey)).size
+          await prisma.groupChat.update({
+            where: { id: group.id },
+            data: {
+              lastMessage: messages[messages.length - 1]!.text.slice(0, 100),
+              lastAt: new Date(_nowSnap.getTime() - messages[messages.length - 1]!.minsAgo * 60 * 1000),
+              memberCount: uniqueAuthors,
+            },
+          })
+        }
+        console.log('[seed-activity] background group/message seeding complete')
+      } catch (err) {
+        console.error('[seed-activity] background group/message seeding failed:', err)
       }
-      const uniqueAuthors = new Set(messages.map((m) => m.authorKey)).size
-      await prisma.groupChat.update({
-        where: { id: group.id },
-        data: {
-          lastMessage: messages[messages.length - 1]!.text.slice(0, 100),
-          lastAt: new Date(now.getTime() - messages[messages.length - 1]!.minsAgo * 60 * 1000),
-          memberCount: uniqueAuthors,
-        },
-      })
-    }
+    })()
 
     res.json({
       data: {
