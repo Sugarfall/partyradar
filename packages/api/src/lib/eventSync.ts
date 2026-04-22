@@ -835,19 +835,36 @@ function parsePerplexityStart(raw: string | undefined, rawType: string): Date {
   }
   const localHour = localHourByType[rawType] ?? 20
 
-  // Compose UTC using the date portion of `raw` at the local hour converted
-  // to UTC. Simple fixed-offset approach: Europe/London is UTC+1 in BST and
-  // UTC+0 in GMT. Use Intl.DateTimeFormat to derive the offset for the day.
+  // Compose UTC using the date portion of `raw` at the local hour, converting
+  // to UTC via the Europe/London offset for that calendar day (handles BST/GMT
+  // transitions automatically via Intl formatToParts — works reliably in Node
+  // where `new Date(toLocaleString(...))` returns Invalid Date).
   const year = d.getUTCFullYear()
   const month = d.getUTCMonth()
   const day = d.getUTCDate()
-  // Pretend the event is at `localHour` Europe/London on that calendar day,
-  // then convert to UTC by figuring out the current offset for that day.
-  const probe = new Date(Date.UTC(year, month, day, localHour, 0, 0))
-  const londonTime = new Date(probe.toLocaleString('en-GB', { timeZone: 'Europe/London' }))
-  const utcTime = new Date(probe.toLocaleString('en-GB', { timeZone: 'UTC' }))
-  const offsetMs = londonTime.getTime() - utcTime.getTime()
-  return new Date(probe.getTime() - offsetMs)
+  const offsetMs = getLondonOffsetMs(year, month, day)
+  return new Date(Date.UTC(year, month, day, localHour, 0, 0) - offsetMs)
+}
+
+/**
+ * Europe/London offset from UTC in milliseconds on the given date (handles
+ * the BST/GMT boundary). Uses Intl.DateTimeFormat 'longOffset' which Node
+ * reliably formats as "GMT+01:00" / "GMT".
+ */
+function getLondonOffsetMs(year: number, month: number, day: number): number {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/London',
+    timeZoneName: 'longOffset',
+  })
+  const probe = new Date(Date.UTC(year, month, day, 12, 0, 0))
+  const parts = fmt.formatToParts(probe)
+  const tzName = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT'
+  const match = tzName.match(/GMT([+-])(\d{1,2}):?(\d{2})?/)
+  if (!match) return 0
+  const sign = match[1] === '+' ? 1 : -1
+  const hours = parseInt(match[2] ?? '0', 10)
+  const mins = match[3] ? parseInt(match[3], 10) : 0
+  return sign * (hours * 3600_000 + mins * 60_000)
 }
 
 function mapSerpEventType(title: string, description: string, venueName?: string): EventTypeName | null {
