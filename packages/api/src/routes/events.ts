@@ -494,7 +494,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
           prisma.walletTransaction.create({
             data: {
               walletId:    wallet.id,
-              type:        'BONUS',
+              type:        'TOP_UP',
               amount:      ticket.pricePaid,
               balanceAfter: wallet.balance + ticket.pricePaid,
               description: `Refund: Event cancelled — "${event.name.slice(0, 60)}"`,
