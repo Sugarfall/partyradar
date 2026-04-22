@@ -824,54 +824,6 @@ setTimeout(async () => {
   } catch (err) { console.error('[Startup] backfill PostMedia failed:', err) }
 }, 120_000) // 120s — well after keepalive cron has run (4 min) and DB is stable
 
-// ─── Startup: immediate DB pre-warmup ────────────────────────────────────────
-// The very first user request after a cold deploy is almost always ai-sync,
-// which arrives ~7 s after boot and immediately calls prisma.user.upsert().
-// If Neon's compute is suspended, PgBouncer wakes it but the query may take
-// 15–30 s. During that window every Prisma pool slot is occupied by the cold-
-// start handshake, and the server becomes unresponsive (zombie state).
-//
-// Fix: fire a SELECT 1 immediately at startup. The async await returns control
-// to the event loop (health checks keep passing) while PgBouncer wakes Neon in
-// the background. By the time ai-sync's upsert runs (~7 s later), Neon is warm
-// and the connection slot is already released back to the pool.
-;(async () => {
-  console.log('[Startup] Pre-warming DB connection via PgBouncer pooler…')
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    try {
-      await prisma.$queryRaw`SELECT 1`
-      console.log(`[Startup] DB pre-warm succeeded (attempt ${attempt})`)
-      return
-    } catch (err) {
-      console.warn(
-        `[Startup] DB pre-warm attempt ${attempt}/5 failed:`,
-        err instanceof Error ? err.message : String(err),
-      )
-      // Short back-off before retrying — PgBouncer may still be waking Neon
-      await new Promise<void>((r) => setTimeout(r, 5_000))
-    }
-  }
-  console.error('[Startup] DB pre-warm failed after 5 attempts — continuing anyway')
-})()
-
-// ─── Startup: log event/venue counts (informational only) ────────────────────
-// The old pattern called fetch(localhost/api/admin/seed-*) here, which was a
-// self-HTTP call. It could arrive while the DB pool was still warming, and a
-// hung fetch held one of Neon's 3 free-tier connections indefinitely, starving
-// all incoming requests. Removed — event sync is now driven by the frontend
-// (POST /events/ai-sync fires when the user's location resolves, with a 120s
-// timeout so Eventbrite+SerpAPI+Perplexity can complete comfortably).
-// Venue seeding is driven by POST /venues/discover when the venues tab opens.
-setTimeout(() => {
-  Promise.all([
-    prisma.venue.count(),
-    prisma.event.count({ where: { isPublished: true, isCancelled: false, startsAt: { gt: new Date() } } }),
-  ])
-    .then(([venues, events]) => {
-      console.log(`[Startup] DB state: ${venues} venue(s), ${events} upcoming event(s)`)
-    })
-    .catch((err) => console.error('[Startup] DB count failed:', err))
-}, 90_000) // fire after cleanup window — just a diagnostic log, never blocks
 
 // ─── Env-var sanity check ────────────────────────────────────────────────────
 
@@ -949,16 +901,33 @@ function checkEnvVars() {
 checkEnvVars()
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+// DB initialisation runs BEFORE httpServer.listen() so Railway's health check
+// (120 s timeout) cannot pass until the Prisma connection pool is fully open.
+// Once SELECT 1 returns the pool slot is released and every subsequent query
+// reuses the already-open connection — eliminating the zombie state caused by
+// Prisma's native engine doing synchronous blocking work on first pool access.
+;(async () => {
+  console.log('[Startup] Initialising DB connection before accepting traffic…')
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      console.log(`[Startup] DB ready (attempt ${attempt}) — opening HTTP port`)
+      break
+    } catch (err) {
+      console.warn(
+        `[Startup] DB init attempt ${attempt}/5 failed:`,
+        err instanceof Error ? err.message : String(err),
+      )
+      if (attempt < 5) await new Promise<void>((r) => setTimeout(r, 8_000))
+    }
+  }
 
-httpServer.listen(PORT, () => {
-  console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
-
-  // Event-loop heartbeat — logs every 30 s so Railway logs show exactly when
-  // the loop freezes (last heartbeat before silence = zombie onset time).
-  // Safe to leave in production: a single console.log every 30 s is negligible.
-  setInterval(() => {
-    console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
-  }, 30_000)
-})
+  httpServer.listen(PORT, () => {
+    console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
+    setInterval(() => {
+      console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
+    }, 30_000)
+  })
+})()
 
 export default app
