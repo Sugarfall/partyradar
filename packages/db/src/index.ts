@@ -41,7 +41,10 @@ function buildDatasourceUrl(): string {
     // Keep pool small on Neon free tier so startup background queries
     // can't starve incoming HTTP requests.
     if (!url.searchParams.has('connection_limit')) url.searchParams.set('connection_limit', '3')
-    return url.toString()
+    const final = url.toString()
+    // Diagnostic: confirm pooler rewrite at boot so Railway logs are auditable.
+    console.log(`[DB] datasource host: ${url.hostname}`)
+    return final
   } catch {
     return base // unparseable URL — return as-is
   }

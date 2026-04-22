@@ -797,6 +797,36 @@ setTimeout(() => {
     .catch((err) => console.error('[Startup] find legacy posts failed:', err))
 }, 60_000) // 60s delay — DB must be warm before cleanup queries run
 
+// ─── Startup: immediate DB pre-warmup ────────────────────────────────────────
+// The very first user request after a cold deploy is almost always ai-sync,
+// which arrives ~7 s after boot and immediately calls prisma.user.upsert().
+// If Neon's compute is suspended, PgBouncer wakes it but the query may take
+// 15–30 s. During that window every Prisma pool slot is occupied by the cold-
+// start handshake, and the server becomes unresponsive (zombie state).
+//
+// Fix: fire a SELECT 1 immediately at startup. The async await returns control
+// to the event loop (health checks keep passing) while PgBouncer wakes Neon in
+// the background. By the time ai-sync's upsert runs (~7 s later), Neon is warm
+// and the connection slot is already released back to the pool.
+;(async () => {
+  console.log('[Startup] Pre-warming DB connection via PgBouncer pooler…')
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      console.log(`[Startup] DB pre-warm succeeded (attempt ${attempt})`)
+      return
+    } catch (err) {
+      console.warn(
+        `[Startup] DB pre-warm attempt ${attempt}/5 failed:`,
+        err instanceof Error ? err.message : String(err),
+      )
+      // Short back-off before retrying — PgBouncer may still be waking Neon
+      await new Promise<void>((r) => setTimeout(r, 5_000))
+    }
+  }
+  console.error('[Startup] DB pre-warm failed after 5 attempts — continuing anyway')
+})()
+
 // ─── Startup: log event/venue counts (informational only) ────────────────────
 // The old pattern called fetch(localhost/api/admin/seed-*) here, which was a
 // self-HTTP call. It could arrive while the DB pool was still warming, and a
