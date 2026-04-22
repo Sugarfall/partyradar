@@ -796,13 +796,13 @@ function checkEnvVars() {
   }
 
   if (missingPayment.length > 0) {
-    if (isProd) {
-      console.error(`\n❌ [Startup] Missing payment env vars in production: ${missingPayment.join(', ')}`)
-      console.error('   Stripe webhooks will reject all events — refusing to start.')
-      process.exit(1)
-    } else {
-      console.warn(`\n⚠️  [Startup] Missing payment env vars (Stripe disabled): ${missingPayment.join(', ')}\n`)
-    }
+    // Non-fatal: payment routes will fail gracefully on individual requests,
+    // but the rest of the API (events, venues, auth) must remain available.
+    // Previously this called process.exit(1) in production — that silently
+    // killed the server if Stripe keys weren't set, making the entire API
+    // unreachable. Warn loudly instead.
+    console.warn(`\n⚠️  [Startup] Missing payment env vars (Stripe disabled): ${missingPayment.join(', ')}\n`)
+    console.warn('   Ticket purchases and subscriptions will fail. Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET to enable.')
   }
 
   // Discovery env vars — NOT fatal (the app still works without them, just

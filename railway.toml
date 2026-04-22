@@ -9,6 +9,6 @@ buildCommand = "npm install --prefer-offline && npx prisma generate --schema=pac
 # when there is an actual schema migration to apply.
 startCommand = "npx tsx packages/api/src/index.ts"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

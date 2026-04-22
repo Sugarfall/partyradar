@@ -26,6 +26,7 @@
     "stripe": "^17.5.0",
     "twilio": "^5.13.1",
     "uuid": "^11.0.3",
+    "tsx": "^4.19.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -37,7 +38,6 @@
     "@types/qrcode": "^1.5.5",
     "@types/twilio": "^3.19.2",
     "@types/uuid": "^10.0.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }
