@@ -3,21 +3,39 @@ import { PrismaClient } from '@prisma/client'
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
 // Append connection/pool timeouts to DATABASE_URL so Prisma fails fast
-// instead of hanging for 30+ seconds when the DB is unreachable. Without
-// these, every route that queries the DB hangs until the OS TCP timeout
-// (~2 min), which also blocks the Express response and the client.
-// connect_timeout: seconds to establish TCP + TLS connection
-// pool_timeout:    seconds to wait for a free connection from the pool
-// statement_timeout: (Postgres only) max ms per query — set via pgbouncer
+// instead of hanging indefinitely when the Neon free-tier compute is suspended.
+//
+// Root cause: Neon's proxy accepts TCP connections immediately but stalls
+// the PostgreSQL authentication handshake until the compute wakes up.
+// connect_timeout=30 gives the compute enough time to wake (typically 5-15s).
+// pool_timeout=30 lets queued requests wait for a slot rather than failing instantly.
+//
+// Pooler URL: if DATABASE_URL points at the raw compute endpoint (ep-xxx.xxx.aws.neon.tech),
+// we auto-rewrite it to the PgBouncer pooler URL (ep-xxx-pooler.xxx.aws.neon.tech).
+// The pooler stays alive when the compute suspends and handles wakeup buffering
+// transparently, eliminating the hanging-connection problem entirely.
 function buildDatasourceUrl(): string {
   const base = process.env['DATABASE_URL'] ?? ''
   if (!base) return base
   try {
     const url = new URL(base)
-    if (!url.searchParams.has('connect_timeout'))  url.searchParams.set('connect_timeout', '10')
-    if (!url.searchParams.has('pool_timeout'))     url.searchParams.set('pool_timeout', '10')
-    // Keep pool small on Neon free tier (max ~10 connections) so startup
-    // background queries can't starve incoming HTTP requests.
+
+    // Auto-convert direct Neon endpoint → pooler endpoint.
+    // Direct:  ep-<name>.c-N.us-east-1.aws.neon.tech
+    // Pooler:  ep-<name>-pooler.c-N.us-east-1.aws.neon.tech
+    // Only rewrite if the URL isn't already using a pooler or a non-Neon host.
+    if (url.hostname.match(/^ep-[a-z0-9-]+\.[\w-]+\.aws\.neon\.tech$/) &&
+        !url.hostname.includes('-pooler.')) {
+      url.hostname = url.hostname.replace(/^(ep-[a-z0-9-]+)(\..+)$/, '$1-pooler$2')
+      if (!url.searchParams.has('pgbouncer')) url.searchParams.set('pgbouncer', 'true')
+    }
+
+    // Give Neon 30s to wake a suspended compute (proxy accepts TCP instantly
+    // but stalls the PostgreSQL handshake until the compute is ready).
+    if (!url.searchParams.has('connect_timeout'))  url.searchParams.set('connect_timeout', '30')
+    if (!url.searchParams.has('pool_timeout'))     url.searchParams.set('pool_timeout', '30')
+    // Keep pool small on Neon free tier so startup background queries
+    // can't starve incoming HTTP requests.
     if (!url.searchParams.has('connection_limit')) url.searchParams.set('connection_limit', '3')
     return url.toString()
   } catch {
