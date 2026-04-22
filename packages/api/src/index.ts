@@ -765,7 +765,6 @@ setTimeout(() => void (async () => {
 // ─── Env-var sanity check ────────────────────────────────────────────────────
 
 function checkEnvVars() {
-  const isProd = process.env['NODE_ENV'] === 'production'
   const required = [
     'DATABASE_URL',
     'FIREBASE_PROJECT_ID',
@@ -786,13 +785,10 @@ function checkEnvVars() {
   }
 
   if (missing.length > 0) {
-    console.error(`\n❌ [Startup] Missing required env vars: ${missing.join(', ')}`)
-    if (isProd) {
-      console.error('❌ [Startup] Refusing to start in production without core env vars.')
-      process.exit(1)
-    } else {
-      console.warn('⚠️  [Startup] Continuing without these in non-production — some features will fail.')
-    }
+    // Never exit — a dead server is worse than a partially-broken one.
+    // Individual routes (auth, events, etc.) will fail with their own errors
+    // when the missing var is actually needed. The health endpoint must stay up.
+    console.error(`\n❌ [Startup] Missing env vars: ${missing.join(', ')} — dependent features will fail but server will start.`)
   }
 
   if (missingPayment.length > 0) {
