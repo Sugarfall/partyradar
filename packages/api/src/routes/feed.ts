@@ -210,16 +210,10 @@ router.get('/discover', optionalAuth, async (req: AuthRequest, res, next) => {
       : []
     const likedSet = new Set(likedRows.map((l) => l.postId))
 
-    // Prioritise: viewer's own posts + posts with media first, then text-only
-    const sorted = [
-      ...posts.filter(p => p.userId === viewerId),
-      ...posts.filter(p => p.userId !== viewerId && p.imageUrl),
-      ...posts.filter(p => p.userId !== viewerId && !p.imageUrl),
-    ]
-
-    // De-duplicate (own posts appear once)
-    const seen = new Set<string>()
-    const deduped = sorted.filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true })
+    // Strict newest-first chronological order. The previous pass grouped
+    // own-posts/media-posts/text-posts which moved recent items below older
+    // ones and made the feed look stale.
+    const deduped = posts
 
     // Return flat structure matching the FeedItem interface
     const items = deduped.map((p) => ({

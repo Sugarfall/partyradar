@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Heart, Flag, Camera, MapPin, Calendar, Zap, Share2, BarChart2 } from 'lucide-react'
+import { Heart, Flag, Camera, MapPin, Calendar, Zap, Share2, BarChart2, MessageCircle, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { logError } from '@/lib/logError'
 import { isVideoUrl } from '@/lib/cloudinary'
 import ComposePostModal from './ComposePostModal'
 import PostMediaViewer, { type MediaItem, type PostTagLite } from './PostMediaViewer'
 import ShareSheet from './ShareSheet'
+import PostDetailModal from './PostDetailModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,6 +106,7 @@ function Avatar({ user, size = 36 }: { user: { displayName: string; photoUrl?: s
 
 function PostCard({
   item, liked, onLike, reported, onReport, currentUserId,
+  onOpenComments, onDelete, localCommentBump = 0,
 }: {
   item: FeedItem
   liked: boolean
@@ -112,15 +115,34 @@ function PostCard({
   onReport: () => void
   /** Used to decide whether to show the owner-only Insights link. */
   currentUserId?: string | null
+  /** Open the shared PostDetailModal (comments thread) for this post. */
+  onOpenComments: () => void
+  /** Owner-only: delete this post (called after the API succeeds). */
+  onDelete: () => void
+  /** Optimistic in-session comment count bump from the modal. */
+  localCommentBump?: number
 }) {
   // Flat-shape alias — the server keeps post fields at the top level of
   // the feed item, so `post.X` reads the same field as `item.X`.
   const post = item as FeedItem & { id: string; likesCount: number }
   const isOwner = !!(currentUserId && item.user.id === currentUserId)
   const [sharing, setSharing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   // Optimistic share counter: bumped in-place when the user acts, snapping
   // back to the server value on the next feed refresh.
   const [localShares, setLocalShares] = useState(post.sharesCount ?? 0)
+
+  async function handleDelete() {
+    if (deleting) return
+    setDeleting(true)
+    try {
+      await api.delete(`/posts/${post.id}`)
+      onDelete()
+    } catch (err) {
+      logError('discover-feed:delete-post', err)
+      setDeleting(false)
+    }
+  }
   // Determine whether this post has any video for the view-count Instagram
   // footer. We check `media` first (preferred) and fall back to `imageUrl`.
   const hasVideo = (post.media ?? []).some((m) => m.type === 'VIDEO')
@@ -204,6 +226,19 @@ function PostCard({
           )}
         </button>
 
+        {/* Comment — opens the shared PostDetailModal (comments thread) */}
+        <button
+          onClick={onOpenComments}
+          className="flex items-center gap-1.5 transition-all duration-200 active:scale-110"
+          style={{ color: 'rgba(255,255,255,0.35)' }}
+          title="Comment"
+        >
+          <MessageCircle size={16} />
+          {((post.commentsCount ?? 0) + localCommentBump) > 0 && (
+            <span className="text-xs font-bold">{(post.commentsCount ?? 0) + localCommentBump}</span>
+          )}
+        </button>
+
         {/* Share — opens the share sheet (native share / copy link / repost) */}
         <button
           onClick={() => setSharing(true)}
@@ -218,7 +253,7 @@ function PostCard({
         </button>
 
         <div className="ml-auto flex items-center gap-3">
-          {isOwner ? (
+          {isOwner && (
             <Link
               href={`/feed/${post.id}/insights`}
               title="View insights"
@@ -227,7 +262,18 @@ function PostCard({
             >
               <BarChart2 size={13} />
             </Link>
-          ) : (
+          )}
+          {isOwner && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Delete post"
+              style={{ color: deleting ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.55)' }}
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+          {!isOwner && (
             <button
               onClick={onReport}
               disabled={reported}
@@ -314,6 +360,10 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set())
   const [composing, setComposing] = useState(false)
+  // id of the post currently open in the comments/detail modal
+  const [openModalPostId, setOpenModalPostId] = useState<string | null>(null)
+  // optimistic comment-count bumps keyed by postId (modal reports new comments)
+  const [commentBumps, setCommentBumps] = useState<Record<string, number>>({})
   const loadedRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -451,6 +501,9 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
               reported={reportedIds.has(item.id!)}
               onReport={() => handleReport(item.id!)}
               currentUserId={currentUserId}
+              onOpenComments={() => setOpenModalPostId(item.id!)}
+              onDelete={() => setItems((prev) => prev.filter((p) => p.id !== item.id))}
+              localCommentBump={commentBumps[item.id!] ?? 0}
             />
           ))
         )}
@@ -490,6 +543,48 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
           }}
         />
       )}
+
+      {/* ── Post detail / comments modal ────────────────────────────────── */}
+      {openModalPostId && (() => {
+        const post = items.find((p) => p.id === openModalPostId)
+        if (!post) return null
+        const postId = post.id!
+        const alreadyLiked = likedIds.has(postId)
+        const baseLikes = post.likesCount ?? 0
+        return (
+          <PostDetailModal
+            post={{
+              id: postId,
+              text: post.text,
+              imageUrl: post.imageUrl,
+              media: post.media,
+              tags: post.tags,
+              likesCount: baseLikes + (alreadyLiked ? 1 : 0),
+              sharesCount: post.sharesCount,
+              hasLiked: alreadyLiked,
+              createdAt: post.createdAt,
+              user: post.user,
+              event: post.event ? { name: post.event.name } : null,
+            }}
+            currentUserId={currentUserId}
+            onClose={() => setOpenModalPostId(null)}
+            onLikeToggle={(nowLiked) => {
+              setLikedIds((prev) => {
+                const next = new Set(prev)
+                if (nowLiked) next.add(postId); else next.delete(postId)
+                return next
+              })
+            }}
+            onCommentAdded={() => {
+              setCommentBumps((prev) => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }))
+            }}
+            onDelete={() => {
+              setItems((prev) => prev.filter((p) => p.id !== postId))
+              setOpenModalPostId(null)
+            }}
+          />
+        )
+      })()}
     </div>
   )
 }
