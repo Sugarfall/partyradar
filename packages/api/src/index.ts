@@ -419,8 +419,10 @@ app.use(express.json({ limit: '2mb' }))
 app.use((_req, res, next) => {
   // Top-level middleware sees the full path (e.g. /api/admin/seed-activity),
   // NOT the router-relative path — so check for '/api/admin', not '/admin'.
-  const isAdmin = _req.path.startsWith('/api/admin')
-  const timeoutMs = isAdmin ? 120_000 : 15_000
+  const isAdmin   = _req.path.startsWith('/api/admin')
+  // ai-sync awaits Eventbrite + SerpAPI + Perplexity sequentially — can take 30-60 s
+  const isAiSync  = _req.path === '/api/events/ai-sync'
+  const timeoutMs = (isAdmin || isAiSync) ? 120_000 : 15_000
   const timer = setTimeout(() => {
     if (!res.headersSent) {
       console.warn(`[API] Request timed out: ${_req.method} ${_req.path}`)

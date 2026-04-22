@@ -64,6 +64,17 @@ const venueSelect = {
   spotifyDisplayName: true,
 }
 
+/** Haversine distance in km between two lat/lng points */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = (lat2 - lat1) * (Math.PI / 180)
+  const dLng = (lng2 - lng1) * (Math.PI / 180)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 /** GET /api/venues — list/search venues */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -78,35 +89,39 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       limit = '20',
     } = req.query
 
-    const skip = (Number(page) - 1) * Number(limit)
+    const pageN  = Number(page)
+    const limitN = Number(limit)
+    const skip   = (pageN - 1) * limitN
 
     const where: Record<string, unknown> = {}
 
     if (city) where['city'] = { contains: city as string, mode: 'insensitive' }
-    if (q) where['name'] = { contains: q as string, mode: 'insensitive' }
+    if (q)    where['name'] = { contains: q as string, mode: 'insensitive' }
     if (type) where['type'] = type
 
+    const hasGeo = !!(lat && lng)
+    let latN = 0, lngN = 0
+
     // Geo bounding box filter
-    if (lat && lng) {
-      const latN = Number(lat)
-      const lngN = Number(lng)
-      const radN = Number(radius)
+    if (hasGeo) {
+      latN = Number(lat)
+      lngN = Number(lng)
+      const radN     = Number(radius)
       const latDelta = radN / 111
       const lngDelta = radN / (111 * Math.cos((latN * Math.PI) / 180))
       where['lat'] = { gte: latN - latDelta, lte: latN + latDelta }
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }
 
-    const orderBy = lat && lng
-      ? [{ name: 'asc' as const }]
-      : [{ name: 'asc' as const }]
-
-    const [venues, total] = await Promise.all([
+    // When geo coords are provided, overfetch the whole bounding box so we can
+    // sort by real distance before paginating — Prisma can't ORDER BY a derived
+    // expression. Cap at 1 000 which is comfortably beyond any city's venue count.
+    const [rawVenues, total] = await Promise.all([
       prisma.venue.findMany({
         where,
-        skip,
-        take: Number(limit),
-        orderBy,
+        take: hasGeo ? 1000 : limitN,
+        skip: hasGeo ? 0 : skip,
+        orderBy: hasGeo ? undefined : [{ name: 'asc' as const }],
         select: {
           ...venueSelect,
           _count: { select: { events: true } },
@@ -114,6 +129,14 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       }),
       prisma.venue.count({ where }),
     ])
+
+    // Sort by Haversine distance when geo coords provided, then paginate in JS
+    const venues = hasGeo
+      ? rawVenues
+          .slice()
+          .sort((a, b) => haversineKm(latN, lngN, a.lat, a.lng) - haversineKm(latN, lngN, b.lat, b.lng))
+          .slice(skip, skip + limitN)
+      : rawVenues
 
     // Enrich with upcoming events count
     const now = new Date()
@@ -138,7 +161,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       upcomingEventsCount: countMap[v.id] ?? 0,
     }))
 
-    res.json({ data: result, total, page: Number(page), limit: Number(limit) })
+    res.json({ data: result, total, page: pageN, limit: limitN })
   } catch (err) {
     next(err)
   }

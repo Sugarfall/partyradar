@@ -1593,6 +1593,16 @@ export default function DiscoverPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation])
 
+  // While AI sync is in progress and the event list is still empty, poll every 12 s.
+  // External sources (Eventbrite, SerpAPI, Perplexity) return at different times —
+  // polling lets events appear the moment the first source finishes rather than
+  // waiting for ALL sources to complete before mutate() fires.
+  useEffect(() => {
+    if (!aiSyncing || events.length > 0) return
+    const interval = setInterval(() => { mutate() }, 12_000)
+    return () => clearInterval(interval)
+  }, [aiSyncing, events.length, mutate])
+
   // Auto-retry once when 0 events returned after getting location.
   // Don't fire while AI sync is running — it will call mutate() when done.
   const autoRetried = useRef(false)
