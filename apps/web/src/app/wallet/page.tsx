@@ -39,11 +39,15 @@ interface WalletTransaction {
 
 function txIcon(type: string) {
   switch (type) {
-    case 'TOP_UP':    return <ArrowDown size={14} style={{ color: '#00ff88' }} />
-    case 'SPEND':     return <ArrowUp   size={14} style={{ color: '#ff006e' }} />
-    case 'REWARD':    return <Gift      size={14} style={{ color: '#ffd600' }} />
-    case 'REFUND':    return <TrendingUp size={14} style={{ color: '#3b82f6' }} />
-    default:          return <Zap       size={14} style={{ color: 'rgba(224,242,254,0.4)' }} />
+    case 'TOP_UP':          return <ArrowDown  size={14} style={{ color: '#00ff88' }} />
+    case 'VENUE_SPEND':     return <ArrowUp    size={14} style={{ color: '#ff006e' }} />
+    case 'TICKET_PURCHASE': return <ArrowUp    size={14} style={{ color: '#ff006e' }} />
+    case 'CARD_ORDER':      return <CreditCard size={14} style={{ color: '#ff006e' }} />
+    case 'DRINK_REWARD':    return <Gift       size={14} style={{ color: '#ffd600' }} />
+    case 'REFERRAL_CREDIT': return <TrendingUp size={14} style={{ color: '#00ff88' }} />
+    case 'BONUS':           return <Star       size={14} style={{ color: '#ffd600' }} />
+    case 'WITHDRAWAL':      return <ArrowUp    size={14} style={{ color: '#3b82f6' }} />
+    default:                return <Zap        size={14} style={{ color: 'rgba(224,242,254,0.4)' }} />
   }
 }
 
