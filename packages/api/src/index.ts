@@ -76,6 +76,13 @@ const app = express()
 const httpServer = createServer(app)
 const PORT = process.env['PORT'] ?? 4000
 
+// Trust Railway's / Vercel's reverse proxy so express-rate-limit can correctly
+// identify client IPs from the X-Forwarded-For header.
+// Without this, express-rate-limit v7 throws a ValidationError on EVERY request,
+// which causes CORS OPTIONS preflight responses to never be sent — blocking all
+// cross-origin API calls in the browser entirely.
+app.set('trust proxy', 1)
+
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 
 export const io = new Server(httpServer, {
