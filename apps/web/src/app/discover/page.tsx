@@ -869,8 +869,8 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCent
           </div>
         ) : (
           <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>
-            {hasRealVenues ? `${filtered.length} VENUES` : 'NO VENUES'}
-            {venueCity ? ` · ${venueCity.toUpperCase()}` : hasRealVenues ? ' · NEARBY' : ''}
+            {(hasRealVenues || useStaticFallback) ? `${filtered.length} VENUES` : 'NO VENUES'}
+            {venueCity ? ` · ${venueCity.toUpperCase()}` : (hasRealVenues || useStaticFallback) ? ' · GLASGOW' : ''}
           </p>
         )}
         {hasRealVenues && !venuesLoading && (
@@ -955,10 +955,10 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCent
 const FEATURED_VENUES = [
   { name: 'Sub Club', tag: 'Techno · Underground', emoji: '🖤', city: 'Glasgow' },
   { name: 'SWG3', tag: 'Warehouse · DJ Sets', emoji: '🏭', city: 'Glasgow' },
-  { name: 'Fabric', tag: 'House · Techno', emoji: '⚫', city: 'London' },
-  { name: 'Printworks', tag: 'Electronic · Rave', emoji: '🏗️', city: 'London' },
-  { name: 'The Warehouse Project', tag: 'Bass · Electronic', emoji: '🔊', city: 'Manchester' },
-  { name: 'Egg London', tag: 'Club · House', emoji: '🥚', city: 'London' },
+  { name: 'Barrowland Ballroom', tag: 'Live Music · Iconic', emoji: '⭐', city: 'Glasgow' },
+  { name: "King Tut's", tag: 'Indie · Live Music', emoji: '🎸', city: 'Glasgow' },
+  { name: 'Nice N Sleazy', tag: 'Indie · Punk', emoji: '🤘', city: 'Glasgow' },
+  { name: 'Stereo', tag: 'Post-Punk · Vegan', emoji: '🌱', city: 'Glasgow' },
 ]
 
 const QUICK_CITIES = ['Glasgow', 'Edinburgh', 'London', 'Manchester', 'Birmingham', 'Bristol']
