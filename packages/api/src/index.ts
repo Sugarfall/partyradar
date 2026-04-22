@@ -858,6 +858,16 @@ function checkEnvVars() {
     console.warn('   Ticket purchases and subscriptions will fail. Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET to enable.')
   }
 
+  // INTERNAL_API_KEY — required for startup auto-seed + hourly reseed cron.
+  // Without it the DB stays empty on fresh deploys: no venues, no events, no feed.
+  if (!process.env['INTERNAL_API_KEY']) {
+    console.warn(
+      '⚠️  [Startup] INTERNAL_API_KEY is not set — startup auto-seed and the ' +
+      'hourly reseed cron will be skipped. Set a random secret string in Railway ' +
+      'env vars to enable automatic venue + event population on fresh deploys.',
+    )
+  }
+
   // Discovery env vars — NOT fatal (the app still works without them, just
   // with an empty venue/event list) but we surface them loudly because an
   // empty "nothing near you" state otherwise looks like a bug to the user.
