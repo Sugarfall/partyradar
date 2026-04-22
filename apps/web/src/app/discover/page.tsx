@@ -1499,31 +1499,22 @@ export default function DiscoverPage() {
     autoRetried.current = false
     aiSyncedRef.current = false
     setSyncing(false)
-    // Kick off AI sync immediately for the new city (bypass throttle with force=true)
-    // — don't wait for the useEffect, fire it right now so events arrive faster
+    // Kick off AI sync immediately for the new city (server returns 202 immediately,
+    // sync runs in background). Polling in the useEffect below picks up events as
+    // each source (Eventbrite, SerpAPI, Perplexity) finishes writing to the DB.
     setAiSyncing(true)
     setAiCity(cityName)
     setAiFound(null)
-    // Cap the full-screen scanning UI — show it for 3s max, then show events/empty state
+    // Cap the full-screen scanning UI — show it for 3s max
     setAiScanTimedOut(false)
     if (aiScanTimeoutRef.current) clearTimeout(aiScanTimeoutRef.current)
     aiScanTimeoutRef.current = setTimeout(() => setAiScanTimedOut(true), 3000)
-    api.post<{ data: { imported: number; skipped: number } }>(
-      '/events/ai-sync',
-      { city: cityName, lat, lng, force: true },
-    ).then((res) => {
-      const found = res?.data?.imported ?? 0
-      setAiFound(found)
-      setAiSyncing(false)
-      mutate()  // revalidate to show new city events
-      aiSyncedRef.current = true  // mark done so the useEffect doesn't double-fire
-      if (aiFoundTimerRef.current) clearTimeout(aiFoundTimerRef.current)
-      aiFoundTimerRef.current = setTimeout(() => setAiFound(null), 5000)
-    }).catch(() => {
-      setAiSyncing(false)
-      mutate()
-      aiSyncedRef.current = true
-    })
+    // Fire-and-forget — server returns 202 immediately
+    api.post('/events/ai-sync', { city: cityName, lat, lng, force: true }).catch(() => {})
+    aiSyncedRef.current = true  // mark done so the GPS useEffect doesn't double-fire
+    // Stop polling after 90s
+    if (aiFoundTimerRef.current) clearTimeout(aiFoundTimerRef.current)
+    aiFoundTimerRef.current = setTimeout(() => { setAiSyncing(false); mutate() }, 90_000)
   }
 
 
@@ -1553,8 +1544,10 @@ export default function DiscoverPage() {
   }, !locationReady)
 
   // AI sync — fires once when we get the first GPS fix.
-  // Calls POST /api/events/ai-sync which runs Perplexity + Ticketmaster/Skiddle
-  // for the user's city, then revalidates the events list when done.
+  // POST /events/ai-sync now returns 202 immediately (fire-and-forget on the server).
+  // We keep aiSyncing=true for 60s so the polling useEffect below keeps hitting
+  // GET /events every 12s — events appear as each source (Eventbrite, SerpAPI,
+  // Perplexity) finishes writing to the DB, not just when all sources complete.
   useEffect(() => {
     if (!userLocation || aiSyncedRef.current) return
     aiSyncedRef.current = true
@@ -1563,7 +1556,7 @@ export default function DiscoverPage() {
     setAiSyncing(true)
     setAiFound(null)
 
-    // Resolve city name then run AI sync
+    // Resolve city name then fire sync (server returns 202 immediately)
     fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
       .then((r) => r.json())
       .then((d: { address?: { city?: string; town?: string; county?: string } }) => {
@@ -1571,25 +1564,17 @@ export default function DiscoverPage() {
           d?.address?.city || d?.address?.town || d?.address?.county ||
           `${lat.toFixed(2)},${lng.toFixed(2)}`
         setAiCity(city)
-        return api.post<{ data: { imported: number; skipped: number; sources: string[] } }>(
-          '/events/ai-sync',
-          { city, lat, lng, force: true },
-        )
+        // Fire-and-forget — server returns 202, sync runs in background
+        api.post('/events/ai-sync', { city, lat, lng, force: true }).catch(() => {})
       })
-      .then((res) => {
-        const found = res?.data?.imported ?? 0
-        setAiFound(found)
-        setAiSyncing(false)
-        // Revalidate events list so newly synced events appear
-        mutate()
-        // Hide the "found X events" badge after 5s
-        if (aiFoundTimerRef.current) clearTimeout(aiFoundTimerRef.current)
-        aiFoundTimerRef.current = setTimeout(() => setAiFound(null), 5000)
-      })
-      .catch(() => {
-        setAiSyncing(false)
-        mutate() // still revalidate on error — fire-and-forget may have persisted something
-      })
+      .catch(() => {})
+
+    // Stop polling after 90s regardless (sync should be long done by then)
+    const stopTimer = setTimeout(() => {
+      setAiSyncing(false)
+      mutate()
+    }, 90_000)
+    return () => clearTimeout(stopTimer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation])
 

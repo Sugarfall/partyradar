@@ -776,54 +776,24 @@ setTimeout(() => {
     .catch((err) => console.error('[Startup] find legacy posts failed:', err))
 }, 60_000) // 60s delay — DB must be warm before cleanup queries run
 
-// ─── Startup auto-seed (venues + activity) ────────────────────────────────────
-// Fires 120s after boot so the 60s cleanup has fully completed first.
-// On a fresh Railway deploy the DB is empty — this seeds Glasgow venues
-// (if none exist) then demo events / check-ins / RSVPs (if no future events).
-// Requires INTERNAL_API_KEY to be set; logs a clear warning if missing.
+// ─── Startup: log event/venue counts (informational only) ────────────────────
+// The old pattern called fetch(localhost/api/admin/seed-*) here, which was a
+// self-HTTP call. It could arrive while the DB pool was still warming, and a
+// hung fetch held one of Neon's 3 free-tier connections indefinitely, starving
+// all incoming requests. Removed — event sync is now driven by the frontend
+// (POST /events/ai-sync fires when the user's location resolves, with a 120s
+// timeout so Eventbrite+SerpAPI+Perplexity can complete comfortably).
+// Venue seeding is driven by POST /venues/discover when the venues tab opens.
 setTimeout(() => {
-  const _port      = process.env['PORT'] ?? 4000
-  const _domain    = process.env['RAILWAY_PUBLIC_DOMAIN']
-  const _appUrl    = process.env['APP_URL']
-  const _baseUrl   = _appUrl ? _appUrl : _domain ? `https://${_domain}` : `http://localhost:${_port}`
-  const _ikey      = process.env['INTERNAL_API_KEY'] ?? ''
-
-  if (!_ikey) {
-    console.warn(
-      '[Startup] INTERNAL_API_KEY not set — auto-seed skipped. ' +
-      'Set this Railway env var to auto-populate venues + events on fresh deploys.',
-    )
-    return
-  }
-
-  const _headers = { Authorization: `Bearer ${_ikey}`, 'Content-Type': 'application/json' }
-
-  ;(async () => {
-    try {
-      // Step A: seed venues if Glasgow has none
-      const venueCount = await prisma.venue.count({ where: { city: 'Glasgow' } })
-      if (venueCount === 0) {
-        console.log('[Startup] No Glasgow venues found — calling seed-venues...')
-        const rv = await fetch(`${_baseUrl}/api/admin/seed-venues`, { method: 'POST', headers: _headers })
-        console.log(`[Startup] seed-venues responded ${rv.status}`)
-      }
-
-      // Step B: seed activity if no future events remain
-      const futureCount = await prisma.event.count({
-        where: { isPublished: true, isCancelled: false, startsAt: { gt: new Date() } },
-      })
-      if (futureCount === 0) {
-        console.log('[Startup] No future events — calling seed-activity...')
-        const ra = await fetch(`${_baseUrl}/api/admin/seed-activity`, { method: 'POST', headers: _headers })
-        console.log(`[Startup] seed-activity responded ${ra.status}`)
-      } else {
-        console.log(`[Startup] ${futureCount} future event(s) already in DB — auto-seed skipped`)
-      }
-    } catch (err) {
-      console.error('[Startup] Auto-seed failed:', err)
-    }
-  })()
-}, 120_000) // 120s — intentionally after the 60s cleanup window
+  Promise.all([
+    prisma.venue.count(),
+    prisma.event.count({ where: { isPublished: true, isCancelled: false, startsAt: { gt: new Date() } } }),
+  ])
+    .then(([venues, events]) => {
+      console.log(`[Startup] DB state: ${venues} venue(s), ${events} upcoming event(s)`)
+    })
+    .catch((err) => console.error('[Startup] DB count failed:', err))
+}, 90_000) // fire after cleanup window — just a diagnostic log, never blocks
 
 // ─── Env-var sanity check ────────────────────────────────────────────────────
 

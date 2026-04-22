@@ -277,7 +277,11 @@ router.get('/diagnostics', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** POST /api/events/ai-sync — explicitly trigger AI event discovery for a city */
+/** POST /api/events/ai-sync — trigger AI event discovery for a city (fire-and-forget) */
+// Returns 202 immediately so the caller never hits a timeout. The actual
+// Eventbrite + SerpAPI + Perplexity sync runs in the background. The frontend
+// polls GET /events every 12 s while aiSyncing=true so events appear as each
+// source completes rather than waiting for all sources to finish.
 router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const { city, lat, lng, force } = req.body as {
@@ -287,14 +291,15 @@ router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
       throw new AppError('city, lat and lng are required', 400)
     }
 
-    const { syncExternalEvents } = await import('../lib/eventSync')
-    // Run full sync (including Perplexity AI) and await results so the client
-    // knows when it's safe to re-fetch events.
-    const result = await syncExternalEvents(
-      String(city), Number(lat), Number(lng), 'user', force === true
-    )
+    // Acknowledge immediately — sync runs in background
+    res.status(202).json({ data: { status: 'syncing', city } })
 
-    res.json({ data: result })
+    // Fire-and-forget: import is async so this never blocks the response above
+    import('../lib/eventSync').then(({ syncExternalEvents }) => {
+      syncExternalEvents(String(city), Number(lat), Number(lng), 'user', force === true)
+        .then((r) => console.log(`[ai-sync] ${city}: imported ${r.imported}, skipped ${r.skipped}`))
+        .catch((err) => console.error('[ai-sync] sync error:', err))
+    }).catch((err) => console.error('[ai-sync] import error:', err))
   } catch (err) {
     next(err)
   }
