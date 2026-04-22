@@ -509,6 +509,20 @@ app.use(errorHandler)
 
 // ─── Cron Jobs ────────────────────────────────────────────────────────────────
 
+// ── Neon keepalive ───────────────────────────────────────────────────────────
+// Neon free-tier computes auto-suspend after 5 minutes of inactivity.
+// A SELECT 1 ping every 4 minutes keeps the compute warm so the first real
+// request after a quiet period is never stalled by a cold-start handshake.
+// The pooler URL rewrite (packages/db/src/index.ts) is the safety net if the
+// server itself was restarted — this cron prevents suspension while it runs.
+cron.schedule('*/4 * * * *', async () => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+  } catch (err) {
+    console.error('[Keepalive] DB ping failed:', err instanceof Error ? err.message : String(err))
+  }
+})
+
 // Every 30 minutes: expire stories
 cron.schedule('*/30 * * * *', async () => {
   try {
