@@ -59,6 +59,8 @@ interface FeedItem {
   repostsCount?: number
   // Checkin fields (present on CHECKIN items)
   crowdLevel?: string | null
+  /** True if the logged-in viewer has already liked this post. */
+  hasLiked?: boolean
   createdAt: string
 }
 
@@ -372,7 +374,13 @@ export default function DiscoverFeedTab({ dbUser, isLoggedIn }: Props) {
     if (!silent) { setLoading(true); setFeedError(false) }
     try {
       const feedRes = await api.get<{ data: FeedItem[] }>('/feed/discover')
-      setItems(feedRes.data ?? [])
+      const fetchedItems = feedRes.data ?? []
+      setItems(fetchedItems)
+      // Seed likedIds from server's hasLiked field so the heart icon reflects
+      // the true state on first load (avoids showing all posts as un-liked).
+      setLikedIds(new Set(
+        fetchedItems.filter((i) => i.hasLiked && i.id).map((i) => i.id!)
+      ))
       setFeedError(false)
     } catch (err) {
       // Log the error so it appears in Vercel/browser console instead of
