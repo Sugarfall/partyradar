@@ -1,4 +1,18 @@
 import 'dotenv/config' // v2789fe8
+
+// ─── Global crash guards ──────────────────────────────────────────────────────
+// Node 18+ crashes the process on any unhandled rejection or uncaught exception.
+// Without these handlers, a single unguarded async error anywhere in the app
+// kills the server silently — Railway counts it as a crash and restarts up to 3
+// times before stopping the service entirely. Log the error and continue instead.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Promise rejection — server kept alive:', reason)
+  console.error('  Promise:', promise)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception — server kept alive:', err)
+})
+
 import { createServer } from 'http'
 import express from 'express'
 import cors from 'cors'
