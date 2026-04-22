@@ -411,18 +411,20 @@ app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }))
 app.use(express.json({ limit: '2mb' }))
 
 // ─── Global request timeout ───────────────────────────────────────────────────
-// Sends 503 if any route handler doesn't respond within 15s.
-// Without this, a stalled Prisma query blocks the response indefinitely —
-// the client's fetch() hangs (or times out via our AbortController on the
-// frontend) and Railway shows no error. Now at least the server side also
-// surfaces the problem cleanly.
+// Sends 503 if any route handler doesn't respond within the budget.
+// Regular routes: 15s — enough for any real-time query; stalled Prisma calls
+// surface clearly instead of hanging until the OS TCP timeout.
+// Admin routes: 120s — seed-venues and seed-activity do bulk DB work that
+// legitimately needs more time (createMany, upserts, group chat seeding).
 app.use((_req, res, next) => {
+  const isAdmin = _req.path.startsWith('/admin')
+  const timeoutMs = isAdmin ? 120_000 : 15_000
   const timer = setTimeout(() => {
     if (!res.headersSent) {
       console.warn(`[API] Request timed out: ${_req.method} ${_req.path}`)
       res.status(503).json({ error: 'Request timed out — please try again' })
     }
-  }, 15_000)
+  }, timeoutMs)
   res.on('finish', () => clearTimeout(timer))
   res.on('close', () => clearTimeout(timer))
   next()

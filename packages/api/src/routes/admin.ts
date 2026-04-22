@@ -441,14 +441,22 @@ router.post('/seed-venues', requireAdmin, async (_req, res, next) => {
       { name: 'Champagne Central', address: 'Glasgow Central Station, Glasgow G1 3SL', city: 'Glasgow', lat: 55.8596, lng: -4.2569, type: 'LOUNGE' as const, vibeTags: ['Champagne', 'After Work', 'Stylish', 'Station'] },
     ]
 
+    // Bulk upsert: one findMany to get existing names, one createMany for new ones.
+    // The previous per-venue findFirst+create loop did 160+ sequential queries and
+    // was reliably killed by the 15s global request timeout before all venues were written.
+    const existingVenues = await prisma.venue.findMany({
+      where: { city: 'Glasgow' },
+      select: { name: true },
+    })
+    const existingNames = new Set(existingVenues.map((v) => v.name))
+    const toCreate = venues.filter((v) => !existingNames.has(v.name))
+    const skipped = venues.length - toCreate.length
     let created = 0
-    let skipped = 0
 
-    for (const venue of venues) {
-      const existing = await prisma.venue.findFirst({ where: { name: venue.name, city: venue.city } })
-      if (existing) { skipped++; continue }
-      await prisma.venue.create({ data: venue })
-      created++
+    if (toCreate.length > 0) {
+      // createMany is a single INSERT statement — completes in < 1s even on cold Neon.
+      const result = await prisma.venue.createMany({ data: toCreate, skipDuplicates: true })
+      created = result.count
     }
 
     const allVenuesForGroups = await prisma.venue.findMany({
