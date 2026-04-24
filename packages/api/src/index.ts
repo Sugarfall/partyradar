@@ -670,7 +670,17 @@ cron.schedule('*/30 * * * *', async () => {
 // Bot-post cron removed — feed shows real users only
 
 // ─── Auto-reseed events when they all expire ──────────────────────────────────
-// Every hour: if no future published events remain, delete stale ones and re-seed
+// Every hour: if no future published events remain, delete stale ones and log
+// a warning. seed-activity is NOT called here — it runs 120+ sequential Prisma
+// queries which saturates the 3-slot Neon connection pool and pushes the 512 MB
+// Railway container over its memory limit (OOM crash).
+//
+// To seed events manually after the server has been stable for a few minutes:
+//   POST /api/admin/seed-venues   Authorization: Bearer <INTERNAL_API_KEY>
+//   POST /api/admin/seed-activity Authorization: Bearer <INTERNAL_API_KEY>
+//
+// The server is safe to seed manually once the keepalive cron has been running
+// for a few minutes (Neon is warm) — typically 3–5 min after startup.
 cron.schedule('0 * * * *', async () => {
   try {
     const futureCount = await prisma.event.count({
@@ -683,7 +693,7 @@ cron.schedule('0 * * * *', async () => {
 
     if (futureCount > 0) return  // still have upcoming events, nothing to do
 
-    console.log('[Cron] No future events found — reseeding Glasgow nightlife events...')
+    console.log('[Cron] No future events found — cleanup only (manual seed required; see index.ts comments)')
 
     // Delete old demo events (those hosted by demo accounts)
     const demoHosts = await prisma.user.findMany({
@@ -707,23 +717,10 @@ cron.schedule('0 * * * *', async () => {
       }
     }
 
-    // Call seed-activity internally — use APP_URL in production, localhost in dev
-    const port = process.env['PORT'] ?? 4000
-    const railwayDomain = process.env['RAILWAY_PUBLIC_DOMAIN']
-    const appUrl = process.env['APP_URL']
-    const baseUrl = appUrl
-      ? appUrl
-      : railwayDomain
-        ? `https://${railwayDomain}`
-        : `http://localhost:${port}`
-    // Bug 17 fix: include internal API key so requireAdmin middleware lets the cron through
-    await fetch(`${baseUrl}/api/admin/seed-activity`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env['INTERNAL_API_KEY'] ?? ''}` },
-    })
-    console.log('[Cron] Reseed complete')
+    // ⚠️  seed-activity call intentionally removed — OOM risk on cold Neon.
+    // Use manual POST /api/admin/seed-activity once server has been up 3+ min.
   } catch (err) {
-    console.error('[Cron] Error auto-reseeding events:', err)
+    console.error('[Cron] Error in hourly cleanup:', err)
   }
 })
 
