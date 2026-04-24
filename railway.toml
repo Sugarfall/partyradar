@@ -11,7 +11,7 @@ buildCommand = "npm install --prefer-offline && npx prisma generate --schema=pac
 # Railway Postgres DB is cold/slow, killing every deploy. Schema pushes must
 # be done manually via: railway run npx prisma db push --accept-data-loss
 # when there is an actual schema migration to apply.
-startCommand = "node --max-old-space-size=450 packages/api/dist/index.js"
+startCommand = "node packages/api/dist/index.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"
