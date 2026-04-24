@@ -159,17 +159,21 @@ function EarnRow({ emoji, title, desc }: { emoji: string; title: string; desc: s
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ReferralsPage() {
-  const { dbUser } = useAuth()
+  const { dbUser, loading: authLoading } = useAuth()
   const [data, setData] = useState<ReferralData | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [retryKey, setRetryKey] = useState(0)
+  const [fetchError, setFetchError] = useState('')
   const [copied, setCopied] = useState(false)
   const [tab, setTab] = useState<'guide' | 'earn' | 'leaderboard'>('earn')
   const [requestingPayout, setRequestingPayout] = useState(false)
   const [payoutMsg, setPayoutMsg] = useState('')
 
   useEffect(() => {
-    if (!dbUser) { setLoading(false); return }
+    if (authLoading) return                        // wait for Firebase to resolve
+    if (!dbUser) { setLoading(false); return }     // confirmed not logged in
+    setFetchError('')
     Promise.all([
       api.get<{ data: ReferralData }>('/referrals'),
       api.get<{ data: LeaderEntry[] }>('/referrals/leaderboard'),
@@ -178,9 +182,11 @@ export default function ReferralsPage() {
         if (refRes?.data) setData(refRes.data)
         if (lbRes?.data) setLeaderboard(lbRes.data)
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        setFetchError(err instanceof Error ? err.message : 'Could not load referral data')
+      })
       .finally(() => setLoading(false))
-  }, [dbUser?.id])
+  }, [dbUser?.id, authLoading, retryKey])
 
   function buildInviteLink(code: string): string {
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
@@ -217,6 +223,16 @@ export default function ReferralsPage() {
     } finally { setRequestingPayout(false) }
   }
 
+  // Spinner while Firebase auth OR data is resolving
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d', paddingTop: 56 }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin"
+          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+      </div>
+    )
+  }
+
   if (!dbUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4" style={{ background: '#04040d', paddingTop: 56 }}>
@@ -230,11 +246,16 @@ export default function ReferralsPage() {
     )
   }
 
-  if (loading) {
+  if (fetchError) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d', paddingTop: 56 }}>
-        <div className="w-10 h-10 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4" style={{ background: '#04040d', paddingTop: 56 }}>
+        <TrendingUp size={36} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
+        <p className="text-xs font-bold text-center max-w-xs" style={{ color: 'rgba(224,242,254,0.4)' }}>{fetchError}</p>
+        <button onClick={() => { setLoading(true); setFetchError(''); setRetryKey((k) => k + 1) }}
+          className="px-5 py-2.5 rounded-xl text-xs font-black tracking-widest"
+          style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.25)', color: 'var(--accent)' }}>
+          TRY AGAIN
+        </button>
       </div>
     )
   }
