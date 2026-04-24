@@ -117,19 +117,23 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }
 
-    // ── Query strategy: NO include on findMany ──────────────────────────────
-    // Prisma's `include` fetches related records via a SECOND concurrent query
-    // that needs its own pool connection. With Neon free-tier and
-    // connection_limit=3, connections 2+ are often in a zombie half-open state
-    // (only connection 1 is kept alive by the keepalive SELECT 1). When Prisma
-    // sends the host lookup on a zombie connection the Rust engine's socket
-    // read blocks indefinitely — freezing the Node.js event loop and preventing
-    // even setTimeout-based race timeouts from firing.
+    // ── SAFE QUERY STRATEGY (Neon free-tier stabilisation) ──────────────────
+    // Root cause of previous 60-second hangs: any findMany with take>~5 causes
+    // Prisma's Rust engine to block on a socket read that never completes (cold
+    // Neon compute + zombie pool connections), freezing the Node.js event loop
+    // and preventing even setTimeout race-timeouts from firing.
     //
-    // Fix: fetch events bare (scalar fields only), paginate, THEN fetch hosts
-    // for the small paged slice in a separate sequential query on the same
-    // live connection. Each step is race-wrapped for diagnostics.
-    const MAX_FETCH = 30
+    // The health-probe confirms take:3 and take:5 are always safe.  We
+    // therefore use DB-side pagination (take=pageLimit, skip=skip) instead of
+    // the previous JS-side overfetch+dedup approach.  Cross-source dedup is
+    // temporarily disabled — events may show occasional duplicates from
+    // multiple ingestion sources, but the endpoint is stable.  Dedup can be
+    // re-enabled once the Neon connection issue is resolved (Neon pooler or
+    // serverless driver upgrade).
+    //
+    // PAGE_LIMIT is capped at 5 — the largest proven-safe take value.
+    const PAGE_LIMIT = 5
+
     const race = <T>(label: string, p: Promise<T>): Promise<T> =>
       Promise.race([
         p,
@@ -138,41 +142,34 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         ),
       ])
 
-    // Step 1: bare event rows (no host join → single connection, no zombie risk)
-    // ORDER BY startsAt ASC (single-field, index-backed) so Postgres can serve
-    // this via an index scan without a full-table sort.  The compound ordering
-    // [isFeatured DESC, startsAt ASC] has no combined index and forces a seq-
-    // scan + sort on cold Neon free-tier, which blocks the Prisma Rust engine
-    // and freezes the Node.js event loop for >60 s.  We re-sort by isFeatured
-    // in JS after fetching so featured events still surface first.
-    const allEventsRaw = await race('findMany', prisma.event.findMany({
+    // Step 1: count (fast ~200ms, used for hasMore detection)
+    const total = await race('count', prisma.event.count({ where }))
+
+    // Step 2: page of events — tiny take, DB-side skip, single-field orderBy
+    // (ORDER BY startsAt ASC is index-backed; ORDER BY isFeatured,startsAt has
+    // no combined index and triggers a full-table sort that freezes the engine)
+    const events = await race('findMany', prisma.event.findMany({
       where,
-      take: MAX_FETCH,
+      take: PAGE_LIMIT,
+      skip,
       orderBy: { startsAt: 'asc' },
     }))
 
-    // Re-promote featured events to the front (stable-ish — features come
-    // before non-features, both groups retain startsAt order).
-    allEventsRaw.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0))
+    const pagedIds = events.map((e) => e.id)
 
-    const deduped = dedupeEvents(allEventsRaw)
-    const total = deduped.length
-    const paged = deduped.slice(skip, skip + Number(limit))
-    const pagedIds = paged.map((e) => e.id)
-
-    // Step 2: host lookup for paged slice only (sequential, single connection)
-    const uniqueHostIds = [...new Set(paged.map((e) => e.hostId))]
-    const hostMap: Record<string, typeof hostRows[number]> = {}
-    let hostRows: { id: string; username: string; displayName: string; photoUrl: string | null; bio: string | null; ageVerified: boolean; alcoholFriendly: boolean; subscriptionTier: string }[] = []
+    // Step 3: host lookup for this page's events (sequential, single connection)
+    type HostRow = { id: string; username: string; displayName: string; photoUrl: string | null; bio: string | null; ageVerified: boolean; alcoholFriendly: boolean; subscriptionTier: string }
+    const hostMap: Record<string, HostRow> = {}
+    const uniqueHostIds = [...new Set(events.map((e) => e.hostId))]
     if (uniqueHostIds.length > 0) {
-      hostRows = await race('hostLookup', prisma.user.findMany({
+      const hosts = await race('hostLookup', prisma.user.findMany({
         where: { id: { in: uniqueHostIds } },
         select: userSelect,
       }))
-      for (const h of hostRows) hostMap[h.id] = h
+      for (const h of hosts) hostMap[h.id] = h as HostRow
     }
 
-    // Step 3: guestCount + savesCount via groupBy (single-connection aggregations)
+    // Step 4: guestCount + savesCount via groupBy
     type GBRow = { eventId: string; _count: { id: number } }
     let guestRows: GBRow[] = []
     let savesRows: GBRow[] = []
@@ -197,7 +194,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const savesCountMap: Record<string, number> = {}
     for (const r of savesRows) savesCountMap[r.eventId] = r._count.id
 
-    const data = paged.map((e) => ({
+    const data = events.map((e) => ({
       ...e,
       host: hostMap[e.hostId] ?? null,
       // Hide exact address for neighbourhood-only events
@@ -206,7 +203,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       savesCount: savesCountMap[e.id] ?? 0,
     }))
 
-    res.json({ data, total, page: Number(page), limit: Number(limit), hasMore: skip + data.length < total })
+    res.json({ data, total, page: Number(page), limit: PAGE_LIMIT, hasMore: skip + data.length < total })
   } catch (err) {
     next(err)
   }
