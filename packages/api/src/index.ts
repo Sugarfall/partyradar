@@ -929,8 +929,14 @@ httpServer.listen(PORT, () => {
 
     // ── Startup auto-seed ──────────────────────────────────────────────────
     // Seed Glasgow venues + nightlife events if no future events exist.
-    // Fires 90s after the server binds the port — long enough for the Prisma
-    // pool to settle but short enough that a cold deploy still gets data fast.
+    // Fires 10 min after the server binds the port — long enough for the Prisma
+    // pool to fully initialise, Neon compute to warm up, and the first real
+    // user requests to complete without competing with heavy seed DB ops.
+    //
+    // Previously fired at 90s which caused OOM: seed-activity's 120+ sequential
+    // Prisma queries ran while Neon was still cold, saturating the 3-slot
+    // connection pool and pushing the 512 MB Railway container over its memory
+    // limit → crash → restart loop → restart retries exhausted → service stopped.
     //
     // IMPORTANT: seed operations run fire-and-forget (not awaited). Awaiting
     // the seed responses held the startup async function open for up to 2 min
@@ -972,7 +978,7 @@ httpServer.listen(PORT, () => {
       } catch (err) {
         console.error('[Startup] auto-seed failed:', err instanceof Error ? err.message : String(err))
       }
-    }, 90_000) // 90 s after port is bound
+    }, 600_000) // 10 min after port is bound — well after Neon warms up
 })
 
 export default app
