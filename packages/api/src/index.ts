@@ -465,7 +465,7 @@ app.use((_req, res, next) => {
   const isAdmin   = _req.path.startsWith('/api/admin')
   // ai-sync awaits Eventbrite + SerpAPI + Perplexity sequentially — can take 30-60 s
   const isAiSync  = _req.path === '/api/events/ai-sync'
-  const timeoutMs = (isAdmin || isAiSync) ? 120_000 : 15_000
+  const timeoutMs = (isAdmin || isAiSync) ? 120_000 : 25_000
   const timer = setTimeout(() => {
     if (!res.headersSent) {
       console.warn(`[API] Request timed out: ${_req.method} ${_req.path}`)
@@ -971,11 +971,16 @@ if (!process.env['INTERNAL_API_KEY']) {
 
     // ── Startup auto-seed ──────────────────────────────────────────────────
     // Seed Glasgow venues + nightlife events if no future events exist.
-    // Fires 60s after the server binds the port — early enough for a fresh
-    // deploy but after the Prisma pool has settled. Uses the in-process
-    // INTERNAL_API_KEY (generated above if not in env) to authenticate
-    // against requireAdmin, so no Firebase credentials are needed.
-    // This replaces the old "wait up to 1 hour for the hourly cron" behaviour.
+    // Fires 90s after the server binds the port — long enough for the Prisma
+    // pool to settle but short enough that a cold deploy still gets data fast.
+    //
+    // IMPORTANT: seed operations run fire-and-forget (not awaited). Awaiting
+    // the seed responses held the startup async function open for up to 2 min
+    // while seed-activity did hundreds of sequential DB upserts, which
+    // saturated the Neon connection pool and caused all other API requests
+    // (events, venues) to queue up and hit the 25 s server timeout.
+    // By firing without awaiting we return the event loop immediately so
+    // normal requests are never blocked by background seeding.
     setTimeout(async () => {
       try {
         const futureCount = await prisma.event.count({
@@ -988,19 +993,28 @@ if (!process.env['INTERNAL_API_KEY']) {
         const key = process.env['INTERNAL_API_KEY']!
         const base = `http://localhost:${PORT}`
         const headers = { Authorization: `Bearer ${key}` }
-        console.log('[Startup] No future events — auto-seeding Glasgow venues + activity...')
+        console.log('[Startup] No future events — auto-seeding Glasgow venues + activity (background)...')
 
-        const vRes = await fetch(`${base}/api/admin/seed-venues`, { method: 'POST', headers })
-        const vData = await vRes.json() as { data?: { message?: string } }
-        console.log(`[Startup] seed-venues → ${vData.data?.message ?? `HTTP ${vRes.status}`}`)
-
-        const aRes = await fetch(`${base}/api/admin/seed-activity`, { method: 'POST', headers })
-        const aData = await aRes.json() as { data?: { message?: string } }
-        console.log(`[Startup] seed-activity → ${aData.data?.message ?? `HTTP ${aRes.status}`}`)
+        // Seed venues first, then chain activity — both fire-and-forget so
+        // normal user requests are never blocked waiting for seed to complete.
+        fetch(`${base}/api/admin/seed-venues`, { method: 'POST', headers })
+          .then((r) => r.json() as Promise<{ data?: { message?: string } }>)
+          .then((d) => {
+            console.log(`[Startup] seed-venues → ${d.data?.message ?? 'done'}`)
+            // Delay activity by 5 s so venues are committed before seed-activity
+            // tries to look them up by name.
+            setTimeout(() => {
+              fetch(`${base}/api/admin/seed-activity`, { method: 'POST', headers })
+                .then((r) => r.json() as Promise<{ data?: { message?: string } }>)
+                .then((d2) => console.log(`[Startup] seed-activity → ${d2.data?.message ?? 'done'}`))
+                .catch((err) => console.error('[Startup] seed-activity error:', err))
+            }, 5_000)
+          })
+          .catch((err) => console.error('[Startup] seed-venues error:', err))
       } catch (err) {
         console.error('[Startup] auto-seed failed:', err instanceof Error ? err.message : String(err))
       }
-    }, 60_000) // 60 s after port is bound
+    }, 90_000) // 90 s after port is bound
   })
 })()
 

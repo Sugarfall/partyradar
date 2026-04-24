@@ -120,10 +120,9 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     // Cross-source dedup (e.g. one concert synced from Ticketmaster + Skiddle
     // + SerpAPI = 3 DB rows) requires us to fetch a widened window and
     // collapse in JS before paginating. Prisma can't dedupe on a derived
-    // fingerprint (first-word + day + rounded geo). The cap of 500 is an order
-    // of magnitude more than any geo-bounded page needs and keeps the request
-    // bounded regardless of how noisy the external feeds get.
-    const MAX_FETCH = 500
+    // fingerprint (first-word + day + rounded geo). Capped at 300 to keep
+    // Neon query time well within the 25 s server timeout.
+    const MAX_FETCH = 300
     const allEvents = await prisma.event.findMany({
       where,
       take: MAX_FETCH,

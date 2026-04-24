@@ -149,17 +149,17 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }
 
-    // Overfetch up to 1 000 so we can dedup + sort in JS before paginating.
+    // Overfetch up to 500 so we can dedup + sort in JS before paginating.
     // Prisma can't ORDER BY a derived expression or a cross-source dedup result,
     // so we pull the full bounding-box/filter result and handle it ourselves.
+    // Note: _count is intentionally omitted here — upcomingEventsCount is
+    // computed efficiently via a single groupBy after pagination (see below),
+    // avoiding a per-venue subquery on every list request.
     const rawVenues = await prisma.venue.findMany({
       where,
-      take: 1000,
+      take: 500,
       orderBy: hasGeo ? undefined : [{ name: 'asc' as const }],
-      select: {
-        ...venueSelect,
-        _count: { select: { events: true } },
-      },
+      select: venueSelect,
     })
 
     // Collapse venues that were ingested from multiple sources (seed-venues +

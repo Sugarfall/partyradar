@@ -545,8 +545,13 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
     const v = Object.fromEntries(venues.map((venue) => [venue.name, venue]))
 
     const now = new Date()
-    const tonight = (h: number, m = 0) => { const d = new Date(now); d.setHours(h, m, 0, 0); return d }
-    const inDays = (days: number, h = 22, m = 0) => { const d = new Date(now); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d }
+    // BASE_OFFSET shifts all seed event dates 14 days into the future so that:
+    // (a) events span days 14–21 from seed time, and
+    // (b) server restarts within that window find future events and skip re-seeding.
+    // The hourly cron re-seeds when all events expire (≥21 days after seed).
+    const BASE_OFFSET = 14
+    const tonight = (h: number, m = 0) => { const d = new Date(now); d.setDate(d.getDate() + BASE_OFFSET); d.setHours(h, m, 0, 0); return d }
+    const inDays = (days: number, h = 22, m = 0) => { const d = new Date(now); d.setDate(d.getDate() + days + BASE_OFFSET); d.setHours(h, m, 0, 0); return d }
 
     // ── 3. Create events (skip if venue missing or event already exists) ───────
     const eventDefs = [
