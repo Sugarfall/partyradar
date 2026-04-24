@@ -21,16 +21,31 @@ function buildDatasourceUrl(): string {
     const url = new URL(base)
 
     // Auto-convert direct Neon endpoint → pooler endpoint.
-    // Direct:  ep-<name>[.<prefix>].<region>.aws.neon.tech
-    // Pooler:  ep-<name>-pooler[.<prefix>].<region>.aws.neon.tech
-    // Only rewrite if the URL isn't already using a pooler or a non-Neon host.
-    // Use a simple string check (startsWith + includes) rather than a strict regex
-    // so it works across all Neon endpoint URL formats (c-N prefix, no prefix, etc.).
+    //
+    // Neon issues two kinds of connection hostnames:
+    //   Direct (compute-shard):  ep-<name>.<shard>.<region>.aws.neon.tech
+    //     e.g. ep-calm-credit-amgpnyea.c-5.us-east-1.aws.neon.tech
+    //   Pooler (regional):       ep-<name>-pooler.<region>.aws.neon.tech
+    //     e.g. ep-calm-credit-amgpnyea-pooler.us-east-1.aws.neon.tech
+    //
+    // The shard segment (c-5, a-2, …) only exists on direct endpoints.
+    // The pooler runs region-wide and its hostname never includes the shard.
+    //
+    // Previous bug: the rewrite kept the shard segment, so the "pooler" URL
+    // resolved to the same compute shard as the direct URL — bypassing the
+    // pooler entirely. Confirmed via DNS: both resolved to c-5.us-east-1.aws.neon.tech
+    // (compute) instead of us-east-1.aws.neon.tech (pooler).
     if (url.hostname.startsWith('ep-') &&
         url.hostname.includes('.aws.neon.tech') &&
         !url.hostname.includes('-pooler.')) {
-      // Insert -pooler immediately after the endpoint slug (first dot-segment)
-      url.hostname = url.hostname.replace(/^(ep-[a-z0-9-]+)(\..*)$/, '$1-pooler$2')
+      // 1. Strip the compute-shard segment (e.g. "c-5.", "a-2.") if present.
+      //    Pattern: single-letter + hyphen + digits immediately after the endpoint slug.
+      const withoutShard = url.hostname.replace(
+        /^(ep-[a-z0-9-]+)\.[a-z]-\d+(\..+)$/,
+        '$1$2',
+      )
+      // 2. Insert -pooler after the endpoint slug.
+      url.hostname = withoutShard.replace(/^(ep-[a-z0-9-]+)(\..+)$/, '$1-pooler$2')
       if (!url.searchParams.has('pgbouncer')) url.searchParams.set('pgbouncer', 'true')
     }
 
