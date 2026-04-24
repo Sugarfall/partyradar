@@ -725,104 +725,11 @@ cron.schedule('0 * * * *', async () => {
 })
 
 // ─── Startup cleanup ──────────────────────────────────────────────────────────
-// Deferred 120s (not 60s) so the event-loop is fully settled before any heavy
-// DB work begins. Queries run SEQUENTIALLY (one at a time) — the previous
-// parallel fire-and-forget pattern blasted all 5 queries simultaneously at T=60s
-// which saturated the 3-slot Prisma pool exactly when ai-sync fired its own
-// prisma.user.upsert(), causing the Prisma native engine to block the main JS
-// thread while waiting for a free slot → zombie server.
-setTimeout(async () => {
-  const cutoff = new Date(Date.now() - 8 * 3_600_000)
-
-  // 1. Delete expired externally-synced events (sequential — awaited)
-  //    User-created events are never auto-deleted.
-  try {
-    const r = await prisma.event.deleteMany({
-      where: { externalSource: { not: null }, startsAt: { lt: cutoff } },
-    })
-    if (r.count > 0) console.log(`[Startup] Deleted ${r.count} expired external events`)
-  } catch (err) { console.error('[Startup] delete expired events failed:', err) }
-
-  // 2. Unpublish external events outside UK/Ireland bbox
-  try {
-    const r = await prisma.event.updateMany({
-      where: {
-        externalSource: { not: null },
-        isPublished: true,
-        OR: [
-          { lat: { lt: 49 } }, { lat: { gt: 60 } },
-          { lng: { lt: -11 } }, { lng: { gt: 2 } },
-        ],
-      },
-      data: { isPublished: false },
-    })
-    if (r.count > 0) console.log(`[Startup] Unpublished ${r.count} out-of-region external events`)
-  } catch (err) { console.error('[Startup] unpublish overseas events failed:', err) }
-
-  // 3. Upsert system user
-  try {
-    const systemUser = await prisma.user.upsert({
-      where: { firebaseUid: 'partyradar_system' },
-      create: {
-        firebaseUid: 'partyradar_system',
-        email: 'assistant@partyradar.app',
-        username: 'partyradar',
-        displayName: 'PartyRadar Assistant',
-        photoUrl: 'https://partyradar.app/icons/icon-192.png',
-        interests: [],
-        subscriptionTier: 'FREE',
-      },
-      update: {
-        displayName: 'PartyRadar Assistant',
-        photoUrl: 'https://partyradar.app/icons/icon-192.png',
-      },
-    })
-    // 4. Migrate demo-host events to system user
-    const r = await prisma.event.updateMany({
-      where: {
-        externalSource: { not: null },
-        host: { displayName: 'demo' },
-        hostId: { not: systemUser.id },
-      },
-      data: { hostId: systemUser.id },
-    })
-    if (r.count > 0) console.log(`[Startup] Reassigned ${r.count} external events from "demo" → PartyRadar Assistant`)
-  } catch (err) { console.error('[Startup] system user / demo migration failed:', err) }
-
-  // 5. Delete bot posts
-  try {
-    const botUsers = await prisma.user.findMany({
-      where: { firebaseUid: { startsWith: 'demo_' } },
-      select: { id: true },
-    })
-    if (botUsers.length > 0) {
-      const r = await prisma.post.deleteMany({ where: { userId: { in: botUsers.map((u) => u.id) } } })
-      if (r.count > 0) console.log(`[Startup] Deleted ${r.count} bot post(s) from demo accounts`)
-    }
-  } catch (err) { console.error('[Startup] delete bot posts failed:', err) }
-
-  // 6. Backfill PostMedia for legacy posts
-  try {
-    const legacyPosts = await prisma.post.findMany({
-      where: { imageUrl: { not: null }, media: { none: {} } },
-      select: { id: true, imageUrl: true },
-      take: 200,
-    })
-    if (legacyPosts.length > 0) {
-      const r = await prisma.postMedia.createMany({
-        data: legacyPosts
-          .filter((p) => p.imageUrl)
-          .map((p) => ({
-            postId: p.id,
-            url: p.imageUrl!,
-            type: p.imageUrl!.includes('/video/') ? ('VIDEO' as const) : ('IMAGE' as const),
-            sortOrder: 0,
-          })),
-      })
-      console.log(`[Startup] Backfilled PostMedia for ${r.count} legacy post(s)`)
-    }
-  } catch (err) { console.error('[Startup] backfill PostMedia failed:', err) }
-}, 600_000) // 10 min — well after the server has stabilised and handled its first real requests
+// ─── Startup cleanup REMOVED ──────────────────────────────────────────────────
+// The deferred cleanup setTimeout was removed while stabilising the Railway
+// container on Neon free tier. The queries it ran (delete expired events,
+// upsert system user, etc.) are all no-ops on a fresh DB and can be re-added
+// once the server is confirmed stable under sustained load.
 
 
 // ─── Env-var sanity check ────────────────────────────────────────────────────
