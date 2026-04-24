@@ -10,8 +10,12 @@ if (!key) {
   console.warn('[stripe] STRIPE_SECRET_KEY is not set — payment endpoints will return 503')
 }
 
+// Cap every Stripe API call at 10 s so a slow/unresponsive Stripe response
+// fails server-side before the browser's 12-second AbortController fires.
+// Without this the browser gives up first and the user sees a confusing
+// "Network error" instead of a clean "checkout unavailable" message.
 export const stripe = key
-  ? new Stripe(key, { apiVersion: '2025-02-24.acacia' })
+  ? new Stripe(key, { apiVersion: '2025-02-24.acacia', timeout: 10_000 })
   : null as unknown as Stripe
 
 /**

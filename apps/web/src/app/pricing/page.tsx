@@ -9,7 +9,7 @@ import {
   Lock, Loader2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { api } from '@/lib/api'
+import { api, NetworkError } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -340,8 +340,11 @@ export default function PricingPage() {
       const json = await api.post<{ data: { url: string } }>('/subscriptions/checkout', { tier })
       if (json?.data?.url) window.location.href = json.data.url
       else throw new Error('No checkout URL returned')
-    } catch (err: any) {
-      alert(err?.message ?? 'Could not start checkout. Please try again.')
+    } catch (err: unknown) {
+      const msg = err instanceof NetworkError
+        ? 'Checkout is temporarily unavailable — please try again in a moment.'
+        : (err instanceof Error ? err.message : 'Could not start checkout. Please try again.')
+      alert(msg)
     } finally {
       setCheckoutLoading(null)
     }
@@ -416,7 +419,7 @@ export default function PricingPage() {
               )}
               onSelect={handleSelect}
               loading={checkoutLoading === plan.tier}
-              comingSoon={plan.price > 0 && configured !== null && !configured[plan.tier]}
+              comingSoon={plan.price > 0 && configured !== null && configured[plan.tier] === false}
             />
           ))}
         </div>
