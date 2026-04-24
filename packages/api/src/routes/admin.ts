@@ -530,8 +530,6 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
       })
       hosts[h.username] = user.id
     }
-    // Yield after user upserts so GC can reclaim before heavy event loop
-    await new Promise<void>((r) => setImmediate(r))
 
     // ── 2. Find seeded venues ─────────────────────────────────────────────────
     const venueNames = ['Sub Club', 'SWG3', "King Tut's Wah Wah Hut", 'The Garage', 'Barrowland Ballroom',
@@ -803,8 +801,7 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
 
     let eventsCreated = 0
     const createdEventIds: string[] = []
-    for (let i = 0; i < eventDefs.length; i++) {
-      const def = eventDefs[i]!
+    for (const def of eventDefs) {
       const venue = v[def.venueKey]
       const hostId = hosts[def.hostKey]
       if (!venue || !hostId) continue
@@ -827,31 +824,28 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
         }
         await prisma.event.update({ where: { id: existing.id }, data: updateData })
         createdEventIds.push(existing.id)
-      } else {
-        const isDemoHost = demoHosts.find((h) => h.username === def.hostKey)?.firebaseUid?.startsWith('demo_') ?? false
-        const descriptionWithPrefix = isDemoHost ? `[DEMO] ${def.description}` : def.description
-        const event = await prisma.event.create({
-          data: {
-            name: def.name, hostId, venueId: venue.id,
-            type: def.type, price: def.price, capacity: def.capacity,
-            startsAt: def.startsAt, endsAt: def.endsAt,
-            description: descriptionWithPrefix,
-            lat: venue.lat, lng: venue.lng, address: venue.address,
-            neighbourhood: 'Glasgow City Centre',
-            alcoholPolicy: def.alcoholPolicy, ageRestriction: def.ageRestriction,
-            dressCode: (def as any).dressCode ?? null,
-            vibeTags: def.vibeTags,
-            isPublished: true,
-            ticketQuantity: def.capacity, ticketsRemaining: Math.floor(def.capacity * 0.4),
-            whatToBring: [],
-          },
-        })
-        createdEventIds.push(event.id)
-        eventsCreated++
+        continue
       }
-      // Yield to event loop every 6 events so GC can reclaim native Prisma buffers
-      // between batches — prevents RSS spike that causes OOM on Railway 512MB free tier.
-      if (i % 6 === 5) await new Promise<void>((r) => setImmediate(r))
+      const isDemoHost = demoHosts.find((h) => h.username === def.hostKey)?.firebaseUid?.startsWith('demo_') ?? false
+      const descriptionWithPrefix = isDemoHost ? `[DEMO] ${def.description}` : def.description
+      const event = await prisma.event.create({
+        data: {
+          name: def.name, hostId, venueId: venue.id,
+          type: def.type, price: def.price, capacity: def.capacity,
+          startsAt: def.startsAt, endsAt: def.endsAt,
+          description: descriptionWithPrefix,
+          lat: venue.lat, lng: venue.lng, address: venue.address,
+          neighbourhood: 'Glasgow City Centre',
+          alcoholPolicy: def.alcoholPolicy, ageRestriction: def.ageRestriction,
+          dressCode: (def as any).dressCode ?? null,
+          vibeTags: def.vibeTags,
+          isPublished: true,
+          ticketQuantity: def.capacity, ticketsRemaining: Math.floor(def.capacity * 0.4),
+          whatToBring: [],
+        },
+      })
+      createdEventIds.push(event.id)
+      eventsCreated++
     }
 
     // ── 4. Seed RSVPs on tonight's events ─────────────────────────────────────
@@ -902,8 +896,7 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
     ]
 
     let postsCreated = 0
-    for (let i = 0; i < venuePosts.length; i++) {
-      const p = venuePosts[i]!
+    for (const p of venuePosts) {
       const venue = v[p.venueKey]
       const userId = hosts[p.authorKey]
       if (!venue || !userId) continue
@@ -911,15 +904,12 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
       const recent = await prisma.post.findFirst({
         where: { venueId: venue.id, userId, text: p.text },
       })
-      if (!recent) {
-        const createdAt = new Date(now.getTime() - p.minsAgo * 60 * 1000)
-        await prisma.post.create({
-          data: { userId, venueId: venue.id, text: p.text, createdAt, isStory: false },
-        })
-        postsCreated++
-      }
-      // Yield GC every 8 posts
-      if (i % 8 === 7) await new Promise<void>((r) => setImmediate(r))
+      if (recent) continue
+      const createdAt = new Date(now.getTime() - p.minsAgo * 60 * 1000)
+      await prisma.post.create({
+        data: { userId, venueId: venue.id, text: p.text, createdAt, isStory: false },
+      })
+      postsCreated++
     }
 
     // ── 6. Seed check-ins ─────────────────────────────────────────────────────
@@ -940,20 +930,16 @@ router.post('/seed-activity', requireAdmin, async (_req, res, next) => {
       { venueKey: "Maggie May's", userKey: 'kezia_out', crowd: 'RAMMED' },
     ]
     let checkInsCreated = 0
-    for (let i = 0; i < checkInDefs.length; i++) {
-      const ci = checkInDefs[i]!
+    for (const ci of checkInDefs) {
       const venue = v[ci.venueKey]
       const userId = hosts[ci.userKey]
       if (!venue || !userId) continue
       const recent = await prisma.checkIn.findFirst({
         where: { venueId: venue.id, userId, createdAt: { gte: new Date(now.getTime() - 4 * 60 * 60 * 1000) } },
       })
-      if (!recent) {
-        await prisma.checkIn.create({ data: { userId, venueId: venue.id, crowdLevel: ci.crowd } })
-        checkInsCreated++
-      }
-      // Yield GC every 7 check-ins
-      if (i % 7 === 6) await new Promise<void>((r) => setImmediate(r))
+      if (recent) continue
+      await prisma.checkIn.create({ data: { userId, venueId: venue.id, crowdLevel: ci.crowd } })
+      checkInsCreated++
     }
 
     // ── 7. Seed group chats + genre messages (background — don't block response) ─
