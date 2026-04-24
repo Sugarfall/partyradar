@@ -14,6 +14,7 @@ process.on('uncaughtException', (err) => {
 })
 
 import { createServer } from 'http'
+import { randomUUID } from 'crypto'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -866,13 +867,15 @@ function checkEnvVars() {
     console.warn('   Ticket purchases and subscriptions will fail. Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET to enable.')
   }
 
-  // INTERNAL_API_KEY — required for startup auto-seed + hourly reseed cron.
-  // Without it the DB stays empty on fresh deploys: no venues, no events, no feed.
+  // INTERNAL_API_KEY — used by startup auto-seed + hourly reseed cron.
+  // If not set, an ephemeral key is generated below (seeding still works).
+  // Set a stable value in Railway env vars if you need external callers to
+  // hit admin seed endpoints (e.g. from a CI script).
   if (!process.env['INTERNAL_API_KEY']) {
     console.warn(
-      '⚠️  [Startup] INTERNAL_API_KEY is not set — startup auto-seed and the ' +
-      'hourly reseed cron will be skipped. Set a random secret string in Railway ' +
-      'env vars to enable automatic venue + event population on fresh deploys.',
+      '⚠️  [Startup] INTERNAL_API_KEY not in env — an ephemeral key will be ' +
+      'auto-generated for this process. Startup seed + hourly reseed will work ' +
+      'normally; the key changes on every restart.',
     )
   }
 
@@ -901,6 +904,17 @@ function checkEnvVars() {
 }
 
 checkEnvVars()
+
+// ── Ephemeral internal key ────────────────────────────────────────────────────
+// requireAdmin accepts Bearer ${INTERNAL_API_KEY} for service-to-service calls
+// (hourly reseed cron, startup auto-seed). If the env var isn't configured in
+// Railway we generate a random UUID for this process lifetime. External callers
+// can never guess it; the cron and startup code read the same env var so they
+// always use the correct in-process value.
+if (!process.env['INTERNAL_API_KEY']) {
+  process.env['INTERNAL_API_KEY'] = randomUUID()
+  console.log('[Startup] No INTERNAL_API_KEY configured — generated ephemeral session key')
+}
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 // IMPORTANT: listen() is called AFTER the Prisma engine warmup, not before.
@@ -954,6 +968,39 @@ checkEnvVars()
     setInterval(() => {
       console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
     }, 30_000)
+
+    // ── Startup auto-seed ──────────────────────────────────────────────────
+    // Seed Glasgow venues + nightlife events if no future events exist.
+    // Fires 60s after the server binds the port — early enough for a fresh
+    // deploy but after the Prisma pool has settled. Uses the in-process
+    // INTERNAL_API_KEY (generated above if not in env) to authenticate
+    // against requireAdmin, so no Firebase credentials are needed.
+    // This replaces the old "wait up to 1 hour for the hourly cron" behaviour.
+    setTimeout(async () => {
+      try {
+        const futureCount = await prisma.event.count({
+          where: { isPublished: true, isCancelled: false, startsAt: { gt: new Date() } },
+        })
+        if (futureCount > 0) {
+          console.log(`[Startup] ${futureCount} future event(s) already in DB — auto-seed skipped`)
+          return
+        }
+        const key = process.env['INTERNAL_API_KEY']!
+        const base = `http://localhost:${PORT}`
+        const headers = { Authorization: `Bearer ${key}` }
+        console.log('[Startup] No future events — auto-seeding Glasgow venues + activity...')
+
+        const vRes = await fetch(`${base}/api/admin/seed-venues`, { method: 'POST', headers })
+        const vData = await vRes.json() as { data?: { message?: string } }
+        console.log(`[Startup] seed-venues → ${vData.data?.message ?? `HTTP ${vRes.status}`}`)
+
+        const aRes = await fetch(`${base}/api/admin/seed-activity`, { method: 'POST', headers })
+        const aData = await aRes.json() as { data?: { message?: string } }
+        console.log(`[Startup] seed-activity → ${aData.data?.message ?? `HTTP ${aRes.status}`}`)
+      } catch (err) {
+        console.error('[Startup] auto-seed failed:', err instanceof Error ? err.message : String(err))
+      }
+    }, 60_000) // 60 s after port is bound
   })
 })()
 
