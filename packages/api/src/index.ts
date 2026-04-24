@@ -917,44 +917,15 @@ if (!process.env['INTERNAL_API_KEY']) {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-// IMPORTANT: listen() is called AFTER the Prisma engine warmup, not before.
-//
-// Prisma's library engine initialises its Rust async runtime the first time any
-// model query is executed.  Running that query BEFORE listen() means no TCP port
-// is bound during the init, so Railway's health-check cannot fire prematurely.
-// Once the init finishes, listen() is called and the health-check responds <1 s.
-//
-// The warmup Promise is attached with .catch(() => null) so that if the race
-// timeout fires first and Neon later rejects the dangling findFirst, it is
-// silently swallowed rather than becoming an unhandled rejection.
-// (The process.on('unhandledRejection') guard at the top of this file is a
-// belt-and-braces safety net, but not relying on it alone is cleaner.)
-//
-// Timing budget (Railway healthcheckTimeout = 120 s):
-//   Prisma init    ≈  0-30 s  (N-API worker, mostly async)
-//   Neon cold-start ≈  0-60 s  (Neon compute wakeup)
-//   Worst case total ≈ 90 s  →  listen() at T+90 s
-//   Healthcheck fires  T+0 s  →  passes well within 120 s window
-;(async () => {
-  console.log('[Startup] Warming Prisma engine + Neon connection (may take 20-60 s)…')
-  try {
-    const warmupQuery = prisma.event.findFirst({ select: { id: true } }).catch(() => null)
-    await Promise.race([
-      warmupQuery,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Prisma/Neon init timed out after 90 s')), 90_000)
-      ),
-    ])
-    console.log('[Startup] Prisma engine ready — binding port now')
-  } catch {
-    console.warn('[Startup] Engine pre-init timed out — binding port anyway (first DB queries will self-init)')
-  }
-
-  httpServer.listen(PORT, () => {
-    console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
-    setInterval(() => {
-      console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
-    }, 30_000)
+// Bind the port immediately — Railway's healthcheck (/api/health) must respond
+// within healthcheckTimeout (120 s) or the deploy is marked failed.
+// /api/health has no DB dependency so it responds in <1 ms.
+// Prisma + Neon warm up lazily on the first real DB query after startup.
+httpServer.listen(PORT, () => {
+  console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
+  setInterval(() => {
+    console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
+  }, 30_000)
 
     // ── Startup auto-seed ──────────────────────────────────────────────────
     // Seed Glasgow venues + nightlife events if no future events exist.
@@ -1002,7 +973,6 @@ if (!process.env['INTERNAL_API_KEY']) {
         console.error('[Startup] auto-seed failed:', err instanceof Error ? err.message : String(err))
       }
     }, 90_000) // 90 s after port is bound
-  })
-})()
+})
 
 export default app
