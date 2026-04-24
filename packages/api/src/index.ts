@@ -589,6 +589,104 @@ app.get('/api/health/events', async (_req, res) => {
   res.json({ status: 'ok', ...results })
 })
 
+// Full events-handler diagnostic — mirrors GET /api/events exactly (take:30,
+// full userSelect, dedupeEvents, guestGroupBy, savesGroupBy) with per-step
+// timing. Shows WHICH step causes the 60s hang that plain probe misses.
+// Safe to call unauthenticated.
+app.get('/api/health/events-full', async (_req, res) => {
+  const diag: Record<string, number | string> = {}
+  const eightHoursAgo = new Date(Date.now() - 8 * 3_600_000)
+  const where = { isPublished: true, isCancelled: false, startsAt: { gte: eightHoursAgo } }
+  const fullSelect = {
+    id: true, username: true, displayName: true,
+    photoUrl: true, bio: true, ageVerified: true,
+    alcoholFriendly: true, subscriptionTier: true,
+  }
+
+  const raceStep = <T>(label: string, p: Promise<T>): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after 15s`)), 15_000)
+      ),
+    ])
+
+  // Step 1: findMany take:30 with full host select (same as events list handler)
+  let t = Date.now()
+  let allEvents: { id: string; externalSource?: string | null; name: string; venueName?: string | null; venueId?: string | null; lat: number; lng: number; startsAt: Date; isFeatured: boolean }[] = []
+  try {
+    allEvents = await raceStep('findMany30', prisma.event.findMany({
+      where,
+      take: 30,
+      orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
+      include: { host: { select: fullSelect } },
+    }) as unknown as Promise<typeof allEvents>)
+    diag['findMany30Ms'] = Date.now() - t
+    diag['findMany30Count'] = allEvents.length
+  } catch (err: any) {
+    diag['findMany30Err'] = err?.message ?? String(err)
+    return res.status(500).json({ diag })
+  }
+
+  // Step 2: dedupeEvents (pure JS, should be instant)
+  t = Date.now()
+  let deduped: typeof allEvents = []
+  try {
+    const { dedupeEvents: de } = await import('./lib/dedupeEvents')
+    deduped = de(allEvents)
+    diag['dedupeMs'] = Date.now() - t
+    diag['dedupedCount'] = deduped.length
+  } catch (err: any) {
+    diag['dedupeErr'] = err?.message ?? String(err)
+    return res.status(500).json({ diag })
+  }
+
+  // Step 3: guestGroupBy (EventGuest WHERE eventId IN paged IDs)
+  const pagedIds = deduped.slice(0, 20).map((e) => e.id)
+  diag['pagedIds'] = pagedIds.length
+  t = Date.now()
+  type GBRow = { eventId: string; _count: { id: number } }
+  let guestRows: GBRow[] = []
+  try {
+    if (pagedIds.length > 0) {
+      guestRows = await raceStep('guestGroupBy',
+        prisma.eventGuest.groupBy({
+          by: ['eventId'],
+          where: { eventId: { in: pagedIds }, status: 'CONFIRMED' },
+          _count: { id: true },
+        }) as unknown as Promise<GBRow[]>
+      )
+    }
+    diag['guestGroupByMs'] = Date.now() - t
+    diag['guestRowCount'] = guestRows.length
+  } catch (err: any) {
+    diag['guestGroupByErr'] = err?.message ?? String(err)
+    return res.status(500).json({ diag })
+  }
+
+  // Step 4: savesGroupBy (SavedEvent WHERE eventId IN paged IDs)
+  t = Date.now()
+  let savesRows: GBRow[] = []
+  try {
+    if (pagedIds.length > 0) {
+      savesRows = await raceStep('savesGroupBy',
+        prisma.savedEvent.groupBy({
+          by: ['eventId'],
+          where: { eventId: { in: pagedIds } },
+          _count: { id: true },
+        }) as unknown as Promise<GBRow[]>
+      )
+    }
+    diag['savesGroupByMs'] = Date.now() - t
+    diag['savesRowCount'] = savesRows.length
+  } catch (err: any) {
+    diag['savesGroupByErr'] = err?.message ?? String(err)
+    return res.status(500).json({ diag })
+  }
+
+  res.json({ status: 'ok', diag })
+})
+
 app.use(errorHandler)
 
 // ─── Cron Jobs ────────────────────────────────────────────────────────────────
