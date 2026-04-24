@@ -120,8 +120,16 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     // Cross-source dedup (e.g. one concert synced from Ticketmaster + Skiddle
     // + SerpAPI = 3 DB rows) requires us to fetch a widened window and
     // collapse in JS before paginating. Prisma can't dedupe on a derived
-    // fingerprint (first-word + day + rounded geo). Capped at 300 to keep
-    // Neon query time well within the 25 s server timeout.
+    // fingerprint (first-word + day + rounded geo).
+    //
+    // ⚠️  _count REMOVED from this include — it generated N×2 correlated
+    // subqueries (one confirmed-guest count + one saves count PER EVENT ROW).
+    // With 300 events fetched, that's 600 sequential subqueries; on Neon
+    // free-tier this takes >60 s and freezes the event loop / times out.
+    //
+    // Instead, guest counts and saves counts are computed via two efficient
+    // groupBy aggregations AFTER pagination, operating on only limit=20 rows
+    // (same pattern the venues endpoint uses for upcomingEventsCount).
     const MAX_FETCH = 300
     const allEvents = await prisma.event.findMany({
       where,
@@ -129,12 +137,6 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
       include: {
         host: { select: userSelect },
-        _count: {
-          select: {
-            guests: { where: { status: 'CONFIRMED' } },
-            savedBy: true,
-          },
-        },
       },
     })
 
@@ -142,12 +144,32 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const total = deduped.length
     const paged = deduped.slice(skip, skip + Number(limit))
 
+    // Compute guestCount + savesCount in two aggregation queries on the
+    // paginated slice only (≤20 rows). Far cheaper than correlated subqueries.
+    const pagedIds = paged.map((e) => e.id)
+    const [guestRows, savesRows] = await Promise.all([
+      prisma.eventGuest.groupBy({
+        by: ['eventId'],
+        where: { eventId: { in: pagedIds }, status: 'CONFIRMED' },
+        _count: { id: true },
+      }),
+      prisma.savedEvent.groupBy({
+        by: ['eventId'],
+        where: { eventId: { in: pagedIds } },
+        _count: { id: true },
+      }),
+    ])
+    const guestCountMap: Record<string, number> = {}
+    for (const r of guestRows) guestCountMap[r.eventId] = r._count.id
+    const savesCountMap: Record<string, number> = {}
+    for (const r of savesRows) savesCountMap[r.eventId] = r._count.id
+
     const data = paged.map((e) => ({
       ...e,
       // Hide exact address for neighbourhood-only events
       address: e.showNeighbourhoodOnly && !req.user ? e.neighbourhood : e.address,
-      guestCount: e._count.guests,
-      savesCount: e._count.savedBy,
+      guestCount: guestCountMap[e.id] ?? 0,
+      savesCount: savesCountMap[e.id] ?? 0,
     }))
 
     res.json({ data, total, page: Number(page), limit: Number(limit), hasMore: skip + data.length < total })
