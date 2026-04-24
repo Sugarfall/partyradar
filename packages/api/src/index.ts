@@ -938,9 +938,17 @@ httpServer.listen(PORT, () => {
 
   // Warm up Prisma engine + Neon compute in the background.
   // Fire-and-forget — never blocks request handling or the healthcheck.
+  //
+  // CRITICAL: attach .catch() to the findFirst Promise BEFORE passing it to
+  // Promise.race.  When the 90 s timeout fires first, Promise.race settles and
+  // the findFirst is left as a dangling Promise.  If Neon then fails/times-out
+  // and the dangling findFirst rejects, Node.js 24 (which throws on unhandled
+  // Promise rejections) will crash the process.  The pre-attached .catch(() => null)
+  // converts any rejection to a resolved null so it can never become unhandled.
   console.log('[Startup] Warming Prisma engine + Neon connection in background…')
+  const warmupQuery = prisma.event.findFirst({ select: { id: true } }).catch(() => null)
   Promise.race([
-    prisma.event.findFirst({ select: { id: true } }),
+    warmupQuery,
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('Prisma/Neon init timed out after 90 s')), 90_000)
     ),
@@ -948,7 +956,7 @@ httpServer.listen(PORT, () => {
     .then(() => console.log('[Startup] Prisma engine ready'))
     .catch((err: unknown) =>
       console.warn(
-        '[Startup] Prisma warm-up failed/timed out — first DB queries will self-init:',
+        '[Startup] Prisma warm-up timed out — first DB queries will self-init:',
         err instanceof Error ? err.message : String(err),
       )
     )
