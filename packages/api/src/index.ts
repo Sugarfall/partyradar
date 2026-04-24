@@ -694,14 +694,23 @@ app.use(errorHandler)
 // ── Neon keepalive ───────────────────────────────────────────────────────────
 // Neon free-tier computes auto-suspend after 5 minutes of inactivity.
 // Ping every minute so there is never more than 60 s of DB idle time —
-// well below the 5-minute suspend threshold. The previous 4-minute interval
-// was too close to the limit; cron fires at wall-clock minute boundaries so
-// the actual gap could be up to ~4 min 59 s if the server started at :59.
-// Raw query intentional: $queryRaw is always available once the Prisma engine
-// is initialised; model queries would trigger lazy init if somehow missed.
+// well below the 5-minute suspend threshold.
+//
+// IMPORTANT: We run 3 pings concurrently (connection_limit=3 pool) so that ALL
+// pool connections are touched every minute. A single SELECT 1 only refreshes
+// connection 1; connections 2 and 3 stay idle and drift into a zombie half-open
+// state after Neon's brief intra-session suspension. When a large query then
+// lands on a zombie connection, Prisma's Rust engine blocks the socket read
+// indefinitely — freezing the Node.js event loop. Pinging all 3 slots prevents
+// zombie connections entirely at the cost of 3 trivial SELECT 1 queries/min.
 cron.schedule('* * * * *', async () => {
   try {
-    await prisma.$queryRaw`SELECT 1`
+    // Three concurrent pings to keep all pool connections alive.
+    await Promise.all([
+      prisma.$queryRaw`SELECT 1`,
+      prisma.$queryRaw`SELECT 1`,
+      prisma.$queryRaw`SELECT 1`,
+    ])
   } catch (err) {
     console.error('[Keepalive] DB ping failed:', err instanceof Error ? err.message : String(err))
   }

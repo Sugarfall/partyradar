@@ -117,9 +117,18 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }
 
-    // Fetch a small window for dedup then paginate in JS.
-    // Each async step is wrapped in a 12s Promise.race so we get a
-    // diagnostic 500 (with the step name) instead of a silent 60s hang.
+    // ── Query strategy: NO include on findMany ──────────────────────────────
+    // Prisma's `include` fetches related records via a SECOND concurrent query
+    // that needs its own pool connection. With Neon free-tier and
+    // connection_limit=3, connections 2+ are often in a zombie half-open state
+    // (only connection 1 is kept alive by the keepalive SELECT 1). When Prisma
+    // sends the host lookup on a zombie connection the Rust engine's socket
+    // read blocks indefinitely — freezing the Node.js event loop and preventing
+    // even setTimeout-based race timeouts from firing.
+    //
+    // Fix: fetch events bare (scalar fields only), paginate, THEN fetch hosts
+    // for the small paged slice in a separate sequential query on the same
+    // live connection. Each step is race-wrapped for diagnostics.
     const MAX_FETCH = 30
     const race = <T>(label: string, p: Promise<T>): Promise<T> =>
       Promise.race([
@@ -129,23 +138,31 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         ),
       ])
 
-    const allEvents = await race('findMany', prisma.event.findMany({
+    // Step 1: bare event rows (no host join → single connection, no zombie risk)
+    const allEventsRaw = await race('findMany', prisma.event.findMany({
       where,
       take: MAX_FETCH,
       orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
-      include: { host: { select: userSelect } },
     }))
 
-    const deduped = dedupeEvents(allEvents)
+    const deduped = dedupeEvents(allEventsRaw)
     const total = deduped.length
     const paged = deduped.slice(skip, skip + Number(limit))
-
     const pagedIds = paged.map((e) => e.id)
 
-    // Compute guestCount + savesCount via two groupBy aggregations.
-    // Skip both if pagedIds is empty (avoids Prisma empty-IN edge case).
-    // Cast via `unknown` because Prisma's groupBy overload signature is too
-    // complex for TypeScript to unify through the `race` generic wrapper.
+    // Step 2: host lookup for paged slice only (sequential, single connection)
+    const uniqueHostIds = [...new Set(paged.map((e) => e.hostId))]
+    const hostMap: Record<string, typeof hostRows[number]> = {}
+    let hostRows: { id: string; username: string; displayName: string; photoUrl: string | null; bio: string | null; ageVerified: boolean; alcoholFriendly: boolean; subscriptionTier: string }[] = []
+    if (uniqueHostIds.length > 0) {
+      hostRows = await race('hostLookup', prisma.user.findMany({
+        where: { id: { in: uniqueHostIds } },
+        select: userSelect,
+      }))
+      for (const h of hostRows) hostMap[h.id] = h
+    }
+
+    // Step 3: guestCount + savesCount via groupBy (single-connection aggregations)
     type GBRow = { eventId: string; _count: { id: number } }
     let guestRows: GBRow[] = []
     let savesRows: GBRow[] = []
@@ -172,6 +189,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     const data = paged.map((e) => ({
       ...e,
+      host: hostMap[e.hostId] ?? null,
       // Hide exact address for neighbourhood-only events
       address: e.showNeighbourhoodOnly && !req.user ? e.neighbourhood : e.address,
       guestCount: guestCountMap[e.id] ?? 0,
