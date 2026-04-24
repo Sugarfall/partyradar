@@ -64,6 +64,42 @@ const venueSelect = {
   spotifyDisplayName: true,
 }
 
+/** Normalise a venue name for cross-source deduplication.
+ *  "The Stereo Glasgow" and "Stereo" both → "stereo". */
+function normalizeVenueName(name: string): string {
+  let s = name.toLowerCase()
+  s = s.replace(/[^\p{L}\p{N}\s]/gu, '')      // strip punctuation
+  s = s.replace(/\s+/g, ' ').trim()
+  s = s.replace(/^(the|a|an)\s+/, '')           // strip leading articles
+  s = s.replace(/([bcdfghjklmnpqrstvwxz])\1+/g, '$1') // collapse doubled consonants
+  // Drop trailing city tokens — "stereo glasgow" → "stereo"
+  s = s
+    .replace(/\s+(glasgow|edinburgh|london|manchester|birmingham|liverpool|leeds|sheffield|bristol|cardiff|belfast|dublin|dundee|aberdeen|scotland|england|wales|uk)\s*$/gi, '')
+    .trim()
+  return s
+}
+
+/** Deduplicate venues that represent the same real-world location but were
+ *  ingested from multiple sources (seed-venues + Google Places discover).
+ *  When two records share the same normalised name + city, keep the one
+ *  with the richer data (prefers googlePlaceId → longer address → first seen). */
+function dedupeVenuesByName<T extends { id: string; name: string; city: string; googlePlaceId?: string | null; address?: string }>(venues: T[]): T[] {
+  function score(v: T): number {
+    return (v.googlePlaceId ? 4 : 0) + Math.min((v.address?.length ?? 0), 10)
+  }
+  const best = new Map<string, T>()
+  for (const v of venues) {
+    const key = `${normalizeVenueName(v.name)}|${v.city.toLowerCase().trim()}`
+    const existing = best.get(key)
+    if (!existing || score(v) > score(existing)) {
+      best.set(key, v)
+    }
+  }
+  // Preserve original order — keep only the winning record per key
+  const winners = new Set(best.values())
+  return venues.filter((v) => winners.has(v))
+}
+
 /** Haversine distance in km between two lat/lng points */
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371
@@ -113,30 +149,31 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }
 
-    // When geo coords are provided, overfetch the whole bounding box so we can
-    // sort by real distance before paginating — Prisma can't ORDER BY a derived
-    // expression. Cap at 1 000 which is comfortably beyond any city's venue count.
-    const [rawVenues, total] = await Promise.all([
-      prisma.venue.findMany({
-        where,
-        take: hasGeo ? 1000 : limitN,
-        skip: hasGeo ? 0 : skip,
-        orderBy: hasGeo ? undefined : [{ name: 'asc' as const }],
-        select: {
-          ...venueSelect,
-          _count: { select: { events: true } },
-        },
-      }),
-      prisma.venue.count({ where }),
-    ])
+    // Overfetch up to 1 000 so we can dedup + sort in JS before paginating.
+    // Prisma can't ORDER BY a derived expression or a cross-source dedup result,
+    // so we pull the full bounding-box/filter result and handle it ourselves.
+    const rawVenues = await prisma.venue.findMany({
+      where,
+      take: 1000,
+      orderBy: hasGeo ? undefined : [{ name: 'asc' as const }],
+      select: {
+        ...venueSelect,
+        _count: { select: { events: true } },
+      },
+    })
+
+    // Collapse venues that were ingested from multiple sources (seed-venues +
+    // Google Places discover) but represent the same real-world location.
+    const dedupedRaw = dedupeVenuesByName(rawVenues)
+    const total = dedupedRaw.length
 
     // Sort by Haversine distance when geo coords provided, then paginate in JS
     const venues = hasGeo
-      ? rawVenues
+      ? dedupedRaw
           .slice()
           .sort((a, b) => haversineKm(latN, lngN, a.lat, a.lng) - haversineKm(latN, lngN, b.lat, b.lng))
           .slice(skip, skip + limitN)
-      : rawVenues
+      : dedupedRaw.slice(skip, skip + limitN)
 
     // Enrich with upcoming events count
     const now = new Date()

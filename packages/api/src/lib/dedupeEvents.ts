@@ -151,6 +151,10 @@ function normalizeName(name: string, venueName?: string | null): string {
   }
 
   s = s.replace(/[^\p{L}\p{N}\s]/gu, '') // strip punctuation, keep letters + digits
+  // Collapse doubled consonants: "guerrilla" → "guerila", "guerilla" → "guerila".
+  // Cross-source typos (single vs double letter) produce the same normalised form
+  // and therefore the same dedup key — they collapse correctly.
+  s = s.replace(/([bcdfghjklmnpqrstvwxz])\1+/g, '$1')
   s = s.replace(CITY_SUFFIX_RE, ' ')     // drop trailing city names
   s = s.replace(/\s+/g, ' ').trim()
   s = s.replace(/^(the|a|an)\s+/, '')    // strip leading articles
