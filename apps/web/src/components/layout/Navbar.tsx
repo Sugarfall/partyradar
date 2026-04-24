@@ -360,15 +360,10 @@ function NavbarInner() {
                         style={{ color: pathname.startsWith('/pricing') ? '#00e5ff' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                         <Sparkles size={15} /> Upgrade Plan
                       </Link>
-                      <Link href="/earn" onClick={() => setMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
-                        style={{ color: pathname.startsWith('/earn') ? 'var(--accent)' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <TrendingUp size={15} /> How to Earn
-                      </Link>
                       <Link href="/referrals" onClick={() => setMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
-                        style={{ color: pathname.startsWith('/referrals') ? '#00ff88' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <Gift size={15} /> Referrals
+                        style={{ color: (pathname.startsWith('/referrals') || pathname.startsWith('/earn')) ? '#00ff88' : 'rgba(224,242,254,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <TrendingUp size={15} /> Earn & Referrals
                       </Link>
                       <Link href="/wallet" onClick={() => setMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"

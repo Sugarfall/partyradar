@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -185,11 +185,13 @@ function PlanCard({
   isCurrentTier,
   onSelect,
   loading,
+  comingSoon = false,
 }: {
   plan: Plan
   isCurrentTier: boolean
   onSelect: (tier: Plan['tier']) => void
   loading: boolean
+  comingSoon?: boolean
 }) {
   const isFree = plan.price === 0
   const emoji = plan.emoji
@@ -268,6 +270,13 @@ function PlanCard({
           >
             DEFAULT
           </div>
+        ) : comingSoon ? (
+          <div
+            className="w-full py-2.5 rounded-xl text-[11px] font-black text-center"
+            style={{ background: `${col}08`, border: `1px dashed ${col}30`, color: `${col}60`, letterSpacing: '0.1em' }}
+          >
+            COMING SOON
+          </div>
         ) : (
           <button
             onClick={() => onSelect(plan.tier)}
@@ -310,6 +319,13 @@ export default function PricingPage() {
   const { dbUser } = useAuth()
   const [track, setTrack] = useState<Track>('attendee')
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
+  const [configured, setConfigured] = useState<Record<string, boolean> | null>(null)
+
+  useEffect(() => {
+    api.get<{ configured: Record<string, boolean> }>('/subscriptions/plans')
+      .then((r) => { if (r?.configured) setConfigured(r.configured) })
+      .catch(() => {})
+  }, [])
 
   const currentTier = dbUser?.subscriptionTier ?? 'FREE'
   const plans = track === 'attendee' ? ATTENDEE_PLANS : HOST_PLANS
@@ -400,6 +416,7 @@ export default function PricingPage() {
               )}
               onSelect={handleSelect}
               loading={checkoutLoading === plan.tier}
+              comingSoon={plan.price > 0 && configured !== null && !configured[plan.tier]}
             />
           ))}
         </div>

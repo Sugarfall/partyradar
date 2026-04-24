@@ -15,9 +15,18 @@ const PRICE_IDS: Record<string, string> = {
   PREMIUM: process.env['STRIPE_PREMIUM_PRICE_ID'] ?? '',
 }
 
-/** GET /api/subscriptions/plans */
+/** GET /api/subscriptions/plans
+ *  Also returns `configured` — a per-tier flag indicating whether the
+ *  corresponding Stripe price ID is set. Clients use this to show
+ *  "Coming soon" instead of triggering a checkout that would 503. */
 router.get('/plans', (_req, res) => {
-  res.json({ data: TIERS })
+  const configured: Record<string, boolean> = {
+    FREE:    true, // free tier never needs a price ID
+    BASIC:   !!PRICE_IDS['BASIC'],
+    PRO:     !!PRICE_IDS['PRO'],
+    PREMIUM: !!PRICE_IDS['PREMIUM'],
+  }
+  res.json({ data: TIERS, configured })
 })
 
 /** GET /api/subscriptions/status */
