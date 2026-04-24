@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
 import type { VenueType } from '@prisma/client'
-import { optionalAuth } from '../middleware/auth'
+import { optionalAuth, requireAdmin } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 
@@ -349,7 +349,7 @@ router.get('/status', (_req, res) => {
  * One-time cleanup: removes any casino/betting venues already in the DB.
  * Idempotent — safe to call multiple times.
  */
-router.delete('/purge-rejected', async (_req, res, next) => {
+router.delete('/purge-rejected', requireAdmin, async (_req, res, next) => {
   try {
     const all = await prisma.venue.findMany({ select: { id: true, name: true } })
     const toDelete = all.filter((v) => isRejectedVenue(v.name)).map((v) => v.id)

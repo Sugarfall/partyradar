@@ -70,7 +70,12 @@ function PayoutsInner() {
   }
 
   // ── Auth gate ─────────────────────────────────────────────────────────────
-  if (authLoading) return null
+  if (authLoading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d' }}>
+      <div className="w-10 h-10 border-2 rounded-full animate-spin"
+        style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+    </div>
+  )
   if (!dbUser) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d' }}>

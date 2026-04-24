@@ -164,7 +164,12 @@ export default function CreateEventPage() {
       .catch(silent('events/create:connect-status'))
   }, [dbUser])
 
-  if (authLoading || !dbUser) return null
+  if (authLoading || !dbUser) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#04040d' }}>
+      <div className="w-10 h-10 border-2 rounded-full animate-spin"
+        style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+    </div>
+  )
 
   function update(patch: Partial<CreateEventInput>) {
     setForm((f) => ({ ...f, ...patch }))
