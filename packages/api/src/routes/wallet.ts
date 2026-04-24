@@ -125,8 +125,8 @@ router.post('/top-up', requireAuth, async (req: AuthRequest, res, next) => {
         quantity: 1,
       }],
       mode: 'payment',
-      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/wallet?success=true`,
-      cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/wallet`,
+      success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/wallet?success=true`,
+      cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/wallet`,
       metadata: {
         type: 'wallet_topup',
         userId,
@@ -460,8 +460,8 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
           quantity: 1,
         }],
         mode: 'payment',
-        success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/wallet/card-ordered?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/wallet`,
+        success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/wallet/card-ordered?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/wallet`,
         metadata: {
           type: 'card_order',
           userId,

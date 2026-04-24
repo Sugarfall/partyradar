@@ -64,8 +64,8 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
-      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/subscriptions?success=true`,
-      cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/subscriptions`,
+      success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/subscriptions?success=true`,
+      cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/subscriptions`,
       metadata: { userId, tier },
     })
 
@@ -88,7 +88,7 @@ router.post('/portal', requireAuth, async (req: AuthRequest, res, next) => {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
-      return_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/settings`,
+      return_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/settings`,
     })
 
     res.json({ data: { url: session.url } })

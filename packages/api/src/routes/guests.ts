@@ -150,7 +150,7 @@ router.post('/invite/link', requireAuth, async (req: AuthRequest, res, next) => 
       await prisma.event.update({ where: { id: event.id }, data: { inviteToken } })
     }
 
-    const link = `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/events/invite/${inviteToken}`
+    const link = `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/events/invite/${inviteToken}`
     res.json({ data: { link, inviteToken } })
   } catch (err) {
     next(err)

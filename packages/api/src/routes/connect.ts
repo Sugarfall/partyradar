@@ -7,7 +7,7 @@ import { ensureStripe } from '../lib/stripe'
 
 const router = Router()
 
-const FRONTEND_URL = process.env['FRONTEND_URL'] ?? 'http://localhost:3000'
+const FRONTEND_URL = process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'
 
 /** Build fresh return/refresh URLs for a Stripe Account Link. */
 function accountLinkUrls() {

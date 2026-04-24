@@ -586,8 +586,8 @@ router.post('/:id/subscribe', requireAuth, async (req: AuthRequest, res, next) =
       }],
       mode: 'subscription',
       metadata: { type: 'group_subscription', groupId: group.id, userId },
-      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/subscriptions?success=true`,
-      cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/subscriptions`,
+      success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/subscriptions?success=true`,
+      cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/subscriptions`,
     })
 
     res.json({ data: { url: session.url } })

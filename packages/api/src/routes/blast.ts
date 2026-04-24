@@ -34,8 +34,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         quantity: 1,
       }],
       mode: 'payment',
-      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/events/${eventId}?blast=success`,
-      cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/events/${eventId}`,
+      success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/events/${eventId}?blast=success`,
+      cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/events/${eventId}`,
       metadata: { type: 'push_blast', eventId, tierId, message: message.slice(0, 200), userId },
     })
 

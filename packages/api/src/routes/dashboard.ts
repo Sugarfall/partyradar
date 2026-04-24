@@ -245,8 +245,8 @@ router.post('/blast', requireAuth, async (req: AuthRequest, res, next) => {
         quantity: 1,
       }],
       mode: 'payment',
-      success_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/dashboard?blast=queued`,
-      cancel_url: `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/dashboard`,
+      success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/dashboard?blast=queued`,
+      cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/dashboard`,
       metadata: {
         type: 'push_blast_queued',
         eventId,
