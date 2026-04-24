@@ -117,20 +117,16 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       where['lng'] = { gte: lngN - lngDelta, lte: lngN + lngDelta }
     }
 
-    // Cross-source dedup (e.g. one concert synced from Ticketmaster + Skiddle
-    // + SerpAPI = 3 DB rows) requires us to fetch a widened window and
-    // collapse in JS before paginating. Prisma can't dedupe on a derived
-    // fingerprint (first-word + day + rounded geo).
+    // Fetch a small window for dedup then paginate in JS.
+    // MAX_FETCH intentionally kept tiny (30) — on Neon free-tier, loading
+    // large result sets (300 rows × all Event fields + User JOIN) blocks
+    // Prisma's Rust engine for >60 s, freezing the Node.js event loop.
+    // 30 rows is plenty for cross-source dedup within a single page.
     //
     // ⚠️  _count REMOVED from this include — it generated N×2 correlated
-    // subqueries (one confirmed-guest count + one saves count PER EVENT ROW).
-    // With 300 events fetched, that's 600 sequential subqueries; on Neon
-    // free-tier this takes >60 s and freezes the event loop / times out.
-    //
-    // Instead, guest counts and saves counts are computed via two efficient
-    // groupBy aggregations AFTER pagination, operating on only limit=20 rows
-    // (same pattern the venues endpoint uses for upcomingEventsCount).
-    const MAX_FETCH = 300
+    // subqueries that took >60 s with 300 events. Guest + saves counts are
+    // computed via two groupBy aggregations on the paginated slice only.
+    const MAX_FETCH = 30
     const allEvents = await prisma.event.findMany({
       where,
       take: MAX_FETCH,
@@ -144,21 +140,19 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const total = deduped.length
     const paged = deduped.slice(skip, skip + Number(limit))
 
-    // Compute guestCount + savesCount in two aggregation queries on the
-    // paginated slice only (≤20 rows). Far cheaper than correlated subqueries.
+    // Compute guestCount + savesCount via two groupBy aggregations on the
+    // paginated slice only (≤20 rows). Sequential to avoid pool contention.
     const pagedIds = paged.map((e) => e.id)
-    const [guestRows, savesRows] = await Promise.all([
-      prisma.eventGuest.groupBy({
-        by: ['eventId'],
-        where: { eventId: { in: pagedIds }, status: 'CONFIRMED' },
-        _count: { id: true },
-      }),
-      prisma.savedEvent.groupBy({
-        by: ['eventId'],
-        where: { eventId: { in: pagedIds } },
-        _count: { id: true },
-      }),
-    ])
+    const guestRows = await prisma.eventGuest.groupBy({
+      by: ['eventId'],
+      where: { eventId: { in: pagedIds }, status: 'CONFIRMED' },
+      _count: { id: true },
+    })
+    const savesRows = await prisma.savedEvent.groupBy({
+      by: ['eventId'],
+      where: { eventId: { in: pagedIds } },
+      _count: { id: true },
+    })
     const guestCountMap: Record<string, number> = {}
     for (const r of guestRows) guestCountMap[r.eventId] = r._count.id
     const savesCountMap: Record<string, number> = {}
