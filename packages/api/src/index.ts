@@ -546,12 +546,13 @@ app.use(errorHandler)
 
 // ── Neon keepalive ───────────────────────────────────────────────────────────
 // Neon free-tier computes auto-suspend after 5 minutes of inactivity.
-// A raw SELECT 1 ping every 4 minutes keeps the compute warm so the first
-// real request after a quiet period is never stalled by a cold-start handshake.
-// Raw query is used intentionally — model queries (findFirst) can trigger
-// Prisma engine initialisation which may block the event loop; SELECT 1 is
-// handled by the raw-query pipeline which is always open after DB init.
-cron.schedule('*/4 * * * *', async () => {
+// Ping every minute so there is never more than 60 s of DB idle time —
+// well below the 5-minute suspend threshold. The previous 4-minute interval
+// was too close to the limit; cron fires at wall-clock minute boundaries so
+// the actual gap could be up to ~4 min 59 s if the server started at :59.
+// Raw query intentional: $queryRaw is always available once the Prisma engine
+// is initialised; model queries would trigger lazy init if somehow missed.
+cron.schedule('* * * * *', async () => {
   try {
     await prisma.$queryRaw`SELECT 1`
   } catch (err) {
