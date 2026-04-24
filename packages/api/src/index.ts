@@ -541,24 +541,52 @@ app.get('/api/health/db', async (_req, res) => {
   }
 })
 
-// Events-table probe — counts future published events with a 25s timeout.
-// Distinguishes "events table broken" from "complex JOIN slow" and confirms
-// statement_timeout is working. Safe to call unauthenticated.
+// Events-table probe — tests count, bare findMany (no include), and findMany
+// with host include. Each step timed individually to isolate the bottleneck.
+// Safe to call unauthenticated.
 app.get('/api/health/events', async (_req, res) => {
-  const t0 = Date.now()
+  const results: Record<string, number | string> = {}
+  const eightHoursAgo = new Date(Date.now() - 8 * 3_600_000)
+  const where = { isPublished: true, isCancelled: false, startsAt: { gte: eightHoursAgo } }
+
+  // Step 1: count
+  let t = Date.now()
   try {
     const count = await Promise.race([
-      prisma.event.count({
-        where: { isPublished: true, isCancelled: false, startsAt: { gte: new Date() } },
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('events count timed out after 25s')), 25_000)
-      ),
+      prisma.event.count({ where }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('count timeout')), 15_000)),
     ])
-    res.json({ status: 'ok', futureEvents: count, ms: Date.now() - t0 })
-  } catch (err: any) {
-    res.status(503).json({ status: 'error', error: err?.message ?? String(err), ms: Date.now() - t0 })
-  }
+    results['countMs'] = Date.now() - t
+    results['futureEvents'] = count
+  } catch (err: any) { results['countErr'] = err?.message ?? String(err) }
+
+  // Step 2: bare findMany, no include — just id+name
+  t = Date.now()
+  try {
+    const rows = await Promise.race([
+      prisma.event.findMany({ where, take: 5, select: { id: true, name: true, startsAt: true }, orderBy: { startsAt: 'asc' } }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('bareFind timeout')), 15_000)),
+    ])
+    results['bareFindMs'] = Date.now() - t
+    results['bareFindCount'] = rows.length
+  } catch (err: any) { results['bareFindErr'] = err?.message ?? String(err) }
+
+  // Step 3: findMany with host include
+  t = Date.now()
+  try {
+    const rows = await Promise.race([
+      prisma.event.findMany({
+        where, take: 3,
+        orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
+        include: { host: { select: { id: true, username: true, displayName: true, photoUrl: true } } },
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('includeFind timeout')), 15_000)),
+    ])
+    results['includeFindMs'] = Date.now() - t
+    results['includeFindCount'] = rows.length
+  } catch (err: any) { results['includeFindErr'] = err?.message ?? String(err) }
+
+  res.json({ status: 'ok', ...results })
 })
 
 app.use(errorHandler)
