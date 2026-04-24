@@ -57,8 +57,23 @@ function buildDatasourceUrl(): string {
     if (!url.searchParams.has('connect_timeout'))  url.searchParams.set('connect_timeout', '30')
     if (!url.searchParams.has('pool_timeout'))     url.searchParams.set('pool_timeout', '10')
     if (!url.searchParams.has('connection_limit')) url.searchParams.set('connection_limit', '3')
-    // socket_timeout: convert indefinite event-loop freeze → fast P2024 error.
-    if (!url.searchParams.has('socket_timeout'))   url.searchParams.set('socket_timeout', '10')
+    // socket_timeout: ask Prisma's Rust engine to close a stalled socket after
+    // 20 s.  Supported since Prisma 4.x.  If ignored (older engine), the
+    // server-side statement_timeout below is the backstop.
+    if (!url.searchParams.has('socket_timeout'))   url.searchParams.set('socket_timeout', '20')
+    // statement_timeout: Neon kills any individual SQL statement that runs for
+    // longer than 20 s.  This is enforced ON THE SERVER — even if socket_timeout
+    // above doesn't unblock Prisma's Rust engine, Neon will forcibly terminate
+    // the query and return a PostgreSQL error, which DOES unblock the engine and
+    // lets the error propagate to Node.js, freeing the event loop.
+    // Without this, complex queries on a cold Neon compute can block the event
+    // loop for 60-120 s, preventing health checks from responding and making
+    // Railway think the container has crashed.
+    if (!url.searchParams.has('options')) {
+      // PostgreSQL connection-startup options: -c sets a GUC variable.
+      // URL-encoded: space → %20, = → %3D  (handled by URL.searchParams).
+      url.searchParams.set('options', '-c statement_timeout=20000')
+    }
 
     const final = url.toString()
     // Log the host (not credentials) so Railway logs confirm which endpoint is used.

@@ -541,6 +541,26 @@ app.get('/api/health/db', async (_req, res) => {
   }
 })
 
+// Events-table probe — counts future published events with a 25s timeout.
+// Distinguishes "events table broken" from "complex JOIN slow" and confirms
+// statement_timeout is working. Safe to call unauthenticated.
+app.get('/api/health/events', async (_req, res) => {
+  const t0 = Date.now()
+  try {
+    const count = await Promise.race([
+      prisma.event.count({
+        where: { isPublished: true, isCancelled: false, startsAt: { gte: new Date() } },
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('events count timed out after 25s')), 25_000)
+      ),
+    ])
+    res.json({ status: 'ok', futureEvents: count, ms: Date.now() - t0 })
+  } catch (err: any) {
+    res.status(503).json({ status: 'error', error: err?.message ?? String(err), ms: Date.now() - t0 })
+  }
+})
+
 app.use(errorHandler)
 
 // ─── Cron Jobs ────────────────────────────────────────────────────────────────
