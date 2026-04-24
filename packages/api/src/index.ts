@@ -927,58 +927,18 @@ httpServer.listen(PORT, () => {
     console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
   }, 30_000)
 
-    // ── Startup auto-seed ──────────────────────────────────────────────────
-    // Seed Glasgow venues + nightlife events if no future events exist.
-    // Fires 10 min after the server binds the port — long enough for the Prisma
-    // pool to fully initialise, Neon compute to warm up, and the first real
-    // user requests to complete without competing with heavy seed DB ops.
+    // ── Startup auto-seed REMOVED ──────────────────────────────────────────
+    // seed-activity runs 120+ sequential Prisma queries. Running it on startup
+    // (even at T+10min) saturates the 3-slot Neon connection pool and pushes
+    // the 512 MB Railway container over its memory limit → OOM crash.
     //
-    // Previously fired at 90s which caused OOM: seed-activity's 120+ sequential
-    // Prisma queries ran while Neon was still cold, saturating the 3-slot
-    // connection pool and pushing the 512 MB Railway container over its memory
-    // limit → crash → restart loop → restart retries exhausted → service stopped.
-    //
-    // IMPORTANT: seed operations run fire-and-forget (not awaited). Awaiting
-    // the seed responses held the startup async function open for up to 2 min
-    // while seed-activity did hundreds of sequential DB upserts, which
-    // saturated the Neon connection pool and caused all other API requests
-    // (events, venues) to queue up and hit the 25 s server timeout.
-    // By firing without awaiting we return the event loop immediately so
-    // normal requests are never blocked by background seeding.
-    setTimeout(async () => {
-      try {
-        const futureCount = await prisma.event.count({
-          where: { isPublished: true, isCancelled: false, startsAt: { gt: new Date() } },
-        })
-        if (futureCount > 0) {
-          console.log(`[Startup] ${futureCount} future event(s) already in DB — auto-seed skipped`)
-          return
-        }
-        const key = process.env['INTERNAL_API_KEY']!
-        const base = `http://localhost:${PORT}`
-        const headers = { Authorization: `Bearer ${key}` }
-        console.log('[Startup] No future events — auto-seeding Glasgow venues + activity (background)...')
-
-        // Seed venues first, then chain activity — both fire-and-forget so
-        // normal user requests are never blocked waiting for seed to complete.
-        fetch(`${base}/api/admin/seed-venues`, { method: 'POST', headers })
-          .then((r) => r.json() as Promise<{ data?: { message?: string } }>)
-          .then((d) => {
-            console.log(`[Startup] seed-venues → ${d.data?.message ?? 'done'}`)
-            // Delay activity by 5 s so venues are committed before seed-activity
-            // tries to look them up by name.
-            setTimeout(() => {
-              fetch(`${base}/api/admin/seed-activity`, { method: 'POST', headers })
-                .then((r) => r.json() as Promise<{ data?: { message?: string } }>)
-                .then((d2) => console.log(`[Startup] seed-activity → ${d2.data?.message ?? 'done'}`))
-                .catch((err) => console.error('[Startup] seed-activity error:', err))
-            }, 5_000)
-          })
-          .catch((err) => console.error('[Startup] seed-venues error:', err))
-      } catch (err) {
-        console.error('[Startup] auto-seed failed:', err instanceof Error ? err.message : String(err))
-      }
-    }, 600_000) // 10 min after port is bound — well after Neon warms up
+    // Seeding is now done in two ways:
+    //   1. MANUAL: POST /api/admin/seed-venues then /api/admin/seed-activity
+    //      with Authorization: Bearer <INTERNAL_API_KEY> after the server
+    //      has been stable for a few minutes.
+    //   2. AUTOMATIC: The hourly reseed cron (below) fires at :00 of every
+    //      hour and re-seeds if no future events exist. So within 60 min of
+    //      a fresh deploy with an empty DB, events populate automatically.
 })
 
 export default app
