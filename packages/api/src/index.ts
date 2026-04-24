@@ -917,49 +917,44 @@ if (!process.env['INTERNAL_API_KEY']) {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-// Bind the port IMMEDIATELY so Railway's healthcheck (/api/health) can respond
-// in milliseconds.  Railway's 120 s healthcheckTimeout window starts at process
-// launch — NOT at first response — so delaying listen() by 20-90 s for a
-// Prisma/Neon warmup can exhaust the window and crash the deployment.
+// IMPORTANT: listen() is called AFTER the Prisma engine warmup, not before.
 //
-// Prisma 5 uses the library engine (N-API worker threads), so the first query
-// no longer synchronously blocks the Node.js event loop.  We can therefore:
-//   1. Bind the port immediately → healthcheck passes in < 1 s
-//   2. Warm Prisma + Neon concurrently in a background Promise → first real
-//      user requests hit a warm DB within 20-60 s of deploy
+// Prisma's library engine initialises its Rust async runtime the first time any
+// model query is executed.  Running that query BEFORE listen() means no TCP port
+// is bound during the init, so Railway's health-check cannot fire prematurely.
+// Once the init finishes, listen() is called and the health-check responds <1 s.
 //
-// /api/health has no DB dependency so it always responds instantly regardless
-// of Neon cold-start state.
-httpServer.listen(PORT, () => {
-  console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
-  setInterval(() => {
-    console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
-  }, 30_000)
+// The warmup Promise is attached with .catch(() => null) so that if the race
+// timeout fires first and Neon later rejects the dangling findFirst, it is
+// silently swallowed rather than becoming an unhandled rejection.
+// (The process.on('unhandledRejection') guard at the top of this file is a
+// belt-and-braces safety net, but not relying on it alone is cleaner.)
+//
+// Timing budget (Railway healthcheckTimeout = 120 s):
+//   Prisma init    ≈  0-30 s  (N-API worker, mostly async)
+//   Neon cold-start ≈  0-60 s  (Neon compute wakeup)
+//   Worst case total ≈ 90 s  →  listen() at T+90 s
+//   Healthcheck fires  T+0 s  →  passes well within 120 s window
+;(async () => {
+  console.log('[Startup] Warming Prisma engine + Neon connection (may take 20-60 s)…')
+  try {
+    const warmupQuery = prisma.event.findFirst({ select: { id: true } }).catch(() => null)
+    await Promise.race([
+      warmupQuery,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Prisma/Neon init timed out after 90 s')), 90_000)
+      ),
+    ])
+    console.log('[Startup] Prisma engine ready — binding port now')
+  } catch {
+    console.warn('[Startup] Engine pre-init timed out — binding port anyway (first DB queries will self-init)')
+  }
 
-  // Warm up Prisma engine + Neon compute in the background.
-  // Fire-and-forget — never blocks request handling or the healthcheck.
-  //
-  // CRITICAL: attach .catch() to the findFirst Promise BEFORE passing it to
-  // Promise.race.  When the 90 s timeout fires first, Promise.race settles and
-  // the findFirst is left as a dangling Promise.  If Neon then fails/times-out
-  // and the dangling findFirst rejects, Node.js 24 (which throws on unhandled
-  // Promise rejections) will crash the process.  The pre-attached .catch(() => null)
-  // converts any rejection to a resolved null so it can never become unhandled.
-  console.log('[Startup] Warming Prisma engine + Neon connection in background…')
-  const warmupQuery = prisma.event.findFirst({ select: { id: true } }).catch(() => null)
-  Promise.race([
-    warmupQuery,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Prisma/Neon init timed out after 90 s')), 90_000)
-    ),
-  ])
-    .then(() => console.log('[Startup] Prisma engine ready'))
-    .catch((err: unknown) =>
-      console.warn(
-        '[Startup] Prisma warm-up timed out — first DB queries will self-init:',
-        err instanceof Error ? err.message : String(err),
-      )
-    )
+  httpServer.listen(PORT, () => {
+    console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
+    setInterval(() => {
+      console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
+    }, 30_000)
 
     // ── Startup auto-seed ──────────────────────────────────────────────────
     // Seed Glasgow venues + nightlife events if no future events exist.
@@ -1007,6 +1002,7 @@ httpServer.listen(PORT, () => {
         console.error('[Startup] auto-seed failed:', err instanceof Error ? err.message : String(err))
       }
     }, 90_000) // 90 s after port is bound
-})
+  })
+})()
 
 export default app
