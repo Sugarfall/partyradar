@@ -144,19 +144,26 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     // Compute guestCount + savesCount via two groupBy aggregations.
     // Skip both if pagedIds is empty (avoids Prisma empty-IN edge case).
-    let guestRows: { eventId: string; _count: { id: number } }[] = []
-    let savesRows: { eventId: string; _count: { id: number } }[] = []
+    // Cast via `unknown` because Prisma's groupBy overload signature is too
+    // complex for TypeScript to unify through the `race` generic wrapper.
+    type GBRow = { eventId: string; _count: { id: number } }
+    let guestRows: GBRow[] = []
+    let savesRows: GBRow[] = []
     if (pagedIds.length > 0) {
-      guestRows = await race('guestGroupBy', prisma.eventGuest.groupBy({
-        by: ['eventId'],
-        where: { eventId: { in: pagedIds }, status: 'CONFIRMED' },
-        _count: { id: true },
-      }))
-      savesRows = await race('savesGroupBy', prisma.savedEvent.groupBy({
-        by: ['eventId'],
-        where: { eventId: { in: pagedIds } },
-        _count: { id: true },
-      }))
+      guestRows = await race('guestGroupBy',
+        prisma.eventGuest.groupBy({
+          by: ['eventId'],
+          where: { eventId: { in: pagedIds }, status: 'CONFIRMED' },
+          _count: { id: true },
+        }) as unknown as Promise<GBRow[]>
+      )
+      savesRows = await race('savesGroupBy',
+        prisma.savedEvent.groupBy({
+          by: ['eventId'],
+          where: { eventId: { in: pagedIds } },
+          _count: { id: true },
+        }) as unknown as Promise<GBRow[]>
+      )
     }
     const guestCountMap: Record<string, number> = {}
     for (const r of guestRows) guestCountMap[r.eventId] = r._count.id
