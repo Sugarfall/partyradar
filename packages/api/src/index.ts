@@ -543,6 +543,93 @@ app.get('/api/health/db', async (_req, res) => {
 
 app.use(errorHandler)
 
+// ─── Fast seed helper ─────────────────────────────────────────────────────────
+// Lightweight alternative to POST /api/admin/seed-activity that runs in
+// ≤4 DB queries total. Used by the startup timer and the hourly reseed cron
+// so neither triggers the ~120-op sequential seed that spikes RSS on Railway's
+// 512 MB free tier. The full rich seed (posts, check-ins, group chats) is still
+// available via POST /api/admin/seed-activity for manual admin use.
+async function fastSeedEvents(): Promise<void> {
+  // 1. Ensure a seed host exists
+  const systemUser = await prisma.user.upsert({
+    where: { firebaseUid: 'partyradar_system' },
+    create: {
+      firebaseUid: 'partyradar_system',
+      email: 'assistant@partyradar.app',
+      username: 'partyradar',
+      displayName: 'PartyRadar',
+      interests: [],
+      subscriptionTier: 'FREE',
+    },
+    update: {},
+    select: { id: true },
+  })
+
+  // 2. Find up to 6 Glasgow venues to host the demo events
+  const venues = await prisma.venue.findMany({
+    where: { city: { contains: 'Glasgow', mode: 'insensitive' } },
+    select: { id: true, name: true, lat: true, lng: true, address: true },
+    orderBy: { name: 'asc' },
+    take: 6,
+  })
+
+  // If no venues exist at all, run seed-venues first (it's lightweight — ~25 upserts)
+  if (venues.length === 0) {
+    console.log('[FastSeed] No Glasgow venues found — triggering seed-venues before fast-seed')
+    const key = process.env['INTERNAL_API_KEY'] ?? ''
+    const base = `http://localhost:${PORT}`
+    await fetch(`${base}/api/admin/seed-venues`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}` },
+    }).catch((err) => console.error('[FastSeed] seed-venues error:', err))
+    // Events will be created on the next hourly cron / restart
+    return
+  }
+
+  const now = new Date()
+  // Place events 14–16 days in the future (matches full seed-activity offset)
+  // so they co-exist without duplication if the full seed runs later.
+  const types = ['CLUB_NIGHT', 'CONCERT', 'CLUB_NIGHT', 'PUB_NIGHT', 'CONCERT', 'CLUB_NIGHT'] as const
+  const prices = [12, 8, 10, 0, 15, 20]
+
+  const eventData = venues.map((venue, i) => {
+    const startsAt = new Date(now)
+    startsAt.setDate(startsAt.getDate() + 14 + Math.floor(i / 2))
+    startsAt.setHours(22 + (i % 2 === 0 ? 0 : 30 / 60), 0, 0, 0)
+    const endsAt = new Date(startsAt)
+    endsAt.setDate(endsAt.getDate() + 1)
+    endsAt.setHours(4, 0, 0, 0)
+    const cap = 200 + i * 50
+    return {
+      name: `Glasgow Night: ${venue.name}`,
+      hostId: systemUser.id,
+      venueId: venue.id,
+      type: types[i] ?? 'CLUB_NIGHT' as const,
+      startsAt,
+      endsAt,
+      isPublished: true,
+      isCancelled: false,
+      lat: venue.lat,
+      lng: venue.lng,
+      address: venue.address,
+      neighbourhood: 'Glasgow City Centre',
+      price: prices[i] ?? 10,
+      capacity: cap,
+      ticketQuantity: cap,
+      ticketsRemaining: Math.floor(cap * 0.4),
+      description: `[DEMO] A night out at ${venue.name}. House, techno and good vibes — Glasgow at its best.`,
+      alcoholPolicy: 'PROVIDED' as const,
+      ageRestriction: 'AGE_18' as const,
+      vibeTags: ['House', 'Techno', 'Glasgow'],
+      whatToBring: [] as string[],
+    }
+  })
+
+  // 3. Bulk-create — skipDuplicates guards on any DB-level unique constraints
+  const result = await prisma.event.createMany({ data: eventData, skipDuplicates: true })
+  console.log(`[FastSeed] Created ${result.count} demo event(s) at ${venues.map((v) => v.name).join(', ')}`)
+}
+
 // ─── Cron Jobs ────────────────────────────────────────────────────────────────
 
 // ── Neon keepalive ───────────────────────────────────────────────────────────
@@ -707,20 +794,12 @@ cron.schedule('0 * * * *', async () => {
       }
     }
 
-    // Call seed-activity internally — use APP_URL in production, localhost in dev
-    const port = process.env['PORT'] ?? 4000
-    const railwayDomain = process.env['RAILWAY_PUBLIC_DOMAIN']
-    const appUrl = process.env['APP_URL']
-    const baseUrl = appUrl
-      ? appUrl
-      : railwayDomain
-        ? `https://${railwayDomain}`
-        : `http://localhost:${port}`
-    // Bug 17 fix: include internal API key so requireAdmin middleware lets the cron through
-    await fetch(`${baseUrl}/api/admin/seed-activity`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env['INTERNAL_API_KEY'] ?? ''}` },
-    })
+    // Use lightweight fast-seed (3 DB ops) instead of the full seed-activity
+    // HTTP call (~120 sequential ops). seed-activity spikes RSS over Railway's
+    // 512 MB free-tier limit when run repeatedly by the cron, causing a crash
+    // loop where maxRetries is exhausted and the service stops permanently.
+    // The full seed is still available via POST /api/admin/seed-activity.
+    await fastSeedEvents()
     console.log('[Cron] Reseed complete')
   } catch (err) {
     console.error('[Cron] Error auto-reseeding events:', err)
@@ -928,17 +1007,14 @@ httpServer.listen(PORT, () => {
   }, 30_000)
 
     // ── Startup auto-seed ──────────────────────────────────────────────────
-    // Seed Glasgow venues + nightlife events if no future events exist.
-    // Fires 90s after the server binds the port — long enough for the Prisma
-    // pool to settle but short enough that a cold deploy still gets data fast.
+    // If no future published events exist, run the lightweight fast-seed
+    // (≤4 DB queries total) instead of the full seed-activity HTTP call
+    // (~120 sequential queries). The heavy HTTP call spiked RSS over Railway's
+    // 512 MB free-tier limit and caused a crash loop where maxRetries was
+    // exhausted and the service stopped permanently.
     //
-    // IMPORTANT: seed operations run fire-and-forget (not awaited). Awaiting
-    // the seed responses held the startup async function open for up to 2 min
-    // while seed-activity did hundreds of sequential DB upserts, which
-    // saturated the Neon connection pool and caused all other API requests
-    // (events, venues) to queue up and hit the 25 s server timeout.
-    // By firing without awaiting we return the event loop immediately so
-    // normal requests are never blocked by background seeding.
+    // Full rich data (posts, check-ins, RSVPs, group chats) can be added
+    // any time via POST /api/admin/seed-activity once the server is stable.
     setTimeout(async () => {
       try {
         const futureCount = await prisma.event.count({
@@ -948,29 +1024,10 @@ httpServer.listen(PORT, () => {
           console.log(`[Startup] ${futureCount} future event(s) already in DB — auto-seed skipped`)
           return
         }
-        const key = process.env['INTERNAL_API_KEY']!
-        const base = `http://localhost:${PORT}`
-        const headers = { Authorization: `Bearer ${key}` }
-        console.log('[Startup] No future events — auto-seeding Glasgow venues + activity (background)...')
-
-        // Seed venues first, then chain activity — both fire-and-forget so
-        // normal user requests are never blocked waiting for seed to complete.
-        fetch(`${base}/api/admin/seed-venues`, { method: 'POST', headers })
-          .then((r) => r.json() as Promise<{ data?: { message?: string } }>)
-          .then((d) => {
-            console.log(`[Startup] seed-venues → ${d.data?.message ?? 'done'}`)
-            // Delay activity by 5 s so venues are committed before seed-activity
-            // tries to look them up by name.
-            setTimeout(() => {
-              fetch(`${base}/api/admin/seed-activity`, { method: 'POST', headers })
-                .then((r) => r.json() as Promise<{ data?: { message?: string } }>)
-                .then((d2) => console.log(`[Startup] seed-activity → ${d2.data?.message ?? 'done'}`))
-                .catch((err) => console.error('[Startup] seed-activity error:', err))
-            }, 5_000)
-          })
-          .catch((err) => console.error('[Startup] seed-venues error:', err))
+        console.log('[Startup] No future events — running lightweight fast-seed...')
+        await fastSeedEvents()
       } catch (err) {
-        console.error('[Startup] auto-seed failed:', err instanceof Error ? err.message : String(err))
+        console.error('[Startup] fast-seed failed:', err instanceof Error ? err.message : String(err))
       }
     }, 90_000) // 90 s after port is bound
 })
