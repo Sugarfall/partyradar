@@ -139,11 +139,21 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       ])
 
     // Step 1: bare event rows (no host join → single connection, no zombie risk)
+    // ORDER BY startsAt ASC (single-field, index-backed) so Postgres can serve
+    // this via an index scan without a full-table sort.  The compound ordering
+    // [isFeatured DESC, startsAt ASC] has no combined index and forces a seq-
+    // scan + sort on cold Neon free-tier, which blocks the Prisma Rust engine
+    // and freezes the Node.js event loop for >60 s.  We re-sort by isFeatured
+    // in JS after fetching so featured events still surface first.
     const allEventsRaw = await race('findMany', prisma.event.findMany({
       where,
       take: MAX_FETCH,
-      orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
+      orderBy: { startsAt: 'asc' },
     }))
+
+    // Re-promote featured events to the front (stable-ish — features come
+    // before non-features, both groups retain startsAt order).
+    allEventsRaw.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0))
 
     const deduped = dedupeEvents(allEventsRaw)
     const total = deduped.length

@@ -611,15 +611,14 @@ app.get('/api/health/events-full', async (_req, res) => {
       ),
     ])
 
-  // Step 1: findMany take:30 with full host select (same as events list handler)
+  // Step 1: findMany take:30, NO include, single-field orderBy (matches fixed events handler)
   let t = Date.now()
-  let allEvents: { id: string; externalSource?: string | null; name: string; venueName?: string | null; venueId?: string | null; lat: number; lng: number; startsAt: Date; isFeatured: boolean }[] = []
+  let allEvents: { id: string; hostId: string; externalSource?: string | null; name: string; venueName?: string | null; venueId?: string | null; lat: number; lng: number; startsAt: Date; isFeatured: boolean }[] = []
   try {
     allEvents = await raceStep('findMany30', prisma.event.findMany({
       where,
       take: 30,
-      orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
-      include: { host: { select: fullSelect } },
+      orderBy: { startsAt: 'asc' },  // single-field: index-backed, no full-table sort
     }) as unknown as Promise<typeof allEvents>)
     diag['findMany30Ms'] = Date.now() - t
     diag['findMany30Count'] = allEvents.length
