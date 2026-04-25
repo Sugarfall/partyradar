@@ -1318,21 +1318,29 @@ export default function EventDetailPage() {
   // Their address, price, and time may be approximate — always show a warning.
   const isBot = event.host.username === 'partyradar' || event.host.displayName === 'PartyRadar Assistant'
 
-  // Best external URL for the event (for users to verify details / buy tickets).
+  // Best external URL for the event — with PartyRadar referral tag appended.
   const externalTicketUrl: string = (() => {
-    if (event.eventbriteUrl) return event.eventbriteUrl
-    if (event.socialSourceUrl) return event.socialSourceUrl
-    if (event.skiddleId)      return `https://www.skiddle.com/whats-on/event/${event.skiddleId}/`
-    if (event.ticketmasterId) return `https://www.ticketmaster.co.uk/event/${event.ticketmasterId}`
-    if (event.eventbriteId)   return `https://www.eventbrite.co.uk/e/${event.eventbriteId}`
+    function withRef(base: string) {
+      try {
+        const u = new URL(base)
+        u.searchParams.set('utm_source', 'partyradar')
+        u.searchParams.set('utm_medium', 'app')
+        return u.toString()
+      } catch { return base }
+    }
+    if (event.eventbriteUrl)  return withRef(event.eventbriteUrl)
+    if (event.socialSourceUrl) return withRef(event.socialSourceUrl)
+    if (event.skiddleId)      return withRef(`https://www.skiddle.com/whats-on/event/${event.skiddleId}/`)
+    if (event.ticketmasterId) return withRef(`https://www.ticketmaster.co.uk/event/${event.ticketmasterId}`)
+    if (event.eventbriteId)   return withRef(`https://www.eventbrite.co.uk/e/${event.eventbriteId}`)
     return `https://www.google.com/search?q=${encodeURIComponent(event.name + ' tickets')}`
   })()
   const externalSourceName: string =
-    event.eventbriteUrl  ? 'Eventbrite'    :
-    event.socialSourceUrl ? 'Official Site' :
-    event.skiddleId      ? 'Skiddle'       :
-    event.ticketmasterId ? 'Ticketmaster'  :
-    event.eventbriteId   ? 'Eventbrite'    : 'Search'
+    event.eventbriteUrl   ? 'Eventbrite'    :
+    event.socialSourceUrl  ? 'Official Site' :
+    event.skiddleId       ? 'Skiddle'       :
+    event.ticketmasterId  ? 'Ticketmaster'  :
+    event.eventbriteId    ? 'Eventbrite'    : 'Search'
 
   async function handleRSVP() {
     if (!dbUser) { router.push(loginHref()); return }
@@ -1591,21 +1599,11 @@ export default function EventDetailPage() {
             <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: '#f59e0b' }} />
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-black tracking-widest mb-0.5" style={{ color: '#f59e0b' }}>
-                AI DISCOVERED — UNVERIFIED
+                UNVERIFIED LISTING
               </p>
               <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(245,158,11,0.75)' }}>
-                This listing was found automatically. Address, time and price may be approximate.
-                Always verify on the official source before attending or purchasing.
+                Always verify the event details before attending or purchasing tickets.
               </p>
-              <a
-                href={externalTicketUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 mt-2 text-[10px] font-black tracking-wider underline"
-                style={{ color: '#f59e0b' }}
-              >
-                <Link2 size={10} /> VERIFY ON {externalSourceName.toUpperCase()} →
-              </a>
             </div>
           </div>
         )}
@@ -2340,21 +2338,21 @@ export default function EventDetailPage() {
                   ) : (
                     <>
                       {isBot ? (
-                        /* AI event — send user to verified external source instead of internal checkout */
+                        /* Unverified event — redirect to official external ticketing source */
                         <a
                           href={externalTicketUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200"
                           style={{
-                            background: 'rgba(245,158,11,0.1)',
-                            border: '1px solid rgba(245,158,11,0.4)',
-                            color: '#f59e0b',
-                            boxShadow: '0 0 20px rgba(245,158,11,0.12)',
+                            background: `linear-gradient(135deg, ${tc.color}18, rgba(61,90,254,0.12))`,
+                            border: `1px solid ${tc.color}50`,
+                            color: tc.color,
+                            boxShadow: `0 0 20px ${tc.glow}`,
                             letterSpacing: '0.08em',
                           }}
                         >
-                          <Ticket size={14} /> FIND TICKETS ON {externalSourceName.toUpperCase()} →
+                          <Ticket size={14} /> BUY TICKETS →
                         </a>
                       ) : (
                         <button
