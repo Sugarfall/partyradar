@@ -414,24 +414,36 @@ router.get('/event/:eventId', async (req, res, next) => {
   }
 })
 
-/** GET /api/posts/venue/:venueId — posts for a venue */
+/** GET /api/posts/venue/:venueId — posts for a venue
+ *  Includes posts that set Post.venueId directly (posted from the venue page)
+ *  AND posts where a PostTag.taggedVenueId references this venue (tagged from feed). */
 router.get('/venue/:venueId', async (req, res, next) => {
   try {
     const { venueId } = req.params
     const { page = '1', limit = '20' } = req.query
     const skip = (Number(page) - 1) * Number(limit)
 
+    const venueWhere = {
+      AND: [
+        {
+          OR: [
+            { venueId },
+            { tags: { some: { taggedVenueId: venueId } } },
+          ],
+        },
+        { OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }] },
+      ],
+    }
+
     const [posts, total] = await Promise.all([
       prisma.post.findMany({
-        where: { venueId, OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }] },
+        where: venueWhere,
         skip,
         take: Number(limit),
         orderBy: { createdAt: 'desc' },
         include: postInclude,
       }),
-      prisma.post.count({
-        where: { venueId, OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }] },
-      }),
+      prisma.post.count({ where: venueWhere }),
     ])
 
     res.json({

@@ -60,8 +60,14 @@ interface VenuePost {
   id: string
   text?: string
   imageUrl?: string
+  likesCount: number
+  commentsCount: number
   createdAt: string
-  _count: { likes: number }
+  _count?: { likes: number }
+  /** Carousel media — show media[0] when imageUrl is absent */
+  media?: { url: string; type: string; thumbnailUrl?: string }[]
+  /** PostTags on this post — used to detect feed-tagged posts */
+  tags?: { taggedVenueId?: string | null; taggedVenue?: { id: string; name: string } | null }[]
   user: { id: string; displayName: string; username: string; photoUrl?: string }
 }
 
@@ -639,34 +645,69 @@ function VenueDetailInner() {
                 <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO POSTS YET</p>
                 <p className="text-[11px]" style={{ color: 'rgba(224,242,254,0.25)' }}>Be the first to share what's going on</p>
               </div>
-            ) : posts.map((post) => (
-              <div key={post.id} className="p-3 rounded-2xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  {post.user.photoUrl
-                    ? <img src={post.user.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
-                    : <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black"
-                        style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
-                        {post.user.displayName[0]?.toUpperCase()}
-                      </div>}
-                  <div>
-                    <p className="text-xs font-bold" style={{ color: '#e0f2fe' }}>{post.user.displayName}</p>
-                    <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
-                      {new Date(post.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+            ) : posts.map((post) => {
+              const displayImage = post.imageUrl ?? post.media?.[0]?.url
+              const isTagged = post.tags?.some((t) => t.taggedVenueId === id) ?? false
+              const likeCount = post.likesCount ?? post._count?.likes ?? 0
+              return (
+                <div key={post.id} className="rounded-2xl overflow-hidden" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
+                  {/* Image / media */}
+                  {displayImage && (
+                    <img src={displayImage} alt="" className="w-full object-cover" style={{ maxHeight: 280 }} />
+                  )}
+
+                  <div className="p-3">
+                    {/* Author row */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Link href={`/profile/${post.user.username}`}>
+                        {post.user.photoUrl
+                          ? <img src={post.user.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+                          : <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0"
+                              style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
+                              {post.user.displayName[0]?.toUpperCase()}
+                            </div>}
+                      </Link>
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/profile/${post.user.username}`}>
+                          <p className="text-xs font-bold hover:underline truncate" style={{ color: '#e0f2fe' }}>{post.user.displayName}</p>
+                        </Link>
+                        <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                          {new Date(post.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          {' · '}
+                          {new Date(post.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      {/* "Tagged here" chip for posts sourced via PostTag from the main feed */}
+                      {isTagged && (
+                        <span className="shrink-0 text-[9px] font-bold px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.18)', color: 'rgba(var(--accent-rgb),0.6)' }}>
+                          📌 tagged
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Caption */}
+                    {post.text && (
+                      <p className="text-sm leading-relaxed mb-2" style={{ color: 'rgba(224,242,254,0.75)' }}>{post.text}</p>
+                    )}
+
+                    {/* Footer */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <Heart size={12} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                        <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{likeCount}</span>
+                      </div>
+                      {(post.commentsCount ?? 0) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Send size={11} style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />
+                          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{post.commentsCount}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {post.imageUrl && (
-                  <img src={post.imageUrl} alt="" className="w-full rounded-xl mb-2 object-cover max-h-64" />
-                )}
-                {post.text && (
-                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(224,242,254,0.75)' }}>{post.text}</p>
-                )}
-                <div className="flex items-center gap-1 mt-2">
-                  <Heart size={12} style={{ color: 'rgba(255,0,110,0.5)' }} />
-                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{post._count?.likes ?? 0}</span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
