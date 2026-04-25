@@ -1449,4 +1449,168 @@ router.put('/users/:id/clear-strikes', requireAuth, requireAppRole('ADMIN'), asy
   } catch (err) { next(err) }
 })
 
+// ─── Stripe Admin Utilities ───────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/stripe/backfill-events
+ * Creates Stripe Product + Price for every paid event that was seeded directly
+ * into the DB (and therefore has no stripePriceId).  Safe to re-run — skips
+ * events that already have a stripePriceId.
+ */
+router.post('/stripe/backfill-events', requireAdmin, async (_req, res, next) => {
+  try {
+    const stripe = ensureStripe()
+
+    // Find all paid events without a Stripe price
+    const events = await prisma.event.findMany({
+      where: {
+        price: { gt: 0 },
+        stripePriceId: null,
+        isCancelled: false,
+      },
+      select: { id: true, name: true, price: true },
+      take: 200,
+    })
+
+    const results: Array<{ id: string; name: string; stripePriceId: string; ok: boolean; error?: string }> = []
+
+    for (const event of events) {
+      try {
+        const product = await stripe.products.create({
+          name: event.name,
+          metadata: { partyradarEventId: event.id },
+        })
+        const price = await stripe.prices.create({
+          product: product.id,
+          unit_amount: Math.round(event.price * 100),
+          currency: 'gbp',
+        })
+        await prisma.event.update({
+          where: { id: event.id },
+          data: { stripeProductId: product.id, stripePriceId: price.id },
+        })
+        results.push({ id: event.id, name: event.name, stripePriceId: price.id, ok: true })
+      } catch (err: any) {
+        results.push({ id: event.id, name: event.name, stripePriceId: '', ok: false, error: err?.message })
+      }
+    }
+
+    res.json({
+      data: {
+        processed: results.length,
+        succeeded: results.filter((r) => r.ok).length,
+        failed: results.filter((r) => !r.ok).length,
+        results,
+      },
+    })
+  } catch (err) { next(err) }
+})
+
+/**
+ * POST /api/admin/stripe/connect-onboard-host
+ * Generates a Stripe Connect Express onboarding link for any host by their DB
+ * user ID.  Useful for seeded host accounts that have no Firebase auth and
+ * cannot log in via the normal /payouts page.
+ *
+ * Body: { userId: string }
+ * Returns: { url: string, accountId: string }
+ */
+router.post('/stripe/connect-onboard-host', requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const stripe = ensureStripe()
+    const { userId } = req.body as { userId?: string }
+    if (!userId) throw new AppError('userId is required', 400)
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, stripeConnectAccountId: true },
+    })
+    if (!user) throw new AppError('User not found', 404)
+
+    const FRONTEND_URL = process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'
+
+    let accountId = user.stripeConnectAccountId
+    if (!accountId) {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        email: user.email,
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+        business_type: 'individual',
+        metadata: { partyradarUserId: user.id },
+      })
+      accountId = account.id
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { stripeConnectAccountId: accountId },
+      })
+    }
+
+    const link = await stripe.accountLinks.create({
+      account: accountId,
+      type: 'account_onboarding',
+      return_url: `${FRONTEND_URL}/payouts?onboarded=1`,
+      refresh_url: `${FRONTEND_URL}/payouts?refresh=1`,
+    })
+
+    res.json({ data: { url: link.url, accountId } })
+  } catch (err) { next(err) }
+})
+
+/**
+ * GET /api/admin/stripe/events-status
+ * Reports ticket-readiness for all paid events: shows stripePriceId and
+ * whether their host has Connect enabled.  Useful for diagnosing why ticket
+ * purchases fail before hitting the checkout endpoint.
+ */
+router.get('/stripe/events-status', requireAdmin, async (_req, res, next) => {
+  try {
+    const events = await prisma.event.findMany({
+      where: { price: { gt: 0 }, isCancelled: false },
+      select: {
+        id: true, name: true, price: true, stripePriceId: true, stripeProductId: true,
+        host: {
+          select: {
+            id: true, displayName: true, email: true,
+            stripeConnectAccountId: true,
+            stripeConnectChargesEnabled: true,
+            stripeConnectPayoutsEnabled: true,
+            stripeConnectDetailsSubmitted: true,
+          },
+        },
+      },
+      orderBy: { startsAt: 'asc' },
+      take: 200,
+    })
+
+    const data = events.map((e) => ({
+      eventId: e.id,
+      name: e.name,
+      price: e.price,
+      hasStripePriceId: !!e.stripePriceId,
+      stripePriceId: e.stripePriceId,
+      host: {
+        id: e.host.id,
+        displayName: e.host.displayName,
+        email: e.host.email,
+        hasConnectAccount: !!e.host.stripeConnectAccountId,
+        chargesEnabled: e.host.stripeConnectChargesEnabled,
+      },
+      ticketReady: !!e.stripePriceId && e.host.stripeConnectChargesEnabled,
+    }))
+
+    res.json({
+      data,
+      summary: {
+        total: data.length,
+        hasStripePriceId: data.filter((e) => e.hasStripePriceId).length,
+        hostChargesEnabled: data.filter((e) => e.host.chargesEnabled).length,
+        ticketReady: data.filter((e) => e.ticketReady).length,
+      },
+    })
+  } catch (err) { next(err) }
+})
+
 export default router
