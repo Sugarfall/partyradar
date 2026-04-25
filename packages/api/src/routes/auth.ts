@@ -80,13 +80,14 @@ router.post('/sync', async (req, res, next) => {
         toFollow.push(...adminUsers.map((a) => a.id))
       }
 
-      // Always auto-follow @Trippyboy by username (official account)
-      const trippyboy = await prisma.user.findUnique({
-        where: { username: 'trippyboy' },
+      // Auto-follow the founder/official account (configurable via env var)
+      const founderUsername = process.env['FOUNDER_USERNAME'] ?? 'trippyboy'
+      const founderUser = await prisma.user.findUnique({
+        where: { username: founderUsername },
         select: { id: true },
       })
-      if (trippyboy && trippyboy.id !== user.id && !toFollow.includes(trippyboy.id)) {
-        toFollow.push(trippyboy.id)
+      if (founderUser && founderUser.id !== user.id && !toFollow.includes(founderUser.id)) {
+        toFollow.push(founderUser.id)
       }
 
       for (const followingId of toFollow) {
@@ -102,7 +103,14 @@ router.post('/sync', async (req, res, next) => {
       // Promote to admin if UID is in admin list but not yet flagged
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { isAdmin: true },
+        data: { isAdmin: true, appRole: 'ADMIN' },
+      })
+    } else if (!shouldBeAdmin && user.isAdmin) {
+      // Demote if UID was removed from ADMIN_FIREBASE_UIDS — without this,
+      // removing a UID from the env var has no effect until a manual DB edit.
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { isAdmin: false, appRole: 'USER' },
       })
     }
 
@@ -184,10 +192,28 @@ router.post('/age-verify', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** PUT /api/auth/settings — reserved for future preferences */
+/** PUT /api/auth/settings — update user privacy & notification preferences */
 router.put('/settings', requireAuth, async (req: AuthRequest, res, next) => {
+  const schema = z.object({
+    showInNearby:            z.boolean().optional(),
+    showProfileViews:        z.boolean().optional(),
+    allowGoOutFromStrangers: z.boolean().optional(),
+    showAlcoholEvents:       z.boolean().optional(),
+    notifPrefs:              z.record(z.boolean()).optional().nullable(),
+  })
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.user!.dbUser.id } })
+    const parsed = schema.parse(req.body)
+    const { notifPrefs, ...rest } = parsed
+    const user = await prisma.user.update({
+      where: { id: req.user!.dbUser.id },
+      data: {
+        ...rest,
+        // Prisma requires Prisma.JsonNull (not JS null) to explicitly null a Json field
+        ...(notifPrefs !== undefined
+          ? { notifPrefs: notifPrefs === null ? Prisma.JsonNull : notifPrefs }
+          : {}),
+      },
+    })
     res.json({ data: user })
   } catch (err) {
     next(err)

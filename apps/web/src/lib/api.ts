@@ -1,10 +1,12 @@
 import { auth } from './firebase'
 
-// In production always use the Railway backend; locally fall back to dev server
+// Always read from NEXT_PUBLIC_API_URL so any redeploy to a new Railway domain
+// only requires updating the env var — not a code change + deploy cycle.
 export const API_URL =
-  process.env.NODE_ENV === 'production'
+  process.env['NEXT_PUBLIC_API_URL'] ??
+  (process.env.NODE_ENV === 'production'
     ? 'https://api-production-f912.up.railway.app/api'
-    : (process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/api')
+    : 'http://localhost:4000/api')
 
 /** Root URL without /api suffix — used for socket.io connections */
 export const API_ORIGIN = API_URL.replace(/\/api$/, '')

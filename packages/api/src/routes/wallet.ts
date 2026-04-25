@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
+import { hasRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { ensureStripe } from '../lib/stripe'
 import { WALLET_CONFIG, WALLET_TOP_UP_TIERS, CARD_DESIGNS, REVENUE_MODEL } from '@partyradar/shared'
@@ -12,11 +13,14 @@ const router = Router()
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function getOrCreateWallet(userId: string) {
-  let wallet = await prisma.wallet.findUnique({ where: { userId } })
-  if (!wallet) {
-    wallet = await prisma.wallet.create({ data: { userId } })
-  }
-  return wallet
+  // upsert is atomic — eliminates the findUnique+create TOCTOU race that
+  // produced duplicate wallet rows when two requests arrived simultaneously
+  // for a brand-new user (e.g. /wallet + /wallet/top-up in parallel).
+  return prisma.wallet.upsert({
+    where: { userId },
+    create: { userId },
+    update: {},
+  })
 }
 
 async function recordPlatformRevenue(source: string, amount: number, referenceId?: string, description?: string) {
@@ -537,10 +541,14 @@ router.get('/rewards', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-// ─── GET /api/wallet/revenue-model — public: how the platform earns ──────────
+// ─── GET /api/wallet/revenue-model — moderator+: internal fee model ─────────
 
-router.get('/revenue-model', (_req, res) => {
-  res.json({
+router.get('/revenue-model', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    if (!hasRole(req.user!.dbUser, 'MODERATOR')) {
+      throw new AppError('Moderator access required', 403)
+    }
+    res.json({
     data: {
       streams: [
         {
@@ -630,7 +638,10 @@ router.get('/revenue-model', (_req, res) => {
         },
       },
     },
-  })
+    })
+  } catch (err) {
+    next(err)
+  }
 })
 
 export { getOrCreateWallet, recordPlatformRevenue }

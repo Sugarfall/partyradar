@@ -65,7 +65,10 @@ router.put('/read-all', requireAuth, async (req: AuthRequest, res, next) => {
 
 /** PUT /api/notifications/location — update user's last known location for geo-targeted blasts */
 router.put('/location', requireAuth, async (req: AuthRequest, res, next) => {
-  const schema = z.object({ lat: z.number(), lng: z.number() })
+  const schema = z.object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+  })
   try {
     const { lat, lng } = schema.parse(req.body)
     await prisma.user.update({

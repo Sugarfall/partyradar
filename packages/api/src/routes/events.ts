@@ -5,6 +5,7 @@ import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { getTier } from '@partyradar/shared'
 import { ensureStripe } from '../lib/stripe'
+import { assertOwnImageUrl } from '../lib/cloudinary'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
 import type { SubscriptionTier } from '@partyradar/shared'
@@ -58,11 +59,9 @@ const userSelect = {
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', limit = '20', tonight } = req.query
+    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', tonight } = req.query
     // Support both ?q= (new search bar) and ?search= (existing filters panel)
     const search = q ?? searchParam
-
-    const skip = (Number(page) - 1) * Number(limit)
 
     // Include events that are currently in progress (started up to 8 h ago) as well as future ones
     const eightHoursAgo = new Date(Date.now() - 8 * 3_600_000)
@@ -376,9 +375,29 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
     }
 
     // Note: alcohol filter applies to *discovery listings*, not direct event links.
-    // Removing it here so authenticated users can always view a specific event.
 
-    res.json({ data: { ...event, guestCount: event._count.guests, savesCount: event._count.savedBy } })
+    // Redact exact address for neighbourhood-only events.
+    // Only the host and confirmed guests see the full address — everyone else
+    // gets the neighbourhood string, matching the intention of the flag.
+    let displayAddress = event.address
+    if (event.showNeighbourhoodOnly) {
+      const isHost = req.user?.dbUser.id === event.hostId
+      if (!isHost) {
+        const isConfirmedGuest = req.user
+          ? !!(await prisma.eventGuest.findFirst({
+              where: {
+                eventId: event.id,
+                userId: req.user.dbUser.id,
+                status: 'CONFIRMED',
+              },
+              select: { id: true },
+            }))
+          : false
+        if (!isConfirmedGuest) displayAddress = event.neighbourhood
+      }
+    }
+
+    res.json({ data: { ...event, address: displayAddress, guestCount: event._count.guests, savesCount: event._count.savedBy } })
   } catch (err) {
     next(err)
   }
@@ -391,13 +410,14 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     const user = req.user!.dbUser
     const tier = getTier(user.subscriptionTier)
 
-    // Tier check: event creation limits
+    // Tier check: event creation limits — count by startsAt so hosts who
+    // create next month's event early don't lose quota for this month.
     if (tier.maxEventsPerMonth !== -1) {
       const thisMonth = new Date()
       thisMonth.setDate(1)
       thisMonth.setHours(0, 0, 0, 0)
       const count = await prisma.event.count({
-        where: { hostId: user.id, createdAt: { gte: thisMonth } },
+        where: { hostId: user.id, isCancelled: false, startsAt: { gte: thisMonth } },
       })
       if (count >= tier.maxEventsPerMonth) {
         throw new AppError(`Your ${tier.name} plan allows ${tier.maxEventsPerMonth} event(s)/month. Upgrade to host more.`, 403, 'TIER_LIMIT')
@@ -499,6 +519,9 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     const body = updateSchema.parse(req.body)
     const { accentColor, lineup, partySigns, ...rest } = body
 
+    // Reject hotlinked cover images — must be uploaded through our Cloudinary
+    if (rest.coverImageUrl) assertOwnImageUrl(rest.coverImageUrl)
+
     const updated = await prisma.event.update({
       where: { id: event.id },
       data: {
@@ -532,35 +555,51 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     // Cancel the event
     await prisma.event.update({ where: { id: event.id }, data: { isCancelled: true } })
 
-    // Refund wallet for all paid tickets on this event
+    // Refund all unscanned paid tickets.
+    // • Stripe-paid tickets → issue a Stripe refund (money back to card).
+    // • Tickets without a stripePaymentId → credit the user's wallet instead.
     let refundCount = 0
     if (event.price > 0) {
       const tickets = await prisma.ticket.findMany({
         where: { eventId, scannedAt: null },
-        select: { id: true, userId: true, pricePaid: true },
+        select: { id: true, userId: true, pricePaid: true, stripePaymentId: true },
       })
 
       for (const ticket of tickets) {
         if (ticket.pricePaid <= 0) continue
-        const wallet = await prisma.wallet.findUnique({ where: { userId: ticket.userId } })
-        if (!wallet) continue
-        await prisma.$transaction([
-          prisma.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: { increment: ticket.pricePaid } },
-          }),
-          prisma.walletTransaction.create({
-            data: {
-              walletId:    wallet.id,
-              type:        'TOP_UP',
-              amount:      ticket.pricePaid,
-              balanceAfter: wallet.balance + ticket.pricePaid,
-              description: `Refund: Event cancelled — "${event.name.slice(0, 60)}"`,
-              status:      'COMPLETED',
-              eventId,
-            },
-          }),
-        ])
+
+        if (ticket.stripePaymentId) {
+          // Return money to the original card via Stripe refund
+          try {
+            const stripe = ensureStripe()
+            await stripe.refunds.create({ payment_intent: ticket.stripePaymentId })
+          } catch (stripeErr) {
+            // Log but don't abort — the event is already cancelled. If the
+            // refund fails (e.g. already refunded), the user can raise a dispute.
+            console.error(`[cancel-event] Stripe refund failed for ticket ${ticket.id}:`, stripeErr)
+          }
+        } else {
+          // No Stripe payment on record → credit wallet (free-tier or legacy flow)
+          const wallet = await prisma.wallet.findUnique({ where: { userId: ticket.userId } })
+          if (!wallet) continue
+          await prisma.$transaction([
+            prisma.wallet.update({
+              where: { id: wallet.id },
+              data: { balance: { increment: ticket.pricePaid } },
+            }),
+            prisma.walletTransaction.create({
+              data: {
+                walletId:    wallet.id,
+                type:        'TOP_UP',
+                amount:      ticket.pricePaid,
+                balanceAfter: wallet.balance + ticket.pricePaid,
+                description: `Refund: Event cancelled — "${event.name.slice(0, 60)}"`,
+                status:      'COMPLETED',
+                eventId,
+              },
+            }),
+          ])
+        }
         refundCount++
       }
     }
