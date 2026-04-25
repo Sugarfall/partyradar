@@ -5,8 +5,8 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "type-check": "tsc --noEmit"
+    "build": "npx tsc",
+    "type-check": "npx tsc --noEmit"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
