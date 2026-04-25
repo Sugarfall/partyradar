@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Edit2, Check, X, LogOut, ShieldCheck, Ticket,
   Calendar, Crown, ChevronRight, User, Users, Star, MapPin, Zap, MessageSquare, Bookmark,
-  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye, Camera, Loader2, Music2, Unlink2,
+  ToggleLeft, Building2, Plus, Sparkles, Bell, Eye, Camera, Loader2, Music2, Unlink2, Trash2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Gender } from '@partyradar/shared'
@@ -1096,7 +1096,23 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.6)' }}>{(r as any).text}</p>
-                  <p className="text-[9px] font-bold mt-1" style={{ color: 'rgba(74,96,128,0.45)' }}>{timeAgo((r as any).createdAt)}</p>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-[9px] font-bold" style={{ color: 'rgba(74,96,128,0.45)' }}>{timeAgo((r as any).createdAt)}</p>
+                    {editing && (r as any).id && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.delete(`/reviews/${(r as any).id}`)
+                            setReviews((prev) => prev.filter((rv) => (rv as any).id !== (r as any).id))
+                          } catch { /* keep if delete fails */ }
+                        }}
+                        className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ color: 'rgba(239,68,68,0.65)', border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)' }}
+                      >
+                        <Trash2 size={9} /> Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1152,6 +1168,23 @@ export default function ProfilePage() {
                           <span style={{ fontSize: 8, color: '#ec4899' }}>♥</span>
                           <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)' }}>{photo.likesCount}</span>
                         </div>
+                      )}
+                      {/* Delete overlay — only visible in edit mode */}
+                      {editing && (
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            try {
+                              await api.delete(`/posts/${photo.id}`)
+                              setMyPhotos((prev) => prev.filter((p) => p.id !== photo.id))
+                            } catch { /* keep photo if delete fails */ }
+                          }}
+                          className="absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center"
+                          style={{ background: 'rgba(239,68,68,0.85)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.25)' }}
+                          title="Delete photo"
+                        >
+                          <Trash2 size={11} />
+                        </button>
                       )}
                     </div>
                   )

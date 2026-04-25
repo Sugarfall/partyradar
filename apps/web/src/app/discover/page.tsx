@@ -1512,7 +1512,6 @@ export default function DiscoverPage() {
     // where old-city events appear mixed with the new city.
     mutate(undefined, false)
     setExtraEvents([])
-    loadingMoreRef.current = false
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
     if (currency) setCurrentCurrency(currency)
@@ -1573,36 +1572,41 @@ export default function DiscoverPage() {
 
   // ── Multi-page progressive loader ─────────────────────────────────────────
   // Silently fetches pages 2, 3, … in the background so the list shows ALL
-  // events in the area, not just the first 20.  The first page (from SWR above)
+  // events in the area, not just the first page.  The first page (from SWR above)
   // appears immediately; extra pages stream in as they arrive.
+  //
+  // Uses a cancellation token so rapid location / filter changes never leave a
+  // stale loop running and setting extraEvents to wrong-city data.
+  // Uses stable number primitives (userLat / userLng) instead of the userLocation
+  // object so that reassigning { lat, lng } with the same values doesn't re-fire
+  // the effect and spawn a duplicate loop.
   const [extraEvents, setExtraEvents] = useState<Event[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
-  const loadingMoreRef = useRef(false)
-  const extraSig = useRef('')
 
-  // Reset when query key changes (new location, filter, etc.)
-  useEffect(() => {
-    const sig = `${userLocation?.lat}:${userLocation?.lng}:${JSON.stringify(filters)}:${locationReady}`
-    if (sig !== extraSig.current) {
-      extraSig.current = sig
-      setExtraEvents([])
-      setLoadingMore(false)
-      loadingMoreRef.current = false
-    }
-  }, [userLocation, filters, locationReady])
+  // Primitive lat/lng — prevents object-reference churn in the effect deps below.
+  const userLat = userLocation?.lat
+  const userLng = userLocation?.lng
 
-  // Load pages 2+ once the first page has arrived
   useEffect(() => {
-    if (!hasMore || !locationReady || !userLocation || loadingMoreRef.current || events.length === 0) return
-    loadingMoreRef.current = true
+    // Always wipe extra pages whenever location, filters, or first-page data changes.
+    // This runs synchronously before the async loop starts, so there is no window
+    // where stale extraEvents from the previous city are visible.
+    setExtraEvents([])
+    setLoadingMore(false)
+
+    if (!hasMore || !locationReady || userLat == null || userLng == null || events.length === 0) return
+
+    // Cancellation token — set aborted = true in the cleanup to stop an in-flight loop.
+    const cancel = { aborted: false }
     setLoadingMore(true)
+
     ;(async () => {
       const acc: Event[] = []
       let p = 2
-      while (p <= 20) { // safety cap: max 400 total events (20 pages × 20/page)
+      while (p <= 10 && !cancel.aborted) { // cap at 10 extra pages (up to 1 000 additional events)
         const qs = new URLSearchParams({
-          lat: String(userLocation.lat), lng: String(userLocation.lng),
-          radius: '50', page: String(p),
+          lat: String(userLat), lng: String(userLng),
+          radius: '50', page: String(p), limit: '100',
         })
         if (filters.type)     qs.set('type', filters.type)
         if (filters.showFree) qs.set('showFree', 'true')
@@ -1610,16 +1614,20 @@ export default function DiscoverPage() {
         if (filters.search)   qs.set('search', filters.search)
         try {
           const res = await api.get<{ data: Event[]; hasMore: boolean }>(`/events?${qs}`)
+          if (cancel.aborted) break
           acc.push(...(res as { data: Event[] }).data)
           setExtraEvents([...acc])
           if (!(res as { hasMore: boolean }).hasMore) break
         } catch { break }
         p++
       }
-      loadingMoreRef.current = false
-      setLoadingMore(false)
+      if (!cancel.aborted) setLoadingMore(false)
     })()
-  }, [hasMore, events.length, locationReady, userLocation, filters])
+
+    // Cleanup: mark the loop as cancelled so it stops mid-flight and never
+    // writes stale events after deps have already changed.
+    return () => { cancel.aborted = true }
+  }, [hasMore, events.length, locationReady, userLat, userLng, filters])
 
   // Merged + deduplicated list of ALL events
   const allEvents = useMemo(() => {

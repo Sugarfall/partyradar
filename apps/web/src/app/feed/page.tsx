@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   Rss, Zap, Users, MapPin, Calendar, Heart, Plus, Ticket,
@@ -700,8 +701,17 @@ function EmptyState() {
   )
 }
 
-// ─── Main Feed Page ─────────────────────────────────────────────────────────
+// ─── Deep-link wrapper (useSearchParams needs Suspense) ──────────────────────
 export default function FeedPage() {
+  return (
+    <Suspense fallback={null}>
+      <FeedPageInner />
+    </Suspense>
+  )
+}
+
+function FeedPageInner() {
+  const searchParams = useSearchParams()
   const [tab, setTab] = useState<FeedTab>('foryou')
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
@@ -712,6 +722,16 @@ export default function FeedPage() {
   const { dbUser } = useAuth()
   const currentUserId = dbUser?.id ?? null
   const isLoggedIn = !!dbUser
+
+  // ── Notification deep-link: ?post=<id> opens that post in the modal ────────
+  const [deepLinkPost, setDeepLinkPost] = useState<FeedItem | null>(null)
+  useEffect(() => {
+    const postId = searchParams.get('post')
+    if (!postId) return
+    api.get<{ data: FeedItem }>(`/posts/${postId}`)
+      .then((res) => { if (res?.data) setDeepLinkPost(res.data) })
+      .catch(() => {})
+  }, [searchParams])
 
   // ── Stories state ──────────────────────────────────────────────────────
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([])
@@ -958,6 +978,20 @@ export default function FeedPage() {
           currentUserId={currentUserId}
           onClose={() => setOpenStoryGroupIndex(null)}
           onStoryDeleted={handleStoryDeleted}
+        />
+      )}
+
+      {/* ── Notification deep-link: ?post=<id> opens the post modal ──────── */}
+      {deepLinkPost && deepLinkPost.id && (
+        <PostDetailModal
+          post={{ ...deepLinkPost, id: deepLinkPost.id }}
+          onClose={() => {
+            setDeepLinkPost(null)
+            window.history.replaceState({}, '', '/feed')
+          }}
+          onLikeToggle={() => {}}
+          onCommentAdded={() => {}}
+          currentUserId={currentUserId}
         />
       )}
     </div>

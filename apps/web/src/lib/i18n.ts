@@ -45,6 +45,7 @@ export const T: Record<string, Record<Language, string>> = {
   // ── Navigation ────────────────────────────────────────────────────────────
   'nav.home':        { en: 'Home',        pl: 'Strona główna' },
   'nav.discover':    { en: 'Discover',    pl: 'Odkryj' },
+  'nav.nearby':      { en: 'Nearby',      pl: 'W pobliżu' },
   'nav.events':      { en: 'Events',      pl: 'Imprezy' },
   'nav.messages':    { en: 'Messages',    pl: 'Wiadomości' },
   'nav.profile':     { en: 'Profile',     pl: 'Profil' },
