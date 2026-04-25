@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { prisma } from '@partyradar/db'
-import { ensureStripe } from '../lib/stripe'
+import { ensureStripe, platformFeeCents } from '../lib/stripe'
 import type Stripe from 'stripe'
 import { v4 as uuidv4 } from 'uuid'
 import { sendNotificationToMany } from '../lib/fcm'
@@ -18,18 +18,29 @@ router.post('/stripe', async (req: Request, res: Response) => {
     res.status(400).send('Missing stripe-signature header')
     return
   }
-  const webhookSecret = process.env['STRIPE_WEBHOOK_SECRET']
-  if (!webhookSecret) {
-    console.error('[webhook] STRIPE_WEBHOOK_SECRET not configured — rejecting webhook')
+  const webhookSecret        = process.env['STRIPE_WEBHOOK_SECRET']
+  const connectWebhookSecret = process.env['STRIPE_CONNECT_WEBHOOK_SECRET']
+
+  if (!webhookSecret && !connectWebhookSecret) {
+    console.error('[webhook] No webhook secrets configured — rejecting webhook')
     res.status(503).send('Webhook receiver not configured')
     return
   }
 
-  let event: Stripe.Event
-  try {
-    const stripe = ensureStripe()
-    event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret)
-  } catch {
+  // Stripe signs Connect events (account.updated, account.application.deauthorized)
+  // with the Connect endpoint secret, not the platform secret — both land at this
+  // same URL, so we must try both. Try the platform secret first (most events),
+  // fall back to the Connect secret.
+  const stripe = ensureStripe()
+  let event: Stripe.Event | undefined
+  for (const secret of [webhookSecret, connectWebhookSecret]) {
+    if (!secret) continue
+    try {
+      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, secret)
+      break
+    } catch { /* try next secret */ }
+  }
+  if (!event) {
     res.status(400).send('Webhook signature verification failed')
     return
   }
@@ -198,7 +209,9 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
 
   const qty = Number(quantity)
   const pricePaid = event.price
-  const platformFee = (pricePaid * Number(process.env['PLATFORM_FEE_PERCENT'] ?? 5)) / 100
+  // Use the same formula as stripe.ts platformFeeCents (5% + £0.30/ticket)
+  // so the revenue recorded here matches what Stripe actually transfers to us.
+  const platformFee = platformFeeCents(pricePaid, 1) / 100        // per-ticket in GBP
   const totalPlatformRevenue = Number((platformFee * qty).toFixed(2))
 
   // Idempotency: if we've already processed this session, skip.
