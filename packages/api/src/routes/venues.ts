@@ -33,6 +33,7 @@ const venueSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   type: z.enum(['BAR', 'NIGHTCLUB', 'CONCERT_HALL', 'ROOFTOP_BAR', 'PUB', 'LOUNGE']),
+  description: z.string().max(2000).optional(),
   phone: z.string().max(30).optional(),
   website: z.string().url().optional(),
   photoUrl: z.string().url().optional(),
@@ -50,6 +51,7 @@ const venueSelect = {
   lat: true,
   lng: true,
   type: true,
+  description: true,
   phone: true,
   website: true,
   photoUrl: true,
@@ -202,6 +204,19 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+/** GET /api/venues/mine — venues claimed by the authenticated user */
+router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const venues = await prisma.venue.findMany({
+      where: { claimedById: userId },
+      select: venueSelect,
+      orderBy: { name: 'asc' },
+    })
+    res.json({ data: venues })
+  } catch (err) { next(err) }
 })
 
 /** GET /api/venues/:id — venue detail */

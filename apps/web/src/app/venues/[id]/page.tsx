@@ -40,6 +40,7 @@ interface Venue {
   lat: number
   lng: number
   type: VenueType
+  description?: string
   phone?: string
   website?: string
   photoUrl?: string
@@ -361,6 +362,17 @@ function VenueDetailInner() {
           <ArrowLeft size={12} /> VENUES
         </button>
 
+        {/* Manage button — owner only */}
+        {isOwner && (
+          <button
+            onClick={() => router.push(`/venues/${id}/manage`)}
+            className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
+            style={{ background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)', backdropFilter: 'blur(8px)' }}
+          >
+            ⚙ MANAGE
+          </button>
+        )}
+
         {/* Name + type */}
         <div className="absolute bottom-5 left-4 right-4">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -439,6 +451,14 @@ function VenueDetailInner() {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ─── Description ─── */}
+        {venue.description && (
+          <div className="rounded-xl p-4" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+            <p className="text-[10px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>ABOUT</p>
+            <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'rgba(224,242,254,0.7)' }}>{venue.description}</p>
           </div>
         )}
 

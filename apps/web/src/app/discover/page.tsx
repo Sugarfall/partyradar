@@ -1320,7 +1320,18 @@ export default function DiscoverPage() {
   const [venueCity, setVenueCity] = useState<string | null>(null)
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
   // Currency for the currently viewed city — defaults to user's own timezone currency
-  const [currentCurrency, setCurrentCurrency] = useState(() => detectCurrency())
+  const [currentCurrency, setCurrentCurrency] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('pr_currency')
+      if (stored) return stored
+    }
+    return detectCurrency()
+  })
+
+  // Persist selected city currency so event-detail pages can read it
+  useEffect(() => {
+    try { localStorage.setItem('pr_currency', currentCurrency) } catch {}
+  }, [currentCurrency])
 
   // Track the last position we fetched for, to avoid re-fetching on tiny GPS jitter
   const lastFetchedPos = useRef<{ lat: number; lng: number } | null>(null)

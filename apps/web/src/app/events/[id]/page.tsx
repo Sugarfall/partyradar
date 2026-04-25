@@ -21,7 +21,7 @@ import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
 import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS, getTier } from '@partyradar/shared'
-import { formatPrice } from '@/lib/currency'
+import { formatPrice, detectCurrency } from '@/lib/currency'
 import type { PushBlastTier } from '@partyradar/shared'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
@@ -1234,6 +1234,15 @@ export default function EventDetailPage() {
   const { dbUser } = useAuth()
   const { event, isLoading, error, mutate } = useEvent(params['id'] as string)
 
+  // Read currency from localStorage (set by discover page when user searches a city)
+  const [currency, setCurrency] = useState(detectCurrency)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('pr_currency')
+      if (stored) setCurrency(stored)
+    } catch {}
+  }, [])
+
   const [rsvpLoading, setRsvpLoading] = useState(false)
   const [ticketLoading, setTicketLoading] = useState(false)
   const [ticketQty, setTicketQty] = useState(1)
@@ -1579,7 +1588,7 @@ export default function EventDetailPage() {
           <div className="text-right">
             <p className="text-xl font-black"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}>
-              {formatPrice(event.price)}
+              {formatPrice(event.price, currency)}
             </p>
             {!isFree && <p className="text-[10px] font-bold" style={{ color: 'rgba(74,96,128,0.6)' }}>PER TICKET</p>}
           </div>
@@ -2293,7 +2302,7 @@ export default function EventDetailPage() {
                         }}>
                         {ticketLoading
                           ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /></>
-                          : <><QrCode size={14} /> BUY TICKET — {formatPrice(event.price * ticketQty)}</>
+                          : <><QrCode size={14} /> BUY TICKET — {formatPrice(event.price * ticketQty, currency)}</>
                         }
                       </button>
                       <button

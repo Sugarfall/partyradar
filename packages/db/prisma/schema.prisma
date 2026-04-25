@@ -432,6 +432,7 @@ model Venue {
   lat           Float
   lng           Float
   type          VenueType
+  description   String?   @db.Text
   phone         String?
   website       String?
   photoUrl      String?
