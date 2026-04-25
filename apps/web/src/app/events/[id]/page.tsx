@@ -1314,6 +1314,26 @@ export default function EventDetailPage() {
   const capacityPct = Math.round(((event.guestCount ?? 0) / event.capacity) * 100)
   const isFull = capacityPct >= 100
 
+  // AI-scraped events are hosted by the system bot account.
+  // Their address, price, and time may be approximate — always show a warning.
+  const isBot = event.host.username === 'partyradar' || event.host.displayName === 'PartyRadar Assistant'
+
+  // Best external URL for the event (for users to verify details / buy tickets).
+  const externalTicketUrl: string = (() => {
+    if (event.eventbriteUrl) return event.eventbriteUrl
+    if (event.socialSourceUrl) return event.socialSourceUrl
+    if (event.skiddleId)      return `https://www.skiddle.com/whats-on/event/${event.skiddleId}/`
+    if (event.ticketmasterId) return `https://www.ticketmaster.co.uk/event/${event.ticketmasterId}`
+    if (event.eventbriteId)   return `https://www.eventbrite.co.uk/e/${event.eventbriteId}`
+    return `https://www.google.com/search?q=${encodeURIComponent(event.name + ' tickets')}`
+  })()
+  const externalSourceName: string =
+    event.eventbriteUrl  ? 'Eventbrite'    :
+    event.socialSourceUrl ? 'Official Site' :
+    event.skiddleId      ? 'Skiddle'       :
+    event.ticketmasterId ? 'Ticketmaster'  :
+    event.eventbriteId   ? 'Eventbrite'    : 'Search'
+
   async function handleRSVP() {
     if (!dbUser) { router.push(loginHref()); return }
     setRsvpLoading(true)
@@ -1559,11 +1579,41 @@ export default function EventDetailPage() {
         {/* Title */}
         <h1 className="text-2xl font-black leading-tight mb-4" style={{ color: '#e0f2fe' }}>{event.name}</h1>
 
+        {/* ── AI-discovered warning banner ────────────────────────────────── */}
+        {isBot && (
+          <div
+            className="mb-4 px-4 py-3 rounded-xl flex items-start gap-3"
+            style={{
+              background: 'rgba(245,158,11,0.08)',
+              border: '1px solid rgba(245,158,11,0.35)',
+            }}
+          >
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: '#f59e0b' }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-black tracking-widest mb-0.5" style={{ color: '#f59e0b' }}>
+                AI DISCOVERED — UNVERIFIED
+              </p>
+              <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(245,158,11,0.75)' }}>
+                This listing was found automatically. Address, time and price may be approximate.
+                Always verify on the official source before attending or purchasing.
+              </p>
+              <a
+                href={externalTicketUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 mt-2 text-[10px] font-black tracking-wider underline"
+                style={{ color: '#f59e0b' }}
+              >
+                <Link2 size={10} /> VERIFY ON {externalSourceName.toUpperCase()} →
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Host row */}
         <div className="flex items-center gap-3 mb-6 p-3 rounded-xl"
           style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
           {(() => {
-            const isBot = event.host.username === 'partyradar' || event.host.displayName === 'PartyRadar Assistant'
             const src = isBot ? '/icon.png' : event.host.photoUrl
             return src ? (
               <img src={src} alt="" className="w-10 h-10 rounded-lg object-cover"
@@ -2289,22 +2339,41 @@ export default function EventDetailPage() {
                     </>
                   ) : (
                     <>
-                      <button
-                        onClick={handleTicketCheckout}
-                        disabled={ticketLoading}
-                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50"
-                        style={{
-                          background: `linear-gradient(135deg, ${tc.color}18, rgba(61,90,254,0.12))`,
-                          border: `1px solid ${tc.color}50`,
-                          color: tc.color,
-                          boxShadow: `0 0 20px ${tc.glow}`,
-                          letterSpacing: '0.08em',
-                        }}>
-                        {ticketLoading
-                          ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /></>
-                          : <><QrCode size={14} /> BUY TICKET — {formatPrice(event.price * ticketQty, currency)}</>
-                        }
-                      </button>
+                      {isBot ? (
+                        /* AI event — send user to verified external source instead of internal checkout */
+                        <a
+                          href={externalTicketUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200"
+                          style={{
+                            background: 'rgba(245,158,11,0.1)',
+                            border: '1px solid rgba(245,158,11,0.4)',
+                            color: '#f59e0b',
+                            boxShadow: '0 0 20px rgba(245,158,11,0.12)',
+                            letterSpacing: '0.08em',
+                          }}
+                        >
+                          <Ticket size={14} /> FIND TICKETS ON {externalSourceName.toUpperCase()} →
+                        </a>
+                      ) : (
+                        <button
+                          onClick={handleTicketCheckout}
+                          disabled={ticketLoading}
+                          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200 disabled:opacity-50"
+                          style={{
+                            background: `linear-gradient(135deg, ${tc.color}18, rgba(61,90,254,0.12))`,
+                            border: `1px solid ${tc.color}50`,
+                            color: tc.color,
+                            boxShadow: `0 0 20px ${tc.glow}`,
+                            letterSpacing: '0.08em',
+                          }}>
+                          {ticketLoading
+                            ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /></>
+                            : <><QrCode size={14} /> BUY TICKET — {formatPrice(event.price * ticketQty, currency)}</>
+                          }
+                        </button>
+                      )}
                       <button
                         onClick={() => setInterested(!interested)}
                         className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-black text-xs transition-all"
