@@ -1646,9 +1646,17 @@ export default function DiscoverPage() {
           `${lat.toFixed(2)},${lng.toFixed(2)}`
         setAiCity(city)
         // Fire-and-forget — server returns 202, sync runs in background
-        api.post('/events/ai-sync', { city, lat, lng, force: true }).catch(() => {})
+        api.post('/events/ai-sync', { city, lat, lng, force: true }).catch(() => {
+          // 401 (not logged in) / 429 (cooldown) / network error — no sync running.
+          // Clear the indicator immediately so the auto-retry can fire right away
+          // instead of waiting 90 s for the fallback timer.
+          setAiSyncing(false)
+        })
       })
-      .catch(() => {})
+      .catch(() => {
+        // Nominatim failed — can't resolve city name, no sync will be triggered
+        setAiSyncing(false)
+      })
 
     // Stop polling after 90s regardless (sync should be long done by then)
     const stopTimer = setTimeout(() => {
