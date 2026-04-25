@@ -74,9 +74,16 @@ export function verifyAndConsumeSpendToken(
   const payload = token.slice(0, lastDot)
   const receivedSig = token.slice(lastDot + 1)
 
-  // Constant-time comparison to prevent timing attacks
-  const expectedSigBuf = Buffer.from(computeSig(payload), 'hex')
-  const receivedSigBuf = Buffer.from(receivedSig.padEnd(expectedSigBuf.length * 2, '0').slice(0, expectedSigBuf.length * 2), 'hex')
+  // Constant-time comparison to prevent timing attacks.
+  // Reject wrong-length signatures immediately — Buffer.from(...,'hex') silently
+  // drops non-hex byte pairs which can produce a shorter buffer that passes the
+  // length check if we don't validate the raw string length first.
+  const expectedSig = computeSig(payload)
+  if (receivedSig.length !== expectedSig.length) {
+    throw new Error('Invalid spend token signature')
+  }
+  const expectedSigBuf = Buffer.from(expectedSig, 'hex')
+  const receivedSigBuf = Buffer.from(receivedSig, 'hex')
   if (
     receivedSigBuf.length !== expectedSigBuf.length ||
     !timingSafeEqual(expectedSigBuf, receivedSigBuf)

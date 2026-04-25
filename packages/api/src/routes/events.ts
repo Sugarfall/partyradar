@@ -323,6 +323,14 @@ router.get('/diagnostics', requireAuth, async (req: AuthRequest, res, next) => {
 const aiSyncCooldowns = new Map<string, number>()
 const AI_SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes per city
 
+/** Evict expired cooldown entries — called on every write to bound map size. */
+function pruneAiSyncCooldowns(): void {
+  const cutoff = Date.now() - AI_SYNC_COOLDOWN_MS
+  for (const [city, ts] of aiSyncCooldowns) {
+    if (ts < cutoff) aiSyncCooldowns.delete(city)
+  }
+}
+
 /** POST /api/events/ai-sync — trigger AI event discovery for a city (fire-and-forget) */
 // Returns 202 immediately so the caller never hits a timeout. The actual
 // Eventbrite + SerpAPI + Perplexity sync runs in the background. The frontend
@@ -352,6 +360,7 @@ router.post('/ai-sync', requireAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
+    pruneAiSyncCooldowns()
     aiSyncCooldowns.set(cityKey, Date.now())
 
     // Acknowledge immediately — sync runs in background
