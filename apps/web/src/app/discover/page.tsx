@@ -1629,12 +1629,34 @@ export default function DiscoverPage() {
     return () => { cancel.aborted = true }
   }, [hasMore, events.length, locationReady, userLat, userLng, filters])
 
-  // Merged + deduplicated list of ALL events
+  // Merged + deduplicated list of ALL events.
+  // Deduplication layers (first match wins):
+  //   1. Row ID — always
+  //   2. External source IDs (skiddleId / eventbriteId / ticketmasterId) — same import
+  //   3. Exact lat+lng+startsAt — same real-world event listed under different titles
   const allEvents = useMemo(() => {
-    const seen = new Set<string>()
+    const seenId     = new Set<string>()
+    const seenExt    = new Set<string>()   // external IDs
+    const seenLocTime = new Set<string>()  // "lat4:lng4:startsAt"
+
     return [...events, ...extraEvents].filter(e => {
-      if (seen.has(e.id)) return false
-      seen.add(e.id)
+      // 1. Row ID
+      if (seenId.has(e.id)) return false
+      seenId.add(e.id)
+
+      // 2. External source IDs
+      for (const extId of [e.skiddleId, e.eventbriteId, e.ticketmasterId]) {
+        if (extId) {
+          if (seenExt.has(extId)) return false
+          seenExt.add(extId)
+        }
+      }
+
+      // 3. Exact venue location + start time (lat/lng to 4 dp ≈ 11 m precision)
+      const locTimeKey = `${e.lat.toFixed(4)}:${e.lng.toFixed(4)}:${e.startsAt}`
+      if (seenLocTime.has(locTimeKey)) return false
+      seenLocTime.add(locTimeKey)
+
       return true
     })
   }, [events, extraEvents])
