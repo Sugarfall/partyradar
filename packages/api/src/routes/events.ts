@@ -123,16 +123,17 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     // Neon compute + zombie pool connections), freezing the Node.js event loop
     // and preventing even setTimeout race-timeouts from firing.
     //
-    // The health-probe confirms take:3 and take:5 are always safe.  We
-    // therefore use DB-side pagination (take=pageLimit, skip=skip) instead of
-    // the previous JS-side overfetch+dedup approach.  Cross-source dedup is
-    // temporarily disabled — events may show occasional duplicates from
-    // multiple ingestion sources, but the endpoint is stable.  Dedup can be
-    // re-enabled once the Neon connection issue is resolved (Neon pooler or
-    // serverless driver upgrade).
-    //
-    // PAGE_LIMIT is capped at 5 — the largest proven-safe take value.
-    const PAGE_LIMIT = 5
+    // Solution: run multiple sequential queries each capped at QUERY_LIMIT (5),
+    // combining their results to serve PAGE_LIMIT (20) events per logical page.
+    // This gives users 20 events/page while each individual DB query stays safe.
+    // Cross-source dedup remains temporarily disabled (re-enable once Neon pooler
+    // is active or the serverless driver is adopted).
+    const PAGE_LIMIT  = 20  // logical events per page returned to client
+    const QUERY_LIMIT = 5   // max safe `take` per individual Prisma query
+
+    // Recalculate skip using PAGE_LIMIT (ignore client's `limit` param for skip
+    // so pagination is always consistent regardless of what the frontend sends).
+    const pageSkip = (Number(page) - 1) * PAGE_LIMIT
 
     const race = <T>(label: string, p: Promise<T>): Promise<T> =>
       Promise.race([
@@ -145,15 +146,20 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     // Step 1: count (fast ~200ms, used for hasMore detection)
     const total = await race('count', prisma.event.count({ where }))
 
-    // Step 2: page of events — tiny take, DB-side skip, single-field orderBy
-    // (ORDER BY startsAt ASC is index-backed; ORDER BY isFeatured,startsAt has
-    // no combined index and triggers a full-table sort that freezes the engine)
-    const events = await race('findMany', prisma.event.findMany({
-      where,
-      take: PAGE_LIMIT,
-      skip,
-      orderBy: { startsAt: 'asc' },
-    }))
+    // Step 2: collect PAGE_LIMIT events via sequential safe sub-queries.
+    // ORDER BY startsAt ASC is index-backed — safe on Neon free-tier.
+    const events: Awaited<ReturnType<typeof prisma.event.findMany>> = []
+    const batchCount = Math.ceil(PAGE_LIMIT / QUERY_LIMIT)
+    for (let b = 0; b < batchCount && events.length < PAGE_LIMIT; b++) {
+      const batch = await race(`findMany_b${b}`, prisma.event.findMany({
+        where,
+        take: QUERY_LIMIT,
+        skip: pageSkip + b * QUERY_LIMIT,
+        orderBy: { startsAt: 'asc' },
+      }))
+      events.push(...batch)
+      if (batch.length < QUERY_LIMIT) break  // reached end of results early
+    }
 
     const pagedIds = events.map((e) => e.id)
 
@@ -203,7 +209,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       savesCount: savesCountMap[e.id] ?? 0,
     }))
 
-    res.json({ data, total, page: Number(page), limit: PAGE_LIMIT, hasMore: skip + data.length < total })
+    res.json({ data, total, page: Number(page), limit: PAGE_LIMIT, hasMore: pageSkip + data.length < total })
   } catch (err) {
     next(err)
   }

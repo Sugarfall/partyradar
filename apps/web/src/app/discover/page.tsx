@@ -1383,24 +1383,29 @@ export default function DiscoverPage() {
     ]
 
     let ipResolved = false
+    // Run both IP-geo services in PARALLEL so the faster one wins.
+    // Previously they ran sequentially (service1 timeout 3s, then service2 3s = 6s
+    // total), which meant service2 was still running when the Glasgow fallback
+    // fired at 5s — causing international users to briefly see Glasgow events.
+    // With Promise.any, whichever service responds first (typically <1s) wins,
+    // and the 7s Glasgow fallback only fires when both services genuinely fail.
     ;(async () => {
-      for (const svc of ipGeoServices) {
-        if (ipResolved || locationReadyRef.current) break
-        try {
-          const { lat, lng, city } = await svc()
-          if (ipResolved || locationReadyRef.current) break
+      try {
+        const result = await Promise.any(ipGeoServices.map(svc => svc()))
+        if (!ipResolved && !locationReadyRef.current) {
           ipResolved = true
-          applyLocation(lat, lng, city, true)
-        } catch { /* try next service */ }
-      }
+          applyLocation(result.lat, result.lng, result.city, true)
+        }
+      } catch { /* all services failed — Glasgow fallback below handles it */ }
     })()
 
-    // 3 — Glasgow fallback after 5 s (prevents Amsterdam / global events)
+    // 3 — Glasgow fallback after 7 s (extended from 5s to give parallel IP
+    //     services enough time to respond before defaulting to home city)
     const glasgowTimer = setTimeout(() => {
       if (locationReadyRef.current) return
       ipResolved = true
       applyLocation(55.8617, -4.2583, 'Glasgow', false)
-    }, 5000)
+    }, 7000)
 
     return () => clearTimeout(glasgowTimer)
   }, [discover])
