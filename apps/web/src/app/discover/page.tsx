@@ -1336,6 +1336,10 @@ export default function DiscoverPage() {
   // Track the last position we fetched for, to avoid re-fetching on tiny GPS jitter
   const lastFetchedPos = useRef<{ lat: number; lng: number } | null>(null)
 
+  // Set to true when the user manually searches a city — prevents GPS from overriding it.
+  // Cleared automatically if the user physically moves >2 km from the searched city.
+  const manualCityOverride = useRef(false)
+
   // Ref so async geo callbacks can check locationReady without stale closure
   const locationReadyRef = useRef(false)
   useEffect(() => { locationReadyRef.current = locationReady }, [locationReady])
@@ -1453,6 +1457,12 @@ export default function DiscoverPage() {
         const last = lastFetchedPos.current
         const moved = last ? haversineKm(last.lat, last.lng, lat, lng) : Infinity
 
+        // If the user moved >2 km from the manually-searched city, let GPS take over again.
+        if (manualCityOverride.current && moved < 2) return
+
+        // Clear the manual override — user has physically moved to a new area.
+        if (moved >= 2) manualCityOverride.current = false
+
         // Only re-fetch when first lock OR moved more than 500 m
         if (moved > 0.5) {
           lastFetchedPos.current = { lat, lng }
@@ -1515,6 +1525,8 @@ export default function DiscoverPage() {
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
     if (currency) setCurrentCurrency(currency)
+    // Lock out GPS overrides — user explicitly chose this city
+    manualCityOverride.current = true
     discover(lat, lng, 15000)
     setUserLocation({ lat, lng })
     setLocationReady(true)
