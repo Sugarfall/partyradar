@@ -1328,11 +1328,14 @@ export default function EventDetailPage() {
         return u.toString()
       } catch { return base }
     }
-    if (event.eventbriteUrl)  return withRef(event.eventbriteUrl)
-    if (event.socialSourceUrl) return withRef(event.socialSourceUrl)
-    if (event.skiddleId)      return withRef(`https://www.skiddle.com/whats-on/event/${event.skiddleId}/`)
-    if (event.ticketmasterId) return withRef(`https://www.ticketmaster.co.uk/event/${event.ticketmasterId}`)
-    if (event.eventbriteId)   return withRef(`https://www.eventbrite.co.uk/e/${event.eventbriteId}`)
+    if (event.eventbriteUrl)   return withRef(event.eventbriteUrl)
+    if (event.socialSourceUrl)  return withRef(event.socialSourceUrl)
+    // Skiddle canonical URL is reliable (ID is their primary key)
+    if (event.skiddleId)       return withRef(`https://www.skiddle.com/whats-on/event/${event.skiddleId}/`)
+    // Ticketmaster & Eventbrite ID-only URLs require the event slug to avoid 404 —
+    // redirect to their search instead so the user always lands on a real page.
+    if (event.ticketmasterId)  return withRef(`https://www.ticketmaster.co.uk/search?q=${encodeURIComponent(event.name)}`)
+    if (event.eventbriteId)    return withRef(`https://www.eventbrite.co.uk/d/online/events/?q=${encodeURIComponent(event.name)}`)
     return `https://www.google.com/search?q=${encodeURIComponent(event.name + ' tickets')}`
   })()
   const externalSourceName: string =

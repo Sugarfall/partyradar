@@ -20,19 +20,42 @@ import { isHappeningNow } from '@/lib/eventTiming'
 
 // ── Country → currency mapping (for city search) ─────────────────────────────
 const COUNTRY_CURRENCY_MAP: Record<string, string> = {
-  'United Kingdom': 'GBP', 'England': 'GBP', 'Scotland': 'GBP', 'Wales': 'GBP',
-  'Northern Ireland': 'GBP',
+  // GBP
+  'United Kingdom': 'GBP', 'England': 'GBP', 'Scotland': 'GBP', 'Wales': 'GBP', 'Northern Ireland': 'GBP',
+  // Eurozone — all 20 members + de-facto users
   'Ireland': 'EUR', 'Netherlands': 'EUR', 'France': 'EUR', 'Germany': 'EUR',
   'Spain': 'EUR', 'Italy': 'EUR', 'Belgium': 'EUR', 'Portugal': 'EUR',
-  'Greece': 'EUR', 'Austria': 'EUR', 'Finland': 'EUR',
-  'United States': 'USD',
-  'Canada': 'CAD',
+  'Greece': 'EUR', 'Austria': 'EUR', 'Finland': 'EUR', 'Luxembourg': 'EUR',
+  'Lithuania': 'EUR', 'Latvia': 'EUR', 'Estonia': 'EUR',
+  'Slovakia': 'EUR', 'Slovenia': 'EUR', 'Croatia': 'EUR',
+  'Malta': 'EUR', 'Cyprus': 'EUR',
+  'Andorra': 'EUR', 'Monaco': 'EUR', 'San Marino': 'EUR', 'Vatican City': 'EUR',
+  // Other European
+  'Switzerland': 'CHF', 'Liechtenstein': 'CHF',
+  'Sweden': 'SEK', 'Norway': 'NOK', 'Denmark': 'DKK', 'Iceland': 'ISK',
+  'Poland': 'PLN', 'Czech Republic': 'CZK', 'Czechia': 'CZK',
+  'Hungary': 'HUF', 'Romania': 'RON', 'Bulgaria': 'BGN',
+  'Serbia': 'RSD', 'Albania': 'ALL', 'Bosnia and Herzegovina': 'BAM',
+  'North Macedonia': 'MKD', 'Moldova': 'MDL', 'Ukraine': 'UAH',
+  'Russia': 'RUB', 'Belarus': 'BYN', 'Turkey': 'TRY',
+  'Georgia': 'GEL', 'Armenia': 'AMD', 'Azerbaijan': 'AZN',
+  // Americas
+  'United States': 'USD', 'Canada': 'CAD', 'Mexico': 'MXN',
+  'Brazil': 'BRL', 'Argentina': 'ARS', 'Chile': 'CLP',
+  'Colombia': 'COP', 'Peru': 'PEN', 'Uruguay': 'UYU',
+  // Asia-Pacific
   'Australia': 'AUD', 'New Zealand': 'NZD',
-  'Japan': 'JPY', 'Singapore': 'SGD', 'Hong Kong': 'HKD',
-  'United Arab Emirates': 'AED', 'Switzerland': 'CHF',
-  'Sweden': 'SEK', 'Norway': 'NOK', 'Denmark': 'DKK',
-  'Poland': 'PLN', 'Mexico': 'MXN', 'Brazil': 'BRL',
-  'South Africa': 'ZAR', 'India': 'INR', 'Thailand': 'THB',
+  'Japan': 'JPY', 'China': 'CNY', 'South Korea': 'KRW',
+  'Singapore': 'SGD', 'Hong Kong': 'HKD', 'Taiwan': 'TWD',
+  'India': 'INR', 'Pakistan': 'PKR', 'Bangladesh': 'BDT',
+  'Thailand': 'THB', 'Vietnam': 'VND', 'Indonesia': 'IDR',
+  'Malaysia': 'MYR', 'Philippines': 'PHP', 'Sri Lanka': 'LKR',
+  // Middle East & Africa
+  'United Arab Emirates': 'AED', 'Saudi Arabia': 'SAR', 'Qatar': 'QAR',
+  'Kuwait': 'KWD', 'Bahrain': 'BHD', 'Oman': 'OMR', 'Israel': 'ILS',
+  'Egypt': 'EGP', 'Morocco': 'MAD', 'Tunisia': 'TND',
+  'South Africa': 'ZAR', 'Nigeria': 'NGN', 'Kenya': 'KES', 'Ghana': 'GHS',
+  'Ethiopia': 'ETB', 'Tanzania': 'TZS', 'Uganda': 'UGX',
 }
 
 function currencyFromDisplayName(displayName: string): string {
@@ -187,7 +210,7 @@ function EventListCard({ event, live, userTier, currency, distanceKm }: { event:
           <MapPin size={9} className="inline mr-0.5" />{event.neighbourhood ?? event.address?.split(',')[0]}
           {distanceKm !== undefined && (
             <span className="ml-1.5 font-bold" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
-              · {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
+              · {distanceKm < 0.1 ? 'Nearby' : distanceKm < 10 ? `${distanceKm.toFixed(1)}km` : `${Math.round(distanceKm)}km`}
             </span>
           )}
         </p>
@@ -1647,9 +1670,10 @@ export default function DiscoverPage() {
   //   2. External source IDs (skiddleId / eventbriteId / ticketmasterId) — same import
   //   3. Exact lat+lng+startsAt — same real-world event listed under different titles
   const allEvents = useMemo(() => {
-    const seenId     = new Set<string>()
-    const seenExt    = new Set<string>()   // external IDs
-    const seenLocTime = new Set<string>()  // "lat4:lng4:startsAt"
+    const seenId      = new Set<string>()
+    const seenExt     = new Set<string>()   // external IDs
+    const seenLocTime = new Set<string>()   // "lat4:lng4:startsAt"
+    const seenNameDay = new Set<string>()   // name slug + rough venue + calendar day
 
     return [...events, ...extraEvents].filter(e => {
       // 1. Row ID
@@ -1668,6 +1692,14 @@ export default function DiscoverPage() {
       const locTimeKey = `${e.lat.toFixed(4)}:${e.lng.toFixed(4)}:${e.startsAt}`
       if (seenLocTime.has(locTimeKey)) return false
       seenLocTime.add(locTimeKey)
+
+      // 4. Same name + same ~1 km square + same calendar day
+      //    Catches festival scraped from multiple sources with slightly different times/prices
+      const nameSlug  = e.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40)
+      const calDay    = new Date(e.startsAt).toISOString().slice(0, 10)
+      const nameDayKey = `${nameSlug}:${e.lat.toFixed(2)}:${e.lng.toFixed(2)}:${calDay}`
+      if (seenNameDay.has(nameDayKey)) return false
+      seenNameDay.add(nameDayKey)
 
       return true
     })
