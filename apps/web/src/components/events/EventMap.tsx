@@ -11,11 +11,12 @@ interface EventMapProps {
   events: Event[]
   centerLat?: number
   centerLng?: number
+  currency?: string | null
   // Legacy prop — no longer drives filtering, kept for API compat
   onBoundsChange?: (bounds: { lat: number; lng: number; radius: number }) => void
 }
 
-export function EventMap({ events, centerLat, centerLng, onBoundsChange }: EventMapProps) {
+export function EventMap({ events, centerLat, centerLng, currency, onBoundsChange }: EventMapProps) {
   const [selected, setSelected] = useState<Event | null>(null)
   const [viewport, setViewport] = useState({
     longitude: centerLng ?? -4.2518,  // Default: Glasgow city centre
@@ -90,7 +91,7 @@ export function EventMap({ events, centerLat, centerLng, onBoundsChange }: Event
           offset={20}
           maxWidth="280px"
         >
-          <EventCard event={selected} compact />
+          <EventCard event={selected} compact currency={currency} />
         </Popup>
       )}
     </Map>

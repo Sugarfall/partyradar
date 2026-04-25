@@ -52,9 +52,10 @@ function useCountdown(startsAt: string) {
 interface EventCardProps {
   event: Event
   compact?: boolean
+  currency?: string | null
 }
 
-export function EventCard({ event, compact = false }: EventCardProps) {
+export function EventCard({ event, compact = false, currency }: EventCardProps) {
   const isFree = (event.price ?? 0) === 0
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
   const countdown = useCountdown(event.startsAt)
@@ -197,7 +198,7 @@ export function EventCard({ event, compact = false }: EventCardProps) {
                 textShadow: isFree ? '0 0 8px rgba(0,255,136,0.5)' : 'none',
               }}
             >
-              {formatPrice(event.price)}
+              {formatPrice(event.price, currency)}
             </span>
             <span className="text-[10px] flex items-center gap-2" style={{ color: 'rgba(74,96,128,0.7)' }}>
               {(event as any).savesCount > 0 && (

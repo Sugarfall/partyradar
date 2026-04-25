@@ -1504,8 +1504,15 @@ export default function DiscoverPage() {
 
   // Shared city-change logic (used by Venues search bar and city quick-select)
   function handleCitySearch(cityName: string, lat: number, lng: number, currency?: string) {
-    // Clear old city's events immediately so stale data doesn't linger
+    // Clear old city's events immediately so stale data doesn't linger.
+    // extraEvents holds background-loaded pages from the previous location; reset
+    // it here (synchronously, in the same React batch) so they don't flash on
+    // screen before the new city's first page arrives. The useEffect that normally
+    // resets extraEvents only fires AFTER the next render, causing one render
+    // where old-city events appear mixed with the new city.
     mutate(undefined, false)
+    setExtraEvents([])
+    loadingMoreRef.current = false
     setVenueCity(cityName)
     setMapCenter({ lat, lng })
     if (currency) setCurrentCurrency(currency)
@@ -2058,7 +2065,7 @@ export default function DiscoverPage() {
           {/* Map overlay */}
           {showMap && (
             <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(var(--accent-rgb),0.1)' }}>
-              <EventMap events={allEvents} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
+              <EventMap events={allEvents} centerLat={userLocation?.lat} centerLng={userLocation?.lng} currency={currentCurrency} />
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
                 style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
                 {(isLoading || locationLoading) ? 'SCANNING...' : loadingMore ? `${allEvents.length}+ EVENTS` : `${allEvents.length} EVENTS`}
@@ -2212,7 +2219,7 @@ export default function DiscoverPage() {
         <div className="flex-1 flex flex-col relative overflow-hidden">
           {showMap && (
             <div className="absolute inset-0 z-10" style={{ background: '#07071a', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
-              <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
+              <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} currency={currentCurrency} />
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
                 style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
                 {isLoading ? 'SCANNING...' : `${events.length} EVENTS NEARBY`}
