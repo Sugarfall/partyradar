@@ -115,6 +115,13 @@ interface ContentReport {
   reporter: { id: string; username: string; displayName: string; photoUrl?: string | null }
 }
 
+interface AdminMedal {
+  id: string; slug: string; name: string; description: string; icon: string
+  tier: 'BRONZE' | 'SILVER' | 'GOLD'; category: string; conditionType: string
+  threshold: number; isActive: boolean; sortOrder: number
+  _count: { earnedBy: number }
+}
+
 // ─── Role badge ───────────────────────────────────────────────────────────────
 
 function RoleBadge({ role, isAdmin }: { role: string; isAdmin: boolean }) {
@@ -156,7 +163,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline'
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
@@ -166,6 +173,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'reports', label: 'Reports', icon: <Flag size={14} /> },
   { id: 'moderation', label: 'Mod Queue', icon: <ShieldAlert size={14} /> },
   { id: 'pipeline', label: 'Pipeline', icon: <Activity size={14} /> },
+  { id: 'medals', label: '🏅 Medals', icon: null },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -192,6 +200,15 @@ export default function AdminPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [roleMenuOpen, setRoleMenuOpen] = useState<string | null>(null)
+  const [medals, setMedals] = useState<AdminMedal[]>([])
+  const [medalsLoading, setMedalsLoading] = useState(false)
+  const [showMedalForm, setShowMedalForm] = useState(false)
+  const [medalForm, setMedalForm] = useState({ slug: '', name: '', description: '', icon: '🏅', tier: 'BRONZE', category: 'SOCIAL', conditionType: 'FOLLOWERS_COUNT', threshold: 10, sortOrder: 0 })
+  const [awardModal, setAwardModal] = useState<{ medalId: string; medalName: string } | null>(null)
+  const [awardUserId, setAwardUserId] = useState('')
+  const [awarding, setAwarding] = useState(false)
+  const [editingMedal, setEditingMedal] = useState<string | null>(null)
+  const [editMedalData, setEditMedalData] = useState<Partial<AdminMedal>>({})
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok })
@@ -227,8 +244,18 @@ export default function AdminPage() {
       api.get<{ data: ContentReport[] }>('/admin/content-reports').then((r) => setContentReports(r.data)).catch(silent('admin:content-reports'))
     } else if (tab === 'pipeline') {
       api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((r) => setDiagnostics(r.data)).catch(silent('admin:diagnostics'))
+    } else if (tab === 'medals') {
+      loadMedals()
     }
   }, [tab, isStaff])
+
+  const loadMedals = useCallback(async () => {
+    setMedalsLoading(true)
+    try {
+      const r = await api.get<{ data: AdminMedal[] }>('/medals/admin')
+      setMedals(r.data)
+    } catch {} finally { setMedalsLoading(false) }
+  }, [])
 
   // ─── Actions ────────────────────────────────────────────────────────────────
 
@@ -1125,7 +1152,199 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── Medals tab ── */}
+        {tab === 'medals' && (
+          <div className="space-y-4">
+            {/* Create button + form toggle */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-white/40">{medals.length} medals total</p>
+              <button
+                onClick={() => setShowMedalForm(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+                style={{ background: '#00c8ff15', color: '#00c8ff', border: '1px solid #00c8ff30' }}
+              >
+                {showMedalForm ? <X size={12} /> : <Star size={12} />}
+                {showMedalForm ? 'Cancel' : 'Create Medal'}
+              </button>
+            </div>
+
+            {/* Create form */}
+            {showMedalForm && (
+              <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(0,200,255,0.04)', border: '1px solid rgba(0,200,255,0.15)' }}>
+                <p className="text-xs font-black tracking-widest" style={{ color: '#00c8ff' }}>NEW MEDAL</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={medalForm.slug} onChange={e => setMedalForm(f => ({ ...f, slug: e.target.value }))} placeholder="slug (e.g. social-butterfly)"
+                    className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none col-span-2"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <input value={medalForm.name} onChange={e => setMedalForm(f => ({ ...f, name: e.target.value }))} placeholder="Name"
+                    className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <input value={medalForm.icon} onChange={e => setMedalForm(f => ({ ...f, icon: e.target.value }))} placeholder="Icon emoji"
+                    className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <input value={medalForm.description} onChange={e => setMedalForm(f => ({ ...f, description: e.target.value }))} placeholder="Description"
+                    className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none col-span-2"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <select value={medalForm.tier} onChange={e => setMedalForm(f => ({ ...f, tier: e.target.value }))}
+                    className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['BRONZE','SILVER','GOLD'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <select value={medalForm.category} onChange={e => setMedalForm(f => ({ ...f, category: e.target.value }))}
+                    className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['SOCIAL','EVENTS','HOST','EXPLORER','LOYALTY','SPECIAL'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select value={medalForm.conditionType} onChange={e => setMedalForm(f => ({ ...f, conditionType: e.target.value }))}
+                    className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['FOLLOWERS_COUNT','FOLLOWING_COUNT','EVENTS_ATTENDED','EVENTS_ORGANISED','TICKETS_BOUGHT','CHECKINS_COUNT','REFERRALS_MADE','VENUES_VISITED','POSTS_COUNT','SPECIFIC_EVENT'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input type="number" value={medalForm.threshold} onChange={e => setMedalForm(f => ({ ...f, threshold: Number(e.target.value) }))} placeholder="Threshold"
+                    className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <input type="number" value={medalForm.sortOrder} onChange={e => setMedalForm(f => ({ ...f, sortOrder: Number(e.target.value) }))} placeholder="Sort order"
+                    className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.post('/medals', medalForm)
+                      setShowMedalForm(false)
+                      setMedalForm({ slug: '', name: '', description: '', icon: '🏅', tier: 'BRONZE', category: 'SOCIAL', conditionType: 'FOLLOWERS_COUNT', threshold: 10, sortOrder: 0 })
+                      loadMedals()
+                      showToast('Medal created')
+                    } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                  }}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold"
+                  style={{ background: '#00c8ff20', color: '#00c8ff', border: '1px solid #00c8ff40' }}
+                >
+                  Create Medal
+                </button>
+              </div>
+            )}
+
+            {/* Medal list */}
+            {medalsLoading ? (
+              <div className="text-center py-12 text-white/30 text-sm">Loading medals…</div>
+            ) : medals.length === 0 ? (
+              <div className="text-center py-12 text-white/30 text-sm">No medals yet — create one above</div>
+            ) : (
+              <div className="space-y-2">
+                {medals.map(m => {
+                  const tierColor = m.tier === 'GOLD' ? '#FFD700' : m.tier === 'SILVER' ? '#9EA0A5' : '#cd7f32'
+                  const isEditing = editingMedal === m.id
+                  return (
+                    <div key={m.id} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input defaultValue={m.name} onChange={e => setEditMedalData(d => ({ ...d, name: e.target.value }))} placeholder="Name"
+                              className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <input defaultValue={m.icon} onChange={e => setEditMedalData(d => ({ ...d, icon: e.target.value }))} placeholder="Icon"
+                              className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <input defaultValue={m.description} onChange={e => setEditMedalData(d => ({ ...d, description: e.target.value }))} placeholder="Description"
+                              className="col-span-2 px-3 py-2 rounded-xl text-xs text-white outline-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <input type="number" defaultValue={m.threshold} onChange={e => setEditMedalData(d => ({ ...d, threshold: Number(e.target.value) }))} placeholder="Threshold"
+                              className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <input type="number" defaultValue={m.sortOrder} onChange={e => setEditMedalData(d => ({ ...d, sortOrder: Number(e.target.value) }))} placeholder="Sort order"
+                              className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={async () => {
+                              try {
+                                await api.put(`/medals/${m.id}`, editMedalData)
+                                setEditingMedal(null); setEditMedalData({}); loadMedals(); showToast('Medal updated')
+                              } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                            }} className="flex-1 py-2 rounded-xl text-xs font-bold" style={{ background: '#10b98115', color: '#10b981', border: '1px solid #10b98130' }}>Save</button>
+                            <button onClick={() => { setEditingMedal(null); setEditMedalData({}) }} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{m.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-white">{m.name}</span>
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: `${tierColor}20`, color: tierColor, border: `1px solid ${tierColor}40` }}>{m.tier}</span>
+                              <span className="text-[10px] text-white/30">{m.category}</span>
+                              <span className="text-[10px] text-white/20">{m.conditionType} ≥ {m.threshold}</span>
+                            </div>
+                            <p className="text-xs text-white/40 truncate">{m.description}</p>
+                            <p className="text-[10px] mt-0.5" style={{ color: '#00c8ff80' }}>{m._count.earnedBy} earned · sort {m.sortOrder}</p>
+                          </div>
+                          <div className="flex gap-1.5 flex-shrink-0">
+                            <button onClick={() => setAwardModal({ medalId: m.id, medalName: m.name })}
+                              className="px-2 py-1.5 rounded-lg text-[10px] font-bold"
+                              style={{ background: '#f59e0b15', color: '#f59e0b', border: '1px solid #f59e0b30' }}>
+                              Award
+                            </button>
+                            <button onClick={() => { setEditingMedal(m.id); setEditMedalData({}) }}
+                              className="p-1.5 rounded-lg"
+                              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                              <Eye size={12} />
+                            </button>
+                            <button onClick={async () => {
+                              if (!confirm(`Delete medal "${m.name}"?`)) return
+                              try { await api.delete(`/medals/${m.id}`); loadMedals(); showToast('Medal deleted') }
+                              catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                            }} className="p-1.5 rounded-lg" style={{ background: '#ff006e10', color: '#ff006e80', border: '1px solid #ff006e20' }}>
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
+
+      {/* Award modal */}
+      {awardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: 'rgba(0,0,0,0.75)' }} onClick={() => setAwardModal(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: '#12122a', border: '1px solid rgba(255,255,255,0.1)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-white">Award: {awardModal.medalName}</h3>
+              <button onClick={() => setAwardModal(null)}><X size={16} style={{ color: 'rgba(255,255,255,0.4)' }} /></button>
+            </div>
+            <p className="text-xs text-white/40">Enter the user's ID (visible in the Users tab). The medal will be immediately granted to that user.</p>
+            <input
+              value={awardUserId}
+              onChange={e => setAwardUserId(e.target.value)}
+              placeholder="User ID (cuid...)"
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+            />
+            <button
+              disabled={awarding || !awardUserId.trim()}
+              onClick={async () => {
+                setAwarding(true)
+                try {
+                  await api.post(`/medals/${awardModal.medalId}/award/${awardUserId.trim()}`, {})
+                  showToast('Medal awarded successfully')
+                  setAwardModal(null); setAwardUserId('')
+                } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                finally { setAwarding(false) }
+              }}
+              className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40"
+              style={{ background: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }}
+            >
+              {awarding ? 'Awarding…' : 'Award Medal'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Close role menu on outside click */}
       {roleMenuOpen && (

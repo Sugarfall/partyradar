@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { Bell } from 'lucide-react'
@@ -32,6 +33,41 @@ interface AppNotification {
   body: string
   read: boolean
   createdAt: string
+  data?: Record<string, string>
+}
+
+/** Map a notification to the route it should open. Returns null if there's
+ *  no meaningful deep-link for that type. */
+function getHref(notif: AppNotification): string | null {
+  const d = notif.data ?? {}
+  switch (notif.type) {
+    case 'POST_COMMENT':
+    case 'COMMENT_MENTION':
+      return d['postId'] ? `/feed?post=${d['postId']}` : null
+    case 'RSVP_CONFIRMED':
+    case 'INVITE_RECEIVED':
+    case 'EVENT_REMINDER':
+    case 'EVENT_UPDATED':
+    case 'PARTY_BLAST':
+      return d['eventId'] ? `/events/${d['eventId']}` : null
+    case 'FOLLOW':
+    case 'NUDGE':
+    case 'GO_OUT_REQUEST':
+    case 'GO_OUT_ACCEPTED':
+    case 'INTEREST_MATCH':
+      return d['fromUsername'] ? `/profile/${d['fromUsername']}` : null
+    case 'PROFILE_VIEW':
+      // Body says "upgrade to see who" — send to own profile viewers tab
+      return '/profile'
+    case 'GROUP_INVITE_RECEIVED':
+      return d['groupId'] ? `/groups/${d['groupId']}` : '/groups'
+    case 'MESSAGE':
+      return d['conversationId'] ? `/dm/${d['conversationId']}` : '/dm'
+    case 'CELEBRITY_NEARBY':
+      return '/discover'
+    default:
+      return null
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -109,6 +145,7 @@ function timeAgo(iso: string): string {
 
 export default function NotificationsPage() {
   const { dbUser } = useAuth()
+  const router = useRouter()
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [loading, setLoading]             = useState(true)
@@ -276,7 +313,11 @@ export default function NotificationsPage() {
           {notifications.map(notif => (
             <button
               key={notif.id}
-              onClick={() => !notif.read && handleRead(notif.id)}
+              onClick={() => {
+                if (!notif.read) handleRead(notif.id)
+                const href = getHref(notif)
+                if (href) router.push(href)
+              }}
               className="w-full text-left rounded-2xl overflow-hidden transition-all duration-150"
               style={{
                 background: notif.read
@@ -286,6 +327,7 @@ export default function NotificationsPage() {
                   ? '1px solid rgba(var(--accent-rgb),0.06)'
                   : '1px solid rgba(var(--accent-rgb),0.14)',
                 opacity: notif.read ? 0.75 : 1,
+                cursor: getHref(notif) ? 'pointer' : 'default',
               }}
             >
               <div className="flex items-start gap-3 px-4 py-3.5">

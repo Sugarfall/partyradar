@@ -321,6 +321,7 @@ export default function PublicProfilePage() {
     imageUrl: string | null; spotifyUrl: string | null
     topTracks: Array<{ id: string; name: string; albumArt: string | null; previewUrl: string | null; durationMs: number }>
   } | null>(null)
+  const [profileMedals, setProfileMedals] = useState<Array<{ id: string; earnedAt: string; medal: { id: string; slug: string; name: string; icon: string; tier: 'BRONZE' | 'SILVER' | 'GOLD'; category: string } }>>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -335,6 +336,10 @@ export default function PublicProfilePage() {
       // Fetch Spotify artist data for this user
       api.get<{ data: typeof profileSpotifyArtist }>(`/spotify/artist/${data.id}`)
         .then((j) => { if (j?.data) setProfileSpotifyArtist(j.data) })
+        .catch(() => {})
+      // Fetch medals for this user
+      api.get<{ data: typeof profileMedals }>(`/medals/user/${data.id}`)
+        .then((j) => { if (j?.data) setProfileMedals(j.data) })
         .catch(() => {})
     } catch {
       setNotFound(true)
@@ -521,6 +526,44 @@ export default function PublicProfilePage() {
             <p className="text-[8px] font-bold tracking-widest" style={{ color: 'rgba(224,242,254,0.4)' }}>SCORE</p>
           </div>
         </div>
+
+        {/* ── Medal showcase ── */}
+        {profileMedals.length > 0 && (() => {
+          const tierOrder = { GOLD: 0, SILVER: 1, BRONZE: 2 }
+          const sorted = [...profileMedals].sort((a, b) => (tierOrder[a.medal.tier] ?? 3) - (tierOrder[b.medal.tier] ?? 3))
+          const shown = sorted.slice(0, 8)
+          const extra = sorted.length - shown.length
+          const tierGlow: Record<string, string> = { GOLD: 'rgba(255,215,0,0.25)', SILVER: 'rgba(158,160,165,0.2)', BRONZE: 'rgba(205,127,50,0.2)' }
+          const tierBorder: Record<string, string> = { GOLD: 'rgba(255,215,0,0.45)', SILVER: 'rgba(158,160,165,0.4)', BRONZE: 'rgba(205,127,50,0.4)' }
+          return (
+            <div className="mb-4 px-1 py-3 rounded-2xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
+              <div className="flex items-center justify-between px-3 mb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(255,215,0,0.7)', letterSpacing: '0.15em' }}>MEDALS</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.1)', color: 'rgba(255,215,0,0.6)', border: '1px solid rgba(255,215,0,0.2)' }}>{sorted.length}</span>
+                </div>
+                {profile.isMe && (
+                  <a href="/medals" className="text-[9px] font-black tracking-wider" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SEE ALL →</a>
+                )}
+              </div>
+              <div className="flex items-center gap-2 px-3 flex-wrap">
+                {shown.map(um => (
+                  <div key={um.id} title={um.medal.name}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0"
+                    style={{ background: tierGlow[um.medal.tier] ?? 'rgba(var(--accent-rgb),0.1)', border: `1.5px solid ${tierBorder[um.medal.tier] ?? 'rgba(var(--accent-rgb),0.2)'}`, boxShadow: `0 0 8px ${tierGlow[um.medal.tier] ?? 'transparent'}` }}>
+                    {um.medal.icon}
+                  </div>
+                ))}
+                {extra > 0 && (
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
+                    style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1.5px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.5)' }}>
+                    +{extra}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* ── Leave Feedback button ── */}
         {!profile.isMe && (

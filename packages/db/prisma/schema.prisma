@@ -207,6 +207,9 @@ model User {
   swipesReceived SwipeLike[] @relation("SwipesReceived")
   moderationLogs ModerationLog[]
   contentReports ContentReport[] @relation("ReportsMade")
+  earnedMedals         UserMedal[]
+  compGroupsCreated    CompetitionGroup[]  @relation("CompGroupsCreated")
+  compGroupMemberships CompetitionMember[]
 
   // Spotify Artist profile
   spotifyArtistId       String?
@@ -1332,4 +1335,108 @@ model SwipeLike {
   @@unique([fromUserId, toUserId])
   @@index([fromUserId])
   @@index([toUserId])
+}
+
+// ─── Medals & Achievements ────────────────────────────────────────────────────
+
+enum MedalTier {
+  BRONZE
+  SILVER
+  GOLD
+}
+
+enum MedalCategory {
+  SOCIAL
+  EVENTS
+  HOST
+  EXPLORER
+  LOYALTY
+  SPECIAL
+}
+
+enum MedalCondition {
+  FOLLOWERS_COUNT
+  FOLLOWING_COUNT
+  EVENTS_ATTENDED
+  EVENTS_ORGANISED
+  TICKETS_BOUGHT
+  CHECKINS_COUNT
+  REFERRALS_MADE
+  VENUES_VISITED
+  POSTS_COUNT
+  SPECIFIC_EVENT
+}
+
+model Medal {
+  id            String        @id @default(cuid())
+  slug          String
+  name          String
+  description   String
+  icon          String
+  tier          MedalTier
+  category      MedalCategory
+  conditionType MedalCondition
+  threshold     Int           @default(1)
+  eventId       String?
+  sortOrder     Int           @default(0)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  earnedBy      UserMedal[]
+
+  @@unique([slug, tier])
+  @@index([category, isActive])
+}
+
+model UserMedal {
+  id        String   @id @default(cuid())
+  userId    String
+  medalId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  medal     Medal    @relation(fields: [medalId], references: [id])
+  earnedAt  DateTime @default(now())
+
+  @@unique([userId, medalId])
+  @@index([userId])
+  @@index([medalId])
+}
+
+// ─── Competition Groups ───────────────────────────────────────────────────────
+
+enum CompGroupRole {
+  OWNER
+  MEMBER
+}
+
+model CompetitionGroup {
+  id          String              @id @default(cuid())
+  name        String
+  description String?
+  emoji       String              @default("🏆")
+  coverUrl    String?
+  createdById String
+  createdBy   User                @relation("CompGroupsCreated", fields: [createdById], references: [id])
+  members     CompetitionMember[]
+  isPrivate   Boolean             @default(false)
+  inviteCode  String              @unique @default(cuid())
+  maxMembers  Int                 @default(20)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([createdById])
+}
+
+model CompetitionMember {
+  id       String           @id @default(cuid())
+  groupId  String
+  userId   String
+  group    CompetitionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     CompGroupRole    @default(MEMBER)
+  joinedAt DateTime         @default(now())
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
 }

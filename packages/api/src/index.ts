@@ -68,6 +68,8 @@ import goOutRouter from './routes/go-out'
 import reportsRouter from './routes/reports'
 import spotifyRouter from './routes/spotify'
 import connectRouter from './routes/connect'
+import medalsRouter from './routes/medals'
+import compGroupsRouter from './routes/comp-groups'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification, sendNotificationToMany } from './lib/fcm'
 import { deleteCloudinaryAsset } from './lib/cloudinary'
@@ -545,6 +547,8 @@ app.use('/api/go-out', goOutRouter)
 app.use('/api/reports', reportsRouter)
 app.use('/api/spotify', spotifyRouter)
 app.use('/api/connect', connectRouter)
+app.use('/api/medals', medalsRouter)
+app.use('/api/comp-groups', compGroupsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
