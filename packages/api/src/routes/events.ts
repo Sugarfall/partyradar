@@ -318,12 +318,17 @@ router.get('/diagnostics', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+// Per-city cooldown to prevent quota drain on Eventbrite/SerpAPI/Perplexity.
+// Admins can bypass via `force: true` (already auth-gated so no abuse surface).
+const aiSyncCooldowns = new Map<string, number>()
+const AI_SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes per city
+
 /** POST /api/events/ai-sync — trigger AI event discovery for a city (fire-and-forget) */
 // Returns 202 immediately so the caller never hits a timeout. The actual
 // Eventbrite + SerpAPI + Perplexity sync runs in the background. The frontend
 // polls GET /events every 12 s while aiSyncing=true so events appear as each
 // source completes rather than waiting for all sources to finish.
-router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
+router.post('/ai-sync', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const { city, lat, lng, force } = req.body as {
       city?: string; lat?: number; lng?: number; force?: boolean
@@ -332,12 +337,29 @@ router.post('/ai-sync', optionalAuth, async (req: AuthRequest, res, next) => {
       throw new AppError('city, lat and lng are required', 400)
     }
 
+    const cityKey = String(city).toLowerCase().trim()
+    const isAdmin = req.user!.dbUser.isAdmin
+    const forceOverride = force === true && isAdmin
+
+    // Enforce cooldown for non-admin users (or non-forced admin calls)
+    if (!forceOverride) {
+      const lastSync = aiSyncCooldowns.get(cityKey) ?? 0
+      const elapsed = Date.now() - lastSync
+      if (elapsed < AI_SYNC_COOLDOWN_MS) {
+        const waitSecs = Math.ceil((AI_SYNC_COOLDOWN_MS - elapsed) / 1000)
+        res.status(429).json({ error: `City sync on cooldown — try again in ${waitSecs}s` })
+        return
+      }
+    }
+
+    aiSyncCooldowns.set(cityKey, Date.now())
+
     // Acknowledge immediately — sync runs in background
     res.status(202).json({ data: { status: 'syncing', city } })
 
     // Fire-and-forget: syncExternalEvents is statically imported so there is no
     // dynamic module-loading cost here that could block the event loop.
-    syncExternalEvents(String(city), Number(lat), Number(lng), 'user', force === true)
+    syncExternalEvents(cityKey, Number(lat), Number(lng), 'user', forceOverride)
       .then((r) => console.log(`[ai-sync] ${city}: imported ${r.imported}, skipped ${r.skipped}`))
       .catch((err) => console.error('[ai-sync] sync error:', err))
   } catch (err) {

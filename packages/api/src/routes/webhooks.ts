@@ -5,7 +5,7 @@ import { ensureStripe } from '../lib/stripe'
 import type Stripe from 'stripe'
 import { v4 as uuidv4 } from 'uuid'
 import { sendNotificationToMany } from '../lib/fcm'
-import { PUSH_BLAST_TIERS, TIERS, REVENUE_MODEL } from '@partyradar/shared'
+import { PUSH_BLAST_TIERS, TIERS, REVENUE_MODEL, WALLET_CONFIG } from '@partyradar/shared'
 import { haversineDistance } from '../lib/fcm'
 import { creditReferrer } from './referrals'
 
@@ -47,9 +47,9 @@ router.post('/stripe', async (req: Request, res: Response) => {
       res.json({ received: true, duplicate: true })
       return
     }
-    console.error('[Webhook idempotency write failed]', err)
-    // Fall through — we'd rather risk a double-process than 500 on Stripe
-    // and let them retry indefinitely.
+    console.error('[Webhook] Idempotency write failed — returning 500 for Stripe retry', err)
+    res.status(500).send('Idempotency write failed')
+    return
   }
 
   try {
@@ -410,6 +410,49 @@ async function handlePushBlastQueued(session: Stripe.Checkout.Session) {
   })
 }
 
+/**
+ * C2 fix: credit the group creator's wallet with their revenue share after each
+ * subscription payment. Previously the platform recorded its cut but the creator
+ * received nothing — their revenue never reached a wallet they could withdraw.
+ *
+ * creatorShare = totalPrice * (1 - GROUP_PLATFORM_CUT_PERCENT / 100)
+ */
+async function creditGroupCreator(groupId: string, creatorShare: number, description: string) {
+  if (creatorShare <= 0) return
+
+  const group = await prisma.groupChat.findUnique({
+    where: { id: groupId },
+    select: { createdById: true, name: true },
+  })
+  if (!group?.createdById) return
+
+  const wallet = await prisma.wallet.upsert({
+    where: { userId: group.createdById },
+    create: { userId: group.createdById },
+    update: {},
+  })
+
+  // Enforce MAX_BALANCE for creator wallet too
+  const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - wallet.balance)
+  const effective = Number(Math.min(creatorShare, headroom).toFixed(2))
+  if (effective <= 0) return
+
+  const updated = await prisma.wallet.update({
+    where: { id: wallet.id },
+    data: { balance: { increment: effective } },
+  })
+
+  await prisma.walletTransaction.create({
+    data: {
+      walletId: wallet.id,
+      type: 'GROUP_SUB_REVENUE',
+      amount: effective,
+      balanceAfter: updated.balance,
+      description,
+    },
+  })
+}
+
 async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session) {
   const { groupId, userId } = session.metadata ?? {}
   if (!groupId || !userId || !session.subscription) return
@@ -448,7 +491,7 @@ async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session)
   // Platform takes GROUP_PLATFORM_CUT_PERCENT of each group subscription payment
   const group = await prisma.groupChat.findUnique({
     where: { id: groupId },
-    select: { priceMonthly: true, name: true },
+    select: { priceMonthly: true, name: true, createdById: true },
   })
   const price = group?.priceMonthly ?? 0
   const platformCut = Number(((price * REVENUE_MODEL.GROUP_PLATFORM_CUT_PERCENT) / 100).toFixed(2))
@@ -463,12 +506,22 @@ async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session)
     })
     await creditReferrer(userId, platformCut)
   }
+
+  // C2 fix: credit the group creator with their share of the subscription payment
+  const creatorShare = Number((price - platformCut).toFixed(2))
+  await creditGroupCreator(groupId, creatorShare, `Group subscription · ${group?.name ?? groupId} (new member)`)
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
-  if (!invoice.subscription) return
+  // H2 fix: invoice.subscription was deprecated in Stripe API 2024-09-30.acacia.
+  // The subscription ID now lives at invoice.parent.subscription_details.subscription.
+  // We read both paths so existing events stored in Stripe's retry queue still work.
+  const subscriptionId: string | null | undefined =
+    (invoice as any).parent?.subscription_details?.subscription
+    ?? (invoice as any).subscription
+  if (!subscriptionId) return
   const stripe = ensureStripe()
-  const stripeSub = await stripe.subscriptions.retrieve(invoice.subscription as string)
+  const stripeSub = await stripe.subscriptions.retrieve(subscriptionId)
   const periodEnd = new Date(stripeSub.current_period_end * 1000)
 
   // Skip the very first invoice — already credited in handleCheckoutComplete.
@@ -523,6 +576,9 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
         })
         await creditReferrer(groupSub.userId, platformCut)
       }
+      // C2 fix: credit creator with their renewal share
+      const creatorShare = Number((amountPaid - platformCut).toFixed(2))
+      await creditGroupCreator(groupSub.groupId, creatorShare, `Group subscription renewal`)
     }
   }
 }
@@ -568,6 +624,15 @@ async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription) {
       where: { id: sub.userId },
       data: { subscriptionTier: 'FREE' },
     })
+
+    // H4 fix: clear isFeatured on all future events for this host — the featured
+    // flag was set at creation time based on their tier and is never automatically
+    // reconciled when the subscription lapses.
+    await prisma.event.updateMany({
+      where: { hostId: sub.userId, isFeatured: true, startsAt: { gte: new Date() } },
+      data: { isFeatured: false },
+    })
+
     return
   }
 
@@ -604,10 +669,18 @@ async function handleWalletTopUp(session: Stripe.Checkout.Session) {
   // Using increment (not read-then-write) prevents a stale balance if two top-ups
   // complete for the same wallet within the same millisecond.
   await prisma.$transaction(async (tx) => {
+    // M13 fix: read current balance inside the transaction so we can cap the
+    // credit at MAX_BALANCE. The upfront check in wallet.ts can be bypassed by
+    // a race — the webhook is the authoritative write path.
+    const current = await tx.wallet.findUnique({ where: { id: walletId }, select: { balance: true } })
+    const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - (current?.balance ?? 0))
+    const effectiveCredit = Number(Math.min(totalCredit, headroom).toFixed(2))
+    if (effectiveCredit <= 0) return // balance already at cap — nothing to credit
+
     const updated = await tx.wallet.update({
       where: { id: walletId },
       data: {
-        balance: { increment: totalCredit },
+        balance: { increment: effectiveCredit },
         lifetimeTopUp: { increment: amount },
       },
     })
@@ -616,7 +689,7 @@ async function handleWalletTopUp(session: Stripe.Checkout.Session) {
       data: {
         walletId,
         type: 'TOP_UP',
-        amount: totalCredit,
+        amount: effectiveCredit,
         balanceAfter: updated.balance,
         description: bonusAmount > 0
           ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
@@ -655,10 +728,16 @@ async function handleWalletTopUpFromIntent(pi: Stripe.PaymentIntent) {
 
   // Atomic interactive transaction: increment balance and record tx in one DB round-trip.
   await prisma.$transaction(async (tx) => {
+    // M13 fix: enforce MAX_BALANCE inside the transaction (same as Checkout flow above).
+    const current = await tx.wallet.findUnique({ where: { id: walletId }, select: { balance: true } })
+    const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - (current?.balance ?? 0))
+    const effectiveCredit = Number(Math.min(totalCredit, headroom).toFixed(2))
+    if (effectiveCredit <= 0) return
+
     const updated = await tx.wallet.update({
       where: { id: walletId },
       data: {
-        balance: { increment: totalCredit },
+        balance: { increment: effectiveCredit },
         lifetimeTopUp: { increment: amount },
       },
     })
@@ -667,7 +746,7 @@ async function handleWalletTopUpFromIntent(pi: Stripe.PaymentIntent) {
       data: {
         walletId,
         type: 'TOP_UP',
-        amount: totalCredit,
+        amount: effectiveCredit,
         balanceAfter: updated.balance,
         description: bonusAmount > 0
           ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
@@ -747,6 +826,22 @@ async function handleConnectAccountUpdated(account: Stripe.Account) {
       stripeConnectDetailsSubmitted: account.details_submitted,
     },
   })
+
+  // H18 fix: if this host can no longer accept charges, unpublish all their
+  // future paid events so buyers can't purchase tickets they'll never be able
+  // to refund via Stripe. Free events (ticketPrice 0) are left published.
+  if (!account.charges_enabled) {
+    await prisma.event.updateMany({
+      where: {
+        hostId: user.id,
+        isPublished: true,
+        isCancelled: false,
+        price: { gt: 0 },
+        startsAt: { gte: new Date() },
+      },
+      data: { isPublished: false },
+    })
+  }
 }
 
 async function handleConnectAccountDeauthorized(connectedAccountId: string) {

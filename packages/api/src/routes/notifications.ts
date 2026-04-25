@@ -71,9 +71,11 @@ router.put('/location', requireAuth, async (req: AuthRequest, res, next) => {
   })
   try {
     const { lat, lng } = schema.parse(req.body)
+    // Write both column pairs: lastKnownLat/lastKnownLng (push blasts, match, go-out)
+    // and lastLat/lastLng (nearby users feature) so both features stay in sync.
     await prisma.user.update({
       where: { id: req.user!.dbUser.id },
-      data: { lastKnownLat: lat, lastKnownLng: lng },
+      data: { lastKnownLat: lat, lastKnownLng: lng, lastLat: lat, lastLng: lng },
     })
     res.json({ data: { success: true } })
   } catch (err) {

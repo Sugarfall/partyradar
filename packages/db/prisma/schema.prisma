@@ -895,6 +895,7 @@ enum WalletTxType {
   REFERRAL_CREDIT
   BONUS
   WITHDRAWAL
+  GROUP_SUB_REVENUE
 }
 
 enum WalletTxStatus {

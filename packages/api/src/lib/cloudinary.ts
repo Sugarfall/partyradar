@@ -41,6 +41,44 @@ export function assertOwnImageUrl(url: string | null | undefined): string | null
   return url
 }
 
+/**
+ * Extract the Cloudinary public ID from a delivery URL so we can delete it.
+ * URL form: https://res.cloudinary.com/<cloud>/<resource_type>/upload/[v<ver>/]<public_id>.<ext>
+ * Returns null if the URL isn't a recognised Cloudinary asset (e.g. external placeholder).
+ */
+export function extractPublicId(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname !== 'res.cloudinary.com') return null
+    // pathname: /<cloud>/<resource_type>/upload/[v123456/]<public_id>.<ext>
+    const parts = parsed.pathname.split('/')
+    const uploadIdx = parts.indexOf('upload')
+    if (uploadIdx === -1) return null
+    // Everything after 'upload/' (skip optional version segment starting with 'v')
+    let remaining = parts.slice(uploadIdx + 1)
+    if (remaining[0]?.match(/^v\d+$/)) remaining = remaining.slice(1)
+    const withExt = remaining.join('/')
+    // Strip extension
+    return withExt.replace(/\.[^/.]+$/, '')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Delete a single Cloudinary asset by its delivery URL.
+ * Silently ignores assets that aren't ours or are already gone.
+ */
+export async function deleteCloudinaryAsset(url: string, resourceType: 'image' | 'video' = 'image'): Promise<void> {
+  const publicId = extractPublicId(url)
+  if (!publicId) return
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType, invalidate: true })
+  } catch (err) {
+    console.error(`[Cloudinary] Failed to delete asset ${publicId}:`, err)
+  }
+}
+
 export async function getSignedUploadUrl(folder: string, transformation?: string) {
   const timestamp = Math.round(Date.now() / 1000)
   const params: Record<string, string | number> = { timestamp, folder }

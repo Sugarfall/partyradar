@@ -9,17 +9,54 @@ import { moderateContent, recordViolation } from '../lib/moderation'
 import { hashPassword, verifyPassword, isHashed } from '../lib/passwordHash'
 import { assertOwnImageUrl } from '../lib/cloudinary'
 import { sendNotification } from '../lib/fcm'
+import { createHmac, timingSafeEqual } from 'crypto'
+
+// ─── Group invite HMAC helpers ───────────────────────────────────────────────
+// C5 fix: invites are now server-signed. The signature binds groupId +
+// recipientId so a token cannot be reused for a different group or user.
+
+function inviteSecret(): string {
+  // Prefer a dedicated GROUP_INVITE_SECRET; fall back to INTERNAL_API_KEY (which
+  // itself falls back to an ephemeral UUID in dev — acceptable there). In production,
+  // operators should set one of these to a stable value so invite tokens survive restarts.
+  const s = process.env['GROUP_INVITE_SECRET'] ?? process.env['INTERNAL_API_KEY']
+  if (!s) return 'dev-group-invite-secret-change-in-prod'
+  return s
+}
+
+function signGroupInvite(groupId: string, recipientId: string): string {
+  const payload = `${groupId}:${recipientId}`
+  return createHmac('sha256', inviteSecret()).update(payload).digest('hex')
+}
+
+export function verifyGroupInviteToken(token: string, groupId: string, recipientId: string): boolean {
+  const expected = Buffer.from(signGroupInvite(groupId, recipientId), 'hex')
+  let received: Buffer
+  try {
+    received = Buffer.from(token, 'hex')
+  } catch {
+    return false
+  }
+  if (expected.length !== received.length) return false
+  return timingSafeEqual(expected, received)
+}
 
 /** Marker prefix used to encode a structured group invite inside a DM.
- *  Format: [INVITE_GROUP:{groupId}:{base64(JSON({name,emoji,coverColor,inviterName}))}]
+ *  Format: [INVITE_GROUP:{groupId}:{base64(JSON({name,emoji,coverColor,inviterName,token}))}]
  *  The UI detects this and renders inline Accept/Decline buttons.
+ *  The `token` field is an HMAC that the join endpoint verifies to skip the
+ *  password prompt for private groups — preventing both:
+ *   a) fake invites crafted by arbitrary chat users
+ *   b) invited users bypassing the password on their own
  */
-function encodeInviteDmText(payload: { groupId: string; name: string; emoji: string | null; coverColor: string | null; inviterName: string }) {
+function encodeInviteDmText(payload: { groupId: string; recipientId: string; name: string; emoji: string | null; coverColor: string | null; inviterName: string }) {
+  const token = signGroupInvite(payload.groupId, payload.recipientId)
   const body = Buffer.from(JSON.stringify({
     name: payload.name,
     emoji: payload.emoji,
     coverColor: payload.coverColor,
     inviter: payload.inviterName,
+    token,
   })).toString('base64')
   return `[INVITE_GROUP:${payload.groupId}:${body}]`
 }
@@ -390,7 +427,7 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
 router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
-    const { password } = (req.body ?? {}) as { password?: string }
+    const { password, inviteToken } = (req.body ?? {}) as { password?: string; inviteToken?: string }
     const group = await prisma.groupChat.findUnique({ where: { id: req.params['id'] } })
     if (!group) throw new AppError('Group not found', 404)
 
@@ -407,8 +444,11 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
     }
 
     // Private (non-paid) group requires correct password (owner exempt)
+    // C5 fix: a valid HMAC invite token (from the owner's DM invite) also
+    // grants access, bypassing the password prompt for the specific recipient.
     if (group.isPrivate && !group.isPaid && !isOwner) {
-      const ok = !!password && await verifyPassword(password, group.password)
+      const hasValidInvite = !!inviteToken && verifyGroupInviteToken(inviteToken, group.id, userId)
+      const ok = hasValidInvite || (!!password && await verifyPassword(password, group.password))
       if (!ok) throw new AppError('Incorrect password', 403)
       // Upgrade legacy plaintext passwords to a hash on successful login
       if (group.password && !isHashed(group.password)) {
@@ -495,6 +535,7 @@ router.post('/:id/invite', requireAuth, async (req: AuthRequest, res, next) => {
 
     const dmText = encodeInviteDmText({
       groupId: group.id,
+      recipientId,
       name: group.name,
       emoji: group.emoji,
       coverColor: group.coverColor,

@@ -69,7 +69,8 @@ import reportsRouter from './routes/reports'
 import spotifyRouter from './routes/spotify'
 import connectRouter from './routes/connect'
 import { errorHandler } from './middleware/errorHandler'
-import { sendNotification } from './lib/fcm'
+import { sendNotification, sendNotificationToMany } from './lib/fcm'
+import { deleteCloudinaryAsset } from './lib/cloudinary'
 import { auth as firebaseAuth } from './lib/firebase-admin'
 import rateLimit from 'express-rate-limit'
 
@@ -718,12 +719,36 @@ cron.schedule('* * * * *', async () => {
 // Every 30 minutes: expire stories
 cron.schedule('*/30 * * * *', async () => {
   try {
-    const deleted = await prisma.post.deleteMany({
+    // M5 fix: collect Cloudinary asset URLs before deletion so we can clean
+    // them up — previously the cron left orphaned storage after every story expiry.
+    const expiredStories = await prisma.post.findMany({
       where: { isStory: true, expiresAt: { lte: new Date() } },
+      select: {
+        id: true,
+        imageUrl: true,
+        media: { select: { url: true, type: true } },
+      },
     })
-    if (deleted.count > 0) {
-      console.log(`[Cron] Expired ${deleted.count} story/stories`)
-    }
+
+    if (expiredStories.length === 0) return
+
+    // Delete from Cloudinary (best-effort, don't let failures block DB cleanup)
+    await Promise.allSettled(
+      expiredStories.flatMap((story) => {
+        const assets: Promise<void>[] = []
+        if (story.imageUrl) assets.push(deleteCloudinaryAsset(story.imageUrl, 'image'))
+        for (const m of story.media) {
+          assets.push(deleteCloudinaryAsset(m.url, m.type === 'VIDEO' ? 'video' : 'image'))
+        }
+        return assets
+      })
+    )
+
+    await prisma.post.deleteMany({
+      where: { id: { in: expiredStories.map((s) => s.id) } },
+    })
+
+    console.log(`[Cron] Expired ${expiredStories.length} story/stories (Cloudinary assets cleaned up)`)
   } catch (err) {
     console.error('[Cron] Error expiring stories:', err)
   }
@@ -763,17 +788,20 @@ cron.schedule('0 * * * *', async () => {
       },
     })
 
-    for (const event of upcomingEvents) {
-      for (const { userId } of event.guests) {
-        await sendNotification({
-          userId,
-          type: 'EVENT_REMINDER',
-          title: `${event.name} starts in 1 hour!`,
-          body: `Get ready — it's almost time`,
-          data: { eventId: event.id },
-        })
-      }
-    }
+    // M4 fix: parallelize per-event fan-out (was sequential awaits per guest)
+    await Promise.allSettled(
+      upcomingEvents.map((event) =>
+        sendNotificationToMany(
+          event.guests.map((g) => g.userId),
+          {
+            type: 'EVENT_REMINDER',
+            title: `${event.name} starts in 1 hour!`,
+            body: `Get ready — it's almost time`,
+            data: { eventId: event.id },
+          },
+        )
+      )
+    )
 
     if (upcomingEvents.length > 0) {
       console.log(`[Cron] Sent reminders for ${upcomingEvents.length} event(s)`)
@@ -801,17 +829,20 @@ cron.schedule('*/30 * * * *', async () => {
       },
     })
 
-    for (const event of events) {
-      for (const { userId } of event.guests) {
-        await sendNotification({
-          userId,
-          type: 'EVENT_REMINDER',
-          title: `👔 ${event.name} — dress code reminder`,
-          body: `Dress code: ${event.dressCode}. Event starts in ~2 hours.`,
-          data: { eventId: event.id },
-        })
-      }
-    }
+    // M4 fix: parallelize per-event fan-out (was sequential awaits per guest)
+    await Promise.allSettled(
+      events.map((event) =>
+        sendNotificationToMany(
+          event.guests.map((g) => g.userId),
+          {
+            type: 'EVENT_REMINDER',
+            title: `👔 ${event.name} — dress code reminder`,
+            body: `Dress code: ${event.dressCode}. Event starts in ~2 hours.`,
+            data: { eventId: event.id },
+          },
+        )
+      )
+    )
 
     if (events.length > 0) {
       console.log(`[Cron] Sent dress code reminders for ${events.length} event(s)`)
@@ -889,6 +920,7 @@ cron.schedule('0 * * * *', async () => {
 // ─── Env-var sanity check ────────────────────────────────────────────────────
 
 function checkEnvVars() {
+  const isProd = process.env['NODE_ENV'] === 'production'
   const required = [
     'DATABASE_URL',
     'FIREBASE_PROJECT_ID',
@@ -925,16 +957,26 @@ function checkEnvVars() {
     console.warn('   Ticket purchases and subscriptions will fail. Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET to enable.')
   }
 
-  // INTERNAL_API_KEY — used by startup auto-seed + hourly reseed cron.
-  // If not set, an ephemeral key is generated below (seeding still works).
-  // Set a stable value in Railway env vars if you need external callers to
-  // hit admin seed endpoints (e.g. from a CI script).
+  // INTERNAL_API_KEY — used by startup auto-seed + hourly reseed cron + spend-token endpoint.
+  // C7 fix: in production an ephemeral key changes on every restart, breaking any
+  // external callers and making group invite tokens invalid after a deploy.
+  // Require a stable value in production. In dev an ephemeral key is acceptable.
   if (!process.env['INTERNAL_API_KEY']) {
-    console.warn(
-      '⚠️  [Startup] INTERNAL_API_KEY not in env — an ephemeral key will be ' +
-      'auto-generated for this process. Startup seed + hourly reseed will work ' +
-      'normally; the key changes on every restart.',
-    )
+    if (isProd) {
+      // Non-fatal but loud — the server still starts so existing routes aren't
+      // disrupted, but operators will see this in Railway logs.
+      console.error(
+        '❌ [Startup] INTERNAL_API_KEY is not set in production! ' +
+        'An ephemeral key is being generated — group invite tokens will become ' +
+        'invalid on the next restart and the /api/wallet/spend-token endpoint ' +
+        'cannot be used by venue POS devices. Set a stable secret in Railway env vars.'
+      )
+    } else {
+      console.warn(
+        '⚠️  [Startup] INTERNAL_API_KEY not in env — ephemeral key generated for dev. ' +
+        'Group invites will be invalidated on restart.',
+      )
+    }
   }
 
   // Discovery env vars — NOT fatal (the app still works without them, just

@@ -1,12 +1,13 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, requireAdmin } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { hasRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { ensureStripe } from '../lib/stripe'
 import { WALLET_CONFIG, WALLET_TOP_UP_TIERS, CARD_DESIGNS, REVENUE_MODEL } from '@partyradar/shared'
 import { z } from 'zod'
+import { signSpendToken, verifyAndConsumeSpendToken } from '../lib/spendToken'
 
 const router = Router()
 
@@ -224,17 +225,47 @@ router.post('/payment-intent', requireAuth, async (req: AuthRequest, res, next) 
   }
 })
 
+// ─── POST /api/wallet/spend-token — venue POS generates a signed spend token ─
+// Protected by INTERNAL_API_KEY (service-to-service) or admin user auth.
+// The token is shown as a QR code on the POS screen; the user scans it and
+// their app sends the token with POST /api/wallet/spend.
+
+router.post('/spend-token', requireAdmin, async (req: AuthRequest, res, next) => {
+  const schema = z.object({
+    venueId: z.string().min(1),
+    amount: z.number().positive().max(10_000),
+  })
+  try {
+    const { venueId, amount } = schema.parse(req.body)
+    const venue = await prisma.venue.findUnique({ where: { id: venueId }, select: { id: true } })
+    if (!venue) throw new AppError('Venue not found', 404)
+    const token = signSpendToken(venueId, amount)
+    res.json({ data: { token, expiresInSeconds: 120 } })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // ─── POST /api/wallet/spend — spend wallet at venue (QR code scanned) ────────
 
 router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {
   const schema = z.object({
     venueId: z.string(),
     amount: z.number().positive(),
+    spendToken: z.string().min(1),
     description: z.string().max(200).optional(),
     items: z.array(z.object({ name: z.string(), price: z.number(), qty: z.number() })).optional(),
   })
   try {
-    const { venueId, amount, description, items } = schema.parse(req.body)
+    const { venueId, amount, spendToken, description, items } = schema.parse(req.body)
+
+    // H16 fix: verify the spend token is server-signed by the venue POS device,
+    // ensuring the amount was not client-asserted by the user.
+    try {
+      verifyAndConsumeSpendToken(spendToken, venueId, amount)
+    } catch (tokenErr: any) {
+      throw new AppError(`Invalid spend token: ${tokenErr.message}`, 400)
+    }
     const userId = req.user!.dbUser.id
     const wallet = await getOrCreateWallet(userId)
 
