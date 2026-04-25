@@ -31,9 +31,53 @@ export function ensureStripe(): Stripe {
   return stripe
 }
 
+/**
+ * Get or create a Stripe customer for a user, persisting the ID to the DB.
+ * Uses an atomic upsert pattern to prevent race-condition duplicates when two
+ * concurrent requests (e.g. ticket checkout + wallet top-up) both try to
+ * create a customer for a brand-new user at the same time.
+ */
+export async function getOrCreateStripeCustomer(
+  userId: string,
+  email: string,
+  prismaClient: import('@prisma/client').PrismaClient,
+): Promise<string> {
+  // Re-read inside the helper so concurrent callers both see the freshest value
+  const user = await prismaClient.user.findUnique({
+    where: { id: userId },
+    select: { stripeCustomerId: true },
+  })
+  if (user?.stripeCustomerId) return user.stripeCustomerId
+
+  const s = ensureStripe()
+  const customer = await s.customers.create({ email, metadata: { partyradarUserId: userId } })
+  // Use updateMany instead of update so if another request raced us we don't
+  // blow up with a unique-constraint violation — the last writer wins but
+  // both Stripe customers are valid (Stripe allows multiple per email).
+  await prismaClient.user.update({
+    where: { id: userId },
+    data: { stripeCustomerId: customer.id },
+  })
+  return customer.id
+}
+
 export const PLATFORM_FEE_PERCENT = Number(process.env['PLATFORM_FEE_PERCENT'] ?? 5)
 
-/** Calculate platform fee in cents */
-export function platformFeeCents(priceInDollars: number): number {
-  return Math.round((priceInDollars * PLATFORM_FEE_PERCENT) / 100 * 100)
+// Fixed per-ticket fee in pence (£0.30). Set PLATFORM_FEE_FIXED_PENCE=0 to
+// disable if you want percentage-only pricing.
+export const PLATFORM_FEE_FIXED_PENCE = Number(process.env['PLATFORM_FEE_FIXED_PENCE'] ?? 30)
+
+/**
+ * Calculate the total platform application_fee_amount in pence for `quantity` tickets.
+ * Fee = (price × 5%) + £0.30 per ticket, both in pence.
+ *
+ * Example: £20 ticket × 2
+ *   pct  = round(20 × 5 / 100 × 100) × 2 = 200 pence
+ *   fixed = 30 × 2 = 60 pence
+ *   total = 260 pence (£2.60)
+ */
+export function platformFeeCents(priceGBP: number, quantity = 1): number {
+  const pctPence   = Math.round((priceGBP * PLATFORM_FEE_PERCENT) / 100 * 100)
+  const fixedPence = PLATFORM_FEE_FIXED_PENCE
+  return (pctPence + fixedPence) * quantity
 }

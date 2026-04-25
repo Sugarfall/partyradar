@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { ensureStripe, platformFeeCents } from '../lib/stripe'
+import { ensureStripe, platformFeeCents, getOrCreateStripeCustomer } from '../lib/stripe'
 import { z } from 'zod'
 
 const router = Router()
@@ -49,13 +49,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
     }
 
     const userId = req.user!.dbUser.id
-    let stripeCustomerId = (await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } }))?.stripeCustomerId
-
-    if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({ email: req.user!.dbUser.email })
-      stripeCustomerId = customer.id
-      await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } })
-    }
+    const stripeCustomerId = await getOrCreateStripeCustomer(userId, req.user!.dbUser.email, prisma)
 
     const session = await stripe.checkout.sessions.create({
       customer: stripeCustomerId,
@@ -66,7 +60,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
       cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/events/${eventId}`,
       metadata: { eventId, userId, quantity: String(quantity), hostId: event.hostId },
       payment_intent_data: {
-        application_fee_amount: platformFeeCents(event.price) * quantity,
+        application_fee_amount: platformFeeCents(event.price, quantity),
         on_behalf_of: host.stripeConnectAccountId,
         transfer_data: { destination: host.stripeConnectAccountId },
       },

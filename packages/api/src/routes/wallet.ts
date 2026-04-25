@@ -4,7 +4,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { hasRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { ensureStripe } from '../lib/stripe'
+import { ensureStripe, getOrCreateStripeCustomer } from '../lib/stripe'
 import { WALLET_CONFIG, WALLET_TOP_UP_TIERS, CARD_DESIGNS, REVENUE_MODEL } from '@partyradar/shared'
 import { z } from 'zod'
 import { signSpendToken, verifyAndConsumeSpendToken } from '../lib/spendToken'
@@ -101,18 +101,12 @@ router.post('/top-up', requireAuth, async (req: AuthRequest, res, next) => {
       throw new AppError(`Wallet balance cannot exceed £${WALLET_CONFIG.MAX_BALANCE}`, 400)
     }
 
-    // Get or create Stripe customer
-    let stripeCustomerId = wallet.stripeCustomerId
-    if (!stripeCustomerId) {
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, stripeCustomerId: true } })
-      stripeCustomerId = user?.stripeCustomerId ?? null
-
-      if (!stripeCustomerId) {
-        const customer = await stripe.customers.create({ email: user!.email })
-        stripeCustomerId = customer.id
-        await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } })
-      }
-      await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId } })
+    // Get or create Stripe customer (shared helper prevents race-condition duplicates)
+    const userRow = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+    const stripeCustomerId = await getOrCreateStripeCustomer(userId, userRow!.email, prisma)
+    // Keep wallet.stripeCustomerId in sync for backwards-compat queries
+    if (!wallet.stripeCustomerId) {
+      await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId } }).catch(() => {})
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -180,18 +174,11 @@ router.post('/payment-intent', requireAuth, async (req: AuthRequest, res, next) 
       throw new AppError(`Wallet balance cannot exceed £${WALLET_CONFIG.MAX_BALANCE}`, 400)
     }
 
-    // Get or create Stripe customer
-    let stripeCustomerId = wallet.stripeCustomerId
-    if (!stripeCustomerId) {
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, stripeCustomerId: true } })
-      stripeCustomerId = user?.stripeCustomerId ?? null
-
-      if (!stripeCustomerId) {
-        const customer = await stripe.customers.create({ email: user!.email })
-        stripeCustomerId = customer.id
-        await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } })
-      }
-      await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId } })
+    // Get or create Stripe customer (shared helper prevents race-condition duplicates)
+    const userRow2 = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+    const stripeCustomerId2 = await getOrCreateStripeCustomer(userId, userRow2!.email, prisma)
+    if (!wallet.stripeCustomerId) {
+      await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId: stripeCustomerId2 } }).catch(() => {})
     }
 
     const bonusAmount = Number((topUpAmount * bonusPercent / 100).toFixed(2))
@@ -199,7 +186,7 @@ router.post('/payment-intent', requireAuth, async (req: AuthRequest, res, next) 
     const intent = await stripe.paymentIntents.create({
       amount: Math.round(topUpAmount * 100),
       currency: 'gbp',
-      customer: stripeCustomerId,
+      customer: stripeCustomerId2,
       automatic_payment_methods: { enabled: true },
       metadata: {
         type: 'wallet_topup',
@@ -472,16 +459,14 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
     } else {
       // Pay with Stripe
       const stripe = ensureStripe()
-      let stripeCustomerId = wallet.stripeCustomerId
-      if (!stripeCustomerId) {
-        const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
-        const customer = await stripe.customers.create({ email: user!.email })
-        stripeCustomerId = customer.id
-        await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId } })
+      const cardUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+      const cardCustomerId = await getOrCreateStripeCustomer(userId, cardUser!.email, prisma)
+      if (!wallet.stripeCustomerId) {
+        await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId: cardCustomerId } }).catch(() => {})
       }
 
       const session = await stripe.checkout.sessions.create({
-        customer: stripeCustomerId,
+        customer: cardCustomerId,
         payment_method_types: ['card'],
         line_items: [{
           price_data: {

@@ -553,6 +553,46 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     // Reject hotlinked cover images — must be uploaded through our Cloudinary
     if (rest.coverImageUrl) assertOwnImageUrl(rest.coverImageUrl)
 
+    // If the price changed for a paid event, Stripe Prices are immutable —
+    // we must create a new Price and archive the old one, otherwise checkout
+    // sessions will still charge the old amount.
+    let newStripePriceId: string | undefined
+    if (
+      rest.price !== undefined &&
+      rest.price > 0 &&
+      rest.price !== event.price &&
+      event.stripeProductId
+    ) {
+      try {
+        const stripe = ensureStripe()
+        const newPrice = await stripe.prices.create({
+          product: event.stripeProductId,
+          unit_amount: Math.round(rest.price * 100),
+          currency: 'gbp',
+        })
+        newStripePriceId = newPrice.id
+        // Archive the old price so it can't be used for new purchases
+        if (event.stripePriceId) {
+          await stripe.prices.update(event.stripePriceId, { active: false }).catch(() => {
+            // Non-fatal — old price becomes inactive asynchronously;
+            // if it already has no active checkout sessions this is fine.
+          })
+        }
+      } catch (stripeErr) {
+        console.error('[Events] Failed to update Stripe Price on event edit:', stripeErr)
+        // Don't block the DB update — worst case the checkout uses the old price
+        // until the next deploy. Log it so we can investigate.
+      }
+    }
+
+    // If price changed to 0 (making event free), archive the old Stripe Price
+    if (rest.price === 0 && event.price > 0 && event.stripePriceId) {
+      try {
+        const stripe = ensureStripe()
+        await stripe.prices.update(event.stripePriceId, { active: false }).catch(() => {})
+      } catch {}
+    }
+
     const updated = await prisma.event.update({
       where: { id: event.id },
       data: {
@@ -562,6 +602,12 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         accentColor: accentColor !== undefined ? accentColor : undefined,
         lineup: lineup !== undefined ? lineup : undefined,
         partySigns: partySigns !== undefined ? partySigns : undefined,
+        // Clear Stripe IDs when event becomes free; set new price ID when changed
+        ...(rest.price === 0 && event.price > 0
+          ? { stripePriceId: null, stripeProductId: null }
+          : newStripePriceId
+          ? { stripePriceId: newStripePriceId }
+          : {}),
       },
       include: { host: { select: userSelect } },
     })
