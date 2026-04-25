@@ -319,7 +319,27 @@ io.on('connection', (socket) => {
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-app.use(helmet())
+// Configure Helmet with an explicit CSP that permits WebSocket (wss:) connections.
+// The default helmet() CSP sets connect-src 'self' only, which blocks Socket.io
+// WebSocket upgrade requests in the browser. Since this is a JSON API + Socket.io
+// server the CSP also allows data: and https: for images/fonts.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:     ["'self'"],
+      scriptSrc:      ["'self'"],
+      styleSrc:       ["'self'", 'https:', "'unsafe-inline'"],
+      imgSrc:         ["'self'", 'data:', 'https:'],
+      fontSrc:        ["'self'", 'https:', 'data:'],
+      connectSrc:     ["'self'", 'wss:', 'ws:', 'https:'],  // allow Socket.io WebSocket
+      frameSrc:       ["'none'"],
+      objectSrc:      ["'none'"],
+      baseUri:        ["'self'"],
+      formAction:     ["'self'"],
+      frameAncestors: ["'self'"],
+    },
+  },
+}))
 
 // Build CORS allowlist once at boot so we can log it and catch misconfig early.
 // Includes: localhost (dev), FRONTEND_URL (prod), and a comma-separated

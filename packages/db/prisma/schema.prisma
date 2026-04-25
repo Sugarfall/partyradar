@@ -212,6 +212,9 @@ model User {
   spotifyArtistId       String?
   spotifyArtistData     String?   @db.Text
   spotifyArtistSyncedAt DateTime?
+
+  @@index([lastKnownLat, lastKnownLng])        // nearby/match geo-filter
+  @@index([lastKnownLat, lastKnownLng, lastSeenAt]) // nearby with recency filter
 }
 
 model Event {
@@ -346,7 +349,7 @@ model Ticket {
   id              String    @id @default(cuid())
   eventId         String
   userId          String
-  event           Event     @relation(fields: [eventId], references: [id])
+  event           Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user            User      @relation(fields: [userId], references: [id])
   qrCode          String    @unique @default(cuid())
   stripePaymentId String?
@@ -358,6 +361,7 @@ model Ticket {
 
   @@index([eventId])
   @@index([userId])
+  @@index([userId, createdAt])   // "my tickets" paginated queries
   @@index([eventId, scannedAt])
 }
 

@@ -94,12 +94,31 @@ router.get('/my', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** GET /api/checkins/event/:eventId — list check-ins for an event */
-router.get('/event/:eventId', requireAuth, async (req, res, next) => {
+/** GET /api/checkins/event/:eventId — list check-ins for an event
+ *
+ *  Security: only the event host or a confirmed/attending guest may see who
+ *  checked in. Exposing this to any authenticated user would allow stalking
+ *  of event attendees without their knowledge.
+ */
+router.get('/event/:eventId', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const userId = req.user!.dbUser.id
     const { eventId } = req.params
     const { page = '1', limit = '20' } = req.query
     const skip = (Number(page) - 1) * Number(limit)
+
+    // Verify the caller is the event host or a confirmed guest
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        hostId: true,
+        guests: { where: { userId, status: 'CONFIRMED' }, select: { userId: true } },
+      },
+    })
+    if (!event) throw new AppError('Event not found', 404)
+    const isHost  = event.hostId === userId
+    const isGuest = event.guests.length > 0
+    if (!isHost && !isGuest) throw new AppError('Forbidden', 403)
 
     const [checkIns, total] = await Promise.all([
       prisma.checkIn.findMany({

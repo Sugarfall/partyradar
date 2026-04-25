@@ -43,11 +43,31 @@ router.post('/', requireAuth, requireTier('BASIC', 'DJ Song Requests'), async (r
   } catch (err) { next(err) }
 })
 
-/** GET /api/dj-requests?eventId=&venueId= — list requests (host/DJ view) */
+/** GET /api/dj-requests?eventId=&venueId= — list requests (host/venue-owner view only)
+ *
+ *  Security: only the event host or the venue's claimed owner may fetch the
+ *  queue. Without this check any authenticated user could enumerate song
+ *  requests (and the requesters' identity) for any event.
+ */
 router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const userId = req.user!.dbUser.id
     const { eventId, venueId } = req.query as { eventId?: string; venueId?: string }
-    const where = eventId ? { eventId } : venueId ? { venueId } : {}
+
+    if (!eventId && !venueId) throw new AppError('eventId or venueId required', 400)
+
+    // Verify the caller owns the event or venue before exposing the queue
+    if (eventId) {
+      const event = await prisma.event.findUnique({ where: { id: eventId }, select: { hostId: true } })
+      if (!event) throw new AppError('Event not found', 404)
+      if (event.hostId !== userId) throw new AppError('Forbidden', 403)
+    } else {
+      const venue = await prisma.venue.findUnique({ where: { id: venueId }, select: { claimedById: true } })
+      if (!venue) throw new AppError('Venue not found', 404)
+      if (venue.claimedById !== userId) throw new AppError('Forbidden', 403)
+    }
+
+    const where = eventId ? { eventId } : { venueId: venueId! }
     const requests = await prisma.djRequest.findMany({
       where,
       orderBy: { createdAt: 'asc' },
@@ -57,25 +77,58 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   } catch (err) { next(err) }
 })
 
-/** PATCH /api/dj-requests/:id — update status (host only) */
+/** PATCH /api/dj-requests/:id — update status (host/venue-owner only)
+ *
+ *  Security fixes:
+ *  1. Verifies the caller is the event host or venue owner before allowing
+ *     any status change — previously any authed user could approve/reject
+ *     any request, effectively stealing wallet credits from other users.
+ *  2. The refund (REJECTED) is now inside the same Prisma transaction as the
+ *     status update, and only fires when transitioning from PENDING → REJECTED.
+ *     Previously the two writes were separate, creating a race window where a
+ *     concurrent retry could double-credit the requester's wallet.
+ */
 router.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const userId = req.user!.dbUser.id
     const { status } = req.body as { status: 'APPROVED' | 'REJECTED' | 'PLAYED' }
     if (!['APPROVED', 'REJECTED', 'PLAYED'].includes(status)) throw new AppError('Invalid status', 400)
 
-    const request = await prisma.djRequest.update({
-      where: { id: req.params['id'] },
-      data: { status },
+    const result = await prisma.$transaction(async (tx) => {
+      // Fetch first so we can check ownership and the current status
+      const request = await tx.djRequest.findUnique({ where: { id: req.params['id'] } })
+      if (!request) throw new AppError('DJ request not found', 404)
+
+      // Verify caller is the event host or claimed venue owner
+      if (request.eventId) {
+        const event = await tx.event.findUnique({ where: { id: request.eventId }, select: { hostId: true } })
+        if (!event || event.hostId !== userId) throw new AppError('Forbidden', 403)
+      } else if (request.venueId) {
+        const venue = await tx.venue.findUnique({ where: { id: request.venueId }, select: { claimedById: true } })
+        if (!venue || venue.claimedById !== userId) throw new AppError('Forbidden', 403)
+      } else {
+        throw new AppError('Forbidden', 403)
+      }
+
+      // Guard: only refund on PENDING → REJECTED to prevent double-credit on retries
+      const shouldRefund = status === 'REJECTED' && request.status === 'PENDING'
+
+      const updated = await tx.djRequest.update({
+        where: { id: request.id },
+        data: { status },
+      })
+
+      if (shouldRefund) {
+        await tx.wallet.update({
+          where: { userId: request.userId },
+          data: { rewardPoints: { increment: request.creditCost } },
+        })
+      }
+
+      return updated
     })
 
-    // Refund if rejected
-    if (status === 'REJECTED') {
-      await prisma.wallet.update({
-        where: { userId: request.userId },
-        data: { rewardPoints: { increment: request.creditCost } },
-      })
-    }
-    res.json({ data: request })
+    res.json({ data: result })
   } catch (err) { next(err) }
 })
 
