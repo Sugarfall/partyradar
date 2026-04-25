@@ -1665,17 +1665,28 @@ export default function DiscoverPage() {
   }, [hasMore, events.length, locationReady, userLat, userLng, filters])
 
   // Merged + deduplicated list of ALL events.
+  // Pre-filter: bot events with no verified external source are AI-hallucinated —
+  //   they must have at least one of skiddleId / eventbriteId / ticketmasterId /
+  //   eventbriteUrl / socialSourceUrl to be included.
   // Deduplication layers (first match wins):
-  //   1. Row ID — always
-  //   2. External source IDs (skiddleId / eventbriteId / ticketmasterId) — same import
-  //   3. Exact lat+lng+startsAt — same real-world event listed under different titles
+  //   1. Row ID
+  //   2. External source IDs — same event imported from multiple APIs
+  //   3. Exact lat+lng+startsAt — same event listed under different titles
+  //   4. Same name slug + same ~1 km square + same 7-day window —
+  //      collapses multi-day festival runs scraped per-day from different sources
   const allEvents = useMemo(() => {
-    const seenId      = new Set<string>()
-    const seenExt     = new Set<string>()   // external IDs
-    const seenLocTime = new Set<string>()   // "lat4:lng4:startsAt"
-    const seenNameDay = new Set<string>()   // name slug + rough venue + calendar day
+    const seenId       = new Set<string>()
+    const seenExt      = new Set<string>()   // external IDs
+    const seenLocTime  = new Set<string>()   // "lat4:lng4:startsAt"
+    const seenNameWeek = new Set<string>()   // name slug + rough venue + 7-day slot
 
     return [...events, ...extraEvents].filter(e => {
+      // Pre-filter: require a real source for bot-created events
+      const isBot = e.host.username === 'partyradar'
+      const hasSource = e.skiddleId || e.eventbriteId || e.ticketmasterId ||
+                        e.eventbriteUrl || e.socialSourceUrl
+      if (isBot && !hasSource) return false
+
       // 1. Row ID
       if (seenId.has(e.id)) return false
       seenId.add(e.id)
@@ -1693,13 +1704,17 @@ export default function DiscoverPage() {
       if (seenLocTime.has(locTimeKey)) return false
       seenLocTime.add(locTimeKey)
 
-      // 4. Same name + same ~1 km square + same calendar day
-      //    Catches festival scraped from multiple sources with slightly different times/prices
-      const nameSlug  = e.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40)
-      const calDay    = new Date(e.startsAt).toISOString().slice(0, 10)
-      const nameDayKey = `${nameSlug}:${e.lat.toFixed(2)}:${e.lng.toFixed(2)}:${calDay}`
-      if (seenNameDay.has(nameDayKey)) return false
-      seenNameDay.add(nameDayKey)
+      // 4. Same name + same ~11 km cell + same 7-day sliding window
+      //    toFixed(1) ≈ 11 km resolution — deliberately coarse so two sources
+      //    that geocode the same venue slightly differently (e.g. Skiddle vs
+      //    Eventbrite returning coords 100–200 m apart) still land in the same
+      //    bucket.  The week slot collapses consecutive festival nights scraped
+      //    per-day.  Only the first chronologically survives.
+      const nameSlug    = e.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40)
+      const weekSlot    = Math.floor(new Date(e.startsAt).getTime() / (7 * 24 * 3_600_000))
+      const nameWeekKey = `${nameSlug}:${e.lat.toFixed(1)}:${e.lng.toFixed(1)}:${weekSlot}`
+      if (seenNameWeek.has(nameWeekKey)) return false
+      seenNameWeek.add(nameWeekKey)
 
       return true
     })
