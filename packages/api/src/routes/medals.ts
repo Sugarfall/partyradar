@@ -46,7 +46,7 @@ router.get('/', async (_req, res, next) => {
 // Admin: all medals with earn counts
 router.get('/admin', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' })
+    if (!req.user?.dbUser.isAdmin) return res.status(403).json({ error: 'Admin only' })
     const medals = await prisma.medal.findMany({ orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { tier: 'asc' }], include: { _count: { select: { earnedBy: true } } } })
     res.json({ data: medals })
   } catch (err) { next(err) }
@@ -55,7 +55,7 @@ router.get('/admin', requireAuth, async (req: AuthRequest, res, next) => {
 // My medals + progress
 router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const [medals, userMedals, stats] = await Promise.all([
       prisma.medal.findMany({ where: { isActive: true }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { tier: 'asc' }] }),
       prisma.userMedal.findMany({ where: { userId }, include: { medal: true } }),
@@ -73,7 +73,7 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
 // Check + auto-award new medals
 router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const [medals, alreadyEarned, stats] = await Promise.all([
       prisma.medal.findMany({ where: { isActive: true, NOT: { conditionType: 'SPECIFIC_EVENT' } } }),
       prisma.userMedal.findMany({ where: { userId }, select: { medalId: true } }),
@@ -96,7 +96,7 @@ router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
 // Admin: create medal
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' })
+    if (!req.user?.dbUser.isAdmin) return res.status(403).json({ error: 'Admin only' })
     const { slug, name, description, icon, tier, category, conditionType, threshold, eventId, sortOrder } = req.body
     const medal = await prisma.medal.create({ data: { slug, name, description, icon, tier, category, conditionType, threshold: threshold ?? 1, eventId, sortOrder: sortOrder ?? 0 } })
     res.json({ data: medal })
@@ -106,7 +106,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 // Admin: update medal
 router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' })
+    if (!req.user?.dbUser.isAdmin) return res.status(403).json({ error: 'Admin only' })
     const medal = await prisma.medal.update({ where: { id: req.params['id'] }, data: req.body })
     res.json({ data: medal })
   } catch (err) { next(err) }
@@ -115,7 +115,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 // Admin: delete medal
 router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' })
+    if (!req.user?.dbUser.isAdmin) return res.status(403).json({ error: 'Admin only' })
     await prisma.medal.delete({ where: { id: req.params['id'] } })
     res.json({ ok: true })
   } catch (err) { next(err) }
@@ -124,7 +124,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 // Admin: manually award medal to user
 router.post('/:id/award/:userId', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' })
+    if (!req.user?.dbUser.isAdmin) return res.status(403).json({ error: 'Admin only' })
     const um = await prisma.userMedal.upsert({
       where: { userId_medalId: { userId: req.params['userId']!, medalId: req.params['id']! } },
       create: { userId: req.params['userId']!, medalId: req.params['id']! },

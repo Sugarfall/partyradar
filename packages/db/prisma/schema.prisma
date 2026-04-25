@@ -1424,6 +1424,10 @@ model CompetitionGroup {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
+  challenges     GroupChallenge[] @relation("GroupChallenges")
+  matchWins      ChallengeMatch[] @relation("MatchWins")
+  taskCompletions TaskCompletion[] @relation("TaskCompletions")
+
   @@index([createdById])
 }
 
@@ -1439,4 +1443,96 @@ model CompetitionMember {
   @@unique([groupId, userId])
   @@index([groupId])
   @@index([userId])
+}
+
+// ─── Weekend Group Challenges ─────────────────────────────────────────────────
+
+enum ChallengeStatus {
+  PENDING    // challenge sent, awaiting group response
+  ACCEPTED   // group accepted, waiting for an opponent match
+  DECLINED   // group declined
+  MATCHED    // matched with another group — challenge is live
+  COMPLETED  // all tasks resolved, winner determined
+  EXPIRED    // deadline passed without completing or matching
+}
+
+enum TaskType {
+  VISIT_VENUE    // visit a specific type of venue
+  TAKE_PHOTO     // group photo at a specific location or with a specific prop
+  DANCE_OFF      // record a short video dancing on a dance floor
+  TRIVIA         // answer in-app trivia questions
+  SCAVENGER_HUNT // find and photograph a specific item or place
+  SOCIAL_POST    // post something on social media with a hashtag
+  KARAOKE        // perform a song on stage
+  COSTUME        // wear matching accessories or outfits
+  SPEEDRUN       // accomplish multiple sub-tasks in the shortest time
+  RANDOM         // wild-card — do the unexpected
+}
+
+model GroupChallenge {
+  id          String           @id @default(cuid())
+  groupId     String
+  group       CompetitionGroup @relation("GroupChallenges", fields: [groupId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  status      ChallengeStatus  @default(PENDING)
+  expiresAt   DateTime         // Sunday 23:59 of that weekend
+  respondedAt DateTime?
+  matchId     String?
+  match       ChallengeMatch?  @relation(fields: [matchId], references: [id])
+  points      Int              @default(0)
+  lat         Float?
+  lng         Float?
+  city        String?
+  dispatchKey String?          // groups in same dispatch wave share this key for matching
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([groupId, status])
+  @@index([matchId])
+  @@index([dispatchKey, status])
+}
+
+model ChallengeMatch {
+  id           String           @id @default(cuid())
+  title        String
+  description  String
+  startsAt     DateTime
+  endsAt       DateTime         // end of Sunday
+  participants GroupChallenge[]
+  tasks        ChallengeTask[]
+  winnerId     String?
+  winnerGroup  CompetitionGroup? @relation("MatchWins", fields: [winnerId], references: [id])
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model ChallengeTask {
+  id          String           @id @default(cuid())
+  matchId     String
+  match       ChallengeMatch   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  hint        String?
+  taskType    TaskType         @default(RANDOM)
+  points      Int              @default(100)
+  orderIndex  Int              @default(0)
+  completions TaskCompletion[]
+  createdAt   DateTime         @default(now())
+
+  @@index([matchId])
+}
+
+model TaskCompletion {
+  id          String           @id @default(cuid())
+  taskId      String
+  task        ChallengeTask    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  groupId     String
+  group       CompetitionGroup @relation("TaskCompletions", fields: [groupId], references: [id], onDelete: Cascade)
+  proof       String?          // photo URL or text description
+  completedAt DateTime         @default(now())
+
+  @@unique([taskId, groupId])
+  @@index([groupId])
+  @@index([taskId])
 }

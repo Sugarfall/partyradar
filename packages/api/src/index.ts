@@ -70,6 +70,7 @@ import spotifyRouter from './routes/spotify'
 import connectRouter from './routes/connect'
 import medalsRouter from './routes/medals'
 import compGroupsRouter from './routes/comp-groups'
+import challengesRouter, { dispatchWeekendChallenges } from './routes/challenges'
 import { errorHandler } from './middleware/errorHandler'
 import { sendNotification, sendNotificationToMany } from './lib/fcm'
 import { deleteCloudinaryAsset } from './lib/cloudinary'
@@ -549,6 +550,7 @@ app.use('/api/spotify', spotifyRouter)
 app.use('/api/connect', connectRouter)
 app.use('/api/medals', medalsRouter)
 app.use('/api/comp-groups', compGroupsRouter)
+app.use('/api/challenges', challengesRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
@@ -873,6 +875,29 @@ cron.schedule('*/30 * * * *', async () => {
     }
   } catch (err) {
     console.error('[Cron] Error sending dress code reminders:', err)
+  }
+})
+
+// ── Weekend group challenges ───────────────────────────────────────────────────
+// Friday at 18:00 UTC — dispatch weekend challenges to active groups
+cron.schedule('0 18 * * 5', async () => {
+  try {
+    console.log('[Cron] Dispatching weekend group challenges…')
+    const result = await dispatchWeekendChallenges()
+    console.log(`[Cron] Weekend challenges dispatched: ${result.challengeCount} challenges to ${result.groupCount} groups`)
+  } catch (err) {
+    console.error('[Cron] Error dispatching weekend challenges:', err)
+  }
+})
+
+// Saturday at 14:00 UTC — second wave for groups that weren't in the first batch
+cron.schedule('0 14 * * 6', async () => {
+  try {
+    console.log('[Cron] Saturday challenge top-up…')
+    const result = await dispatchWeekendChallenges()
+    console.log(`[Cron] Saturday top-up: ${result.challengeCount} challenges dispatched`)
+  } catch (err) {
+    console.error('[Cron] Error in Saturday challenge top-up:', err)
   }
 })
 

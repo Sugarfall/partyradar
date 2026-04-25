@@ -10,7 +10,7 @@ const userSelect = { id: true, username: true, displayName: true, photoUrl: true
 
 router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const myMemberships = await prisma.competitionMember.findMany({ where: { userId }, include: { group: { include: { _count: { select: { members: true } } } } } })
     const myGroupIds = myMemberships.map(m => m.groupId)
     const discover = await prisma.competitionGroup.findMany({ where: { isPrivate: false, id: { notIn: myGroupIds } }, take: 20, include: { _count: { select: { members: true } } }, orderBy: { createdAt: 'desc' } })
@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
 
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const { name, description, emoji, isPrivate, maxMembers } = req.body
     if (!name?.trim()) return res.status(400).json({ error: 'Name required' })
     const group = await prisma.competitionGroup.create({
@@ -33,7 +33,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
 router.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const group = await prisma.competitionGroup.findUnique({ where: { id: req.params['id'] }, include: { members: { include: { user: { select: userSelect } } }, _count: { select: { members: true } } } })
     if (!group) return res.status(404).json({ error: 'Not found' })
     const isMember = group.members.some(m => m.userId === userId)
@@ -52,7 +52,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 
 router.post('/join/:code', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const group = await prisma.competitionGroup.findUnique({ where: { inviteCode: req.params['code'] }, include: { _count: { select: { members: true } } } })
     if (!group) return res.status(404).json({ error: 'Invalid invite code' })
     if (group._count.members >= group.maxMembers) return res.status(400).json({ error: 'Group is full' })
@@ -65,7 +65,7 @@ router.post('/join/:code', requireAuth, async (req: AuthRequest, res, next) => {
 
 router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const group = await prisma.competitionGroup.findUnique({ where: { id: req.params['id'] }, include: { _count: { select: { members: true } } } })
     if (!group) return res.status(404).json({ error: 'Not found' })
     if (group.isPrivate) return res.status(403).json({ error: 'Use invite code for private groups' })
@@ -79,7 +79,7 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res, next) => {
 
 router.delete('/:id/leave', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const member = await prisma.competitionMember.findUnique({ where: { groupId_userId: { groupId: req.params['id']!, userId } } })
     if (!member) return res.status(404).json({ error: 'Not a member' })
     if (member.role === 'OWNER') {
@@ -94,7 +94,7 @@ router.delete('/:id/leave', requireAuth, async (req: AuthRequest, res, next) => 
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const userId = req.user!.id
+    const userId = req.user!.dbUser.id
     const member = await prisma.competitionMember.findUnique({ where: { groupId_userId: { groupId: req.params['id']!, userId } } })
     if (!member || member.role !== 'OWNER') return res.status(403).json({ error: 'Owner only' })
     await prisma.competitionGroup.delete({ where: { id: req.params['id'] } })
