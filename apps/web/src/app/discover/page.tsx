@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -129,7 +129,7 @@ function LockedEventListCard({ event, color, label }: { event: Event; color: str
 }
 
 // ── Compact list card for list view ──────────────────────────────────────────
-function EventListCard({ event, live, userTier, currency }: { event: Event; live?: boolean; userTier?: string; currency?: string }) {
+function EventListCard({ event, live, userTier, currency, distanceKm }: { event: Event; live?: boolean; userTier?: string; currency?: string; distanceKm?: number }) {
   // Gate YACHT_PARTY and BEACH_PARTY for FREE users
   if (event.type === 'YACHT_PARTY' && !getTier(userTier).canViewYachtParties) {
     return <LockedEventListCard event={event} color="#0ea5e9" label="YACHT PARTY" />
@@ -185,6 +185,11 @@ function EventListCard({ event, live, userTier, currency }: { event: Event; live
         </div>
         <p className="text-[10px] truncate mb-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>
           <MapPin size={9} className="inline mr-0.5" />{event.neighbourhood ?? event.address?.split(',')[0]}
+          {distanceKm !== undefined && (
+            <span className="ml-1.5 font-bold" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
+              · {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
+            </span>
+          )}
         </p>
         {event.address && event.address !== event.neighbourhood && (
           <p className="text-[9px] truncate mb-1" style={{ color: 'rgba(224,242,254,0.25)' }}>
@@ -1542,11 +1547,71 @@ export default function DiscoverPage() {
   // Events ONLY fetch once we have real coordinates (GPS, IP geo, or Glasgow fallback).
   // skip=!locationReady ensures Amsterdam / global events never bleed in.
   // userLocation is always set before locationReady, so lat/lng is always present in the query.
-  const { events, isLoading, mutate, forceRetry } = useEvents({
+  const { events, isLoading, hasMore, mutate, forceRetry } = useEvents({
     ...filters,
     ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
     limit: 100,
   }, !locationReady)
+
+  // ── Multi-page progressive loader ─────────────────────────────────────────
+  // Silently fetches pages 2, 3, … in the background so the list shows ALL
+  // events in the area, not just the first 20.  The first page (from SWR above)
+  // appears immediately; extra pages stream in as they arrive.
+  const [extraEvents, setExtraEvents] = useState<Event[]>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+  const loadingMoreRef = useRef(false)
+  const extraSig = useRef('')
+
+  // Reset when query key changes (new location, filter, etc.)
+  useEffect(() => {
+    const sig = `${userLocation?.lat}:${userLocation?.lng}:${JSON.stringify(filters)}:${locationReady}`
+    if (sig !== extraSig.current) {
+      extraSig.current = sig
+      setExtraEvents([])
+      setLoadingMore(false)
+      loadingMoreRef.current = false
+    }
+  }, [userLocation, filters, locationReady])
+
+  // Load pages 2+ once the first page has arrived
+  useEffect(() => {
+    if (!hasMore || !locationReady || !userLocation || loadingMoreRef.current || events.length === 0) return
+    loadingMoreRef.current = true
+    setLoadingMore(true)
+    ;(async () => {
+      const acc: Event[] = []
+      let p = 2
+      while (p <= 20) { // safety cap: max 400 total events (20 pages × 20/page)
+        const qs = new URLSearchParams({
+          lat: String(userLocation.lat), lng: String(userLocation.lng),
+          radius: '50', page: String(p),
+        })
+        if (filters.type)     qs.set('type', filters.type)
+        if (filters.showFree) qs.set('showFree', 'true')
+        if (filters.tonight)  qs.set('tonight', 'true')
+        if (filters.search)   qs.set('search', filters.search)
+        try {
+          const res = await api.get<{ data: Event[]; hasMore: boolean }>(`/events?${qs}`)
+          acc.push(...(res as { data: Event[] }).data)
+          setExtraEvents([...acc])
+          if (!(res as { hasMore: boolean }).hasMore) break
+        } catch { break }
+        p++
+      }
+      loadingMoreRef.current = false
+      setLoadingMore(false)
+    })()
+  }, [hasMore, events.length, locationReady, userLocation, filters])
+
+  // Merged + deduplicated list of ALL events
+  const allEvents = useMemo(() => {
+    const seen = new Set<string>()
+    return [...events, ...extraEvents].filter(e => {
+      if (seen.has(e.id)) return false
+      seen.add(e.id)
+      return true
+    })
+  }, [events, extraEvents])
 
   // AI sync — fires once when we get the first GPS fix.
   // POST /events/ai-sync now returns 202 immediately (fire-and-forget on the server).
@@ -1974,10 +2039,10 @@ export default function DiscoverPage() {
           {/* Map overlay */}
           {showMap && (
             <div className="relative" style={{ height: 220, borderBottom: '1px solid rgba(var(--accent-rgb),0.1)' }}>
-              <EventMap events={events} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
+              <EventMap events={allEvents} centerLat={userLocation?.lat} centerLng={userLocation?.lng} />
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] font-bold px-4 py-1.5 rounded-full"
                 style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'rgba(var(--accent-rgb),0.7)', backdropFilter: 'blur(8px)', letterSpacing: '0.1em' }}>
-                {(isLoading || locationLoading) ? 'SCANNING...' : `${events.length} EVENTS`}
+                {(isLoading || locationLoading) ? 'SCANNING...' : loadingMore ? `${allEvents.length}+ EVENTS` : `${allEvents.length} EVENTS`}
               </div>
             </div>
           )}
@@ -2027,18 +2092,16 @@ export default function DiscoverPage() {
           ) : events.length === 0 ? (
             <EmptyState loading={syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
           ) : (() => {
-            const TYPE_PRIORITY: Record<string, number> = { HOME_PARTY: 0, CLUB_NIGHT: 1, PUB_NIGHT: 2 }
-            const byTypeThenDate = (a: (typeof events)[0], b: (typeof events)[0]) => {
-              const pa = TYPE_PRIORITY[a.type] ?? 3
-              const pb = TYPE_PRIORITY[b.type] ?? 3
-              if (pa !== pb) return pa - pb
-              return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-            }
-            // Shared helper — type-aware effective end time. Replaces the
-            // old 6h fallback which falsely kept past events in LIVE NOW
-            // (e.g. 11am pub quiz still "live" at 3am the next day).
-            const liveEvents = events.filter(e => isHappeningNow(e, now)).sort(byTypeThenDate)
-            const upcomingEvents = events.filter(e => new Date(e.startsAt).getTime() > now).sort(byTypeThenDate)
+            // Sort ALL events by distance from user — nearest first, all types mixed.
+            const eventsByDist = userLocation
+              ? [...allEvents].sort((a, b) =>
+                  haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng) -
+                  haversineKm(userLocation.lat, userLocation.lng, b.lat, b.lng)
+                )
+              : allEvents
+
+            const liveEvents     = eventsByDist.filter(e => isHappeningNow(e, now))
+            const upcomingEvents = eventsByDist.filter(e => new Date(e.startsAt).getTime() > now)
 
             return (
               <div className="px-4 py-4 space-y-6">
@@ -2054,12 +2117,15 @@ export default function DiscoverPage() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {liveEvents.map(e => <EventListCard key={e.id} event={e} live userTier={userTier} currency={currentCurrency} />)}
+                      {liveEvents.map(e => (
+                        <EventListCard key={e.id} event={e} live userTier={userTier} currency={currentCurrency}
+                          distanceKm={userLocation ? haversineKm(userLocation.lat, userLocation.lng, e.lat, e.lng) : undefined} />
+                      ))}
                     </div>
                   </div>
                 )}
 
-                {/* UPCOMING */}
+                {/* UPCOMING — all types mixed, nearest first */}
                 {upcomingEvents.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
@@ -2071,13 +2137,32 @@ export default function DiscoverPage() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {upcomingEvents.map(e => <EventListCard key={e.id} event={e} userTier={userTier} currency={currentCurrency} />)}
+                      {upcomingEvents.map(e => (
+                        <EventListCard key={e.id} event={e} userTier={userTier} currency={currentCurrency}
+                          distanceKm={userLocation ? haversineKm(userLocation.lat, userLocation.lng, e.lat, e.lng) : undefined} />
+                      ))}
                     </div>
                   </div>
                 )}
 
                 {liveEvents.length === 0 && upcomingEvents.length === 0 && (
                   <EmptyState loading={false} onRetry={forceRetry} />
+                )}
+
+                {/* Background page-loading indicator */}
+                {loadingMore && (
+                  <div className="flex items-center justify-center gap-2 py-3">
+                    <div className="w-3.5 h-3.5 rounded-full border-2 animate-spin"
+                      style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
+                    <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)', letterSpacing: '0.15em' }}>
+                      LOADING MORE…
+                    </span>
+                  </div>
+                )}
+                {!loadingMore && allEvents.length > events.length && (
+                  <p className="text-center text-[9px] font-bold py-1" style={{ color: 'rgba(var(--accent-rgb),0.2)', letterSpacing: '0.12em' }}>
+                    {allEvents.length} EVENTS LOADED
+                  </p>
                 )}
               </div>
             )
