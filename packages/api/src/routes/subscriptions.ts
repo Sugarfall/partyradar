@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { ensureStripe } from '../lib/stripe'
+import { ensureStripe, getOrCreateStripeCustomer } from '../lib/stripe'
 import { TIERS } from '@partyradar/shared'
 import { z } from 'zod'
 
@@ -51,21 +51,24 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
     if (!priceId) throw new AppError(`The ${tier} subscription is not configured yet — try again later.`, 503)
 
     const userId = req.user!.dbUser.id
-    let stripeCustomerId = (await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } }))?.stripeCustomerId
+    // Use the shared helper which validates the stored Stripe customer still
+    // exists and creates a fresh one if it doesn't (handles account/mode
+    // switches where the stored cus_xxx no longer exists in Stripe).
+    const stripeCustomerId = await getOrCreateStripeCustomer(
+      userId, req.user!.dbUser.email, prisma,
+    )
 
-    if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({ email: req.user!.dbUser.email })
-      stripeCustomerId = customer.id
-      await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } })
-    }
+    // Use || rather than ?? so an empty-string FRONTEND_URL still falls back
+    // to the production URL (an empty string is falsy but not null/undefined).
+    const baseUrl = process.env['FRONTEND_URL'] || 'https://partyradar-web.vercel.app'
 
     const session = await stripe.checkout.sessions.create({
       customer: stripeCustomerId,
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
-      success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/subscriptions?success=true`,
-      cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/subscriptions`,
+      success_url: `${baseUrl}/subscriptions?success=true`,
+      cancel_url: `${baseUrl}/subscriptions`,
       metadata: { userId, tier },
     })
 
@@ -88,7 +91,7 @@ router.post('/portal', requireAuth, async (req: AuthRequest, res, next) => {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
-      return_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/settings`,
+      return_url: `${process.env['FRONTEND_URL'] || 'https://partyradar-web.vercel.app'}/settings`,
     })
 
     res.json({ data: { url: session.url } })

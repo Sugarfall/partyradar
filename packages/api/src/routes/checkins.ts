@@ -11,7 +11,22 @@ const checkInSchema = z.object({
   eventId: z.string().optional(),
   venueId: z.string().optional(),
   crowdLevel: z.enum(['QUIET', 'BUSY', 'RAMMED']).optional(),
+  // User's GPS position supplied by the frontend — validated server-side
+  userLat: z.number().min(-90).max(90).optional(),
+  userLng: z.number().min(-180).max(180).optional(),
 })
+
+/** Haversine distance in metres. */
+function distanceMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const CHECK_IN_RADIUS_M = 500
 
 const userSelect = { id: true, username: true, displayName: true, photoUrl: true }
 const eventSelect = { id: true, name: true, startsAt: true, address: true, neighbourhood: true, coverImageUrl: true }
@@ -25,6 +40,32 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     if (!body.eventId && !body.venueId) {
       throw new AppError('Must provide eventId or venueId', 400)
+    }
+
+    // ── Location validation ────────────────────────────────────────────────
+    // If user coordinates were supplied, verify they're within range.
+    // If NOT supplied for an event check-in, reject (frontend always sends them).
+    if (body.eventId) {
+      if (body.userLat == null || body.userLng == null) {
+        throw new AppError('Location is required to check in to an event', 400)
+      }
+      // Fetch the event's coordinates
+      const ev = await prisma.event.findUnique({
+        where: { id: body.eventId },
+        select: { lat: true, lng: true },
+      })
+      if (ev?.lat != null && ev?.lng != null) {
+        const dist = distanceMetres(body.userLat, body.userLng, ev.lat, ev.lng)
+        if (dist > CHECK_IN_RADIUS_M) {
+          const distStr = dist < 1000
+            ? `${Math.round(dist)} m`
+            : `${(dist / 1000).toFixed(1)} km`
+          throw new AppError(
+            `You're ${distStr} away — you need to be within 500 m of the venue to check in`,
+            403,
+          )
+        }
+      }
     }
 
     // Prevent duplicate check-in within 1 hour for same event/venue

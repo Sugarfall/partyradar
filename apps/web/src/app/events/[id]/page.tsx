@@ -1285,7 +1285,7 @@ export default function EventDetailPage() {
   const [rsvpDone, setRsvpDone] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [checkInDone, setCheckInDone] = useState(false)
-  const [checkInLoading, setCheckInLoading] = useState(false)
+  const [checkInStatus, setCheckInStatus] = useState<'idle' | 'locating' | 'submitting'>('idle')
   const [copied, setCopied] = useState(false)
   const [guestListOpen, setGuestListOpen] = useState(false)
   const [inviteCopied, setInviteCopied] = useState(false)
@@ -1439,17 +1439,75 @@ export default function EventDetailPage() {
     }
   }
 
+  /** Haversine distance in metres between two lat/lng points. */
+  function distanceMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6_371_000 // Earth radius in metres
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  }
+
+  const CHECK_IN_RADIUS_M = 500 // metres — must be within this distance
+
   async function handleCheckIn() {
     if (!dbUser) { router.push(loginHref()); return }
-    setCheckInLoading(true)
     setActionError(null)
+
+    // ── Step 1: get the user's GPS position ────────────────────────────────
+    if (!navigator.geolocation) {
+      setActionError('Your browser doesn\'t support location — check-in requires GPS')
+      return
+    }
+
+    setCheckInStatus('locating')
+    let userLat: number, userLng: number
     try {
-      await api.post('/checkins', { eventId: event!.id })
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12_000,
+          maximumAge: 30_000,
+        })
+      )
+      userLat = pos.coords.latitude
+      userLng = pos.coords.longitude
+    } catch (err: unknown) {
+      const geo = err as GeolocationPositionError
+      const msg =
+        geo.code === 1 ? 'Location permission denied — allow location access and try again' :
+        geo.code === 3 ? 'Location timed out — make sure GPS is on and try again' :
+                         'Could not get your location — try again'
+      setActionError(msg)
+      setCheckInStatus('idle')
+      return
+    }
+
+    // ── Step 2: check distance against event location ─────────────────────
+    const evLat = event?.lat
+    const evLng = event?.lng
+    if (evLat != null && evLng != null) {
+      const dist = distanceMetres(userLat, userLng, evLat, evLng)
+      if (dist > CHECK_IN_RADIUS_M) {
+        const distStr = dist < 1000
+          ? `${Math.round(dist)} m`
+          : `${(dist / 1000).toFixed(1)} km`
+        setActionError(`You're ${distStr} away — you need to be within 500 m of the venue to check in`)
+        setCheckInStatus('idle')
+        return
+      }
+    }
+
+    // ── Step 3: submit check-in with coordinates (server also validates) ───
+    setCheckInStatus('submitting')
+    try {
+      await api.post('/checkins', { eventId: event!.id, userLat, userLng })
       setCheckInDone(true)
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Check-in failed')
     } finally {
-      setCheckInLoading(false)
+      setCheckInStatus('idle')
     }
   }
 
@@ -2528,15 +2586,17 @@ export default function EventDetailPage() {
                   ) : (
                     <button
                       onClick={handleCheckIn}
-                      disabled={checkInLoading}
+                      disabled={checkInStatus !== 'idle'}
                       className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-50"
                       style={{
                         background: 'rgba(0,255,136,0.07)',
                         border: '1px solid rgba(0,255,136,0.3)',
                         color: '#00ff88',
                       }}>
-                      {checkInLoading
-                        ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      {checkInStatus === 'locating'
+                        ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> GETTING YOUR LOCATION…</>
+                        : checkInStatus === 'submitting'
+                        ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CHECKING IN…</>
                         : <><MapPin size={13} /> CHECK IN — I'M HERE!</>}
                     </button>
                   )}

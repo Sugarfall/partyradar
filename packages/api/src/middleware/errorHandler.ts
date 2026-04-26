@@ -64,6 +64,32 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     return
   }
 
+  // Surface Prisma known-request errors (unique constraint, FK violation, etc.)
+  // so they appear as readable messages rather than opaque 500s.
+  if (err && typeof err === 'object' && 'code' in err) {
+    const pe = err as { code: string; meta?: { target?: string | string[]; cause?: string }; message?: string }
+    const meta = pe.meta ?? {}
+    if (pe.code === 'P2002') {
+      const field = Array.isArray(meta.target) ? meta.target.join(', ') : (meta.target ?? 'field')
+      res.status(409).json({ error: `A record with this ${field} already exists.` })
+      return
+    }
+    if (pe.code === 'P2025') {
+      res.status(404).json({ error: meta.cause ?? 'Record not found.' })
+      return
+    }
+    if (pe.code === 'P2003') {
+      res.status(400).json({ error: `Related record not found (${meta.target ?? 'foreign key'}).` })
+      return
+    }
+    // Any other Prisma error — surface the message so admins can diagnose
+    if (pe.code.startsWith('P') && typeof (pe as any).message === 'string') {
+      console.error('[Prisma Error]', req.method, req.path, pe.code, pe.message)
+      res.status(500).json({ error: `Database error (${pe.code}): ${(pe as any).message}` })
+      return
+    }
+  }
+
   console.error('[Error]', req.method, req.path, err)
   res.status(500).json({ error: 'Internal server error' })
 }

@@ -42,18 +42,35 @@ export async function getOrCreateStripeCustomer(
   email: string,
   prismaClient: import('@prisma/client').PrismaClient,
 ): Promise<string> {
+  const s = ensureStripe()
+
   // Re-read inside the helper so concurrent callers both see the freshest value
   const user = await prismaClient.user.findUnique({
     where: { id: userId },
     select: { stripeCustomerId: true },
   })
-  if (user?.stripeCustomerId) return user.stripeCustomerId
 
-  const s = ensureStripe()
+  if (user?.stripeCustomerId) {
+    // Validate the stored customer still exists in the connected Stripe account.
+    // This can fail when the app is switched between Stripe accounts or
+    // test ↔ live mode — the stored ID then references a non-existent customer.
+    try {
+      const existing = await s.customers.retrieve(user.stripeCustomerId)
+      // `retrieve` returns a DeletedCustomer if the customer was deleted
+      if (!(existing as { deleted?: boolean }).deleted) {
+        return user.stripeCustomerId
+      }
+    } catch {
+      // "No such customer" or similar — fall through to create a new one
+    }
+    // Clear the stale ID so the update below sets the new one
+    await prismaClient.user.update({
+      where: { id: userId },
+      data: { stripeCustomerId: null },
+    }).catch(() => {})
+  }
+
   const customer = await s.customers.create({ email, metadata: { partyradarUserId: userId } })
-  // Use updateMany instead of update so if another request raced us we don't
-  // blow up with a unique-constraint violation — the last writer wins but
-  // both Stripe customers are valid (Stripe allows multiple per email).
   await prismaClient.user.update({
     where: { id: userId },
     data: { stripeCustomerId: customer.id },

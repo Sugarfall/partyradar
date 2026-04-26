@@ -56,8 +56,8 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
       payment_method_types: ['card'],
       line_items: [{ price: event.stripePriceId, quantity }],
       mode: 'payment',
-      success_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event_id=${eventId}`,
-      cancel_url: `${process.env['FRONTEND_URL'] ?? 'https://partyradar-web.vercel.app'}/events/${eventId}`,
+      success_url: `${process.env['FRONTEND_URL'] || 'https://partyradar-web.vercel.app'}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event_id=${eventId}`,
+      cancel_url: `${process.env['FRONTEND_URL'] || 'https://partyradar-web.vercel.app'}/events/${eventId}`,
       metadata: { eventId, userId, quantity: String(quantity), hostId: event.hostId },
       payment_intent_data: {
         application_fee_amount: platformFeeCents(event.price, quantity),

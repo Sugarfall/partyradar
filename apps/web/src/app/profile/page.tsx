@@ -1089,17 +1089,27 @@ export default function ProfilePage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold leading-tight" style={{ color: 'rgba(224,242,254,0.75)' }}>
-                      {item.type === 'CHECKIN' && (
-                        <>Checked in at <span style={{ color: 'var(--accent)' }}>{(item as any).venue}</span>
-                          {(item as any).crowdLevel && (
-                            <span className="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded"
-                              style={{ color: CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)', border: `1px solid ${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}40`, background: `${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}10` }}>
-                              {(item as any).crowdLevel}
-                            </span>
-                          )}
-                        </>
-                      )}
-                      {item.type === 'RSVP' && <>RSVP&apos;d to <span style={{ color: '#a855f7' }}>{(item as any).event}</span></>}
+                      {item.type === 'CHECKIN' && (() => {
+                        const ev = (item as any).event as { id: string; name: string } | null | undefined
+                        const vn = (item as any).venue as { id?: string; name: string } | null | undefined
+                        return (
+                          <>
+                            Checked in
+                            {ev ? (
+                              <> at <Link href={`/events/${ev.id}`} className="hover:underline" style={{ color: 'var(--accent)' }}>{ev.name}</Link></>
+                            ) : vn ? (
+                              <> at <span style={{ color: 'var(--accent)' }}>{vn.name}</span></>
+                            ) : null}
+                            {(item as any).crowdLevel && (
+                              <span className="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded"
+                                style={{ color: CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)', border: `1px solid ${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}40`, background: `${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}10` }}>
+                                {(item as any).crowdLevel}
+                              </span>
+                            )}
+                          </>
+                        )
+                      })()}
+                      {item.type === 'RSVP' && <>RSVP&apos;d to <span style={{ color: '#a855f7' }}>{(item as any).event?.name ?? (item as any).event}</span></>}
                       {item.type === 'POST' && <span style={{ color: 'rgba(224,242,254,0.7)' }}>{(item as any).text}</span>}
                     </p>
                     <p className="text-[9px] font-bold mt-0.5" style={{ color: 'rgba(74,96,128,0.5)' }}>{timeAgo(item.createdAt)}</p>
