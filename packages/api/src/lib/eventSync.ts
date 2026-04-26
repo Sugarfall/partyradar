@@ -743,14 +743,58 @@ interface SerpResponse {
 }
 
 function parseSerpDate(when: string | undefined, startDate: string | undefined): Date {
-  const str = when ?? startDate ?? ''
-  if (!str) return new Date()
-  // Try direct parse
-  const d = new Date(str)
-  if (!isNaN(d.getTime())) return d
-  // Append current year and retry (handles "Mon, Apr 14, 8:00 PM")
-  const d2 = new Date(`${str} ${new Date().getFullYear()}`)
-  if (!isNaN(d2.getTime())) return d2
+  const whenStr = when ?? ''
+  const dateStr = startDate ?? ''
+
+  // 1. Direct ISO parse of 'when' (handles strings with embedded timezone like "2026-04-26T21:00:00+01:00")
+  if (whenStr) {
+    const d = new Date(whenStr)
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // 2. SerpAPI most commonly returns:
+  //    when  = "Saturday, April 26 · 9 PM – 3 AM"   (or "Sat, Apr 26 · 9:30 PM")
+  //    startDate = "2026-04-26"                       (date-only ISO string)
+  // Combine startDate + time extracted from 'when', treating the time as Europe/London.
+  if (dateStr) {
+    const baseDate = new Date(dateStr)
+    if (!isNaN(baseDate.getTime())) {
+      // Extract time after "·" or "," separator — e.g. "· 9 PM", "· 9:30 PM"
+      const timeMatch = whenStr.match(/[·,]\s*(\d{1,2}(?::\d{2})?)\s*(AM|PM)/i)
+      if (timeMatch) {
+        const parts = timeMatch[1].split(':')
+        let hour = parseInt(parts[0], 10)
+        const minute = parts[1] ? parseInt(parts[1], 10) : 0
+        const isPM = timeMatch[2].toUpperCase() === 'PM'
+        if (isPM && hour !== 12) hour += 12
+        if (!isPM && hour === 12) hour = 0
+        const y  = baseDate.getUTCFullYear()
+        const mo = baseDate.getUTCMonth()
+        const d  = baseDate.getUTCDate()
+        // Convert London local time → UTC (respects BST/GMT automatically)
+        const offsetMs = getLondonOffsetMs(y, mo, d)
+        return new Date(Date.UTC(y, mo, d, hour, minute, 0) - offsetMs)
+      }
+      // No time info in 'when' — return midnight-UTC base date (adjustDateByType will correct it)
+      return baseDate
+    }
+  }
+
+  // 3. Fallback: append current year (handles "Mon, Apr 14, 8:00 PM" with no year)
+  if (whenStr) {
+    const d2 = new Date(`${whenStr} ${new Date().getFullYear()}`)
+    if (!isNaN(d2.getTime())) {
+      // No timezone info — treat parsed hours as Europe/London local time
+      const y   = d2.getFullYear()
+      const mo  = d2.getMonth()
+      const day = d2.getDate()
+      const h   = d2.getHours()
+      const m   = d2.getMinutes()
+      const offsetMs = getLondonOffsetMs(y, mo, day)
+      return new Date(Date.UTC(y, mo, day, h, m, 0) - offsetMs)
+    }
+  }
+
   return new Date()
 }
 

@@ -41,6 +41,7 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     hour: 'numeric', minute: '2-digit',
+    timeZone: 'Europe/London',
   })
 }
 
@@ -1697,7 +1698,7 @@ export default function EventDetailPage() {
           {event.endsAt && (
             <MetaCell icon={Clock} label="ENDS" value={formatDate(event.endsAt)} color={tc.color} />
           )}
-          <MetaCell icon={MapPin} label="LOCATION" value={event.showNeighbourhoodOnly ? event.neighbourhood : (event.address ?? event.neighbourhood)} color={tc.color} />
+          <MetaCell icon={MapPin} label="LOCATION" value={event.showNeighbourhoodOnly ? event.neighbourhood : (venueName ?? event.address ?? event.neighbourhood)} color={tc.color} />
           <MetaCell icon={Wine} label="ALCOHOL" value={ALCOHOL_POLICY_LABELS[event.alcoholPolicy] ?? event.alcoholPolicy} color={tc.color} />
           <MetaCell icon={ShieldCheck} label="AGE POLICY" value={AGE_RESTRICTION_LABELS[event.ageRestriction] ?? event.ageRestriction} color={tc.color} />
           <MetaCell icon={Users} label="GOING" value={`${event.guestCount ?? 0} ${(event.guestCount ?? 0) === 1 ? 'person' : 'people'}`} color={tc.color} />

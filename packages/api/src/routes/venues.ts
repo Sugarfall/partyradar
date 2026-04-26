@@ -258,14 +258,16 @@ router.get('/:id/photo', async (req, res, next) => {
         const googleUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${w}&photo_reference=${photoRef}&key=${GOOGLE_API_KEY}`
         try {
           const ctrl = new AbortController()
-          const timer = setTimeout(() => ctrl.abort(), 2000) // 2 s max — fail fast
+          const timer = setTimeout(() => ctrl.abort(), 6000) // 6 s — give Google enough time
           const googleResp = await fetch(googleUrl, { signal: ctrl.signal })
           clearTimeout(timer)
-          if (googleResp.ok) {
-            const ct = googleResp.headers.get('content-type') || 'image/jpeg'
+          if (googleResp.ok && googleResp.url) {
+            // fetch() follows the Google 302 → lh3.googleusercontent.com redirect automatically.
+            // googleResp.url is that final CDN URL — publicly cacheable, no API key in it.
+            // Redirecting the browser there is faster (no server byte-streaming) and lets
+            // the browser cache the actual venue photo directly from Google's CDN.
             res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
-            res.set('Content-Type', ct)
-            return res.send(Buffer.from(await googleResp.arrayBuffer()))
+            return res.redirect(302, googleResp.url)
           }
         } catch {
           // Google timed out or rejected — fall through to Unsplash immediately
