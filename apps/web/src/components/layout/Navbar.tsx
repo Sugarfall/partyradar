@@ -38,12 +38,33 @@ const NOTIF_ICONS: Record<string, React.ReactNode> = {
 
 function notifLink(n: Notification): string | null {
   const data = n.data as Record<string, string> | null
-  if (!data) return null
-  const social = ['FOLLOW', 'NUDGE', 'GO_OUT_REQUEST', 'GO_OUT_ACCEPTED']
-  if (social.includes(n.type) && data['fromUsername']) return `/profile/${data['fromUsername']}`
-  // PROFILE_VIEW → own profile page to see viewers
-  if (n.type === 'PROFILE_VIEW') return '/profile'
-  return null
+  switch (n.type) {
+    case 'POST_COMMENT':
+    case 'COMMENT_MENTION':
+      return data?.['postId'] ? `/feed?post=${data['postId']}` : '/feed'
+    case 'RSVP_CONFIRMED':
+    case 'INVITE_RECEIVED':
+    case 'EVENT_REMINDER':
+    case 'EVENT_UPDATED':
+    case 'PARTY_BLAST':
+      return data?.['eventId'] ? `/events/${data['eventId']}` : null
+    case 'FOLLOW':
+    case 'NUDGE':
+    case 'GO_OUT_REQUEST':
+    case 'GO_OUT_ACCEPTED':
+    case 'INTEREST_MATCH':
+      return data?.['fromUsername'] ? `/profile/${data['fromUsername']}` : null
+    case 'PROFILE_VIEW':
+      return '/profile'
+    case 'GROUP_INVITE_RECEIVED':
+      return data?.['groupId'] ? `/groups/${data['groupId']}` : '/groups'
+    case 'MESSAGE':
+      return data?.['conversationId'] ? `/dm/${data['conversationId']}` : '/dm'
+    case 'CELEBRITY_NEARBY':
+      return '/discover'
+    default:
+      return null
+  }
 }
 
 function timeAgo(date: string) {

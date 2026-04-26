@@ -337,10 +337,16 @@ export default function PublicProfilePage() {
       api.get<{ data: typeof profileSpotifyArtist }>(`/spotify/artist/${data.id}`)
         .then((j) => { if (j?.data) setProfileSpotifyArtist(j.data) })
         .catch(() => {})
-      // Fetch medals for this user
-      api.get<{ data: typeof profileMedals }>(`/medals/user/${data.id}`)
-        .then((j) => { if (j?.data) setProfileMedals(j.data) })
-        .catch(() => {})
+      // Fetch medals — if it's the viewer's own profile, check+award first
+      const fetchMedals = () =>
+        api.get<{ data: typeof profileMedals }>(`/medals/user/${data.id}`)
+          .then((j) => { if (j?.data) setProfileMedals(j.data) })
+          .catch(() => {})
+      if (data.isMe) {
+        api.post('/medals/check', {}).catch(() => {}).finally(fetchMedals)
+      } else {
+        fetchMedals()
+      }
     } catch {
       setNotFound(true)
     } finally {

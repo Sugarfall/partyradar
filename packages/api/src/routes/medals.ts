@@ -74,6 +74,22 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
 router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
+
+    // Auto-seed medal definitions on first ever call so admins don't need to
+    // manually hit /medals/seed before medals start working.
+    const existingCount = await prisma.medal.count()
+    if (existingCount === 0) {
+      for (const def of MEDAL_DEFS) {
+        for (const t of def.tiers) {
+          await prisma.medal.upsert({
+            where: { slug_tier: { slug: def.slug, tier: t.tier } },
+            create: { slug: def.slug, name: def.name, description: t.description, icon: def.icon, tier: t.tier, category: def.category, conditionType: def.conditionType, threshold: t.threshold, sortOrder: def.sortOrder },
+            update: {},
+          })
+        }
+      }
+    }
+
     const [medals, alreadyEarned, stats] = await Promise.all([
       prisma.medal.findMany({ where: { isActive: true, NOT: { conditionType: 'SPECIFIC_EVENT' } } }),
       prisma.userMedal.findMany({ where: { userId }, select: { medalId: true } }),
