@@ -4,13 +4,11 @@ builder = "nixpacks"
 # Eliminates tsx's ESM loader from the runtime path — tsx's synchronous
 # esbuild transform was blocking the Node.js event loop during Prisma's
 # native binary initialisation, causing zombie deploys.
-buildCommand = "npm install --prefer-offline && npx prisma generate --schema=packages/db/prisma/schema.prisma && npm run build -w packages/shared && npm run build -w packages/db && npm run build -w packages/api"
+buildCommand = "npm install --prefer-offline && npx prisma generate --schema=packages/db/prisma/schema.prisma && npm run build -w packages/shared && npm run build -w packages/db && npm run build -w packages/api && node scripts/ensure-schema.mjs"
 
 [deploy]
-# prisma db push removed from startCommand — it hangs indefinitely when the
-# Railway Postgres DB is cold/slow, killing every deploy. Schema pushes must
-# be done manually via: railway run npx prisma db push --accept-data-loss
-# when there is an actual schema migration to apply.
+# ensure-schema.mjs (run at end of build) handles schema sync with a 45-second
+# kill-timeout so it can never hang. The start command stays clean.
 startCommand = "node packages/api/dist/index.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120

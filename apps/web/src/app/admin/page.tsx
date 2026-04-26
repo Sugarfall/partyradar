@@ -113,6 +113,24 @@ interface ContentReport {
   reviewedAt?: string | null
   createdAt: string
   reporter: { id: string; username: string; displayName: string; photoUrl?: string | null }
+  /** The actual reported content — null if the record was deleted */
+  content?: {
+    // post / group_message
+    text?: string | null
+    imageUrl?: string | null
+    // post author
+    user?: { id: string; username: string; displayName: string; photoUrl?: string | null } | null
+    // group_message sender
+    sender?: { id: string; username: string; displayName: string } | null
+    // user
+    bio?: string | null
+    username?: string
+    displayName?: string
+    photoUrl?: string | null
+    // event / group
+    name?: string
+    description?: string
+  } | null
 }
 
 interface AdminMedal {
@@ -871,11 +889,76 @@ export default function AdminPage() {
                               </span>
                             )}
                           </div>
+                          {/* ── Actual reported content preview ── */}
+                          {report.content ? (
+                            <div className="mt-1.5 mb-2 rounded-xl p-2.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                              {/* Post / GroupMessage */}
+                              {(report.contentType === 'post' || report.contentType === 'group_message') && (
+                                <>
+                                  {(report.content.user || report.content.sender) && (
+                                    <p className="text-[10px] font-bold mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                                      by @{(report.content.user?.username ?? report.content.sender?.username ?? '?')}
+                                    </p>
+                                  )}
+                                  {report.content.text && (
+                                    <p className="text-xs text-white/70 line-clamp-3">{report.content.text}</p>
+                                  )}
+                                  {report.content.imageUrl && (
+                                    <img
+                                      src={report.content.imageUrl}
+                                      alt="Reported image"
+                                      className="mt-1.5 rounded-lg max-h-32 object-cover"
+                                      style={{ maxWidth: '100%' }}
+                                    />
+                                  )}
+                                  {!report.content.text && !report.content.imageUrl && (
+                                    <p className="text-[10px] text-white/25 italic">No text / media-only post</p>
+                                  )}
+                                </>
+                              )}
+                              {/* Reported user */}
+                              {report.contentType === 'user' && (
+                                <div className="flex items-center gap-2">
+                                  {report.content.photoUrl && (
+                                    <img src={report.content.photoUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                                  )}
+                                  <div>
+                                    <p className="text-xs font-bold text-white/80">{report.content.displayName}</p>
+                                    <p className="text-[10px] text-white/35">@{report.content.username}</p>
+                                    {report.content.bio && <p className="text-[10px] text-white/40 line-clamp-1 mt-0.5">{report.content.bio}</p>}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Event */}
+                              {report.contentType === 'event' && (
+                                <>
+                                  <p className="text-xs font-bold text-white/80">{report.content.name}</p>
+                                  {report.content.description && (
+                                    <p className="text-[10px] text-white/40 line-clamp-2 mt-0.5">{report.content.description}</p>
+                                  )}
+                                </>
+                              )}
+                              {/* Group */}
+                              {report.contentType === 'group' && (
+                                <>
+                                  <p className="text-xs font-bold text-white/80">{report.content.name}</p>
+                                  {report.content.description && (
+                                    <p className="text-[10px] text-white/40 line-clamp-1 mt-0.5">{report.content.description}</p>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            /* Content was deleted — show a tombstone */
+                            <div className="mt-1.5 mb-2 text-[10px] text-white/20 italic">
+                              [content no longer exists]
+                            </div>
+                          )}
                           {report.details && (
-                            <p className="text-xs text-white/50 italic line-clamp-2 mb-1">"{report.details}"</p>
+                            <p className="text-xs text-white/50 italic line-clamp-2 mb-1">Reporter note: "{report.details}"</p>
                           )}
                           <div className="text-xs text-white/30">
-                            Content ID: <span className="font-mono text-white/20">{report.contentId.slice(0, 12)}…</span>
+                            ID: <span className="font-mono text-white/20">{report.contentId.slice(0, 10)}…</span>
                             <span className="mx-2">·</span>
                             {new Date(report.createdAt).toLocaleDateString()}
                           </div>

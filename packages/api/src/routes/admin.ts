@@ -1420,7 +1420,63 @@ router.get('/content-reports', requireAuth, requireAppRole('MODERATOR'), async (
       (prisma as any).contentReport.count({ where }),
     ])
 
-    res.json({ data: reports, total, page: pageN, limit: limitN, hasMore: skip + reports.length < total })
+    // ── Batch-fetch the actual reported content so moderators can see what
+    //    was reported without needing to look it up separately.
+    const byType = (type: string) =>
+      (reports as any[]).filter((r) => r.contentType === type).map((r) => r.contentId)
+
+    const postIds  = byType('post')
+    const userIds  = byType('user')
+    const eventIds = byType('event')
+    const groupIds = byType('group')
+    const gmIds    = byType('group_message')
+
+    const [posts, reportedUsers, events, groups, groupMessages] = await Promise.all([
+      postIds.length > 0 ? prisma.post.findMany({
+        where: { id: { in: postIds } },
+        select: {
+          id: true, text: true, imageUrl: true,
+          user: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+        },
+      }) : [],
+      userIds.length > 0 ? prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, username: true, displayName: true, photoUrl: true, bio: true },
+      }) : [],
+      eventIds.length > 0 ? prisma.event.findMany({
+        where: { id: { in: eventIds } },
+        select: { id: true, name: true, description: true },
+      }) : [],
+      groupIds.length > 0 ? (prisma as any).groupChat.findMany({
+        where: { id: { in: groupIds } },
+        select: { id: true, name: true, description: true },
+      }) : [],
+      gmIds.length > 0 ? (prisma as any).groupMessage.findMany({
+        where: { id: { in: gmIds } },
+        select: {
+          id: true, text: true, imageUrl: true,
+          sender: { select: { id: true, username: true, displayName: true } },
+        },
+      }) : [],
+    ])
+
+    const postMap  = new Map((posts as any[]).map((p) => [p.id, p]))
+    const userMap  = new Map((reportedUsers as any[]).map((u) => [u.id, u]))
+    const eventMap = new Map((events as any[]).map((e) => [e.id, e]))
+    const groupMap = new Map((groups as any[]).map((g) => [g.id, g]))
+    const gmMap    = new Map((groupMessages as any[]).map((m) => [m.id, m]))
+
+    const reportsWithContent = (reports as any[]).map((r) => ({
+      ...r,
+      content: r.contentType === 'post'          ? (postMap.get(r.contentId)  ?? null)
+             : r.contentType === 'user'          ? (userMap.get(r.contentId)  ?? null)
+             : r.contentType === 'event'         ? (eventMap.get(r.contentId) ?? null)
+             : r.contentType === 'group'         ? (groupMap.get(r.contentId) ?? null)
+             : r.contentType === 'group_message' ? (gmMap.get(r.contentId)    ?? null)
+             : null,
+    }))
+
+    res.json({ data: reportsWithContent, total, page: pageN, limit: limitN, hasMore: skip + reports.length < total })
   } catch (err) { next(err) }
 })
 
