@@ -191,8 +191,9 @@ export default function MedalsPage() {
   useEffect(() => {
     if (!dbUser) return
     load()
-    api.post('/medals/check', {}).then((r: { count: number }) => {
-      if (r.count > 0) { setNewCount(r.count); load() }
+    api.post('/medals/check', {}).then((r) => {
+      const res = r as { count: number }
+      if (res.count > 0) { setNewCount(res.count); load() }
     }).catch(() => {/* */})
   }, [dbUser, load])
 
