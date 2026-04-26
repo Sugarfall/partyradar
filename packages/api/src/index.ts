@@ -1067,6 +1067,35 @@ if (!process.env['INTERNAL_API_KEY']) {
   console.log('[Startup] No INTERNAL_API_KEY configured — generated ephemeral session key')
 }
 
+// ─── Startup schema guard ─────────────────────────────────────────────────────
+// Creates the Medal / UserMedal tables if they don't exist yet in production.
+// Runs as a non-blocking background task so it never delays the healthcheck.
+async function ensureMedalSchema() {
+  try {
+    await (prisma as any).medal.count() // fast check — returns immediately if table exists
+    console.log('[schema] Medal table OK')
+  } catch (e: any) {
+    if (e?.code !== 'P2021') return // unknown error — don't try to auto-create
+    console.log('[schema] Medal table missing — creating now...')
+    const stmts = [
+      `DO $$ BEGIN CREATE TYPE "MedalTier" AS ENUM ('BRONZE','SILVER','GOLD'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
+      `DO $$ BEGIN CREATE TYPE "MedalCategory" AS ENUM ('SOCIAL','EVENTS','HOST','EXPLORER','LOYALTY','SPECIAL'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
+      `DO $$ BEGIN CREATE TYPE "MedalCondition" AS ENUM ('FOLLOWERS_COUNT','FOLLOWING_COUNT','EVENTS_ATTENDED','EVENTS_ORGANISED','TICKETS_BOUGHT','CHECKINS_COUNT','REFERRALS_MADE','VENUES_VISITED','POSTS_COUNT','SPECIFIC_EVENT'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
+      `CREATE TABLE IF NOT EXISTS "Medal" ("id" TEXT NOT NULL,"slug" TEXT NOT NULL,"name" TEXT NOT NULL,"description" TEXT NOT NULL,"icon" TEXT NOT NULL,"tier" "MedalTier" NOT NULL,"category" "MedalCategory" NOT NULL,"conditionType" "MedalCondition" NOT NULL,"threshold" INTEGER NOT NULL DEFAULT 1,"eventId" TEXT,"sortOrder" INTEGER NOT NULL DEFAULT 0,"isActive" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Medal_pkey" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "UserMedal" ("id" TEXT NOT NULL,"userId" TEXT NOT NULL,"medalId" TEXT NOT NULL,"earnedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "UserMedal_pkey" PRIMARY KEY ("id"))`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "Medal_slug_tier_key" ON "Medal"("slug","tier")`,
+      `CREATE INDEX IF NOT EXISTS "Medal_category_isActive_idx" ON "Medal"("category","isActive")`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "UserMedal_userId_medalId_key" ON "UserMedal"("userId","medalId")`,
+      `DO $$ BEGIN ALTER TABLE "UserMedal" ADD CONSTRAINT "UserMedal_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+      `DO $$ BEGIN ALTER TABLE "UserMedal" ADD CONSTRAINT "UserMedal_medalId_fkey" FOREIGN KEY ("medalId") REFERENCES "Medal"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    ]
+    for (const sql of stmts) {
+      await prisma.$executeRawUnsafe(sql)
+    }
+    console.log('[schema] Medal and UserMedal tables created successfully')
+  }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 // Bind the port immediately — Railway's healthcheck (/api/health) must respond
 // within healthcheckTimeout (120 s) or the deploy is marked failed.
@@ -1074,6 +1103,9 @@ if (!process.env['INTERNAL_API_KEY']) {
 // Prisma + Neon warm up lazily on the first real DB query after startup.
 httpServer.listen(PORT, () => {
   console.log(`\n🎉 PartyRadar API running on http://localhost:${PORT}\n`)
+  // Fire-and-forget — creates Medal/UserMedal tables in the background if missing.
+  // Never blocks startup; errors are caught and logged, never thrown.
+  ensureMedalSchema().catch((err) => console.error('[schema] ensureMedalSchema failed:', err))
   setInterval(() => {
     console.log(`[Heartbeat] ${new Date().toISOString()} event-loop alive`)
   }, 30_000)
