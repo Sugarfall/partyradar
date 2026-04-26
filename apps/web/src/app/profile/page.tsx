@@ -14,6 +14,7 @@ import type { Gender } from '@partyradar/shared'
 import { api } from '@/lib/api'
 import { uploadImage } from '@/lib/cloudinary'
 import { loginHref } from '@/lib/authRedirect'
+import MedalGrid from '@/components/profile/MedalGrid'
 
 // ── Follow List Modal (own profile) ─────────────────────────────────────────
 function FollowListModal({ username, mode, onClose }: {
@@ -986,77 +987,8 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ── Medal showcase — always-visible 4×2 hex grid ── */}
-        {(() => {
-          const HEX_CLIP  = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
-          const TIER_COLOR: Record<string, string> = { GOLD: '#FFD700', SILVER: '#C0C0C0', BRONZE: '#cd7f32' }
-          const TIER_BG:    Record<string, string> = { GOLD: 'rgba(255,215,0,0.2)', SILVER: 'rgba(192,192,192,0.16)', BRONZE: 'rgba(205,127,50,0.18)' }
-          const TIER_GLOW:  Record<string, string> = { GOLD: 'rgba(255,215,0,0.55)', SILVER: 'rgba(192,192,192,0.45)', BRONZE: 'rgba(205,127,50,0.5)' }
-          const tierOrder:  Record<string, number>  = { GOLD: 0, SILVER: 1, BRONZE: 2 }
-          const ALL_MEDALS = [
-            { slug: 'social-butterfly', name: 'Social Butterfly', icon: '🦋' },
-            { slug: 'connector',        name: 'Connector',        icon: '🔗' },
-            { slug: 'networker',        name: 'Networker',        icon: '🌐' },
-            { slug: 'party-animal',     name: 'Party Animal',     icon: '🎉' },
-            { slug: 'ticket-holder',    name: 'Ticket Holder',    icon: '🎟️' },
-            { slug: 'party-host',       name: 'Party Host',       icon: '🎪' },
-            { slug: 'venue-hopper',     name: 'Venue Hopper',     icon: '📍' },
-            { slug: 'loyal-raver',      name: 'Loyal Raver',      icon: '🔥' },
-          ]
-          const earnedMap = new Map<string, string>()
-          for (const um of profileMedals) {
-            const prev = earnedMap.get(um.medal.slug)
-            if (!prev || (tierOrder[um.medal.tier] ?? 3) < (tierOrder[prev] ?? 3)) {
-              earnedMap.set(um.medal.slug, um.medal.tier)
-            }
-          }
-          const W = 46, H = Math.round(W * 1.1547)
-          const GAP = 6, COLS = 4
-          const hStep = W + GAP, vStep = Math.round(H * 0.75)
-          const totalW = COLS * hStep - GAP
-          const totalH = H + vStep
-          return (
-            <div className="rounded-2xl py-3" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
-              <div className="flex items-center justify-between px-4 mb-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(255,215,0,0.7)', letterSpacing: '0.18em' }}>MEDALS</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.08)', color: 'rgba(255,215,0,0.6)', border: '1px solid rgba(255,215,0,0.2)' }}>
-                    {earnedMap.size}/{ALL_MEDALS.length}
-                  </span>
-                </div>
-                <a href="/medals" className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)', letterSpacing: '0.1em' }}>VIEW ALL →</a>
-              </div>
-              <div className="flex justify-center px-3">
-                <div style={{ position: 'relative', width: totalW, height: totalH }}>
-                  {ALL_MEDALS.map((def, idx) => {
-                    const row  = Math.floor(idx / COLS)
-                    const col  = idx % COLS
-                    const tier = earnedMap.get(def.slug)
-                    const earned = !!tier
-                    const tc   = tier ? (TIER_COLOR[tier] ?? '#9EA0A5') : 'rgba(var(--accent-rgb),0.18)'
-                    const tb   = tier ? (TIER_BG[tier]    ?? 'rgba(158,160,165,0.15)') : 'rgba(var(--accent-rgb),0.04)'
-                    const tg   = tier ? (TIER_GLOW[tier]  ?? 'rgba(158,160,165,0.4)') : undefined
-                    const inset = 2
-                    return (
-                      <div key={def.slug} title={earned ? `${def.name} (${tier})` : `${def.name} — not yet earned`}
-                        style={{ position: 'absolute', left: col * hStep, top: row * vStep, width: W, height: H, opacity: earned ? 1 : 0.3, transition: 'opacity 0.2s' }}>
-                        <div style={{ position: 'absolute', inset: 0, clipPath: HEX_CLIP, background: tc, ...(tg ? { filter: `drop-shadow(0 0 ${Math.round(W * 0.14)}px ${tg})` } : {}) }} />
-                        <div style={{ position: 'absolute', top: inset, left: inset, right: inset, bottom: inset, clipPath: HEX_CLIP, background: tb, display: 'flex', alignItems: 'center', justifyContent: 'center', filter: earned ? undefined : 'grayscale(100%)' }}>
-                          <span style={{ fontSize: W * 0.4, lineHeight: 1, userSelect: 'none' }}>{def.icon}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              {earnedMap.size === 0 && (
-                <p className="text-center text-[9px] font-black mt-4" style={{ color: 'rgba(var(--accent-rgb),0.25)', letterSpacing: '0.12em' }}>
-                  NO MEDALS EARNED YET
-                </p>
-              )}
-            </div>
-          )
-        })()}
+        {/* ── Medal showcase ── */}
+        <MedalGrid profileMedals={profileMedals} isMe />
 
         {/* ── Social Inbox ── */}
         <SocialInbox />
