@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/currency'
 import MedalGrid from '@/components/profile/MedalGrid'
+import PostDetailModal from '@/components/profile/PostDetailModal'
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e', CLUB_NIGHT: 'var(--accent)', CONCERT: '#3d5afe', PUB_NIGHT: '#f59e0b',
@@ -316,6 +317,7 @@ export default function PublicProfilePage() {
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
   const [activeTab, setActiveTab] = useState<'events' | 'checkins' | 'photos'>('events')
   const [profilePhotos, setProfilePhotos] = useState<{ id: string; imageUrl: string; likesCount: number; viewCount: number }[]>([])
+  const [openPostId, setOpenPostId] = useState<string | null>(null)
   const [photosLoading, setPhotosLoading] = useState(false)
   const [profileSpotifyArtist, setProfileSpotifyArtist] = useState<{
     id: string; name: string; followers: number; genres: string[]
@@ -851,8 +853,12 @@ export default function PublicProfilePage() {
               {profilePhotos.map((photo) => {
                 const isVid = photo.imageUrl.includes('/video/upload/')
                 return (
-                  <div key={photo.id} className="aspect-square overflow-hidden relative"
-                    style={{ background: 'rgba(7,7,26,0.8)' }}>
+                  <button
+                    key={photo.id}
+                    onClick={() => setOpenPostId(photo.id)}
+                    className="aspect-square overflow-hidden relative w-full block"
+                    style={{ background: 'rgba(7,7,26,0.8)', cursor: 'pointer' }}
+                  >
                     {isVid ? (
                       <video src={photo.imageUrl} className="w-full h-full object-cover" playsInline muted />
                     ) : (
@@ -881,13 +887,25 @@ export default function PublicProfilePage() {
                         <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)' }}>{photo.likesCount}</span>
                       </div>
                     )}
-                  </div>
+                    {/* Hover overlay */}
+                    <div
+                      className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-3"
+                      style={{ background: 'rgba(0,0,0,0.35)' }}
+                    >
+                      <span style={{ fontSize: 11, color: '#fff', fontWeight: 700 }}>♥ {photo.likesCount}</span>
+                    </div>
+                  </button>
                 )
               })}
             </div>
           )
         )}
       </div>
+
+      {/* ── Post detail modal ── */}
+      {openPostId && (
+        <PostDetailModal postId={openPostId} onClose={() => setOpenPostId(null)} />
+      )}
 
       {/* ── Modals ── */}
       {showViewers && (

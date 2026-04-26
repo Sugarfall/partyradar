@@ -15,6 +15,7 @@ import { api } from '@/lib/api'
 import { uploadImage } from '@/lib/cloudinary'
 import { loginHref } from '@/lib/authRedirect'
 import MedalGrid from '@/components/profile/MedalGrid'
+import PostDetailModal from '@/components/profile/PostDetailModal'
 
 // ── Follow List Modal (own profile) ─────────────────────────────────────────
 function FollowListModal({ username, mode, onClose }: {
@@ -338,6 +339,7 @@ export default function ProfilePage() {
   const [myPhotos, setMyPhotos] = useState<{ id: string; imageUrl: string; likesCount: number; viewCount: number }[]>([])
   const [photosLoading, setPhotosLoading] = useState(false)
   const [photosFetched, setPhotosFetched] = useState(false)
+  const [openPostId, setOpenPostId] = useState<string | null>(null)
 
   // Spotify artist state
   const [spotifyArtistUrl, setSpotifyArtistUrl] = useState('')
@@ -1158,8 +1160,19 @@ export default function ProfilePage() {
                 {myPhotos.map((photo) => {
                   const isVid = photo.imageUrl.includes('/video/upload/')
                   return (
-                    <div key={photo.id} className="aspect-square overflow-hidden relative"
-                      style={{ background: 'rgba(7,7,26,0.8)' }}>
+                    <div
+                      key={photo.id}
+                      className="aspect-square overflow-hidden relative"
+                      style={{ background: 'rgba(7,7,26,0.8)' }}
+                    >
+                      {/* Clickable area — opens post detail (unless in edit mode) */}
+                      {!editing && (
+                        <button
+                          onClick={() => setOpenPostId(photo.id)}
+                          className="absolute inset-0 z-10 w-full h-full"
+                          aria-label="View post"
+                        />
+                      )}
                       {isVid ? (
                         <video src={photo.imageUrl} className="w-full h-full object-cover" playsInline muted />
                       ) : (
@@ -1197,11 +1210,11 @@ export default function ProfilePage() {
                               setMyPhotos((prev) => prev.filter((p) => p.id !== photo.id))
                             } catch { /* keep photo if delete fails */ }
                           }}
-                          className="absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center"
-                          style={{ background: 'rgba(239,68,68,0.85)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.25)' }}
+                          className="absolute inset-0 z-10 flex items-center justify-center"
+                          style={{ background: 'rgba(239,68,68,0.55)' }}
                           title="Delete photo"
                         >
-                          <Trash2 size={11} />
+                          <Trash2 size={18} style={{ color: '#fff' }} />
                         </button>
                       )}
                     </div>
@@ -1477,6 +1490,11 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Post detail modal */}
+      {openPostId && (
+        <PostDetailModal postId={openPostId} onClose={() => setOpenPostId(null)} />
       )}
 
       {/* Follow list modal */}
