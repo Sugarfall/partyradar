@@ -1681,7 +1681,9 @@ export default function DiscoverPage() {
     const seenNameWeek = new Set<string>()   // name slug + rough venue + 7-day slot
 
     return [...events, ...extraEvents].filter(e => {
-      // Pre-filter: require a real source for bot-created events
+      // Pre-filter: require at least one source field for bot-created events.
+      // (Wrong-city events are removed in the DB; generic-URL events still show but
+      //  the detail page redirects to a Google search instead of a broken link.)
       const isBot = e.host.username === 'partyradar'
       const hasSource = e.skiddleId || e.eventbriteId || e.ticketmasterId ||
                         e.eventbriteUrl || e.socialSourceUrl

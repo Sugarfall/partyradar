@@ -8,7 +8,7 @@ import {
   QrCode, ArrowLeft, Star, Share2, Lock, Loader2, Check,
   ChevronRight, Zap, Link2, ChevronDown, ChevronUp, UserCircle2,
   Megaphone, Radio, Eye, EyeOff, XCircle, AlertTriangle, MessageCircle, TrendingUp,
-  Clock, Music, Music2, Package, Info, Navigation, Ticket, Sparkles, Heart, X, ThumbsUp
+  Clock, Music, Music2, Package, Info, Navigation, Ticket, Sparkles, Heart, X, ThumbsUp, Search
 } from 'lucide-react'
 import SaveButton from '@/components/events/SaveButton'
 import { useEvent, updateEvent, cancelEvent } from '@/hooks/useEvents'
@@ -1318,7 +1318,32 @@ export default function EventDetailPage() {
   // Their address, price, and time may be approximate — always show a warning.
   const isBot = event.host.username === 'partyradar' || event.host.displayName === 'PartyRadar Assistant'
 
+  // Generic listing page patterns — these are category/calendar pages, not event-specific pages.
+  // Using them as "Official Site" links would send users to the wrong page.
+  const GENERIC_LISTING_PATTERNS: RegExp[] = [
+    /whatsonglasgow\.co\.uk.*daterange/i,
+    /whatsonglasgow\.co\.uk.*\/nights-out\//i,
+    /myguideglasgow\.com\/whats-on\/(january|february|march|april|may|june|july|august|september|october|november|december)/i,
+    /myguideglasgow\.com\/events\/\d{4}\//i,
+    /skiddle\.com\/whats-on\/[^/]+\/[^/]+-events\//i,
+    /songkick\.com\/metro-areas\//i,
+    /djguide\.nl\/events\.p\?/i,
+    /designmynight\.com\/.*\/whats-on\//i,
+    /visitscotland\.com\/.*events\//i,
+    /ticketweb\.uk\/?$/i,
+    /^https?:\/\/dice\.fm\/?$/i,
+    /eventim\.co\.uk\/?$/i,
+    /manchestersfinest\.com\//i,
+    /japanconcerttickets\.com\//i,
+    /whatnightout\.uk\/.*\/events\/month\//i,
+    /timeout\.com\/.*\/events$/i,
+  ]
+  function isGenericListingUrl(url: string): boolean {
+    try { return GENERIC_LISTING_PATTERNS.some((p) => p.test(url)) } catch { return false }
+  }
+
   // Best external URL for the event — with PartyRadar referral tag appended.
+  // We deliberately skip socialSourceUrl when it's a generic listing page (not event-specific).
   const externalTicketUrl: string = (() => {
     function withRef(base: string) {
       try {
@@ -1328,22 +1353,35 @@ export default function EventDetailPage() {
         return u.toString()
       } catch { return base }
     }
-    if (event.eventbriteUrl)   return withRef(event.eventbriteUrl)
-    if (event.socialSourceUrl)  return withRef(event.socialSourceUrl)
+    if (event.eventbriteUrl) return withRef(event.eventbriteUrl)
+    // Only use socialSourceUrl if it's an event-specific page, not a generic listing
+    if (event.socialSourceUrl && !isGenericListingUrl(event.socialSourceUrl)) {
+      return withRef(event.socialSourceUrl)
+    }
     // Skiddle canonical URL is reliable (ID is their primary key)
-    if (event.skiddleId)       return withRef(`https://www.skiddle.com/whats-on/event/${event.skiddleId}/`)
+    if (event.skiddleId) return withRef(`https://www.skiddle.com/whats-on/event/${event.skiddleId}/`)
     // Ticketmaster & Eventbrite ID-only URLs require the event slug to avoid 404 —
     // redirect to their search instead so the user always lands on a real page.
-    if (event.ticketmasterId)  return withRef(`https://www.ticketmaster.co.uk/search?q=${encodeURIComponent(event.name)}`)
-    if (event.eventbriteId)    return withRef(`https://www.eventbrite.co.uk/d/online/events/?q=${encodeURIComponent(event.name)}`)
+    if (event.ticketmasterId) return withRef(`https://www.ticketmaster.co.uk/search?q=${encodeURIComponent(event.name)}`)
+    if (event.eventbriteId)   return withRef(`https://www.eventbrite.co.uk/d/online/events/?q=${encodeURIComponent(event.name)}`)
     return `https://www.google.com/search?q=${encodeURIComponent(event.name + ' tickets')}`
   })()
+
+  // Whether the event has a verified, event-specific ticket source
+  const hasVerifiedTicketSource = !!(
+    event.eventbriteUrl ||
+    (event.socialSourceUrl && !isGenericListingUrl(event.socialSourceUrl)) ||
+    event.skiddleId ||
+    event.ticketmasterId ||
+    event.eventbriteId
+  )
+
   const externalSourceName: string =
-    event.eventbriteUrl   ? 'Eventbrite'    :
-    event.socialSourceUrl  ? 'Official Site' :
-    event.skiddleId       ? 'Skiddle'       :
-    event.ticketmasterId  ? 'Ticketmaster'  :
-    event.eventbriteId    ? 'Eventbrite'    : 'Search'
+    event.eventbriteUrl ? 'Eventbrite' :
+    (event.socialSourceUrl && !isGenericListingUrl(event.socialSourceUrl)) ? 'Official Site' :
+    event.skiddleId     ? 'Skiddle'    :
+    event.ticketmasterId ? 'Ticketmaster' :
+    event.eventbriteId  ? 'Eventbrite' : 'Search'
 
   async function handleRSVP() {
     if (!dbUser) { router.push(loginHref()); return }
@@ -1602,10 +1640,12 @@ export default function EventDetailPage() {
             <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: '#f59e0b' }} />
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-black tracking-widest mb-0.5" style={{ color: '#f59e0b' }}>
-                UNVERIFIED LISTING
+                AI-DISCOVERED EVENT
               </p>
               <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(245,158,11,0.75)' }}>
-                Always verify the event details before attending or purchasing tickets.
+                {hasVerifiedTicketSource
+                  ? 'Details sourced automatically. Verify date, venue and price on the official site before buying.'
+                  : 'No verified ticket link found. The search button below will find current listings — always confirm details before purchasing.'}
               </p>
             </div>
           </div>
@@ -2341,21 +2381,28 @@ export default function EventDetailPage() {
                   ) : (
                     <>
                       {isBot ? (
-                        /* Unverified event — redirect to official external ticketing source */
+                        /* AI-discovered event — link to verified source or Google search */
                         <a
                           href={externalTicketUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm transition-all duration-200"
                           style={{
-                            background: `linear-gradient(135deg, ${tc.color}18, rgba(61,90,254,0.12))`,
-                            border: `1px solid ${tc.color}50`,
-                            color: tc.color,
-                            boxShadow: `0 0 20px ${tc.glow}`,
+                            background: hasVerifiedTicketSource
+                              ? `linear-gradient(135deg, ${tc.color}18, rgba(61,90,254,0.12))`
+                              : 'rgba(245,158,11,0.08)',
+                            border: hasVerifiedTicketSource
+                              ? `1px solid ${tc.color}50`
+                              : '1px solid rgba(245,158,11,0.4)',
+                            color: hasVerifiedTicketSource ? tc.color : '#f59e0b',
+                            boxShadow: hasVerifiedTicketSource ? `0 0 20px ${tc.glow}` : 'none',
                             letterSpacing: '0.08em',
                           }}
                         >
-                          <Ticket size={14} /> BUY TICKETS →
+                          {hasVerifiedTicketSource
+                            ? <><Ticket size={14} /> BUY TICKETS — {externalSourceName} →</>
+                            : <><Search size={14} /> SEARCH FOR TICKETS →</>
+                          }
                         </a>
                       ) : (
                         <button
