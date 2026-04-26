@@ -572,9 +572,20 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       )
     }
 
+    // If a known venue is linked, trust its curated address/coordinates
+    // over whatever the client submitted — prevents wrong pins on the map.
+    let venueGeo: { address: string; lat: number; lng: number } | null = null
+    if (body.venueId) {
+      venueGeo = await prisma.venue.findUnique({
+        where: { id: body.venueId },
+        select: { address: true, lat: true, lng: true },
+      })
+    }
+
     const event = await prisma.event.create({
       data: {
         ...body,
+        ...(venueGeo ?? {}),
         startsAt: startsAtDate,
         endsAt: endsAtDate,
         hostId: user.id,
@@ -667,10 +678,21 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       } catch {}
     }
 
+    // If a venue is being linked (new or changed), pull its curated coordinates
+    const venueIdForUpdate = rest.venueId ?? event.venueId
+    let updateVenueGeo: { address: string; lat: number; lng: number } | null = null
+    if (venueIdForUpdate && (rest.venueId || !event.venueId)) {
+      updateVenueGeo = await prisma.venue.findUnique({
+        where: { id: venueIdForUpdate },
+        select: { address: true, lat: true, lng: true },
+      })
+    }
+
     const updated = await prisma.event.update({
       where: { id: event.id },
       data: {
         ...rest,
+        ...(updateVenueGeo ?? {}),
         startsAt: rest.startsAt ? new Date(rest.startsAt) : undefined,
         endsAt: rest.endsAt ? new Date(rest.endsAt) : undefined,
         accentColor: accentColor !== undefined ? accentColor : undefined,

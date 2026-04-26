@@ -98,6 +98,52 @@ async function findPlace(venueName: string, city: string): Promise<PlaceLookup |
   }
 }
 
+// ── Venue geo resolver ────────────────────────────────────────────────────────
+
+const venueGeoCache = new Map<string, { id: string; address: string; lat: number; lng: number } | null>()
+
+/**
+ * Given a venue name and city, looks up our curated Venue record (case-
+ * insensitive partial match).  When found, returns its verified address and
+ * coordinates so they override whatever the external source provided.
+ *
+ * Results are cached in-process for the lifetime of the sync run to avoid
+ * repeated DB hits for the same venue across many events.
+ */
+async function resolveVenueGeo(
+  venueName: string | null | undefined,
+  cityOrAddress?: string,
+): Promise<{ id: string; address: string; lat: number; lng: number } | null> {
+  if (!venueName?.trim()) return null
+  // Extract a usable city token: prefer an explicit city param, otherwise pull the
+  // first word-only token from an address string ("100 Eastvale Pl, Glasgow G3 8QG" → "Glasgow")
+  const cityToken = cityOrAddress?.trim()
+    ? (cityOrAddress.includes(',')
+        ? cityOrAddress.split(',').find(p => /^[A-Za-z\s]+$/.test(p.trim()))?.trim() ?? cityOrAddress.trim()
+        : cityOrAddress.trim())
+    : ''
+  const key = `${cityToken}::${venueName.trim().toLowerCase()}`
+  if (venueGeoCache.has(key)) return venueGeoCache.get(key)!
+
+  try {
+    const venues = await prisma.venue.findMany({
+      where: {
+        ...(cityToken ? { city: { contains: cityToken, mode: 'insensitive' } } : {}),
+        name: { contains: venueName.trim(), mode: 'insensitive' },
+      },
+      select: { id: true, name: true, address: true, lat: true, lng: true },
+      take: 1,
+    })
+    const result = venues[0]
+      ? { id: venues[0].id, address: venues[0].address, lat: venues[0].lat, lng: venues[0].lng }
+      : null
+    venueGeoCache.set(key, result)
+    return result
+  } catch {
+    return null
+  }
+}
+
 /** Returns true when an address string is too vague to be useful (just city/Unknown). */
 function isVagueAddress(address: string, city: string): boolean {
   const a = address.toLowerCase().trim()
@@ -365,50 +411,31 @@ async function syncTicketmaster(
         (img) => img.ratio === '16_9' && (img.width ?? 0) > 500
       )?.url ?? ev.images?.[0]?.url ?? undefined
       const type = overrideTypeByVenue(venueName, mapTMEventType(ev.classifications))
+      const vg = await resolveVenueGeo(venueName, address)
+      const geo = vg
+        ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
+        : { lat: evLat, lng: evLng, address }
 
       await prisma.event.upsert({
         where: { ticketmasterId: ev.id },
         update: {
-          name,
-          description,
-          startsAt,
-          endsAt,
-          lat: evLat,
-          lng: evLng,
-          address,
-          neighbourhood,
-          venueName,
-          coverImageUrl,
-          price,
+          name, description, startsAt, endsAt,
+          ...geo,
+          neighbourhood, venueName, coverImageUrl, price,
           socialSourceUrl: ev.url,
         },
         create: {
-          hostId,
-          name,
-          type,
-          description,
-          startsAt,
+          hostId, name, type, description, startsAt,
           endsAt: endsAt ?? null,
-          lat: evLat,
-          lng: evLng,
-          address,
-          neighbourhood,
-          venueName,
-          showNeighbourhoodOnly: false,
-          capacity: 200,
-          price,
-          ticketQuantity: 0,
-          ticketsRemaining: 0,
-          alcoholPolicy: 'PROVIDED',
-          ageRestriction: 'AGE_18',
-          vibeTags: [],
-          whatToBring: [],
-          isPublished: true,
-          isCancelled: false,
-          coverImageUrl,
-          ticketmasterId: ev.id,
-          externalSource: 'ticketmaster',
-          socialSourceUrl: ev.url,
+          ...geo,
+          neighbourhood, venueName,
+          showNeighbourhoodOnly: false, capacity: 200, price,
+          ticketQuantity: 0, ticketsRemaining: 0,
+          alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
+          vibeTags: [], whatToBring: [],
+          isPublished: true, isCancelled: false,
+          coverImageUrl, ticketmasterId: ev.id,
+          externalSource: 'ticketmaster', socialSourceUrl: ev.url,
         },
       })
       imported++
@@ -517,50 +544,32 @@ async function syncSkiddle(
       const endsAt = ev.enddate ? new Date(ev.enddate) : undefined
       const price = parseFloat(String(ev.entryprice ?? '0')) || 0
       const type = overrideTypeByVenue(venueName, mapSkiddleEventType(ev.genres))
+      const vg = await resolveVenueGeo(venueName, address)
+      const geo = vg
+        ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
+        : { lat: evLat, lng: evLng, address }
 
       await prisma.event.upsert({
         where: { skiddleId: ev.id },
         update: {
-          name,
-          description,
-          startsAt,
-          endsAt,
-          lat: evLat,
-          lng: evLng,
-          address,
-          neighbourhood,
-          venueName,
-          coverImageUrl: ev.imageurl ?? null,
-          price,
+          name, description, startsAt, endsAt,
+          ...geo,
+          neighbourhood, venueName,
+          coverImageUrl: ev.imageurl ?? null, price,
           socialSourceUrl: ev.link,
         },
         create: {
-          hostId,
-          name,
-          type,
-          description,
-          startsAt,
+          hostId, name, type, description, startsAt,
           endsAt: endsAt ?? null,
-          lat: evLat,
-          lng: evLng,
-          address,
-          neighbourhood,
-          venueName,
-          showNeighbourhoodOnly: false,
-          capacity: 200,
-          price,
-          ticketQuantity: 0,
-          ticketsRemaining: 0,
-          alcoholPolicy: 'PROVIDED',
-          ageRestriction: 'AGE_18',
-          vibeTags: [],
-          whatToBring: [],
-          isPublished: true,
-          isCancelled: false,
-          coverImageUrl: ev.imageurl ?? null,
-          skiddleId: ev.id,
-          externalSource: 'skiddle',
-          socialSourceUrl: ev.link,
+          ...geo,
+          neighbourhood, venueName,
+          showNeighbourhoodOnly: false, capacity: 200, price,
+          ticketQuantity: 0, ticketsRemaining: 0,
+          alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
+          vibeTags: [], whatToBring: [],
+          isPublished: true, isCancelled: false,
+          coverImageUrl: ev.imageurl ?? null, skiddleId: ev.id,
+          externalSource: 'skiddle', socialSourceUrl: ev.link,
         },
       })
       imported++
@@ -667,51 +676,32 @@ async function syncEventbrite(
       const categories = [ev.category?.name ?? '', ev.subcategory?.name ?? '']
       const type = overrideTypeByVenue(venueName, mapEBEventType(categories))
       const coverImageUrl = ev.logo?.original?.url ?? null
+      const vg = await resolveVenueGeo(venueName, address)
+      const geo = vg
+        ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
+        : { lat: evLat, lng: evLng, address }
 
       await prisma.event.upsert({
         where: { eventbriteId: ev.id },
         update: {
-          name,
-          description,
-          startsAt,
-          endsAt,
-          lat: evLat,
-          lng: evLng,
-          address,
-          neighbourhood,
-          venueName,
-          coverImageUrl,
-          price,
-          eventbriteUrl: ev.url,
-          socialSourceUrl: ev.url,
+          name, description, startsAt, endsAt,
+          ...geo,
+          neighbourhood, venueName, coverImageUrl, price,
+          eventbriteUrl: ev.url, socialSourceUrl: ev.url,
         },
         create: {
-          hostId,
-          name,
-          type,
-          description,
-          startsAt,
+          hostId, name, type, description, startsAt,
           endsAt: endsAt ?? null,
-          lat: evLat,
-          lng: evLng,
-          address,
-          neighbourhood,
-          venueName,
-          showNeighbourhoodOnly: false,
-          capacity,
-          price,
+          ...geo,
+          neighbourhood, venueName,
+          showNeighbourhoodOnly: false, capacity, price,
           ticketQuantity: price > 0 ? capacity : 0,
           ticketsRemaining: price > 0 ? capacity : 0,
-          alcoholPolicy: 'PROVIDED',
-          ageRestriction: 'AGE_18',
-          vibeTags: [],
-          whatToBring: [],
-          isPublished: true,
-          isCancelled: false,
-          coverImageUrl,
-          eventbriteId: ev.id,
-          eventbriteUrl: ev.url,
-          externalSource: 'eventbrite',
+          alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
+          vibeTags: [], whatToBring: [],
+          isPublished: true, isCancelled: false,
+          coverImageUrl, eventbriteId: ev.id,
+          eventbriteUrl: ev.url, externalSource: 'eventbrite',
           socialSourceUrl: ev.url,
         },
       })
@@ -1019,13 +1009,18 @@ async function syncSerpApi(
       const isPaid = ev.ticket_info?.some((t) => t.is_paid) ?? false
       const price = isPaid ? 10 : 0
 
+      const vg = await resolveVenueGeo(venueName, city)
+      const geo = vg
+        ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
+        : { lat: serpLat, lng: serpLng, address }
+
       await prisma.event.upsert({
         where: { serpApiId },
-        update: { name, description, startsAt, lat: serpLat, lng: serpLng, address, neighbourhood, venueName: venueName || null, coverImageUrl, socialSourceUrl },
+        update: { name, description, startsAt, ...geo, neighbourhood, venueName: venueName || null, coverImageUrl, socialSourceUrl },
         create: {
           hostId, name, type, description, startsAt, endsAt: null,
-          lat: serpLat, lng: serpLng, address, neighbourhood,
-          venueName: venueName || null,
+          ...geo,
+          neighbourhood, venueName: venueName || null,
           showNeighbourhoodOnly: false, capacity: 500, price,
           ticketQuantity: 0, ticketsRemaining: 0,
           alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
@@ -1207,20 +1202,25 @@ async function syncPerplexity(
       const type: EventTypeName = overrideTypeByVenue(venueName, aiType)
       const price = typeof ev.price === 'number' ? ev.price : 0
 
+      const vg = await resolveVenueGeo(venueName, city)
+      const geo = vg
+        ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
+        : { lat: venueLat, lng: venueLng, address }
+
       await prisma.event.upsert({
         where: { aiEventId },
         update: {
           name, description, startsAt, endsAt,
-          lat: venueLat, lng: venueLng,
-          address, neighbourhood, venueName,
+          ...geo,
+          neighbourhood, venueName,
           coverImageUrl: ev.imageUrl ?? null,
           socialSourceUrl: ev.url,
         },
         create: {
           hostId, name, type, description, startsAt,
           endsAt: endsAt ?? null,
-          lat: venueLat, lng: venueLng,
-          address, neighbourhood, venueName,
+          ...geo,
+          neighbourhood, venueName,
           showNeighbourhoodOnly: false, capacity: 300, price,
           ticketQuantity: 0, ticketsRemaining: 0,
           alcoholPolicy: 'PROVIDED', ageRestriction: 'AGE_18',
