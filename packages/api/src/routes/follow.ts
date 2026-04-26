@@ -182,7 +182,7 @@ router.post('/:userId', requireAuth, async (req: AuthRequest, res, next) => {
         body: `@${me?.username ?? ''} is now following you`,
         data: { fromUserId: followerId, fromUsername: me?.username },
       },
-    }).catch(() => {})
+    }).catch((e: unknown) => console.warn('[follow] notification create failed:', e))
 
     res.status(201).json({ data: follow })
   } catch (err) {

@@ -228,6 +228,12 @@ function makeDedupKeys(event: DedupableEvent): string[] {
     ? firstWord
     : words.slice(0, 2).join(' ') || normalized
 
+  // If nameKey is still empty after normalization (e.g. event named only with
+  // stripped tokens like "Weekly Glasgow"), bail out — an empty nameKey produces
+  // degenerate fingerprints like "|date|venue:x" that falsely collapse all events
+  // at the same venue on the same day regardless of their actual names.
+  if (!nameKey) return []
+
   const keys: string[] = []
 
   const activityTags = extractActivityTags(event.name)

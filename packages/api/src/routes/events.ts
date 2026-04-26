@@ -514,14 +514,17 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
-    // startsAt must be in the future
-    if (new Date(body.startsAt) <= new Date()) {
-      throw new AppError('Event start date must be in the future', 400)
-    }
+    // Validate date strings before using them (new Date("garbage") gives Invalid Date,
+    // which compares as NaN and silently passes the <= check — reject early with a clear error)
+    const startsAtDate = new Date(body.startsAt)
+    if (isNaN(startsAtDate.getTime())) throw new AppError('Invalid startsAt date', 400)
+    if (startsAtDate <= new Date()) throw new AppError('Event start date must be in the future', 400)
 
-    // endsAt must be after startsAt if provided
-    if (body.endsAt && new Date(body.endsAt) <= new Date(body.startsAt)) {
-      throw new AppError('Event end time must be after the start time', 400)
+    let endsAtDate: Date | null = null
+    if (body.endsAt) {
+      endsAtDate = new Date(body.endsAt)
+      if (isNaN(endsAtDate.getTime())) throw new AppError('Invalid endsAt date', 400)
+      if (endsAtDate <= startsAtDate) throw new AppError('Event end time must be after the start time', 400)
     }
 
     // Content moderation — check name + description for illegal/hateful content
@@ -547,8 +550,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     const event = await prisma.event.create({
       data: {
         ...body,
-        startsAt: new Date(body.startsAt),
-        endsAt: body.endsAt ? new Date(body.endsAt) : null,
+        startsAt: startsAtDate,
+        endsAt: endsAtDate,
         hostId: user.id,
         ticketsRemaining: body.ticketQuantity,
         isPublished: true,

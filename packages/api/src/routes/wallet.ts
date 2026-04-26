@@ -106,7 +106,7 @@ router.post('/top-up', requireAuth, async (req: AuthRequest, res, next) => {
     const stripeCustomerId = await getOrCreateStripeCustomer(userId, userRow!.email, prisma)
     // Keep wallet.stripeCustomerId in sync for backwards-compat queries
     if (!wallet.stripeCustomerId) {
-      await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId } }).catch(() => {})
+      await prisma.wallet.update({ where: { id: wallet.id }, data: { stripeCustomerId } }).catch((e: unknown) => console.warn('[wallet] stripeCustomerId sync failed:', e))
     }
 
     const session = await stripe.checkout.sessions.create({
