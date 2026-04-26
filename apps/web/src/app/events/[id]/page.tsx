@@ -328,7 +328,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
       imageUrl: p.imageUrl ?? undefined,
       caption: p.text ?? undefined,
       text: p.text ?? undefined,
-      likes: p._count?.likes ?? 0,
+      likes: p._count?.likes ?? p.likesCount ?? 0,
       createdAt: p.createdAt,
     }
   }
@@ -339,6 +339,12 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
       .then(r => {
         const mapped = (r?.data ?? []).map(mapPost)
         setHighlights(mapped)
+        // Seed liked set from real server data
+        const initLiked = new Set<string>()
+        for (const p of (r?.data ?? [])) {
+          if (p.hasLiked) initLiked.add(p.id)
+        }
+        setLiked(initLiked)
       })
       .catch(silent('events/[id]'))
   }, [event.id])
@@ -367,12 +373,38 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
     finally { setUploading(false) }
   }
 
-  function toggleLike(id: string) {
+  async function toggleLike(id: string) {
+    const isLiked = liked.has(id)
+    // Optimistic update — flip liked state and adjust count immediately
     setLiked(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
+      if (isLiked) next.delete(id); else next.add(id)
       return next
     })
+    setHighlights(prev =>
+      prev.map(p => p.id === id ? { ...p, likes: Math.max(0, p.likes + (isLiked ? -1 : 1)) } : p),
+    )
+    try {
+      const res = await api.post<{ data: { liked: boolean } }>(`/posts/${id}/like`, {})
+      // Sync liked state with server truth (handles race conditions)
+      if (res?.data != null) {
+        setLiked(prev => {
+          const next = new Set(prev)
+          if (res.data.liked) next.add(id); else next.delete(id)
+          return next
+        })
+      }
+    } catch {
+      // Revert on failure
+      setLiked(prev => {
+        const next = new Set(prev)
+        if (isLiked) next.add(id); else next.delete(id)
+        return next
+      })
+      setHighlights(prev =>
+        prev.map(p => p.id === id ? { ...p, likes: Math.max(0, p.likes + (isLiked ? 1 : -1)) } : p),
+      )
+    }
   }
 
   function timeAgo(iso: string) {
@@ -619,7 +651,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
               <button onClick={() => toggleLike(viewing.id)} className="flex items-center gap-1.5">
                 <Heart size={18} fill={liked.has(viewing.id) ? '#ff006e' : 'none'} style={{ color: liked.has(viewing.id) ? '#ff006e' : 'rgba(255,255,255,0.6)' }} />
                 <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                  {viewing.likes + (liked.has(viewing.id) ? 1 : 0)}
+                  {viewing.likes}
                 </span>
               </button>
               <span className="text-[9px] font-bold px-2 py-1 rounded" style={{ background: `${color}15`, border: `1px solid ${color}30`, color, letterSpacing: '0.08em' }}>

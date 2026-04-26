@@ -24,6 +24,7 @@ const PUBLIC_USER_SELECT = {
   themeName: true,
   socialScore: true,
   phoneVerified: true,
+  showProfileViews: true,
 }
 
 // ── GET /api/users/search?q= ───────────────────────────────────────────────────
@@ -387,34 +388,35 @@ router.get('/:username', optionalAuth, async (req: AuthRequest, res, next) => {
       goOutStatus = goOut?.status ?? null
       hasNudged = !!nudge
 
-      // Track profile view (fire and forget)
-      // Bug 18 fix: log errors instead of silently swallowing
-      prisma.profileView.upsert({
-        where: { viewerId_profileId: { viewerId: currentUserId, profileId: user.id } },
-        create: { viewerId: currentUserId, profileId: user.id },
-        update: { updatedAt: new Date() },
-      }).then(async () => {
-        // Notify profile owner (throttled — only once per day per viewer)
-        const recentNotif = await prisma.notification.findFirst({
-          where: {
-            userId: user.id,
-            type: 'PROFILE_VIEW',
-            data: { path: ['viewerId'], equals: currentUserId },
-            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-          },
-        })
-        if (!recentNotif) {
-          await prisma.notification.create({
-            data: {
+      // Track profile view (fire and forget) — only if the owner allows it
+      if ((user as any).showProfileViews !== false) {
+        prisma.profileView.upsert({
+          where: { viewerId_profileId: { viewerId: currentUserId, profileId: user.id } },
+          create: { viewerId: currentUserId, profileId: user.id },
+          update: { updatedAt: new Date() },
+        }).then(async () => {
+          // Notify profile owner (throttled — only once per day per viewer)
+          const recentNotif = await prisma.notification.findFirst({
+            where: {
               userId: user.id,
               type: 'PROFILE_VIEW',
-              title: 'Someone viewed your profile 👀',
-              body: 'Upgrade to see who',
-              data: { viewerId: currentUserId },
+              data: { path: ['viewerId'], equals: currentUserId },
+              createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
             },
-          }).catch(() => {})
-        }
-      }).catch((err: unknown) => console.error('[ProfileView]', err))
+          })
+          if (!recentNotif) {
+            await prisma.notification.create({
+              data: {
+                userId: user.id,
+                type: 'PROFILE_VIEW',
+                title: 'Someone viewed your profile 👀',
+                body: 'Upgrade to see who',
+                data: { viewerId: currentUserId },
+              },
+            }).catch(() => {})
+          }
+        }).catch((err: unknown) => console.error('[ProfileView]', err))
+      }
     }
 
     // Profile view count for own profile

@@ -14,21 +14,21 @@ router.post('/impressions', optionalAuth, async (req: AuthRequest, res, next) =>
       return res.json({ data: { recorded: 0 } })
     }
 
-    const userId     = req.user?.dbUser.id ?? null
+    const userId = req.user?.dbUser.id ?? null
+    // Only track authenticated users — anonymous impressions are inflated by
+    // bots, crawlers and repeated loads and make host analytics unreliable.
+    if (!userId) return res.json({ data: { recorded: 0 } })
+
     const limit      = eventIds.slice(0, 50)
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
 
-    // For logged-in users skip duplicate impressions within 1 hour
-    const toInsert: { eventId: string; userId: string | null }[] = []
+    const toInsert: { eventId: string; userId: string }[] = []
     for (const eventId of limit) {
-      if (userId) {
-        const recent = await prisma.eventImpression.findFirst({
-          where: { eventId, userId, createdAt: { gte: oneHourAgo } },
-          select: { id: true },
-        })
-        if (recent) continue
-      }
-      toInsert.push({ eventId, userId })
+      const recent = await prisma.eventImpression.findFirst({
+        where: { eventId, userId, createdAt: { gte: oneHourAgo } },
+        select: { id: true },
+      })
+      if (!recent) toInsert.push({ eventId, userId })
     }
 
     if (toInsert.length > 0) {
@@ -42,18 +42,18 @@ router.post('/impressions', optionalAuth, async (req: AuthRequest, res, next) =>
 // ── POST /api/events/:id/view — record one page view ─────────────────────────
 router.post('/:id/view', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const eventId    = req.params['id']!
-    const userId     = req.user?.dbUser.id ?? null
-    const sixHrsAgo  = new Date(Date.now() - 6 * 60 * 60 * 1000)
+    const eventId = req.params['id']!
+    const userId  = req.user?.dbUser.id ?? null
 
-    // Deduplicate: skip if this user already viewed this event in the last 6 hours
-    if (userId) {
-      const recent = await prisma.eventView.findFirst({
-        where: { eventId, userId, createdAt: { gte: sixHrsAgo } },
-        select: { id: true },
-      })
-      if (recent) return res.json({ data: { recorded: false } })
-    }
+    // Only track authenticated users for the same reason as impressions above.
+    if (!userId) return res.json({ data: { recorded: false } })
+
+    const sixHrsAgo = new Date(Date.now() - 6 * 60 * 60 * 1000)
+    const recent = await prisma.eventView.findFirst({
+      where: { eventId, userId, createdAt: { gte: sixHrsAgo } },
+      select: { id: true },
+    })
+    if (recent) return res.json({ data: { recorded: false } })
 
     await prisma.eventView.create({ data: { eventId, userId } })
     res.json({ data: { recorded: true } })

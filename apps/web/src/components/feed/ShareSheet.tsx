@@ -76,6 +76,8 @@ export default function ShareSheet({ post, onClose, onShared }: ShareSheetProps)
   const canNativeShare = useCanNativeShare()
   const [copied, setCopied] = useState(false)
   const [reposting, setReposting] = useState(false)
+  const [quickReposted, setQuickReposted] = useState(false)
+  const [quickReposting, setQuickReposting] = useState(false)
 
   const postUrl = useMemo(() => buildPostUrl(post.id), [post.id])
 
@@ -138,16 +140,29 @@ export default function ShareSheet({ post, onClose, onShared }: ShareSheetProps)
     }
   }
 
-  function handleRepost() {
-    // Fire analytics first so cancelling the compose still counts a share
-    // intent. If we wait for compose to submit we'd miss every cancelled
-    // repost, which would underreport the UX.
+  /** Quick repost — no caption, immediate API call, stays in sheet briefly. */
+  async function handleQuickRepost() {
+    if (quickReposted || quickReposting) return
+    setQuickReposting(true)
+    try {
+      await api.post('/posts', { originalPostId: post.id })
+      recordShare('repost')
+      setQuickReposted(true)
+      setTimeout(() => onClose(), 900)
+    } catch {
+      // silent — could be "can't repost your own" etc.
+    } finally {
+      setQuickReposting(false)
+    }
+  }
+
+  /** Quote repost — opens ComposePostModal so the user can add a caption. */
+  function handleQuote() {
     recordShare('repost')
     setReposting(true)
   }
 
-  // When the user finishes or cancels the repost modal, close the whole
-  // sheet so focus returns cleanly.
+  // When the compose modal closes, close the whole sheet.
   function handleRepostClosed() {
     setReposting(false)
     onClose()
@@ -215,11 +230,18 @@ export default function ShareSheet({ post, onClose, onShared }: ShareSheetProps)
             accent={copied ? '#00ff88' : undefined}
           />
           <ShareOption
+            icon={quickReposted ? <Check size={18} /> : <Repeat2 size={18} />}
+            label={quickReposted ? 'Reposted!' : quickReposting ? 'Reposting…' : 'Repost'}
+            sublabel={quickReposted ? undefined : 'Share instantly with your followers'}
+            onClick={handleQuickRepost}
+            accent={quickReposted ? '#00ff88' : '#ec4899'}
+          />
+          <ShareOption
             icon={<Repeat2 size={18} />}
-            label="Repost"
-            sublabel="Share this with your followers"
-            onClick={handleRepost}
-            accent="#ec4899"
+            label="Quote Repost"
+            sublabel="Add your own comment to this post"
+            onClick={handleQuote}
+            accent="#a855f7"
           />
         </div>
 

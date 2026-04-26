@@ -458,14 +458,41 @@ router.get('/venue/:venueId', async (req, res, next) => {
   }
 })
 
-/** POST /api/posts/:id/view — record a video view (once per play) */
+/**
+ * In-memory view deduplication.
+ * Key: `userId:postId` → last-viewed timestamp (ms).
+ * Prevents the same authenticated user inflating viewCount within a 6-hour window.
+ * Anonymous views are excluded entirely — too unreliable (bots, refreshes, crawlers).
+ */
+const POST_VIEW_WINDOW_MS = 6 * 60 * 60 * 1000
+const postViewCache = new Map<string, number>()
+setInterval(() => {
+  const cutoff = Date.now() - POST_VIEW_WINDOW_MS
+  for (const [k, ts] of postViewCache) if (ts < cutoff) postViewCache.delete(k)
+}, 60 * 60 * 1000) // prune stale entries hourly
+
+/** POST /api/posts/:id/view — record a video view (once per 6h per user) */
 router.post('/:id/view', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params
+    const userId = req.user?.dbUser.id ?? null
+
+    // Skip anonymous — bots and repeated refreshes make the number meaningless
+    if (!userId) return res.json({ data: { recorded: false } })
+
+    // Skip if this user already triggered a view within the last 6 hours
+    const cacheKey = `${userId}:${id}`
+    const lastView = postViewCache.get(cacheKey)
+    if (lastView && Date.now() - lastView < POST_VIEW_WINDOW_MS) {
+      return res.json({ data: { recorded: false } })
+    }
+
     const post = await prisma.post.findUnique({ where: { id }, select: { id: true } })
     if (!post) throw new AppError('Post not found', 404)
+
+    postViewCache.set(cacheKey, Date.now())
     await prisma.post.update({ where: { id }, data: { viewCount: { increment: 1 } } })
-    res.json({ data: { ok: true } })
+    res.json({ data: { recorded: true } })
   } catch (err) {
     next(err)
   }
