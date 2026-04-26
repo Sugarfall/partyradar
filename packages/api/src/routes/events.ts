@@ -409,6 +409,13 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
       where: { id: String(req.params['id']) },
       include: {
         host: { select: userSelect },
+        venue: {
+          select: {
+            id: true, name: true,
+            address: true, lat: true, lng: true,
+            photoUrl: true, website: true,
+          },
+        },
         _count: {
           select: {
             guests: { where: { status: 'CONFIRMED' } },
@@ -454,7 +461,25 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
-    res.json({ data: { ...event, address: displayAddress, guestCount: event._count.guests, savesCount: event._count.savedBy } })
+    // When a verified venue is linked, its address/coordinates are more
+    // reliable than what was scraped from external ticket APIs.  Override
+    // the event-level geo fields so the map, weather widget, and Uber link
+    // all point to the correct physical location.
+    const v = (event as any).venue
+    const resolvedLat     = v?.lat     ?? event.lat
+    const resolvedLng     = v?.lng     ?? event.lng
+    const resolvedAddress = v?.address ?? displayAddress
+
+    res.json({
+      data: {
+        ...event,
+        address:     event.showNeighbourhoodOnly ? displayAddress : resolvedAddress,
+        lat:         resolvedLat,
+        lng:         resolvedLng,
+        guestCount:  event._count.guests,
+        savesCount:  event._count.savedBy,
+      },
+    })
   } catch (err) {
     next(err)
   }
