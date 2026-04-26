@@ -527,40 +527,72 @@ export default function PublicProfilePage() {
           </div>
         </div>
 
-        {/* ── Medal showcase ── */}
+        {/* ── Medal showcase — Ingress-style hex grid ── */}
         {profileMedals.length > 0 && (() => {
+          const HEX_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
+          const TIER_COLOR: Record<string, string> = { GOLD: '#FFD700', SILVER: '#C0C0C0', BRONZE: '#cd7f32' }
+          const TIER_BG:    Record<string, string> = { GOLD: 'rgba(255,215,0,0.2)', SILVER: 'rgba(192,192,192,0.16)', BRONZE: 'rgba(205,127,50,0.18)' }
+          const TIER_GLOW:  Record<string, string> = { GOLD: 'rgba(255,215,0,0.55)', SILVER: 'rgba(192,192,192,0.45)', BRONZE: 'rgba(205,127,50,0.5)' }
           const tierOrder = { GOLD: 0, SILVER: 1, BRONZE: 2 }
-          const sorted = [...profileMedals].sort((a, b) => (tierOrder[a.medal.tier] ?? 3) - (tierOrder[b.medal.tier] ?? 3))
-          const shown = sorted.slice(0, 8)
+          const sorted = [...profileMedals].sort((a, b) => (tierOrder[a.medal.tier as keyof typeof tierOrder] ?? 3) - (tierOrder[b.medal.tier as keyof typeof tierOrder] ?? 3))
+          const shown = sorted.slice(0, 18)  // max 3 rows of 6
           const extra = sorted.length - shown.length
-          const tierGlow: Record<string, string> = { GOLD: 'rgba(255,215,0,0.25)', SILVER: 'rgba(158,160,165,0.2)', BRONZE: 'rgba(205,127,50,0.2)' }
-          const tierBorder: Record<string, string> = { GOLD: 'rgba(255,215,0,0.45)', SILVER: 'rgba(158,160,165,0.4)', BRONZE: 'rgba(205,127,50,0.4)' }
+
+          const W = 46, H = Math.round(W * 1.1547) // 53
+          const GAP = 3, COLS = 6
+          const hStep = W + GAP, vStep = Math.round(H * 0.75)
+          const rows: typeof shown[] = []
+          for (let i = 0; i < shown.length; i += COLS) rows.push(shown.slice(i, i + COLS))
+          const totalH = rows.length > 0 ? H + (rows.length - 1) * vStep : H
+          const totalW = COLS * hStep - GAP
+
           return (
-            <div className="mb-4 px-1 py-3 rounded-2xl" style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
-              <div className="flex items-center justify-between px-3 mb-2.5">
+            <div className="mb-4 py-3 rounded-2xl overflow-hidden" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
+              <div className="flex items-center justify-between px-4 mb-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(255,215,0,0.7)', letterSpacing: '0.15em' }}>MEDALS</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.1)', color: 'rgba(255,215,0,0.6)', border: '1px solid rgba(255,215,0,0.2)' }}>{sorted.length}</span>
+                  <span className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(255,215,0,0.7)', letterSpacing: '0.18em' }}>MEDALS</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.08)', color: 'rgba(255,215,0,0.6)', border: '1px solid rgba(255,215,0,0.2)' }}>{sorted.length}</span>
                 </div>
                 {profile.isMe && (
-                  <a href="/medals" className="text-[9px] font-black tracking-wider" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>SEE ALL →</a>
+                  <a href="/medals" className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)', letterSpacing: '0.1em' }}>VIEW ALL →</a>
                 )}
               </div>
-              <div className="flex items-center gap-2 px-3 flex-wrap">
-                {shown.map(um => (
-                  <div key={um.id} title={um.medal.name}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0"
-                    style={{ background: tierGlow[um.medal.tier] ?? 'rgba(var(--accent-rgb),0.1)', border: `1.5px solid ${tierBorder[um.medal.tier] ?? 'rgba(var(--accent-rgb),0.2)'}`, boxShadow: `0 0 8px ${tierGlow[um.medal.tier] ?? 'transparent'}` }}>
-                    {um.medal.icon}
-                  </div>
-                ))}
-                {extra > 0 && (
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
-                    style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1.5px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.5)' }}>
-                    +{extra}
-                  </div>
-                )}
+
+              {/* Hex grid */}
+              <div className="overflow-x-auto px-3" style={{ scrollbarWidth: 'none' }}>
+                <div style={{ position: 'relative', width: totalW, height: totalH, margin: '0 auto' }}>
+                  {rows.map((row, ri) =>
+                    row.map((um, ci) => {
+                      const tc = TIER_COLOR[um.medal.tier] ?? '#9EA0A5'
+                      const tb = TIER_BG[um.medal.tier] ?? 'rgba(158,160,165,0.15)'
+                      const tg = TIER_GLOW[um.medal.tier] ?? 'rgba(158,160,165,0.4)'
+                      const inset = 2
+                      return (
+                        <div key={um.id} title={`${um.medal.name} (${um.medal.tier})`} style={{
+                          position: 'absolute',
+                          left: ci * hStep + (ri % 2 === 1 ? hStep / 2 : 0),
+                          top:  ri * vStep,
+                          width: W, height: H,
+                        }}>
+                          {/* Border layer */}
+                          <div style={{ position: 'absolute', inset: 0, clipPath: HEX_CLIP, background: tc, filter: `drop-shadow(0 0 ${Math.round(W * 0.14)}px ${tg})` }} />
+                          {/* Inner layer */}
+                          <div style={{ position: 'absolute', top: inset, left: inset, right: inset, bottom: inset, clipPath: HEX_CLIP, background: tb, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ fontSize: W * 0.4, lineHeight: 1, userSelect: 'none' }}>{um.medal.icon}</span>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
               </div>
+
+              {/* "+N more" row */}
+              {extra > 0 && (
+                <p className="text-center text-[9px] font-black mt-3" style={{ color: 'rgba(var(--accent-rgb),0.35)', letterSpacing: '0.1em' }}>
+                  +{extra} MORE MEDALS
+                </p>
+              )}
             </div>
           )
         })()}
