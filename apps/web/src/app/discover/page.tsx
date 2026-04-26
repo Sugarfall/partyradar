@@ -630,6 +630,7 @@ function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
           <img
             src={photoUrl}
             alt={venue.name}
+            crossOrigin="anonymous"
             loading="lazy"
             className="w-full h-full object-cover"
             style={{ filter: 'brightness(0.65) saturate(1.1)' }}
