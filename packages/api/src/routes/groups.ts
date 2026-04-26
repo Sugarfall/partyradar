@@ -272,7 +272,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         slug,
         name: name.trim(),
         description: description?.trim()?.slice(0, 200) ?? null,
-        type: (['GENRE', 'FESTIVAL', 'TRIP'] as const).includes(groupType as any) ? (groupType as 'GENRE' | 'FESTIVAL' | 'TRIP') : 'GENRE',
+        type: (['GENRE', 'FESTIVAL', 'TRIP'] as const).includes(groupType as 'GENRE' | 'FESTIVAL' | 'TRIP') ? (groupType as 'GENRE' | 'FESTIVAL' | 'TRIP') : 'GENRE',
         emoji: emoji?.trim() || '💬',
         coverColor: coverColor || '#6366f1',
         isPrivate: !!(isPrivate || isPaid),
@@ -284,7 +284,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     })
 
     // Auto-join creator as OWNER
-    await (prisma.groupMembership as any).create({ data: { groupId: group.id, userId, role: 'OWNER' } })
+    await prisma.groupMembership.create({ data: { groupId: group.id, userId, role: 'OWNER' } })
     await prisma.groupChat.update({ where: { id: group.id }, data: { memberCount: 1 } })
 
     res.status(201).json({
@@ -408,7 +408,7 @@ router.get('/:id/messages', optionalAuth, async (req: AuthRequest, res, next) =>
           isSubscribed,
           myRole: isOwnerOfGroup
             ? 'OWNER'
-            : ((membership as any)?.role ?? (membership ? 'MEMBER' : null)),
+            : (membership?.role ?? (membership ? 'MEMBER' : null)),
           isJoined: !!membership,
           notificationsEnabled: membership?.notificationsEnabled ?? false,
         },
@@ -687,7 +687,7 @@ router.put('/:id/members/:userId/role', requireAuth, async (req: AuthRequest, re
     if (targetUserId === group.createdById) {
       return res.status(400).json({ error: { message: 'Cannot change owner role' } })
     }
-    await (prisma.groupMembership as any).update({
+    await prisma.groupMembership.update({
       where: { groupId_userId: { groupId, userId: targetUserId } },
       data: { role },
     })
@@ -704,11 +704,11 @@ router.delete('/:id/members/:userId', requireAuth, async (req: AuthRequest, res,
     const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { createdById: true } })
     if (!group) return res.status(404).json({ error: { message: 'Group not found' } })
     // Owner can kick anyone; MODs can kick MEMBERs only
-    const callerMembership = await (prisma.groupMembership as any).findUnique({
+    const callerMembership = await prisma.groupMembership.findUnique({
       where: { groupId_userId: { groupId, userId: callerId } },
       select: { role: true },
     })
-    const targetMembership = await (prisma.groupMembership as any).findUnique({
+    const targetMembership = await prisma.groupMembership.findUnique({
       where: { groupId_userId: { groupId, userId: targetUserId } },
       select: { role: true },
     })
@@ -731,12 +731,12 @@ router.get('/:id/members', requireAuth, async (req: AuthRequest, res, next) => {
     const groupId = req.params['id'] as string
     const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { createdById: true } })
     if (!group) return res.status(404).json({ error: { message: 'Group not found' } })
-    const memberships = await (prisma.groupMembership as any).findMany({
+    const memberships = await prisma.groupMembership.findMany({
       where: { groupId },
       include: { user: { select: { id: true, displayName: true, username: true, photoUrl: true } } },
       orderBy: { joinedAt: 'asc' },
     })
-    const enriched = (memberships as any[]).map(m => ({
+    const enriched = memberships.map(m => ({
       ...m,
       role: m.userId === group.createdById ? 'OWNER' : (m.role ?? 'MEMBER'),
     }))
@@ -891,7 +891,7 @@ router.get('/:groupId/pub-crawl', optionalAuth, async (req: AuthRequest, res, ne
     }))
 
     // All-time leaderboard across all crawls for this group
-    const allTimeCheckins = await (prisma.pubCrawlCheckIn as any).groupBy({
+    const allTimeCheckins = await prisma.pubCrawlCheckIn.groupBy({
       by: ['userId'],
       where: { stop: { crawl: { groupId } } },
       _sum: { score: true },
@@ -937,7 +937,7 @@ router.post('/:groupId/pub-crawl/plan', requireAuth, async (req: AuthRequest, re
       where: {
         lat: { gte: lat - 0.05, lte: lat + 0.05 },
         lng: { gte: lng - 0.05, lte: lng + 0.05 },
-        type: { in: ['PUB', 'BAR', 'NIGHTCLUB', 'LOUNGE'] as any },
+        type: { in: ['PUB', 'BAR', 'NIGHTCLUB', 'LOUNGE'] as ('PUB' | 'BAR' | 'NIGHTCLUB' | 'LOUNGE')[] },
       },
       select: { id: true, name: true, address: true, lat: true, lng: true, type: true, rating: true },
     })
@@ -1070,7 +1070,7 @@ router.put('/:id/settings', requireAuth, async (req: AuthRequest, res, next) => 
     const group = await prisma.groupChat.findUnique({ where: { id: groupId } })
     if (!group) throw new AppError('Group not found', 404)
 
-    const membership = await (prisma.groupMembership as any).findUnique({
+    const membership = await prisma.groupMembership.findUnique({
       where: { groupId_userId: { groupId: group.id, userId } },
       select: { role: true },
     })
@@ -1121,7 +1121,7 @@ router.delete('/:id/messages/:messageId', requireAuth, async (req: AuthRequest, 
     const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { createdById: true } })
     if (!group) throw new AppError('Group not found', 404)
 
-    const membership = await (prisma.groupMembership as any).findUnique({
+    const membership = await prisma.groupMembership.findUnique({
       where: { groupId_userId: { groupId, userId } },
       select: { role: true },
     })

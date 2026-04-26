@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
-import { prisma } from '@partyradar/db'
+import { prisma, type CardDesign } from '@partyradar/db'
 import { ensureStripe, platformFeeCents } from '../lib/stripe'
 import type Stripe from 'stripe'
 import { v4 as uuidv4 } from 'uuid'
@@ -795,7 +795,7 @@ async function handleCardOrder(session: Stripe.Checkout.Session) {
     data: {
       walletId,
       userId,
-      design: design as any,
+      design: design as CardDesign,
       customImageUrl: meta['customImageUrl'] || null,
       nameOnCard,
       shippingAddress: shippingAddress ?? '',

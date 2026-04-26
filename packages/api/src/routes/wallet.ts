@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { prisma } from '@partyradar/db'
+import { prisma, type CardDesign } from '@partyradar/db'
 import { requireAuth, requireAdmin } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { hasRole } from '../middleware/auth'
@@ -446,7 +446,7 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
           data: {
             walletId: wallet.id,
             userId,
-            design: body.design as any,
+            design: body.design as CardDesign,
             customImageUrl: body.customImageUrl,
             nameOnCard: body.nameOnCard,
             shippingAddress: body.shippingAddress,
