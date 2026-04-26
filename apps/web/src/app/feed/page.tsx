@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Rss, Zap, Users, MapPin, Calendar, Plus, Ticket, Camera } from 'lucide-react'
@@ -304,6 +304,17 @@ function FeedPageInner() {
   const [storiesLoading, setStoriesLoading] = useState(true)
   const [openStoryGroupIndex, setOpenStoryGroupIndex] = useState<number | null>(null)
 
+  // Set of user IDs that currently have active stories (for avatar rings in feed)
+  const storyUserIds = useMemo(
+    () => new Set(storyGroups.map((g) => g.user.id).filter((id): id is string => !!id)),
+    [storyGroups],
+  )
+
+  const openStoryForUser = useCallback((userId: string) => {
+    const idx = storyGroups.findIndex((g) => g.user.id === userId)
+    if (idx >= 0) setOpenStoryGroupIndex(idx)
+  }, [storyGroups])
+
   function handlePostDeleted(id: string) {
     setFeedItems((prev) => prev.filter((item) => item.id !== id))
   }
@@ -484,7 +495,14 @@ function FeedPageInner() {
         ) : (
           <>
             {feedItems.map((item, i) => (
-              <FeedItemCard key={item.id ?? i} item={item} currentUserId={currentUserId} onDelete={handlePostDeleted} />
+              <FeedItemCard
+                key={item.id ?? i}
+                item={item}
+                currentUserId={currentUserId}
+                onDelete={handlePostDeleted}
+                storyUserIds={storyUserIds}
+                onOpenUserStory={openStoryForUser}
+              />
             ))}
 
             {tab === 'foryou' && upcomingEvents.length > 0 && (

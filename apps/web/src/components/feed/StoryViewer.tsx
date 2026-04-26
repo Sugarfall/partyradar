@@ -62,7 +62,7 @@ interface Props {
 
 // ─── Timing ───────────────────────────────────────────────────────────────
 
-const IMAGE_DURATION_MS = 5_000
+const IMAGE_DURATION_MS = 30_000
 const PROGRESS_TICK_MS = 50 // how often we update the progress bar
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -97,6 +97,12 @@ export default function StoryViewer({
   const [groupIdx, setGroupIdx] = useState(startGroupIndex)
   const [storyIdx, setStoryIdx] = useState(startStoryIndex ?? 0)
   const [progress, setProgress] = useState(0) // 0..1 within current story
+
+  // Refs so advance() always reads the *current* indices, never stale closure values
+  const groupIdxRef = useRef(startGroupIndex)
+  const storyIdxRef = useRef(startStoryIndex ?? 0)
+  useEffect(() => { groupIdxRef.current = groupIdx }, [groupIdx])
+  useEffect(() => { storyIdxRef.current = storyIdx }, [storyIdx])
   const [paused, setPaused] = useState(false)
   const [liked, setLiked] = useState(false)
   const [replyText, setReplyText] = useState('')
@@ -121,30 +127,23 @@ export default function StoryViewer({
 
   // ── Advance logic ───────────────────────────────────────────────────────
   const advance = useCallback(() => {
-    setGroupIdx((curG) => {
-      setStoryIdx((curS) => {
-        const g = groups[curG]
-        if (!g) return 0
-        if (curS + 1 < g.stories.length) {
-          return curS + 1
-        }
-        return 0
-      })
-      // If we're already on the last story of the current group, move to next
-      // group — or close if there are no more.
-      const g = groups[curG]
-      if (!g) return curG
-      const isLastStory = storyIdx + 1 >= g.stories.length
-      if (isLastStory) {
-        if (curG + 1 < groups.length) return curG + 1
-        // No more groups — defer close to a tick later so state updates
-        // don't stomp on the close.
-        setTimeout(onClose, 0)
-        return curG
-      }
-      return curG
-    })
-  }, [groups, storyIdx, onClose])
+    const curG = groupIdxRef.current
+    const curS = storyIdxRef.current
+    const g = groups[curG]
+    if (!g) { onClose(); return }
+
+    if (curS + 1 < g.stories.length) {
+      // Next story in same group
+      setStoryIdx(curS + 1)
+    } else if (curG + 1 < groups.length) {
+      // Move to next user's group
+      setGroupIdx(curG + 1)
+      setStoryIdx(0)
+    } else {
+      // All groups exhausted — close the viewer
+      onClose()
+    }
+  }, [groups, onClose])
 
   const goBack = useCallback(() => {
     if (storyIdx > 0) {

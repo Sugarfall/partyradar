@@ -102,30 +102,80 @@ export function renderMentions(text: string): React.ReactNode {
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-export function Avatar({ user, size = 36 }: { user: { displayName: string; photoUrl?: string | null }; size?: number }) {
+export function Avatar({
+  user,
+  size = 36,
+  hasStory = false,
+  onStoryClick,
+}: {
+  user: { id?: string; displayName: string; photoUrl?: string | null }
+  size?: number
+  hasStory?: boolean
+  onStoryClick?: (e: React.MouseEvent) => void
+}) {
   const initials = user.displayName?.[0]?.toUpperCase() ?? '?'
-  if (user.photoUrl) {
-    return (
-      <img
-        src={user.photoUrl}
-        alt=""
-        className="rounded-full object-cover shrink-0"
-        style={{ width: size, height: size, border: '1px solid rgba(var(--accent-rgb),0.25)', boxShadow: '0 0 8px rgba(var(--accent-rgb),0.12)' }}
-      />
-    )
-  }
-  return (
+
+  // Core avatar element (no ring)
+  const avatarEl = user.photoUrl ? (
+    <img
+      src={user.photoUrl}
+      alt=""
+      className="rounded-full object-cover"
+      style={{ width: size, height: size }}
+    />
+  ) : (
     <div
-      className="rounded-full flex items-center justify-center font-black shrink-0"
+      className="rounded-full flex items-center justify-center font-black"
       style={{
         width: size, height: size,
         background: 'rgba(var(--accent-rgb),0.08)',
-        border: '1px solid rgba(var(--accent-rgb),0.2)',
         color: 'var(--accent)',
         fontSize: size * 0.38,
       }}
     >
       {initials}
+    </div>
+  )
+
+  if (!hasStory) {
+    return (
+      <div
+        className="rounded-full shrink-0 overflow-hidden"
+        style={{ width: size, height: size, border: '1px solid rgba(var(--accent-rgb),0.25)', boxShadow: '0 0 8px rgba(var(--accent-rgb),0.12)' }}
+      >
+        {avatarEl}
+      </div>
+    )
+  }
+
+  // Story ring: gradient outer → dark gap → avatar
+  const ringContent = (
+    <div
+      className="rounded-full flex items-center justify-center"
+      style={{ width: size + 2, height: size + 2, background: '#04040d', overflow: 'hidden' }}
+    >
+      {avatarEl}
+    </div>
+  )
+
+  if (onStoryClick) {
+    return (
+      <button
+        onClick={onStoryClick}
+        className="rounded-full shrink-0 flex items-center justify-center p-0"
+        style={{ width: size + 6, height: size + 6, background: 'linear-gradient(135deg, #ec4899, #f97316, #facc15)', cursor: 'pointer' }}
+        aria-label="View story"
+      >
+        {ringContent}
+      </button>
+    )
+  }
+  return (
+    <div
+      className="rounded-full shrink-0 flex items-center justify-center"
+      style={{ width: size + 6, height: size + 6, background: 'linear-gradient(135deg, #ec4899, #f97316, #facc15)' }}
+    >
+      {ringContent}
     </div>
   )
 }
@@ -178,16 +228,27 @@ export function QuotedPost({ post }: { post: OriginalPost }) {
 
 // ─── RSVP Card ────────────────────────────────────────────────────────────────
 
-export function RSVPCard({ item }: { item: FeedItem }) {
+export function RSVPCard({ item, storyUserIds, onOpenUserStory }: {
+  item: FeedItem
+  storyUserIds?: Set<string>
+  onOpenUserStory?: (userId: string) => void
+}) {
   const typeColor = item.event?.type ? (TYPE_COLORS[item.event.type] ?? 'var(--accent)') : 'var(--accent)'
   const typeLabel = item.event?.type ? (TYPE_LABELS[item.event.type] ?? item.event.type) : ''
+  const hasStory = !!(item.user.id && storyUserIds?.has(item.user.id))
   return (
     <div
       className="rounded-2xl overflow-hidden"
       style={{ background: 'rgba(24,24,27,0.95)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
     >
       <div className="flex items-center gap-3 p-3">
-        <Avatar user={item.user} />
+        <Avatar
+          user={item.user}
+          hasStory={hasStory}
+          onStoryClick={hasStory && item.user.id && onOpenUserStory
+            ? (e) => { e.stopPropagation(); onOpenUserStory(item.user.id!) }
+            : undefined}
+        />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>
             <span style={{ color: 'var(--accent)' }}>{item.user.displayName}</span>
@@ -228,15 +289,26 @@ export function RSVPCard({ item }: { item: FeedItem }) {
 
 // ─── Check-In Card ────────────────────────────────────────────────────────────
 
-export function CheckInCard({ item }: { item: FeedItem }) {
+export function CheckInCard({ item, storyUserIds, onOpenUserStory }: {
+  item: FeedItem
+  storyUserIds?: Set<string>
+  onOpenUserStory?: (userId: string) => void
+}) {
   const crowd = item.crowdLevel ? (CROWD_CONFIG[item.crowdLevel] ?? { color: 'var(--accent)', label: item.crowdLevel }) : null
+  const hasStory = !!(item.user.id && storyUserIds?.has(item.user.id))
   return (
     <div
       className="rounded-2xl p-3"
       style={{ background: 'rgba(24,24,27,0.95)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
     >
       <div className="flex items-center gap-3">
-        <Avatar user={item.user} />
+        <Avatar
+          user={item.user}
+          hasStory={hasStory}
+          onStoryClick={hasStory && item.user.id && onOpenUserStory
+            ? (e) => { e.stopPropagation(); onOpenUserStory(item.user.id!) }
+            : undefined}
+        />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>
             <span style={{ color: 'var(--accent)' }}>{item.user.displayName}</span>
@@ -265,10 +337,12 @@ export function CheckInCard({ item }: { item: FeedItem }) {
 
 // ─── Post Card ────────────────────────────────────────────────────────────────
 
-export function PostCard({ item, currentUserId, onDelete }: {
+export function PostCard({ item, currentUserId, onDelete, storyUserIds, onOpenUserStory }: {
   item: FeedItem
   currentUserId?: string | null
   onDelete?: (id: string) => void
+  storyUserIds?: Set<string>
+  onOpenUserStory?: (userId: string) => void
 }) {
   const [liked, setLiked]               = useState(item.hasLiked ?? false)
   const [likes, setLikes]               = useState(item.likesCount ?? 0)
@@ -339,7 +413,19 @@ export function PostCard({ item, currentUserId, onDelete }: {
 
         {/* ── Post header ── */}
         <div className="flex items-center gap-3 p-3 pb-2">
-          <Avatar user={isRepost && displayPost ? displayPost.user : item.user} />
+          {(() => {
+            const avatarUser = isRepost && displayPost ? displayPost.user : item.user
+            const hasStory = !!(avatarUser.id && storyUserIds?.has(avatarUser.id))
+            return (
+              <Avatar
+                user={avatarUser}
+                hasStory={hasStory}
+                onStoryClick={hasStory && avatarUser.id && onOpenUserStory
+                  ? (e) => { e.stopPropagation(); onOpenUserStory(avatarUser.id!) }
+                  : undefined}
+              />
+            )
+          })()}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>
               {isRepost && displayPost ? displayPost.user.displayName : item.user.displayName}
@@ -513,13 +599,15 @@ export function PostCard({ item, currentUserId, onDelete }: {
 
 // ─── Feed Item Router ─────────────────────────────────────────────────────────
 
-export function FeedItemCard({ item, currentUserId, onDelete }: {
+export function FeedItemCard({ item, currentUserId, onDelete, storyUserIds, onOpenUserStory }: {
   item: FeedItem
   currentUserId?: string | null
   onDelete?: (id: string) => void
+  storyUserIds?: Set<string>
+  onOpenUserStory?: (userId: string) => void
 }) {
-  if (item.type === 'RSVP')    return <RSVPCard item={item} />
-  if (item.type === 'CHECKIN') return <CheckInCard item={item} />
-  if (item.type === 'POST')    return <PostCard item={item} currentUserId={currentUserId} onDelete={onDelete} />
+  if (item.type === 'RSVP')    return <RSVPCard    item={item} storyUserIds={storyUserIds} onOpenUserStory={onOpenUserStory} />
+  if (item.type === 'CHECKIN') return <CheckInCard  item={item} storyUserIds={storyUserIds} onOpenUserStory={onOpenUserStory} />
+  if (item.type === 'POST')    return <PostCard     item={item} currentUserId={currentUserId} onDelete={onDelete} storyUserIds={storyUserIds} onOpenUserStory={onOpenUserStory} />
   return null
 }
