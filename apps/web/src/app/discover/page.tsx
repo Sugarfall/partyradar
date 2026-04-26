@@ -627,7 +627,14 @@ function VenueCard({ venue }: { venue: DemoVenue | LiveVenue }) {
       {/* Cover photo or color band */}
       {photoUrl ? (
         <div className="relative h-24 overflow-hidden">
-          <img src={photoUrl} alt={venue.name} className="w-full h-full object-cover" style={{ filter: 'brightness(0.55) saturate(1.2)' }} />
+          <img
+            src={photoUrl}
+            alt={venue.name}
+            loading="lazy"
+            className="w-full h-full object-cover"
+            style={{ filter: 'brightness(0.65) saturate(1.1)' }}
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+          />
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 30%, rgba(7,7,26,0.95) 100%)' }} />
           <span className="absolute bottom-2 left-3 text-[9px] font-bold px-2 py-0.5 rounded"
             style={{ color, border: `1px solid ${color}50`, background: `rgba(7,7,26,0.75)`, backdropFilter: 'blur(4px)', letterSpacing: '0.12em' }}>

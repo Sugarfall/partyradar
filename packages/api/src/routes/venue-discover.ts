@@ -1,9 +1,26 @@
 import { Router } from 'express'
+import type { Request } from 'express'
 import { prisma } from '@partyradar/db'
 import type { VenueType } from '@prisma/client'
 import { optionalAuth, requireAdmin } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+
+/** Build an absolute proxy URL for a venue's photo — hides the Google API key from clients */
+function photoProxyUrl(req: Request, venueId: string): string {
+  const proto = (req.get('x-forwarded-proto') as string | undefined) ?? req.protocol
+  const host  = req.get('host') ?? 'localhost'
+  return `${proto}://${host}/api/venues/${venueId}/photo`
+}
+
+/** Replace stored Google Places photoUrl with our proxy URL (keeps key server-side).
+ *  Non-Google URLs (e.g. user-uploaded Cloudinary) are returned unchanged. */
+function withProxyPhoto<T extends { id: string; photoUrl?: string | null }>(req: Request, v: T): T {
+  if (!v.photoUrl) return v
+  // Only rewrite Google Places photo URLs — leave all others as-is
+  if (!v.photoUrl.includes('googleapis.com/maps/api/place/photo')) return v
+  return { ...v, photoUrl: photoProxyUrl(req, v.id) }
+}
 
 const router = Router()
 
@@ -231,9 +248,9 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
         },
         take: 100,
       })
-      const sortedExisting = existing.slice().sort((a, b) =>
-        Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
-      )
+      const sortedExisting = existing.slice()
+        .sort((a, b) => Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng))
+        .map((v) => withProxyPhoto(req, v))
       return res.json({ data: { venues: sortedExisting, source: 'database', discovered: 0 } })
     }
 
@@ -276,9 +293,9 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
         take: 200,
       })
       if (dbFallback.length > 0) {
-        const sortedFallback = dbFallback.slice().sort((a, b) =>
-          Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
-        )
+        const sortedFallback = dbFallback.slice()
+          .sort((a, b) => Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng))
+          .map((v) => withProxyPhoto(req, v))
         console.warn(`[venue-discover] Google returned 0 places for (${lat},${lng}) — serving ${sortedFallback.length} venues from DB`)
         return res.json({ data: { venues: sortedFallback, source: 'database', discovered: 0, total: sortedFallback.length } })
       }
@@ -376,7 +393,7 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
     })
 
     res.json({
-      data: { venues: sorted, source: 'google', discovered, total: sorted.length },
+      data: { venues: sorted.map((v) => withProxyPhoto(req, v)), source: 'google', discovered, total: sorted.length },
     })
   } catch (err) { next(err) }
 })

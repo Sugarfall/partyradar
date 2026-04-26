@@ -219,6 +219,65 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
   } catch (err) { next(err) }
 })
 
+// Unsplash photo IDs by venue type — used as fallback when Google Places photo is unavailable
+const UNSPLASH_BY_TYPE: Record<string, string> = {
+  NIGHTCLUB:    'photo-1514525253161-7a4d4e8bd3b8', // dark crowd / stage lights
+  BAR:          'photo-1546171753-97d7676e4602', // bar interior with bottles
+  PUB:          'photo-1567696911980-00b52b2ba191', // pub interior
+  CONCERT_HALL: 'photo-1540039155650-f7584c87e2f2', // concert hall
+  LOUNGE:       'photo-1560840886-a0f2e9c0f0de', // lounge seating
+  ROOFTOP_BAR:  'photo-1533929736475-27c8e79cb3c4', // rooftop bar at night
+}
+
+/**
+ * GET /api/venues/:id/photo — server-side Google Places photo proxy.
+ * Fetches the venue photo from Google using the server-side API key (never exposed to clients),
+ * caches the response for 24 h, and falls back to a venue-type Unsplash image if Google fails.
+ */
+router.get('/:id/photo', async (req, res, next) => {
+  try {
+    const { id } = req.params
+    const w = Math.min(Number(req.query['w'] ?? 800), 1200)
+
+    const venue = await prisma.venue.findUnique({
+      where: { id },
+      select: { photoUrl: true, type: true },
+    })
+
+    if (!venue) return res.status(404).end()
+
+    // Try proxying the Google Places photo (key stays server-side)
+    if (venue.photoUrl && GOOGLE_API_KEY) {
+      let photoRef: string | null = null
+      try {
+        photoRef = new URL(venue.photoUrl).searchParams.get('photo_reference')
+      } catch { /* not a parseable URL */ }
+
+      if (photoRef) {
+        const googleUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${w}&photo_reference=${photoRef}&key=${GOOGLE_API_KEY}`
+        try {
+          const ctrl = new AbortController()
+          const timer = setTimeout(() => ctrl.abort(), 7000)
+          const googleResp = await fetch(googleUrl, { signal: ctrl.signal })
+          clearTimeout(timer)
+          if (googleResp.ok) {
+            const ct = googleResp.headers.get('content-type') || 'image/jpeg'
+            res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+            res.set('Content-Type', ct)
+            return res.send(Buffer.from(await googleResp.arrayBuffer()))
+          }
+        } catch (err) {
+          console.warn(`[photo-proxy] Google fetch failed for venue ${id}:`, (err as Error).message)
+        }
+      }
+    }
+
+    // Fallback: redirect to a venue-type Unsplash image (no API key required)
+    const photoId = UNSPLASH_BY_TYPE[venue.type ?? 'BAR'] ?? UNSPLASH_BY_TYPE['BAR']!
+    return res.redirect(302, `https://images.unsplash.com/${photoId}?w=${w}&h=${Math.round(w * 0.625)}&fit=crop&auto=format&q=80`)
+  } catch (err) { next(err) }
+})
+
 /** GET /api/venues/:id — venue detail */
 router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
