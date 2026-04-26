@@ -61,6 +61,9 @@ export function useVenueDiscover() {
   const [error, setError] = useState<string | null>(null)
   // null = never fetched; 'google'/'database' = fetched (even if result was empty)
   const [source, setSource] = useState<'google' | 'database' | 'google_places' | null>(null)
+  // true once discover() has completed at least once (success or error).
+  // Used by VenuesList to distinguish "not yet fetched" from "fetched but empty".
+  const [hasFetched, setHasFetched] = useState(false)
 
   // Hydrate from cache on first render
   useEffect(() => {
@@ -68,6 +71,7 @@ export function useVenueDiscover() {
     if (c) {
       setVenues(c.venues)
       setSource(c.source)
+      setHasFetched(true)
     }
   }, [])
 
@@ -126,8 +130,9 @@ export function useVenueDiscover() {
       // Keep source as null on error so caller knows it failed
     } finally {
       setLoading(false)
+      setHasFetched(true)
     }
   }, [])
 
-  return { venues, loading, error, source, discover }
+  return { venues, loading, error, source, hasFetched, discover }
 }

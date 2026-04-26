@@ -154,11 +154,22 @@ function getPhotoUrl(place: GooglePlace): string | undefined {
   return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=600&photo_reference=${place.photos[0].photo_reference}&key=${GOOGLE_API_KEY}`
 }
 
+/** Fetch with a hard timeout so a hung Google API call never blocks the entire endpoint. */
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function fetchNearby(lat: number, lng: number, radius: number, type: string): Promise<GooglePlace[]> {
   if (!GOOGLE_API_KEY) return []
   const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${Math.min(radius, 50000)}&type=${type}&key=${GOOGLE_API_KEY}`
   try {
-    const r = await fetch(url)
+    const r = await fetchWithTimeout(url, 5000)
     const data = await r.json() as GoogleNearbyResponse
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       console.error(`[venue-discover] Google API error (nearby ${type}):`, data.status)
@@ -174,7 +185,7 @@ async function fetchTextSearch(query: string, lat: number, lng: number, radius: 
   if (!GOOGLE_API_KEY) return []
   const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&location=${lat},${lng}&radius=${Math.min(radius, 50000)}&key=${GOOGLE_API_KEY}`
   try {
-    const r = await fetch(url)
+    const r = await fetchWithTimeout(url, 5000)
     const data = await r.json() as GoogleNearbyResponse
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       console.error(`[venue-discover] Google API error (text "${query}"):`, data.status)
@@ -191,7 +202,7 @@ async function fetchPlaceDetails(placeId: string): Promise<GooglePlaceDetails['r
   const fields = 'place_id,name,formatted_address,formatted_phone_number,website,geometry,types,rating,opening_hours,photos,address_components'
   const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${GOOGLE_API_KEY}`
   try {
-    const r = await fetch(url)
+    const r = await fetchWithTimeout(url, 4000)
     const data = await r.json() as GooglePlaceDetails
     if (data.status !== 'OK') return null
     return data.result
@@ -250,6 +261,31 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
     }
 
     const allPlaces = Array.from(placeMap.values())
+
+    // If Google Places returned nothing (API quota/key issue or genuinely empty area),
+    // fall back to whatever is already in the DB for this bounding box so the app
+    // never shows a blank venues tab when data is available.
+    if (allPlaces.length === 0) {
+      const latDelta = (searchRadius / 1000) / 111
+      const lngDelta = (searchRadius / 1000) / (111 * Math.cos((lat * Math.PI) / 180))
+      const dbFallback = await prisma.venue.findMany({
+        where: {
+          lat: { gte: lat - latDelta, lte: lat + latDelta },
+          lng: { gte: lng - lngDelta, lte: lng + lngDelta },
+        },
+        take: 200,
+      })
+      if (dbFallback.length > 0) {
+        const sortedFallback = dbFallback.slice().sort((a, b) =>
+          Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng)
+        )
+        console.warn(`[venue-discover] Google returned 0 places for (${lat},${lng}) — serving ${sortedFallback.length} venues from DB`)
+        return res.json({ data: { venues: sortedFallback, source: 'database', discovered: 0, total: sortedFallback.length } })
+      }
+      // Nothing in DB either — return empty with google source so UI shows "no venues" not Glasgow fallback
+      return res.json({ data: { venues: [], source: 'google', discovered: 0, total: 0 } })
+    }
+
     let discovered = 0
 
     // Batch-fetch existing venues up front (avoids N+1 findFirst per place)
@@ -259,7 +295,16 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
       : []
     const existingByPlaceId = new Map(existingVenues.map((v) => [v.googlePlaceId, v]))
 
-    // Upsert each venue into DB (batch for performance)
+    // Limit how many vague-address refreshes we do per request to cap latency.
+    // Each refresh is an extra Google Places Details call; 5 is plenty for one discover.
+    let vagueAddressRefreshesLeft = 5
+
+    // Upsert each venue into DB.
+    // PERF NOTE: We intentionally skip fetchPlaceDetails() for NEW venues.
+    // Fetching details for every new venue in parallel (potentially 50+) causes the
+    // endpoint to take 10-15 s, which exceeds the client-side 12 s abort timeout and
+    // makes venues appear to "never load".  phone / website / openingHours are
+    // lazy-loaded on the venue detail page (venues.ts fetchAndStoreHours) instead.
     const upsertPromises = allPlaces.map(async (place) => {
       const googlePlaceId = place.place_id
       const types = place.types ?? []
@@ -271,13 +316,15 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
       const existing = existingByPlaceId.get(googlePlaceId) ?? null
 
       if (existing) {
-        // Update rating, photo, and address when better data is available
+        // Update rating and photo when better data is available
         const updates: Record<string, unknown> = {}
         if (place.rating && place.rating !== existing.rating) updates['rating'] = place.rating
         if (photoUrl && !existing.photoUrl) updates['photoUrl'] = photoUrl
-        // Refresh address if it looks vague (just a city name or missing street)
+        // Refresh address if it looks vague (just a city name or missing street).
+        // Capped per-request to avoid stampede of Google Places Detail calls.
         const addressIsVague = !existing.address || existing.address.split(',').length < 2
-        if (addressIsVague) {
+        if (addressIsVague && vagueAddressRefreshesLeft > 0) {
+          vagueAddressRefreshesLeft--
           const details = await fetchPlaceDetails(googlePlaceId)
           if (details?.formatted_address) updates['address'] = details.formatted_address
         }
@@ -287,35 +334,39 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
         return existing
       }
 
-      // Fetch detailed info for new venues
-      const details = await fetchPlaceDetails(googlePlaceId)
-
-      const newVenue = await prisma.venue.create({
-        data: {
-          googlePlaceId,
-          name: details?.name ?? place.name,
-          address: details?.formatted_address ?? place.formatted_address ?? place.vicinity ?? '',
-          city: details?.address_components
-            ? extractCity(place, details.address_components)
-            : city,
-          lat: place.geometry.location.lat,
-          lng: place.geometry.location.lng,
-          type: venueType,
-          phone: details?.formatted_phone_number ?? undefined,
-          website: details?.website ?? undefined,
-          photoUrl,
-          rating: place.rating ?? undefined,
-          openingHours: details?.opening_hours?.weekday_text
-            ? JSON.parse(JSON.stringify(details.opening_hours.weekday_text))
-            : undefined,
-          vibeTags,
-        },
-      })
-      discovered++
-      return newVenue
+      // Create new venue using data from the nearby/text search response.
+      // We do NOT call fetchPlaceDetails here — phone/website/openingHours are
+      // fetched lazily when a user opens the venue detail page.
+      try {
+        const newVenue = await prisma.venue.create({
+          data: {
+            googlePlaceId,
+            name: place.name,
+            address: place.formatted_address ?? place.vicinity ?? '',
+            city,
+            lat: place.geometry.location.lat,
+            lng: place.geometry.location.lng,
+            type: venueType,
+            photoUrl,
+            rating: place.rating ?? undefined,
+            vibeTags,
+          },
+        })
+        discovered++
+        return newVenue
+      } catch (err: any) {
+        // P2002 = unique constraint violation on googlePlaceId.
+        // A concurrent discover request already created this venue — fetch and return it.
+        if (err?.code === 'P2002') {
+          const race = await prisma.venue.findUnique({ where: { googlePlaceId } })
+          if (race) return race
+        }
+        throw err
+      }
     })
 
-    const venues = await Promise.all(upsertPromises)
+    const rawVenues = await Promise.all(upsertPromises)
+    const venues = rawVenues.filter((v): v is Exclude<typeof v, null | undefined> => v != null)
 
     // Sort by distance from the requested coords (closest first)
     const sorted = venues.slice().sort((a, b) => {

@@ -723,6 +723,8 @@ interface VenuesListProps {
   venuesLoading: boolean
   venueCity: string | null
   venueSource: 'google' | 'database' | 'google_places' | null   // null = never fetched yet
+  venueError?: string | null     // set when the discover API call failed
+  venuesFetched?: boolean        // true once at least one discover() call has completed
   mapCenter: { lat: number; lng: number } | null
   isTracking: boolean
   locationReady: boolean
@@ -730,7 +732,7 @@ interface VenuesListProps {
   onWiderSearch: () => void
 }
 
-function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCenter, isTracking, locationReady, onCitySearch, onWiderSearch }: VenuesListProps) {
+function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, venueError, venuesFetched, mapCenter, isTracking, locationReady, onCitySearch, onWiderSearch }: VenuesListProps) {
   const [venueSearch, setVenueSearch] = useState('')
   const [cityInput, setCityInput] = useState('')
   const [citySearching, setCitySearching] = useState(false)
@@ -741,13 +743,21 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCent
 
   const hasRealVenues = liveVenues.length > 0
   // Only use the Glasgow static list as a very-first-paint fallback —
-  // once ANY location-based search has been done (venueSource !== null) we show
-  // real results only (or an empty/loading state). This prevents Glasgow venues
-  // appearing for Tokyo, New York, etc.
-  // Also suppressed when venueCity is known to be a non-Glasgow city —
-  // showing Glasgow venues when the user is in Perth would be misleading.
+  // once ANY location-based search has been done (venueSource !== null) OR
+  // the API errored (venueError set) we show real results only (or an empty/error state).
+  // This prevents Glasgow venues appearing for Tokyo, New York, Perth, etc.
   const isKnownNonGlasgowCity = !!venueCity && venueCity.toLowerCase() !== 'glasgow'
-  const useStaticFallback = !hasRealVenues && venueSource === null && !venuesLoading && !isKnownNonGlasgowCity
+  // Suppress Glasgow fallback when:
+  //  • venueSource is set (API already returned results or "nothing found")
+  //  • the API errored (don't show wrong-city data)
+  //  • venueCity is a known non-Glasgow city (even if source is still null due to DB fallback)
+  //  • currently loading
+  const useStaticFallback =
+    !hasRealVenues &&
+    venueSource === null &&
+    !venuesLoading &&
+    !venueError &&
+    !isKnownNonGlasgowCity
   const displayVenues: LiveVenue[] = hasRealVenues
     ? liveVenues
     : useStaticFallback ? (GLASGOW_VENUES as unknown as LiveVenue[]) : []
@@ -923,12 +933,8 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCent
             <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.4)' }}>SCANNING NEARBY VENUES...</p>
           </div>
         )}
-        {/* No venues yet + not loading → location-aware empty state.
-            Only show "LOCATING YOU" when we genuinely don't have coordinates yet.
-            Once locationReady is true we have a position (GPS/IP/Glasgow fallback) —
-            if the API failed (venueSource still null) the static Glasgow list below
-            is already shown via displayVenues, so just hide the confusing message. */}
-        {!venuesLoading && !hasRealVenues && venueSource === null && !locationReady && (
+        {/* Waiting for first GPS/IP fix — no coords yet */}
+        {!venuesLoading && !hasRealVenues && !venuesFetched && !locationReady && !venueError && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
             <span style={{ fontSize: 36 }}>📍</span>
             <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(255,214,0,0.6)', letterSpacing: '0.15em' }}>
@@ -948,8 +954,28 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCent
             )}
           </div>
         )}
-        {/* Searched but found nothing */}
-        {!venuesLoading && !hasRealVenues && venueSource !== null && (
+        {/* API call failed — show error with retry */}
+        {!venuesLoading && venueError && !hasRealVenues && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
+            <span style={{ fontSize: 36 }}>⚡</span>
+            <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(255,100,50,0.7)', letterSpacing: '0.15em' }}>
+              COULDN&apos;T LOAD VENUES
+            </p>
+            <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(224,242,254,0.35)' }}>
+              Check your connection and try again
+            </p>
+            <button
+              onClick={onWiderSearch}
+              className="mt-1 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
+              style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}
+            >
+              RETRY
+            </button>
+          </div>
+        )}
+        {/* Fetched but found nothing (venueSource set, or fetched + non-Glasgow city) */}
+        {!venuesLoading && !hasRealVenues && !venueError &&
+          (venueSource !== null || (venuesFetched && isKnownNonGlasgowCity)) && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
             <span style={{ fontSize: 36 }}>🔍</span>
             <p className="text-xs font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.15em' }}>
@@ -1374,7 +1400,7 @@ export default function DiscoverPage() {
   const cityFallbackRef = useRef(false)    // prevent repeat city fallback
 
   // ── Venue discovery state (lifted here so it survives tab switches) ──────────
-  const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
+  const { venues: liveVenues, loading: venuesLoading, source: venueSource, error: venueError, hasFetched: venuesFetched, discover } = useVenueDiscover()
   const [venueCity, setVenueCity] = useState<string | null>(null)
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
   // Currency for the currently viewed city — defaults to user's own timezone currency
@@ -2160,6 +2186,8 @@ export default function DiscoverPage() {
           venuesLoading={venuesLoading}
           venueCity={venueCity}
           venueSource={venueSource}
+          venueError={venueError}
+          venuesFetched={venuesFetched}
           mapCenter={mapCenter}
           isTracking={isTracking}
           locationReady={locationReady}
