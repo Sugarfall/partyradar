@@ -397,14 +397,28 @@ function FeedPageInner() {
         }}
       >
         <div className="max-w-xl mx-auto">
-          <div className="flex items-center gap-3 mb-4">
-            <Rss size={16} style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 6px rgba(var(--accent-rgb),0.7))' }} />
-            <h1
-              className="text-sm font-black tracking-[0.25em]"
-              style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.5)' }}
+          {/* ── Discover / Feed tab strip ── */}
+          <div className="flex items-center gap-1 p-0.5 rounded-lg mb-4" style={{ background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.1)', width: 'fit-content' }}>
+            <Link
+              href="/discover"
+              className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
+              style={{ color: 'rgba(74,96,128,0.6)', letterSpacing: '0.12em' }}
+            >
+              EVENTS
+            </Link>
+            <Link
+              href="/discover?tab=venues"
+              className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
+              style={{ color: 'rgba(255,214,0,0.6)', letterSpacing: '0.12em' }}
+            >
+              VENUES
+            </Link>
+            <span
+              className="px-3 py-1 rounded text-[10px] font-black"
+              style={{ background: 'rgba(236,72,153,0.15)', color: '#ec4899', letterSpacing: '0.12em', boxShadow: '0 0 8px rgba(236,72,153,0.2)' }}
             >
               FEED
-            </h1>
+            </span>
           </div>
 
           <div className="flex gap-0 border-b" style={{ borderColor: 'rgba(var(--accent-rgb),0.08)' }}>

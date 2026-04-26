@@ -14,7 +14,7 @@ import { AGE_RESTRICTION_LABELS, getTier } from '@partyradar/shared'
 import { useAuth } from '@/hooks/useAuth'
 import { api, API_URL } from '@/lib/api'
 import { silent } from '@/lib/logError'
-import DiscoverFeedTab from '@/components/feed/DiscoverFeedTab'
+
 import { formatPrice, detectCurrency } from '@/lib/currency'
 import { isHappeningNow } from '@/lib/eventTiming'
 
@@ -1366,7 +1366,13 @@ export default function DiscoverPage() {
   const { dbUser } = useAuth()
   const userTier = dbUser?.subscriptionTier ?? 'FREE'
 
-  const [tab, setTab] = useState<'events' | 'venues' | 'feed'>('events')
+  const [tab, setTab] = useState<'events' | 'venues'>(() => {
+    if (typeof window !== 'undefined') {
+      const t = new URLSearchParams(window.location.search).get('tab')
+      if (t === 'venues') return 'venues'
+    }
+    return 'events'
+  })
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list')
   const [searchOpen, setSearchOpen] = useState(false)
   // Use 0 as server-safe initial value to avoid SSR/client hydration mismatch.
@@ -2067,18 +2073,17 @@ export default function DiscoverPage() {
             >
               VENUES
             </button>
-            <button
-              onClick={() => setTab('feed')}
+            <Link
+              href="/feed"
               className="px-3 py-1 rounded text-[10px] font-black transition-all duration-200"
               style={{
-                background: tab === 'feed' ? 'rgba(236,72,153,0.15)' : 'transparent',
-                color: tab === 'feed' ? '#ec4899' : 'rgba(74,96,128,0.6)',
+                background: 'transparent',
+                color: 'rgba(236,72,153,0.7)',
                 letterSpacing: '0.12em',
-                boxShadow: tab === 'feed' ? '0 0 8px rgba(236,72,153,0.2)' : 'none',
               }}
             >
               FEED
-            </button>
+            </Link>
           </div>
           {/* Live location tracking badge */}
           {isTracking && !aiSyncing && aiFound === null && (
@@ -2193,11 +2198,6 @@ export default function DiscoverPage() {
           onWiderSearch={handleVenueWiderSearch}
         />
       </div>
-
-      {/* ── Feed tab content — inline social feed ── */}
-      {tab === 'feed' && (
-        <DiscoverFeedTab dbUser={dbUser ?? null} isLoggedIn={!!dbUser} />
-      )}
 
       {/* ── Events tab content ── */}
       {tab === 'events' && <>
