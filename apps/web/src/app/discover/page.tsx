@@ -744,7 +744,10 @@ function VenuesList({ liveVenues, venuesLoading, venueCity, venueSource, mapCent
   // once ANY location-based search has been done (venueSource !== null) we show
   // real results only (or an empty/loading state). This prevents Glasgow venues
   // appearing for Tokyo, New York, etc.
-  const useStaticFallback = !hasRealVenues && venueSource === null && !venuesLoading
+  // Also suppressed when venueCity is known to be a non-Glasgow city —
+  // showing Glasgow venues when the user is in Perth would be misleading.
+  const isKnownNonGlasgowCity = !!venueCity && venueCity.toLowerCase() !== 'glasgow'
+  const useStaticFallback = !hasRealVenues && venueSource === null && !venuesLoading && !isKnownNonGlasgowCity
   const displayVenues: LiveVenue[] = hasRealVenues
     ? liveVenues
     : useStaticFallback ? (GLASGOW_VENUES as unknown as LiveVenue[]) : []
@@ -990,6 +993,31 @@ const FEATURED_VENUES = [
 ]
 
 const QUICK_CITIES = ['Glasgow', 'Edinburgh', 'London', 'Manchester', 'Birmingham', 'Bristol']
+
+// UK & Ireland cities used for the nearest-city fallback when local area has no events.
+// Sorted here but will be sorted by distance at runtime.
+const UK_CITIES: { name: string; lat: number; lng: number }[] = [
+  { name: 'Glasgow',      lat: 55.8617, lng: -4.2583 },
+  { name: 'Edinburgh',    lat: 55.9533, lng: -3.1883 },
+  { name: 'Dundee',       lat: 56.4620, lng: -2.9707 },
+  { name: 'Aberdeen',     lat: 57.1497, lng: -2.0943 },
+  { name: 'Stirling',     lat: 56.1165, lng: -3.9369 },
+  { name: 'Inverness',    lat: 57.4778, lng: -4.2247 },
+  { name: 'Perth',        lat: 56.3950, lng: -3.4306 },
+  { name: 'Paisley',      lat: 55.8453, lng: -4.4236 },
+  { name: 'Newcastle',    lat: 54.9783, lng: -1.6178 },
+  { name: 'Leeds',        lat: 53.8008, lng: -1.5491 },
+  { name: 'Sheffield',    lat: 53.3811, lng: -1.4701 },
+  { name: 'Manchester',   lat: 53.4808, lng: -2.2426 },
+  { name: 'Liverpool',    lat: 53.4084, lng: -2.9916 },
+  { name: 'Birmingham',   lat: 52.4862, lng: -1.8904 },
+  { name: 'Nottingham',   lat: 52.9548, lng: -1.1581 },
+  { name: 'Bristol',      lat: 51.4545, lng: -2.5879 },
+  { name: 'Cardiff',      lat: 51.4816, lng: -3.1791 },
+  { name: 'London',       lat: 51.5074, lng: -0.1278 },
+  { name: 'Belfast',      lat: 54.5973, lng: -5.9301 },
+  { name: 'Dublin',       lat: 53.3498, lng: -6.2603 },
+]
 
 function EmptyState({ loading, onRetry, onSearch, onCreateEvent }: {
   loading: boolean
@@ -1338,6 +1366,13 @@ export default function DiscoverPage() {
   // correct city (IP geo can give the wrong city — e.g. London instead of Glasgow).
   const gpsFirstFix = useRef(false)
 
+  // ── Search radius — starts at 50 km, expands automatically when local area is sparse ──
+  const [nearbyRadius, setNearbyRadius] = useState(50)
+  // Fallback banner shown when we expand radius or switch to a nearby city
+  const [fallbackBanner, setFallbackBanner] = useState<{ city: string; km: number; radius?: number } | null>(null)
+  const radiusExpandedRef = useRef(false)  // prevent repeat radius expansion
+  const cityFallbackRef = useRef(false)    // prevent repeat city fallback
+
   // ── Venue discovery state (lifted here so it survives tab switches) ──────────
   const { venues: liveVenues, loading: venuesLoading, source: venueSource, discover } = useVenueDiscover()
   const [venueCity, setVenueCity] = useState<string | null>(null)
@@ -1390,13 +1425,16 @@ export default function DiscoverPage() {
       }
     }
 
-    // 1 — localStorage cache (12-hour TTL)
+    // 1 — localStorage cache (45-minute TTL — short enough that travelers see their real city
+    //     when they reopen after a journey, long enough to skip GPS delay on quick re-opens)
     try {
       const raw = localStorage.getItem('pr_loc')
       if (raw) {
         const s = JSON.parse(raw) as { lat: number; lng: number; city: string | null; ts: number }
-        if (s.lat && s.lng && Date.now() - s.ts < 12 * 3_600_000) {
+        if (s.lat && s.lng && Date.now() - s.ts < 45 * 60_000) {
           applyLocation(s.lat, s.lng, s.city, false)
+        } else {
+          localStorage.removeItem('pr_loc')  // expired — clear it
         }
       }
     } catch {}
@@ -1495,6 +1533,29 @@ export default function DiscoverPage() {
           setMapCenter({ lat, lng })
           discover(lat, lng, 15000)
 
+          // When GPS shows the user has moved >5 km from the cached location, clear the
+          // cache so the next app open starts fresh at the real location (not the old city).
+          try {
+            const raw = localStorage.getItem('pr_loc')
+            if (raw) {
+              const c = JSON.parse(raw) as { lat: number; lng: number }
+              if (haversineKm(c.lat, c.lng, lat, lng) > 5) {
+                localStorage.removeItem('pr_loc')
+              }
+            }
+          } catch {}
+
+          // When GPS shows user is significantly further than the current radius
+          // (i.e. they traveled to a new city), reset radius expansion so fresh
+          // area gets a clean 50 km search.
+          if (moved > 10) {
+            setNearbyRadius(50)
+            setFallbackBanner(null)
+            radiusExpandedRef.current = false
+            cityFallbackRef.current = false
+            autoRetried.current = false
+          }
+
           // CRITICAL: First GPS fix always overrides IP geo.
           // IP geo often returns the wrong city (e.g. London for someone in Glasgow
           // because the ISP's IP is routed through London). Reset the AI sync ref
@@ -1561,6 +1622,11 @@ export default function DiscoverPage() {
     autoRetried.current = false
     aiSyncedRef.current = false
     setSyncing(false)
+    // Reset radius + fallback state so the new city gets a clean 50 km search
+    setNearbyRadius(50)
+    setFallbackBanner(null)
+    radiusExpandedRef.current = false
+    cityFallbackRef.current = false
     // Kick off AI sync immediately for the new city (server returns 202 immediately,
     // sync runs in background). Polling in the useEffect below picks up events as
     // each source (Eventbrite, SerpAPI, Perplexity) finishes writing to the DB.
@@ -1601,7 +1667,7 @@ export default function DiscoverPage() {
   // userLocation is always set before locationReady, so lat/lng is always present in the query.
   const { events, isLoading, hasMore, mutate, forceRetry } = useEvents({
     ...filters,
-    ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: 50 } : {}),
+    ...(userLocation ? { lat: userLocation.lat, lng: userLocation.lng, radius: nearbyRadius } : {}),
     limit: 100,
   }, !locationReady)
 
@@ -1641,7 +1707,7 @@ export default function DiscoverPage() {
       while (p <= 10 && !cancel.aborted) { // cap at 10 extra pages (up to 1 000 additional events)
         const qs = new URLSearchParams({
           lat: String(userLat), lng: String(userLng),
-          radius: '50', page: String(p), limit: '100',
+          radius: String(nearbyRadius), page: String(p), limit: '100',
         })
         if (filters.type)     qs.set('type', filters.type)
         if (filters.showFree) qs.set('showFree', 'true')
@@ -1662,7 +1728,7 @@ export default function DiscoverPage() {
     // Cleanup: mark the loop as cancelled so it stops mid-flight and never
     // writes stale events after deps have already changed.
     return () => { cancel.aborted = true }
-  }, [hasMore, events.length, locationReady, userLat, userLng, filters])
+  }, [hasMore, events.length, locationReady, userLat, userLng, nearbyRadius, filters])
 
   // Merged + deduplicated list of ALL events.
   // Pre-filter: bot events with no verified external source are AI-hallucinated —
@@ -1790,6 +1856,55 @@ export default function DiscoverPage() {
     }, 4000)
     return () => clearTimeout(t)
   }, [isLoading, locationReady, events.length, aiSyncing, forceRetry])
+
+  // ── Nearest-city fallback ────────────────────────────────────────────────────
+  // When the user is in an area with no events (e.g. Perth, rural Scotland) we:
+  //   1. After 10s: expand the search radius from 50 km → 150 km
+  //   2. After another 10s still empty: auto-switch to the nearest UK city that
+  //      likely has events, and show a banner explaining the switch.
+  // Both steps reset when the user moves >10 km or manually searches a city.
+  // Uses `events.length` (page 1 only) rather than `allEvents` to avoid a
+  // forward-reference — `allEvents` is the deduped merge defined later.
+  useEffect(() => {
+    // Don't trigger while loading, syncing, or if there are already events
+    if (!locationReady || isLoading || aiSyncing || events.length > 0) return
+    if (!userLocation) return
+
+    if (!radiusExpandedRef.current && nearbyRadius === 50) {
+      // Step 1 — wait 10 s then expand radius to 150 km
+      const t = setTimeout(() => {
+        if (events.length > 0) return
+        radiusExpandedRef.current = true
+        setNearbyRadius(150)
+        setFallbackBanner({ city: '', km: 0, radius: 150 })
+      }, 10_000)
+      return () => clearTimeout(t)
+    }
+
+    if (radiusExpandedRef.current && nearbyRadius === 150 && !cityFallbackRef.current) {
+      // Step 2 — still empty after radius expansion: switch to nearest known city
+      const t = setTimeout(() => {
+        if (events.length > 0) return
+        cityFallbackRef.current = true
+
+        const sorted = UK_CITIES
+          .map((c) => ({
+            ...c,
+            km: haversineKm(userLocation.lat, userLocation.lng, c.lat, c.lng),
+          }))
+          .filter((c) => c.km > 15)   // skip cities within 15 km (same area, already tried)
+          .sort((a, b) => a.km - b.km)
+
+        const nearest = sorted[0]
+        if (!nearest) return
+
+        setFallbackBanner({ city: nearest.name, km: Math.round(nearest.km) })
+        handleCitySearch(nearest.name, nearest.lat, nearest.lng)
+      }, 10_000)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationReady, isLoading, aiSyncing, events.length, nearbyRadius, userLocation])
 
   // locationLoading: spinner while waiting for coordinates OR initial events fetch
   const locationLoading = !locationReady || (isLoading && events.length === 0)
@@ -2076,6 +2191,12 @@ export default function DiscoverPage() {
                   ? 'NEARBY'
                   : 'LOCATING...'}
             </span>
+            {nearbyRadius > 50 && locationReady && (
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded ml-1"
+                style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.06em' }}>
+                {nearbyRadius} KM
+              </span>
+            )}
           </button>
           {/* Right: search-city button */}
           <button
@@ -2174,6 +2295,27 @@ export default function DiscoverPage() {
                 <button onClick={() => setTab('venues')} className="underline font-bold" style={{ color: '#ffd600' }}>Search a city</button>
                 {' '}to load local events now.
               </p>
+            </div>
+          )}
+
+          {/* Nearest-city fallback banner — shown when we expand radius or auto-switch city */}
+          {fallbackBanner && !isLoading && (
+            <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0"
+              style={{ background: 'rgba(var(--accent-rgb),0.05)', borderBottom: '1px solid rgba(var(--accent-rgb),0.12)' }}>
+              <MapPin size={10} style={{ color: 'rgba(var(--accent-rgb),0.5)', flexShrink: 0 }} />
+              <p className="text-[10px] flex-1" style={{ color: 'rgba(var(--accent-rgb),0.7)' }}>
+                {fallbackBanner.city
+                  ? <>No events nearby · Showing events near <strong style={{ color: 'var(--accent)' }}>{fallbackBanner.city}</strong> ({fallbackBanner.km} km away)</>
+                  : <>No events within 50 km · Expanding search to <strong style={{ color: 'var(--accent)' }}>150 km</strong></>
+                }
+              </p>
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="shrink-0 text-[9px] font-black tracking-widest px-2 py-1 rounded"
+                style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}
+              >
+                CHANGE
+              </button>
             </div>
           )}
           {(isLoading || locationLoading) ? (
