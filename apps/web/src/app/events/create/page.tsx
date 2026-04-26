@@ -201,7 +201,7 @@ export default function CreateEventPage() {
     setLinkedVenue({ id: v.id, name: v.name })
     setVenueQuery(v.name)
     setVenueResults([])
-    update({ address: v.address, lat: v.lat, lng: v.lng, neighbourhood: v.city, venueId: v.id } as any)
+    update({ address: v.address, lat: v.lat, lng: v.lng, neighbourhood: v.city, venueId: v.id })
   }
 
   function useMyLocation() {
@@ -468,8 +468,8 @@ export default function CreateEventPage() {
             {form.type === 'CLUB_NIGHT' && (
               <CyberInput
                 label="VENUE NAME *"
-                value={(form as any).venueName ?? ''}
-                onChange={(e) => update({ venueName: e.target.value } as any)}
+                value={form.venueName ?? ''}
+                onChange={(e) => update({ venueName: e.target.value })}
                 placeholder="e.g. SWG3, Fabric, Printworks..."
               />
             )}
@@ -577,7 +577,7 @@ export default function CreateEventPage() {
                   <div className="mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
                     style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.2)' }}>
                     <span className="text-[10px]" style={{ color: '#00ff88' }}>✓ Linked: {linkedVenue.name}</span>
-                    <button onClick={() => { setLinkedVenue(null); setVenueQuery(''); update({ venueId: undefined } as any) }}
+                    <button onClick={() => { setLinkedVenue(null); setVenueQuery(''); update({ venueId: undefined }) }}
                       className="ml-auto text-[10px]" style={{ color: 'rgba(255,0,110,0.6)' }}>
                       Remove
                     </button>
@@ -772,8 +772,8 @@ export default function CreateEventPage() {
             {(form.type === 'CLUB_NIGHT' || form.type === 'CONCERT') && (
               <CyberInput
                 label={form.type === 'CLUB_NIGHT' ? 'LINEUP / RESIDENT DJs' : 'ARTIST LINEUP'}
-                value={(form as any).lineup ?? ''}
-                onChange={(e) => update({ lineup: e.target.value } as any)}
+                value={form.lineup ?? ''}
+                onChange={(e) => update({ lineup: e.target.value })}
                 placeholder={form.type === 'CLUB_NIGHT' ? 'e.g. Carl Cox, Amelie Lens, Richie Hawtin' : 'e.g. The 1975 + Sports Team (support)'}
               />
             )}
@@ -928,13 +928,13 @@ export default function CreateEventPage() {
                 </p>
                 <div className="grid grid-cols-8 gap-1.5">
                   {PARTY_SIGNALS.map((sig) => {
-                    const on = ((form as any).partySigns ?? []).includes(sig.code)
+                    const on = (form.partySigns ?? []).includes(sig.code)
                     return (
                       <button
                         key={sig.code}
                         onClick={() => {
-                          const curr: string[] = (form as any).partySigns ?? []
-                          update({ partySigns: on ? curr.filter((c: string) => c !== sig.code) : [...curr, sig.code] } as any)
+                          const curr: string[] = form.partySigns ?? []
+                          update({ partySigns: on ? curr.filter((c) => c !== sig.code) : [...curr, sig.code] })
                         }}
                         className="aspect-square flex items-center justify-center rounded-xl text-xl transition-all duration-200"
                         style={{
@@ -951,9 +951,9 @@ export default function CreateEventPage() {
                     )
                   })}
                 </div>
-                {((form as any).partySigns ?? []).length > 0 && (
+                {(form.partySigns ?? []).length > 0 && (
                   <p className="text-[10px] mt-2 font-bold" style={{ color: 'rgba(255,0,110,0.5)' }}>
-                    {((form as any).partySigns ?? []).length} signal{((form as any).partySigns ?? []).length !== 1 ? 's' : ''} active
+                    {(form.partySigns ?? []).length} signal{(form.partySigns ?? []).length !== 1 ? 's' : ''} active
                   </p>
                 )}
               </div>
@@ -987,24 +987,24 @@ export default function CreateEventPage() {
 
             {/* DJ Song Requests */}
             <button
-              onClick={() => update({ djRequestsEnabled: !(form as any).djRequestsEnabled })}
+              onClick={() => update({ djRequestsEnabled: !form.djRequestsEnabled })}
               className="flex items-start gap-3 p-4 rounded-xl w-full text-left transition-all duration-200"
               style={{
-                background: (form as any).djRequestsEnabled ? 'rgba(168,85,247,0.06)' : 'rgba(var(--accent-rgb),0.02)',
-                border: (form as any).djRequestsEnabled ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(var(--accent-rgb),0.1)',
+                background: form.djRequestsEnabled ? 'rgba(168,85,247,0.06)' : 'rgba(var(--accent-rgb),0.02)',
+                border: form.djRequestsEnabled ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(var(--accent-rgb),0.1)',
               }}
             >
               <div
                 className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5"
                 style={{
-                  border: (form as any).djRequestsEnabled ? '1px solid rgba(168,85,247,0.6)' : '1px solid rgba(var(--accent-rgb),0.2)',
-                  background: (form as any).djRequestsEnabled ? '#a855f7' : 'transparent',
+                  border: form.djRequestsEnabled ? '1px solid rgba(168,85,247,0.6)' : '1px solid rgba(var(--accent-rgb),0.2)',
+                  background: form.djRequestsEnabled ? '#a855f7' : 'transparent',
                 }}
               >
-                {(form as any).djRequestsEnabled && <Check size={12} color="#04040d" strokeWidth={3} />}
+                {form.djRequestsEnabled && <Check size={12} color="#04040d" strokeWidth={3} />}
               </div>
               <div>
-                <p className="text-sm font-bold" style={{ color: (form as any).djRequestsEnabled ? '#a855f7' : '#e0f2fe' }}>🎵 DJ Song Requests</p>
+                <p className="text-sm font-bold" style={{ color: form.djRequestsEnabled ? '#a855f7' : '#e0f2fe' }}>🎵 DJ Song Requests</p>
                 <p className="text-xs mt-0.5" style={{ color: 'rgba(74,96,128,0.8)' }}>
                   Guests can request songs — free with Basic+ plan, or £1 per request for others
                 </p>
@@ -1062,19 +1062,19 @@ export default function CreateEventPage() {
             )}
 
             {/* Lineup preview (club/concert) */}
-            {(form as any).lineup && (
+            {form.lineup && (
               <div className="p-3 rounded-lg" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
                 <p className="text-[9px] font-bold tracking-[0.15em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>LINEUP</p>
-                <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{(form as any).lineup}</p>
+                <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{form.lineup}</p>
               </div>
             )}
 
             {/* Party signals preview (home party) */}
-            {form.type === 'HOME_PARTY' && ((form as any).partySigns ?? []).length > 0 && (
+            {form.type === 'HOME_PARTY' && (form.partySigns ?? []).length > 0 && (
               <div className="p-3 rounded-lg" style={{ background: 'rgba(255,0,110,0.04)', border: '1px solid rgba(255,0,110,0.15)' }}>
                 <p className="text-[9px] font-bold tracking-[0.15em] mb-2" style={{ color: 'rgba(255,0,110,0.5)' }}>PARTY SIGNALS · GUESTS ONLY</p>
                 <div className="flex gap-2 flex-wrap">
-                  {PARTY_SIGNALS.filter((s) => ((form as any).partySigns ?? []).includes(s.code)).map((s) => (
+                  {PARTY_SIGNALS.filter((s) => (form.partySigns ?? []).includes(s.code)).map((s) => (
                     <span key={s.code} className="text-2xl">{s.emoji}</span>
                   ))}
                 </div>
