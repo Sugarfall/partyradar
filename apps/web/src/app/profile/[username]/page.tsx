@@ -533,70 +533,103 @@ export default function PublicProfilePage() {
           </div>
         </div>
 
-        {/* ── Medal showcase — Ingress-style hex grid ── */}
-        {profileMedals.length > 0 && (() => {
-          const HEX_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
+        {/* ── Medal showcase — always-visible 4×2 hex grid ── */}
+        {(() => {
+          const HEX_CLIP  = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
           const TIER_COLOR: Record<string, string> = { GOLD: '#FFD700', SILVER: '#C0C0C0', BRONZE: '#cd7f32' }
           const TIER_BG:    Record<string, string> = { GOLD: 'rgba(255,215,0,0.2)', SILVER: 'rgba(192,192,192,0.16)', BRONZE: 'rgba(205,127,50,0.18)' }
           const TIER_GLOW:  Record<string, string> = { GOLD: 'rgba(255,215,0,0.55)', SILVER: 'rgba(192,192,192,0.45)', BRONZE: 'rgba(205,127,50,0.5)' }
-          const tierOrder = { GOLD: 0, SILVER: 1, BRONZE: 2 }
-          const sorted = [...profileMedals].sort((a, b) => (tierOrder[a.medal.tier as keyof typeof tierOrder] ?? 3) - (tierOrder[b.medal.tier as keyof typeof tierOrder] ?? 3))
-          const shown = sorted.slice(0, 18)  // max 3 rows of 6
-          const extra = sorted.length - shown.length
+          const tierOrder:  Record<string, number>  = { GOLD: 0, SILVER: 1, BRONZE: 2 }
 
-          const W = 46, H = Math.round(W * 1.1547) // 53
-          const GAP = 3, COLS = 6
+          const ALL_MEDALS = [
+            { slug: 'social-butterfly', name: 'Social Butterfly', icon: '🦋' },
+            { slug: 'connector',        name: 'Connector',        icon: '🔗' },
+            { slug: 'networker',        name: 'Networker',        icon: '🌐' },
+            { slug: 'party-animal',     name: 'Party Animal',     icon: '🎉' },
+            { slug: 'ticket-holder',    name: 'Ticket Holder',    icon: '🎟️' },
+            { slug: 'party-host',       name: 'Party Host',       icon: '🎪' },
+            { slug: 'venue-hopper',     name: 'Venue Hopper',     icon: '📍' },
+            { slug: 'loyal-raver',      name: 'Loyal Raver',      icon: '🔥' },
+          ]
+
+          // Build map: slug → highest tier earned
+          const earnedMap = new Map<string, string>()
+          for (const um of profileMedals) {
+            const prev = earnedMap.get(um.medal.slug)
+            if (!prev || (tierOrder[um.medal.tier] ?? 3) < (tierOrder[prev] ?? 3)) {
+              earnedMap.set(um.medal.slug, um.medal.tier)
+            }
+          }
+
+          const W = 46, H = Math.round(W * 1.1547) // ~53px tall
+          const GAP = 6, COLS = 4
           const hStep = W + GAP, vStep = Math.round(H * 0.75)
-          const rows: typeof shown[] = []
-          for (let i = 0; i < shown.length; i += COLS) rows.push(shown.slice(i, i + COLS))
-          const totalH = rows.length > 0 ? H + (rows.length - 1) * vStep : H
           const totalW = COLS * hStep - GAP
+          const totalH = H + vStep  // 2 rows
 
           return (
-            <div className="mb-4 py-3 rounded-2xl overflow-hidden" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
+            <div className="mb-4 py-3 rounded-2xl" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.07)' }}>
               <div className="flex items-center justify-between px-4 mb-3">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(255,215,0,0.7)', letterSpacing: '0.18em' }}>MEDALS</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.08)', color: 'rgba(255,215,0,0.6)', border: '1px solid rgba(255,215,0,0.2)' }}>{sorted.length}</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.08)', color: 'rgba(255,215,0,0.6)', border: '1px solid rgba(255,215,0,0.2)' }}>
+                    {earnedMap.size}/{ALL_MEDALS.length}
+                  </span>
                 </div>
                 {profile.isMe && (
                   <a href="/medals" className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)', letterSpacing: '0.1em' }}>VIEW ALL →</a>
                 )}
               </div>
 
-              {/* Hex grid */}
-              <div className="overflow-x-auto px-3" style={{ scrollbarWidth: 'none' }}>
-                <div style={{ position: 'relative', width: totalW, height: totalH, margin: '0 auto' }}>
-                  {rows.map((row, ri) =>
-                    row.map((um, ci) => {
-                      const tc = TIER_COLOR[um.medal.tier] ?? '#9EA0A5'
-                      const tb = TIER_BG[um.medal.tier] ?? 'rgba(158,160,165,0.15)'
-                      const tg = TIER_GLOW[um.medal.tier] ?? 'rgba(158,160,165,0.4)'
-                      const inset = 2
-                      return (
-                        <div key={um.id} title={`${um.medal.name} (${um.medal.tier})`} style={{
+              {/* 4-col × 2-row hex grid, no offset — fits all screens */}
+              <div className="flex justify-center px-3">
+                <div style={{ position: 'relative', width: totalW, height: totalH }}>
+                  {ALL_MEDALS.map((def, idx) => {
+                    const row  = Math.floor(idx / COLS)
+                    const col  = idx % COLS
+                    const tier = earnedMap.get(def.slug)
+                    const earned = !!tier
+                    const tc   = tier ? (TIER_COLOR[tier] ?? '#9EA0A5') : 'rgba(var(--accent-rgb),0.18)'
+                    const tb   = tier ? (TIER_BG[tier]    ?? 'rgba(158,160,165,0.15)') : 'rgba(var(--accent-rgb),0.04)'
+                    const tg   = tier ? (TIER_GLOW[tier]  ?? 'rgba(158,160,165,0.4)') : undefined
+                    const inset = 2
+                    return (
+                      <div
+                        key={def.slug}
+                        title={earned ? `${def.name} (${tier})` : `${def.name} — not yet earned`}
+                        style={{
                           position: 'absolute',
-                          left: ci * hStep + (ri % 2 === 1 ? hStep / 2 : 0),
-                          top:  ri * vStep,
+                          left: col * hStep,
+                          top:  row * vStep,
                           width: W, height: H,
+                          opacity: earned ? 1 : 0.3,
+                          transition: 'opacity 0.2s',
+                        }}
+                      >
+                        {/* Hex border */}
+                        <div style={{
+                          position: 'absolute', inset: 0, clipPath: HEX_CLIP, background: tc,
+                          ...(tg ? { filter: `drop-shadow(0 0 ${Math.round(W * 0.14)}px ${tg})` } : {}),
+                        }} />
+                        {/* Hex fill + icon */}
+                        <div style={{
+                          position: 'absolute', top: inset, left: inset, right: inset, bottom: inset,
+                          clipPath: HEX_CLIP, background: tb,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          filter: earned ? undefined : 'grayscale(100%)',
                         }}>
-                          {/* Border layer */}
-                          <div style={{ position: 'absolute', inset: 0, clipPath: HEX_CLIP, background: tc, filter: `drop-shadow(0 0 ${Math.round(W * 0.14)}px ${tg})` }} />
-                          {/* Inner layer */}
-                          <div style={{ position: 'absolute', top: inset, left: inset, right: inset, bottom: inset, clipPath: HEX_CLIP, background: tb, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ fontSize: W * 0.4, lineHeight: 1, userSelect: 'none' }}>{um.medal.icon}</span>
-                          </div>
+                          <span style={{ fontSize: W * 0.4, lineHeight: 1, userSelect: 'none' }}>{def.icon}</span>
                         </div>
-                      )
-                    })
-                  )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* "+N more" row */}
-              {extra > 0 && (
-                <p className="text-center text-[9px] font-black mt-3" style={{ color: 'rgba(var(--accent-rgb),0.35)', letterSpacing: '0.1em' }}>
-                  +{extra} MORE MEDALS
+              {/* Empty state caption */}
+              {earnedMap.size === 0 && (
+                <p className="text-center text-[9px] font-black mt-4" style={{ color: 'rgba(var(--accent-rgb),0.25)', letterSpacing: '0.12em' }}>
+                  NO MEDALS EARNED YET
                 </p>
               )}
             </div>
