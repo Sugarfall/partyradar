@@ -1312,6 +1312,8 @@ export default function EventDetailPage() {
   const tc = TYPE_CONFIG[event.type] ?? TYPE_CONFIG.CLUB_NIGHT
   const isHost = dbUser?.id === event.hostId
   const isFree = event.price === 0
+  // Canonical location label: venue name > neighbourhood > address (avoids raw street addr in LOCATION MetaCell)
+  const eventVenueName: string | null = (event as any).venue?.name ?? event.neighbourhood ?? null
   const capacityPct = Math.round(((event.guestCount ?? 0) / event.capacity) * 100)
   const isFull = capacityPct >= 100
 
@@ -1698,7 +1700,7 @@ export default function EventDetailPage() {
           {event.endsAt && (
             <MetaCell icon={Clock} label="ENDS" value={formatDate(event.endsAt)} color={tc.color} />
           )}
-          <MetaCell icon={MapPin} label="LOCATION" value={event.showNeighbourhoodOnly ? event.neighbourhood : (venueName ?? event.address ?? event.neighbourhood)} color={tc.color} />
+          <MetaCell icon={MapPin} label="LOCATION" value={event.showNeighbourhoodOnly ? event.neighbourhood : (eventVenueName ?? event.address ?? event.neighbourhood ?? '')} color={tc.color} />
           <MetaCell icon={Wine} label="ALCOHOL" value={ALCOHOL_POLICY_LABELS[event.alcoholPolicy] ?? event.alcoholPolicy} color={tc.color} />
           <MetaCell icon={ShieldCheck} label="AGE POLICY" value={AGE_RESTRICTION_LABELS[event.ageRestriction] ?? event.ageRestriction} color={tc.color} />
           <MetaCell icon={Users} label="GOING" value={`${event.guestCount ?? 0} ${(event.guestCount ?? 0) === 1 ? 'person' : 'people'}`} color={tc.color} />
