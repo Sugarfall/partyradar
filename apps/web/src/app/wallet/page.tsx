@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
-import { formatPrice } from '@/lib/currency'
+import { formatPrice, detectCurrency } from '@/lib/currency'
 import { WALLET_TOP_UP_TIERS } from '@partyradar/shared'
 import {
   Wallet, CreditCard, Gift, TrendingUp,
@@ -201,6 +201,7 @@ export default function WalletPage() {
 
   // ── Main ───────────────────────────────────────────────────────────────────
 
+  const currency = detectCurrency()
   const POINTS_PER_DRINK = 500
 
   return (
@@ -259,7 +260,7 @@ export default function WalletPage() {
                   AVAILABLE BALANCE
                 </p>
                 <p className="text-4xl font-black truncate" style={{ color: '#e0f2fe', lineHeight: 1.1 }}>
-                  {wallet ? formatPrice(wallet.balance, 'GBP') : '—'}
+                  {wallet ? formatPrice(wallet.balance, currency) : '—'}
                 </p>
               </div>
               <button
@@ -314,8 +315,8 @@ export default function WalletPage() {
             {wallet && (
               <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.07)' }}>
                 <div className="flex justify-between text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
-                  <span>Lifetime spent: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeSpent, 'GBP')}</span></span>
-                  <span>Total top-ups: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeTopUp, 'GBP')}</span></span>
+                  <span>Lifetime spent: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeSpent, currency)}</span></span>
+                  <span>Total top-ups: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeTopUp, currency)}</span></span>
                 </div>
               </div>
             )}

@@ -60,7 +60,7 @@ const userSelect = {
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', tonight } = req.query
+    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', tonight, past } = req.query
     // Support both ?q= (new search bar) and ?search= (existing filters panel)
     const search = q ?? searchParam
 
@@ -126,6 +126,17 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     if (venueId) where['venueId'] = venueId as string
     if (hostIdFilter) where['hostId'] = hostIdFilter as string
 
+    // ?past=true — flip the time filter to return only ended events.
+    // Only allowed when scoped to a specific venue to avoid full-table scans.
+    if (past === 'true' && venueId) {
+      ;(where['AND'] as any[])[0] = {
+        OR: [
+          { endsAt: { lt: now } },                          // explicit end time has passed
+          { endsAt: null, startsAt: { lt: fiveHoursAgo } }, // no end, started > 5 h ago
+        ],
+      }
+    }
+
     // Geo filter
     if (lat && lng) {
       const latN = Number(lat), lngN = Number(lng)
@@ -176,7 +187,8 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         where,
         take: QUERY_LIMIT,
         skip: pageSkip + b * QUERY_LIMIT,
-        orderBy: { startsAt: 'asc' },
+        // Past events: most recent first; live/upcoming: soonest first
+        orderBy: { startsAt: past === 'true' ? 'desc' : 'asc' },
       }))
       events.push(...batch)
       if (batch.length < QUERY_LIMIT) break  // reached end of results early

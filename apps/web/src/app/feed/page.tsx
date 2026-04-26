@@ -278,6 +278,18 @@ export default function FeedPage() {
 
 function FeedPageInner() {
   const searchParams = useSearchParams()
+
+  // Always start at the very top when entering the feed.
+  // We disable browser scroll-restoration for this page so it doesn't fight us.
+  useEffect(() => {
+    const prev = typeof history !== 'undefined' ? history.scrollRestoration : 'auto'
+    if (typeof history !== 'undefined') history.scrollRestoration = 'manual'
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior })
+    return () => {
+      if (typeof history !== 'undefined') history.scrollRestoration = prev
+    }
+  }, [])
+
   const [tab, setTab] = useState<FeedTab>('foryou')
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])

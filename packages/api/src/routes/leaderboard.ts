@@ -72,19 +72,28 @@ router.get('/venues', async (_req, res, next) => {
     })
     const venueMap = new Map(venueRecords.map((v) => [v.id, v]))
 
-    // Fetch average review rating per venue's events
+    // Fetch all events per venue (with source IDs for dedup)
     const eventsByVenue = await prisma.event.findMany({
       where: { venueId: { in: venueIds }, isPublished: true, isCancelled: false },
-      select: { id: true, venueId: true },
+      select: { id: true, venueId: true, ticketmasterId: true, skiddleId: true, serpApiId: true, aiEventId: true },
     })
 
-    // Group event IDs by venue
+    // Group event IDs by venue, deduplicating events imported from multiple
+    // sources (same real-world event imported twice should count once).
     const venueEventIds = new Map<string, string[]>()
+    const seenKeys = new Set<string>() // per-venue dedup key set
+    const uniqueCountPerVenue = new Map<string, number>()
     for (const e of eventsByVenue) {
       if (!e.venueId) continue
+      // Use the most specific external ID as the dedup key; fall back to internal id
+      const sourceKey = e.ticketmasterId ?? e.skiddleId ?? e.serpApiId ?? e.aiEventId ?? e.id
+      const venueKey = `${e.venueId}::${sourceKey}`
+      if (seenKeys.has(venueKey)) continue
+      seenKeys.add(venueKey)
       const arr = venueEventIds.get(e.venueId) ?? []
       arr.push(e.id)
       venueEventIds.set(e.venueId, arr)
+      uniqueCountPerVenue.set(e.venueId, (uniqueCountPerVenue.get(e.venueId) ?? 0) + 1)
     }
 
     // Get average review rating across all events at each venue
@@ -110,15 +119,20 @@ router.get('/venues', async (_req, res, next) => {
       )
     }
 
-    const data = venues.map((v) => {
-      const venue = v.venueId ? venueMap.get(v.venueId) : null
-      return {
-        name: venue?.name ?? 'Unknown Venue',
-        address: venue?.address ?? null,
-        eventCount: v._count.id,
-        avgRating: (v.venueId ? venueAvgRating.get(v.venueId) : null) ?? venue?.rating ?? null,
-      }
-    })
+    const data = venues
+      .map((v) => {
+        const venue = v.venueId ? venueMap.get(v.venueId) : null
+        // Use deduplicated event count (removes double-counted external imports)
+        const eventCount = v.venueId ? (uniqueCountPerVenue.get(v.venueId) ?? v._count.id) : v._count.id
+        return {
+          name: venue?.name ?? 'Unknown Venue',
+          address: venue?.address ?? null,
+          eventCount,
+          avgRating: (v.venueId ? venueAvgRating.get(v.venueId) : null) ?? venue?.rating ?? null,
+        }
+      })
+      // Re-sort after dedup (counts may have changed)
+      .sort((a, b) => b.eventCount - a.eventCount)
 
     res.json({ data })
   } catch (err) {

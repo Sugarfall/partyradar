@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
+import { formatPrice, getCurrencySymbol } from '@/lib/currency'
 
 interface ReferralData {
   code: string
@@ -103,7 +104,7 @@ function RevenueCalculator() {
           <div className="flex justify-between mb-1.5">
             <span className="text-[11px]" style={{ color: 'rgba(224,242,254,0.5)' }}>{label}</span>
             <span className="text-[11px] font-bold" style={{ color: 'var(--accent)' }}>
-              {label.includes('price') ? `£${value}` : value}
+              {label.includes('price') ? `${getCurrencySymbol()}${value}` : value}
             </span>
           </div>
           <input type="range" min={min} max={max} value={value}
@@ -117,7 +118,7 @@ function RevenueCalculator() {
           Estimated monthly earnings
         </p>
         <p className="text-2xl font-black" style={{ color: 'var(--accent)', textShadow: '0 0 30px rgba(var(--accent-rgb),0.3)' }}>
-          £{total.toLocaleString('en-GB', { minimumFractionDigits: 0 })}
+          {formatPrice(total)}
         </p>
         <p className="text-[10px] mt-1.5" style={{ color: 'rgba(224,242,254,0.35)' }}>
           {events} events × {avgTickets} tickets × £{avgPrice} (95% payout)

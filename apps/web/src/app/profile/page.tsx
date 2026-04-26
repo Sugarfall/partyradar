@@ -218,18 +218,30 @@ function SocialInbox() {
           </p>
           <div className="flex flex-wrap gap-2">
             {nudges.slice(0, 6).map((u) => (
-              <Link key={u.id} href={`/profile/${u.username}`}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl"
+              <div key={u.id} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 rounded-xl"
                 style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}>
-                {u.photoUrl
-                  ? <img src={u.photoUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
-                  : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black"
-                      style={{ background: 'rgba(var(--accent-rgb),0.12)', color: 'var(--accent)' }}>
-                      {u.displayName[0]}
-                    </div>
-                }
-                <span className="text-[11px] font-bold" style={{ color: '#e0f2fe' }}>{u.displayName.split(' ')[0]}</span>
-              </Link>
+                <Link href={`/profile/${u.username}`} className="flex items-center gap-2">
+                  {u.photoUrl
+                    ? <img src={u.photoUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
+                    : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black"
+                        style={{ background: 'rgba(var(--accent-rgb),0.12)', color: 'var(--accent)' }}>
+                        {u.displayName[0]}
+                      </div>
+                  }
+                  <span className="text-[11px] font-bold" style={{ color: '#e0f2fe' }}>{u.displayName.split(' ')[0]}</span>
+                </Link>
+                {/* Dismiss button — deletes the nudge so it doesn't persist */}
+                <button
+                  onClick={() => {
+                    api.delete(`/users/me/nudges/${u.id}`).catch(() => {})
+                    setNudges((prev) => prev.filter((n) => n.id !== u.id))
+                  }}
+                  className="w-4 h-4 flex items-center justify-center rounded-full ml-0.5"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(224,242,254,0.35)' }}
+                  title="Dismiss">
+                  ×
+                </button>
+              </div>
             ))}
           </div>
         </div>

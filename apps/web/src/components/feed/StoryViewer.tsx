@@ -62,8 +62,9 @@ interface Props {
 
 // ─── Timing ───────────────────────────────────────────────────────────────
 
-const IMAGE_DURATION_MS = 30_000
-const PROGRESS_TICK_MS = 50 // how often we update the progress bar
+const IMAGE_DURATION_MS   = 15_000 // image stories auto-advance after 15 s
+const MAX_VIDEO_DURATION_MS = 30_000 // video stories are capped at 30 s
+const PROGRESS_TICK_MS    = 50     // how often we update the progress bar
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -341,7 +342,9 @@ export default function StoryViewer({
             onTimeUpdate={(e) => {
               const v = e.currentTarget
               if (v.duration && Number.isFinite(v.duration)) {
-                setProgress(Math.min(1, v.currentTime / v.duration))
+                const capSec = MAX_VIDEO_DURATION_MS / 1000
+                setProgress(Math.min(1, v.currentTime / Math.min(v.duration, capSec)))
+                if (v.currentTime >= capSec) advance()
               }
             }}
             onEnded={advance}

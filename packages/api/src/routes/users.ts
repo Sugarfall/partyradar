@@ -130,6 +130,16 @@ router.get('/me/nudges', requireAuth, async (req: AuthRequest, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── DELETE /api/users/me/nudges/:fromUserId — dismiss a nudge ─────────────────
+router.delete('/me/nudges/:fromUserId', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const toId = req.user!.dbUser.id
+    const { fromUserId } = req.params as { fromUserId: string }
+    await prisma.nudge.deleteMany({ where: { fromId: fromUserId, toId } })
+    res.json({ ok: true })
+  } catch (err) { next(err) }
+})
+
 // ── GET /api/users/me/go-out-requests ─────────────────────────────────────────
 router.get('/me/go-out-requests', requireAuth, async (req: AuthRequest, res, next) => {
   try {

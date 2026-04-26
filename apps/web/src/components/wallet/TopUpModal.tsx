@@ -10,6 +10,7 @@ import {
 } from '@stripe/react-stripe-js'
 import { api } from '@/lib/api'
 import { WALLET_TOP_UP_TIERS } from '@partyradar/shared'
+import { formatPrice, getCurrencySymbol } from '@/lib/currency'
 import { X, CreditCard, Zap, CheckCircle } from 'lucide-react'
 
 // ─── Stripe singleton (module-scoped, never recreated) ────────────────────────
@@ -122,7 +123,7 @@ function PayForm({ amount, bonusPercent, totalCredit, onSuccess, onClose }: PayF
         <div className="text-center">
           <p className="text-base font-black" style={{ color: '#00ff88' }}>Payment successful!</p>
           <p className="text-xs mt-1" style={{ color: 'rgba(224,242,254,0.4)' }}>
-            £{totalCredit.toFixed(2)} added to your wallet
+            {formatPrice(totalCredit)} added to your wallet
           </p>
         </div>
       </div>
@@ -140,7 +141,7 @@ function PayForm({ amount, bonusPercent, totalCredit, onSuccess, onClose }: PayF
           <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(224,242,254,0.35)' }}>
             YOU PAY
           </p>
-          <p className="text-2xl font-black" style={{ color: '#e0f2fe' }}>£{amount.toFixed(2)}</p>
+          <p className="text-2xl font-black" style={{ color: '#e0f2fe' }}>{formatPrice(amount)}</p>
         </div>
         {bonusPercent > 0 && (
           <div className="text-right">
@@ -148,7 +149,7 @@ function PayForm({ amount, bonusPercent, totalCredit, onSuccess, onClose }: PayF
               WALLET CREDIT
             </p>
             <p className="text-2xl font-black" style={{ color: 'var(--accent)' }}>
-              £{totalCredit.toFixed(2)}
+              {formatPrice(totalCredit)}
             </p>
             <p className="text-[9px] font-bold" style={{ color: 'var(--accent)' }}>
               +{bonusPercent}% bonus 🎁
@@ -158,12 +159,7 @@ function PayForm({ amount, bonusPercent, totalCredit, onSuccess, onClose }: PayF
       </div>
 
       {/* Stripe Payment Element */}
-      <PaymentElement
-        options={{
-          layout: 'tabs',
-          defaultValues: { billingDetails: { address: { country: 'GB' } } },
-        }}
-      />
+      <PaymentElement options={{ layout: 'tabs' }} />
 
       {/* Error */}
       {error && (
@@ -192,7 +188,7 @@ function PayForm({ amount, bonusPercent, totalCredit, onSuccess, onClose }: PayF
             PROCESSING…
           </span>
         ) : (
-          `PAY £${amount.toFixed(2)}`
+          `PAY ${getCurrencySymbol()}${amount.toFixed(2)}`
         )}
       </button>
 

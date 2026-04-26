@@ -26,6 +26,7 @@ interface UpcomingEvent {
   id: string
   name: string
   startsAt: string
+  endsAt?: string | null
   price: number
   type: EventType
   coverImageUrl?: string
@@ -105,6 +106,16 @@ function formatDate(d: string) {
     weekday: 'short', day: 'numeric', month: 'short',
     hour: 'numeric', minute: '2-digit',
   })
+}
+
+/** Returns whether an event is currently live (started but not yet ended). */
+function isLiveNow(event: UpcomingEvent): boolean {
+  const now = Date.now()
+  const startMs = new Date(event.startsAt).getTime()
+  if (startMs > now) return false          // hasn't started yet
+  if (event.endsAt) return new Date(event.endsAt).getTime() > now
+  // No explicit end — treat as live within 5 h of start
+  return now - startMs < 5 * 3_600_000
 }
 
 // ─── Opening Hours component ──────────────────────────────────────────────────
@@ -243,6 +254,7 @@ function VenueDetailInner() {
 
   // ── Venue events (separate fetch so we always get fresh data regardless of embed)
   const [venueEvents, setVenueEvents] = useState<UpcomingEvent[]>([])
+  const [pastEvents, setPastEvents] = useState<UpcomingEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
 
   useEffect(() => {
@@ -266,8 +278,15 @@ function VenueDetailInner() {
   useEffect(() => {
     if (!id) return
     setEventsLoading(true)
-    api.get<{ data: UpcomingEvent[] }>(`/events?venueId=${id}&limit=20`)
-      .then((json) => setVenueEvents(json?.data ?? []))
+    // Fetch live + upcoming events, then past events in parallel
+    Promise.all([
+      api.get<{ data: UpcomingEvent[] }>(`/events?venueId=${id}&limit=20`),
+      api.get<{ data: UpcomingEvent[] }>(`/events?venueId=${id}&past=true&limit=10`),
+    ])
+      .then(([upcoming, past]) => {
+        setVenueEvents(upcoming?.data ?? [])
+        setPastEvents(past?.data ?? [])
+      })
       .catch(() => {})
       .finally(() => setEventsLoading(false))
   }, [id])
@@ -544,71 +563,130 @@ function VenueDetailInner() {
           ))}
         </div>
 
-        {/* ─── Upcoming Events ─── */}
-        {activeTab === 'events' && (
-        <div>
-          <p className="text-[10px] font-bold tracking-widest mb-3" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
-            UPCOMING EVENTS {!eventsLoading && venueEvents.length > 0 ? `— ${venueEvents.length}` : ''}
-          </p>
+        {/* ─── Events tab ─── */}
+        {activeTab === 'events' && (() => {
+          const liveEvents     = venueEvents.filter(isLiveNow)
+          const upcomingEvents = venueEvents.filter((e) => !isLiveNow(e))
 
-          {eventsLoading ? (
-            <div className="flex flex-col gap-2">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.06)' }} />
-              ))}
+          function EventCard({ event, dim }: { event: UpcomingEvent; dim?: boolean }) {
+            const ec = EVENT_TYPE_COLORS[event.type] ?? 'var(--accent)'
+            return (
+              <Link key={event.id} href={`/events/${event.id}`}
+                className="flex items-center gap-3 p-3 rounded-xl transition-all"
+                style={{
+                  background: 'rgba(var(--accent-rgb),0.03)',
+                  border: '1px solid rgba(var(--accent-rgb),0.08)',
+                  opacity: dim ? 0.6 : 1,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.2)' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.08)' }}
+              >
+                {event.coverImageUrl ? (
+                  <img src={event.coverImageUrl} alt={event.name} className="w-12 h-12 rounded-lg object-cover shrink-0"
+                    style={{ filter: dim ? 'grayscale(60%)' : 'none' }} />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center text-xl"
+                    style={{ background: `${ec}12`, border: `1px solid ${ec}30` }}>
+                    🎉
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{event.name}</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{formatDate(event.startsAt)}</p>
+                  {event.host?.displayName && (
+                    <p className="text-[9px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+                      by {event.host.displayName}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded"
+                    style={{ color: ec, background: `${ec}15`, border: `1px solid ${ec}30` }}>
+                    {event.type.replace(/_/g, ' ')}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs font-bold" style={{ color: event.price === 0 ? '#00ff88' : '#e0f2fe' }}>
+                    <Ticket size={10} /> {formatPrice(event.price)}
+                  </span>
+                </div>
+              </Link>
+            )
+          }
+
+          if (eventsLoading) {
+            return (
+              <div className="flex flex-col gap-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.06)' }} />
+                ))}
+              </div>
+            )
+          }
+
+          const totalCount = liveEvents.length + upcomingEvents.length + pastEvents.length
+          if (totalCount === 0) {
+            return (
+              <div className="py-8 rounded-xl flex flex-col items-center gap-2" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                <Calendar size={24} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
+                <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO EVENTS</p>
+                <p className="text-[10px] text-center px-6" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                  Nothing scheduled here yet — check back soon
+                </p>
+              </div>
+            )
+          }
+
+          return (
+            <div className="flex flex-col gap-5">
+
+              {/* ── Happening Now ── */}
+              {liveEvents.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: '#ff006e' }} />
+                      <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: '#ff006e' }} />
+                    </span>
+                    <p className="text-[10px] font-bold tracking-widest" style={{ color: '#ff006e' }}>HAPPENING NOW</p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {liveEvents.map((event) => <EventCard key={event.id} event={event} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Upcoming ── */}
+              {upcomingEvents.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Calendar size={12} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+                    <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+                      UPCOMING — {upcomingEvents.length}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {upcomingEvents.map((event) => <EventCard key={event.id} event={event} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Past ── */}
+              {pastEvents.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock size={12} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
+                    <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>
+                      PAST EVENTS — {pastEvents.length}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {pastEvents.map((event) => <EventCard key={event.id} event={event} dim />)}
+                  </div>
+                </div>
+              )}
+
             </div>
-          ) : venueEvents.length === 0 ? (
-            <div className="py-8 rounded-xl flex flex-col items-center gap-2" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
-              <Calendar size={24} style={{ color: 'rgba(var(--accent-rgb),0.2)' }} />
-              <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO UPCOMING EVENTS</p>
-              <p className="text-[10px] text-center px-6" style={{ color: 'rgba(224,242,254,0.25)' }}>
-                Nothing scheduled here yet — check back soon
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {venueEvents.map((event) => {
-                const ec = EVENT_TYPE_COLORS[event.type] ?? 'var(--accent)'
-                return (
-                  <Link key={event.id} href={`/events/${event.id}`}
-                    className="flex items-center gap-3 p-3 rounded-xl transition-all"
-                    style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.2)' }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(var(--accent-rgb),0.08)' }}
-                  >
-                    {event.coverImageUrl ? (
-                      <img src={event.coverImageUrl} alt={event.name} className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center text-xl"
-                        style={{ background: `${ec}12`, border: `1px solid ${ec}30` }}>
-                        🎉
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{event.name}</p>
-                      <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{formatDate(event.startsAt)}</p>
-                      {event.host?.displayName && (
-                        <p className="text-[9px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
-                          by {event.host.displayName}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded"
-                        style={{ color: ec, background: `${ec}15`, border: `1px solid ${ec}30` }}>
-                        {event.type.replace(/_/g, ' ')}
-                      </span>
-                      <span className="flex items-center gap-1 text-xs font-bold" style={{ color: event.price === 0 ? '#00ff88' : '#e0f2fe' }}>
-                        <Ticket size={10} /> {formatPrice(event.price)}
-                      </span>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
-        )}
+          )
+        })()}
 
         {/* ─── Feed tab ─── */}
         {activeTab === 'feed' && (

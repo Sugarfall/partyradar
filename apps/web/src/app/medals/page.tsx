@@ -187,14 +187,17 @@ export default function MedalsPage() {
     } catch {/* */} finally { setLoading(false) }
   }, [dbUser])
 
-  // On mount, also silently check for new medals
+  // On mount: check for newly-earned medals, then always reload so freshly
+  // seeded medal definitions show up even when none have been earned yet.
   useEffect(() => {
     if (!dbUser) return
-    load()
-    api.post('/medals/check', {}).then((r) => {
-      const res = r as { count: number }
-      if (res.count > 0) { setNewCount(res.count); load() }
-    }).catch(() => {/* */})
+    api.post('/medals/check', {})
+      .then((r) => {
+        const res = r as { count: number }
+        if (res.count > 0) setNewCount(res.count)
+      })
+      .catch(() => {/* */})
+      .finally(() => load())
   }, [dbUser, load])
 
   async function checkProgress() {

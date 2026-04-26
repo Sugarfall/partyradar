@@ -1284,6 +1284,8 @@ export default function EventDetailPage() {
   const [ticketQty, setTicketQty] = useState(1)
   const [rsvpDone, setRsvpDone] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [checkInDone, setCheckInDone] = useState(false)
+  const [checkInLoading, setCheckInLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [guestListOpen, setGuestListOpen] = useState(false)
   const [inviteCopied, setInviteCopied] = useState(false)
@@ -1434,6 +1436,20 @@ export default function EventDetailPage() {
       setActionError(err instanceof Error ? err.message : 'RSVP failed')
     } finally {
       setRsvpLoading(false)
+    }
+  }
+
+  async function handleCheckIn() {
+    if (!dbUser) { router.push(loginHref()); return }
+    setCheckInLoading(true)
+    setActionError(null)
+    try {
+      await api.post('/checkins', { eventId: event!.id })
+      setCheckInDone(true)
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Check-in failed')
+    } finally {
+      setCheckInLoading(false)
     }
   }
 
@@ -2493,6 +2509,40 @@ export default function EventDetailPage() {
                 </div>
               </>
             )}
+
+            {/* ── Check-in button — visible for logged-in users once event has started ── */}
+            {dbUser && (() => {
+              const now = Date.now()
+              const startMs = new Date(event.startsAt).getTime()
+              const endMs = event.endsAt ? new Date(event.endsAt).getTime() : startMs + 5 * 3_600_000
+              const isLive = startMs <= now && now < endMs
+              if (!isLive) return null
+              return (
+                <div className="mt-2">
+                  {checkInDone ? (
+                    <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl"
+                      style={{ background: 'rgba(0,255,136,0.07)', border: '1px solid rgba(0,255,136,0.25)' }}>
+                      <Check size={13} style={{ color: '#00ff88' }} />
+                      <span className="text-xs font-black tracking-widest" style={{ color: '#00ff88' }}>CHECKED IN ✓</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleCheckIn}
+                      disabled={checkInLoading}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-50"
+                      style={{
+                        background: 'rgba(0,255,136,0.07)',
+                        border: '1px solid rgba(0,255,136,0.3)',
+                        color: '#00ff88',
+                      }}>
+                      {checkInLoading
+                        ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        : <><MapPin size={13} /> CHECK IN — I'M HERE!</>}
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Live chat + DJ Requests tabs */}
             <div className="mt-1.5">
