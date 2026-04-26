@@ -87,15 +87,24 @@ router.post('/apply', requireAuth, async (req: AuthRequest, res, next) => {
     if (!referrer) throw new AppError('Invalid referral code', 404)
     if (referrer.id === userId) throw new AppError('Cannot refer yourself', 400)
 
-    // Check if already referred
+    // Check if already referred (checked again inside transaction to handle race conditions)
     const existing = await prisma.referral.findUnique({ where: { referredId: userId } })
     if (existing) throw new AppError('Already referred', 400)
 
-    // Create referral link
-    await prisma.referral.create({
-      data: { referrerId: referrer.id, referredId: userId, code: code.trim().toUpperCase() },
-    })
-    await prisma.user.update({ where: { id: userId }, data: { referredBy: referrer.id } })
+    // Wrap both writes in a transaction — if concurrent requests slip through the
+    // pre-check above, the unique constraint on referredId will cause a P2002 on
+    // the second writer which we catch and convert to a clean 400.
+    try {
+      await prisma.$transaction([
+        prisma.referral.create({
+          data: { referrerId: referrer.id, referredId: userId, code: code.trim().toUpperCase() },
+        }),
+        prisma.user.update({ where: { id: userId }, data: { referredBy: referrer.id } }),
+      ])
+    } catch (txErr: any) {
+      if (txErr?.code === 'P2002') throw new AppError('Already referred', 400)
+      throw txErr
+    }
 
     res.json({ data: { applied: true } })
   } catch (err) {

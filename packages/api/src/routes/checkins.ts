@@ -66,13 +66,13 @@ router.get('/my', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
     const { page = '1', limit = '20' } = req.query
-    const skip = (Number(page) - 1) * Number(limit)
+    const skip = (Math.max(1, Number(page)) - 1) * Math.min(100, Math.max(1, Number(limit)))
 
     const [checkIns, total] = await Promise.all([
       prisma.checkIn.findMany({
         where: { userId },
         skip,
-        take: Number(limit),
+        take: Math.min(100, Math.max(1, Number(limit))),
         orderBy: { createdAt: 'desc' },
         include: {
           event: { select: eventSelect },
@@ -105,7 +105,7 @@ router.get('/event/:eventId', requireAuth, async (req: AuthRequest, res, next) =
     const userId = req.user!.dbUser.id
     const { eventId } = req.params
     const { page = '1', limit = '20' } = req.query
-    const skip = (Number(page) - 1) * Number(limit)
+    const skip = (Math.max(1, Number(page)) - 1) * Math.min(100, Math.max(1, Number(limit)))
 
     // Verify the caller is the event host or a confirmed guest
     const event = await prisma.event.findUnique({
@@ -124,7 +124,7 @@ router.get('/event/:eventId', requireAuth, async (req: AuthRequest, res, next) =
       prisma.checkIn.findMany({
         where: { eventId },
         skip,
-        take: Number(limit),
+        take: Math.min(100, Math.max(1, Number(limit))),
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: userSelect },

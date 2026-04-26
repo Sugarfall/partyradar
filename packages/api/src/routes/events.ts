@@ -15,6 +15,7 @@ import { dedupeEvents } from '../lib/dedupeEvents'
 // triggered a synchronous 54KB TypeScript transformation that froze the
 // event loop, causing the server to appear dead / zombie for 30+ seconds).
 import { syncExternalEvents } from '../lib/eventSync'
+import { moderateText, recordViolation } from '../lib/moderation'
 
 const router = Router()
 
@@ -521,6 +522,26 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     // endsAt must be after startsAt if provided
     if (body.endsAt && new Date(body.endsAt) <= new Date(body.startsAt)) {
       throw new AppError('Event end time must be after the start time', 400)
+    }
+
+    // Content moderation — check name + description for illegal/hateful content
+    const textToCheck = [body.name, body.description, body.houseRules].filter(Boolean).join(' ')
+    const modResult = await moderateText(textToCheck)
+    if (!modResult.passed) {
+      await recordViolation({
+        userId: user.id,
+        contentType: 'event',
+        content: textToCheck.slice(0, 500),
+        flagType: modResult.flagType ?? 'UNKNOWN',
+        confidence: modResult.confidence ?? 1,
+        reason: modResult.reason ?? 'Content policy violation',
+        action: 'BLOCKED',
+      }).catch(() => {})  // non-blocking — don't fail the request if logging fails
+      throw new AppError(
+        'Event content violates our community guidelines. Please review your event name and description.',
+        422,
+        'CONTENT_VIOLATION',
+      )
     }
 
     const event = await prisma.event.create({

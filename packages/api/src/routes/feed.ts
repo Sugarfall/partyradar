@@ -14,8 +14,8 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
     const { page = '1', limit = '20' } = req.query
-    const pageNum = Number(page)
-    const limitNum = Number(limit)
+    const pageNum = Math.max(1, Number(page))
+    const limitNum = Math.min(50, Math.max(1, Number(limit)))
 
     // Get IDs of users the current user follows
     const followingRows = await prisma.follow.findMany({

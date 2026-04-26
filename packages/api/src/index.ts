@@ -280,6 +280,8 @@ io.on('connection', (socket) => {
       io.to(room).emit('message', outgoing)
     } catch (err) {
       console.error('[Socket] Error saving message:', err)
+      // Notify the sender their message failed — prevents silent loss
+      socket.emit('message-error', { text, reason: 'Failed to send message. Please try again.' })
     }
   })
 

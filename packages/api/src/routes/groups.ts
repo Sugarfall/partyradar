@@ -20,7 +20,14 @@ function inviteSecret(): string {
   // itself falls back to an ephemeral UUID in dev — acceptable there). In production,
   // operators should set one of these to a stable value so invite tokens survive restarts.
   const s = process.env['GROUP_INVITE_SECRET'] ?? process.env['INTERNAL_API_KEY']
-  if (!s) return 'dev-group-invite-secret-change-in-prod'
+  if (!s) {
+    // Should never reach production — INTERNAL_API_KEY is generated at startup.
+    // Log loudly so operators catch this misconfiguration immediately.
+    if (process.env['NODE_ENV'] === 'production') {
+      console.error('[groups] SECURITY: GROUP_INVITE_SECRET and INTERNAL_API_KEY are both unset — invite tokens are using a public fallback secret and can be forged. Set GROUP_INVITE_SECRET immediately.')
+    }
+    return 'dev-group-invite-secret-change-in-prod'
+  }
   return s
 }
 

@@ -1355,7 +1355,9 @@ router.post('/reclassify-club-events', requireAdmin, async (_req, res, next) => 
 router.get('/moderation-logs', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
   try {
     const { page = '1', limit = '50', status } = req.query
-    const skip = (Number(page) - 1) * Number(limit)
+    const pageN  = Math.max(1, Number(page))
+    const limitN = Math.min(200, Math.max(1, Number(limit)))
+    const skip = (pageN - 1) * limitN
 
     const where: Record<string, unknown> = {}
     if (status === 'pending') where['reviewedAt'] = null
@@ -1365,7 +1367,7 @@ router.get('/moderation-logs', requireAuth, requireAppRole('MODERATOR'), async (
       (prisma as any).moderationLog.findMany({
         where,
         skip,
-        take: Number(limit),
+        take: limitN,
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: { id: true, username: true, displayName: true, photoUrl: true, contentStrikes: true, isBanned: true } },
@@ -1374,7 +1376,7 @@ router.get('/moderation-logs', requireAuth, requireAppRole('MODERATOR'), async (
       (prisma as any).moderationLog.count({ where }),
     ])
 
-    res.json({ data: logs, total, page: Number(page), limit: Number(limit), hasMore: skip + logs.length < total })
+    res.json({ data: logs, total, page: pageN, limit: limitN, hasMore: skip + logs.length < total })
   } catch (err) { next(err) }
 })
 
@@ -1398,7 +1400,9 @@ router.put('/moderation-logs/:id/review', requireAuth, requireAppRole('MODERATOR
 router.get('/content-reports', requireAuth, requireAppRole('MODERATOR'), async (req: AuthRequest, res, next) => {
   try {
     const { page = '1', limit = '50', status = 'PENDING' } = req.query
-    const skip = (Number(page) - 1) * Number(limit)
+    const pageN  = Math.max(1, Number(page))
+    const limitN = Math.min(200, Math.max(1, Number(limit)))
+    const skip = (pageN - 1) * limitN
 
     const where: Record<string, unknown> = {}
     if (status && status !== 'all') where['status'] = status
@@ -1407,7 +1411,7 @@ router.get('/content-reports', requireAuth, requireAppRole('MODERATOR'), async (
       (prisma as any).contentReport.findMany({
         where,
         skip,
-        take: Number(limit),
+        take: limitN,
         orderBy: { createdAt: 'desc' },
         include: {
           reporter: { select: { id: true, username: true, displayName: true, photoUrl: true } },
@@ -1416,7 +1420,7 @@ router.get('/content-reports', requireAuth, requireAppRole('MODERATOR'), async (
       (prisma as any).contentReport.count({ where }),
     ])
 
-    res.json({ data: reports, total, page: Number(page), limit: Number(limit), hasMore: skip + reports.length < total })
+    res.json({ data: reports, total, page: pageN, limit: limitN, hasMore: skip + reports.length < total })
   } catch (err) { next(err) }
 })
 

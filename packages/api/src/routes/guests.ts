@@ -15,20 +15,29 @@ const userSelect = {
   photoUrl: true, ageVerified: true, alcoholFriendly: true, subscriptionTier: true,
 }
 
-/** GET /api/events/:id/guests — host only */
+/** GET /api/events/:id/guests — host only, paginated */
 router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const event = await prisma.event.findUnique({ where: { id: req.params['id'] } })
     if (!event) throw new AppError('Event not found', 404)
     if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
-    const guests = await prisma.eventGuest.findMany({
-      where: { eventId: event.id },
-      include: { user: { select: userSelect } },
-      orderBy: { invitedAt: 'desc' },
-    })
+    const page  = Math.max(1, Number(req.query['page']  ?? 1))
+    const limit = Math.min(200, Math.max(1, Number(req.query['limit'] ?? 100)))
+    const skip  = (page - 1) * limit
 
-    res.json({ data: guests })
+    const [guests, total] = await Promise.all([
+      prisma.eventGuest.findMany({
+        where: { eventId: event.id },
+        include: { user: { select: userSelect } },
+        orderBy: { invitedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.eventGuest.count({ where: { eventId: event.id } }),
+    ])
+
+    res.json({ data: guests, total, page, limit, hasMore: skip + guests.length < total })
   } catch (err) {
     next(err)
   }
