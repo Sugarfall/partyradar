@@ -63,22 +63,38 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     // Support both ?q= (new search bar) and ?search= (existing filters panel)
     const search = q ?? searchParam
 
-    // Include events that are currently in progress (started up to 8 h ago) as well as future ones
-    const eightHoursAgo = new Date(Date.now() - 8 * 3_600_000)
+    const now = new Date()
+    // Events without an explicit endsAt use a 5h window from startsAt — this matches
+    // the longest default in eventTiming.ts (CLUB_NIGHT / HOME_PARTY). The frontend
+    // trims further per type using effectiveEndMs so pubs don't show "LIVE" at 4 AM.
+    const fiveHoursAgo = new Date(Date.now() - 5 * 3_600_000)
 
     const where: Record<string, unknown> = {
       isPublished: true,
       isCancelled: false,
-      startsAt: { gte: eightHoursAgo },
+      // Use nested OR so ended events don't leak through regardless of their startsAt.
+      AND: [
+        {
+          OR: [
+            { startsAt: { gte: now } },                           // future events
+            { endsAt: { gte: now } },                             // live with explicit end time
+            { endsAt: null, startsAt: { gte: fiveHoursAgo } },   // live without end (5h max window)
+          ],
+        },
+      ],
     }
 
     if (tonight === 'true') {
-      // Use the same 8-hour lookback as the base filter so in-progress events
-      // (e.g. a concert that started at 7pm viewed at 9pm) still show up.
-      const tonightStart = new Date(Date.now() - 8 * 3_600_000)
       const midnight = new Date()
       midnight.setHours(23, 59, 59, 999)
-      where['startsAt'] = { gte: tonightStart, lte: midnight }
+      // Tonight: only events starting today, that are live or upcoming
+      ;(where['AND'] as any[])[0] = {
+        OR: [
+          { startsAt: { gte: now, lte: midnight } },
+          { endsAt: { gte: now }, startsAt: { lte: midnight } },
+          { endsAt: null, startsAt: { gte: fiveHoursAgo, lte: midnight } },
+        ],
+      }
     }
 
     if (type) {
@@ -92,13 +108,16 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       }
     }
     if (search) {
-      where['OR'] = [
-        { name:          { contains: search as string, mode: 'insensitive' } },
-        { description:   { contains: search as string, mode: 'insensitive' } },
-        { address:       { contains: search as string, mode: 'insensitive' } },
-        { neighbourhood: { contains: search as string, mode: 'insensitive' } },
-        { type:          { contains: search as string, mode: 'insensitive' } },
-      ]
+      // Push search into AND so it doesn't overwrite the timing OR filter above
+      ;(where['AND'] as any[]).push({
+        OR: [
+          { name:          { contains: search as string, mode: 'insensitive' } },
+          { description:   { contains: search as string, mode: 'insensitive' } },
+          { address:       { contains: search as string, mode: 'insensitive' } },
+          { neighbourhood: { contains: search as string, mode: 'insensitive' } },
+          { type:          { contains: search as string, mode: 'insensitive' } },
+        ],
+      })
     }
 
     // Filter by specific venue or host

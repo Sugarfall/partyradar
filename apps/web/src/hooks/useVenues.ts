@@ -109,7 +109,14 @@ export function useVenueDiscover() {
       const resultSource = inner?.source ?? 'database'
 
       setVenues(resultVenues)
-      setSource(resultSource)   // always set source so we know a search was done
+
+      // Only mark source as non-null (which suppresses the static Glasgow fallback)
+      // when we actually got results OR when Google confirmed there's genuinely nothing here.
+      // If source is 'database' and we got 0 results, it means no Google key is configured
+      // and the DB has no venues for this area — keep source null so the static fallback shows.
+      if (resultVenues.length > 0 || resultSource === 'google' || resultSource === 'google_places') {
+        setSource(resultSource)
+      }
 
       if (resultVenues.length > 0) {
         saveCache({ venues: resultVenues, source: resultSource, lat, lng, radius, ts: Date.now() })

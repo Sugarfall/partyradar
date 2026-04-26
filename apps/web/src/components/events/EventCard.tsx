@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Calendar, MapPin, Users, Star, Lock, ExternalLink } from 'lucide-react'
 import type { Event } from '@partyradar/shared'
 import { formatPrice } from '@/lib/currency'
+import { effectiveEndMs } from '@/lib/eventTiming'
 
 const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   skiddle:      { label: 'Skiddle',      color: '#e91e63' },
@@ -30,12 +31,22 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-function useCountdown(startsAt: string) {
+function useCountdown(startsAt: string, endsAt?: string | null, type?: string | null) {
   const [label, setLabel] = useState('')
   useEffect(() => {
     function calc() {
-      const diff = new Date(startsAt).getTime() - Date.now()
-      if (diff <= 0) { setLabel('Now'); return }
+      const nowMs   = Date.now()
+      const startMs = new Date(startsAt).getTime()
+      const endMs   = effectiveEndMs({ startsAt, endsAt, type })
+
+      // Event has ended — hide the badge entirely
+      if (nowMs > endMs) { setLabel(''); return }
+
+      // Event is happening right now
+      if (nowMs >= startMs) { setLabel('Now'); return }
+
+      // Event is in the future — countdown to start
+      const diff = startMs - nowMs
       const h = Math.floor(diff / 3600000)
       const m = Math.floor((diff % 3600000) / 60000)
       if (h > 48) setLabel('')
@@ -45,7 +56,7 @@ function useCountdown(startsAt: string) {
     calc()
     const id = setInterval(calc, 60000)
     return () => clearInterval(id)
-  }, [startsAt])
+  }, [startsAt, endsAt, type])
   return label
 }
 
@@ -58,7 +69,7 @@ interface EventCardProps {
 export function EventCard({ event, compact = false, currency }: EventCardProps) {
   const isFree = (event.price ?? 0) === 0
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
-  const countdown = useCountdown(event.startsAt)
+  const countdown = useCountdown(event.startsAt, (event as any).endsAt, event.type)
   const showCountdown = countdown && (event as any).host?.subscriptionTier !== 'FREE'
 
   return (
