@@ -938,9 +938,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 function DjRequestPanel({
-  eventId, isHost, userTier,
+  eventId, isHost, userTier, alwaysOpen,
 }: {
-  eventId: string; isHost: boolean; userTier?: string | null
+  eventId: string; isHost: boolean; userTier?: string | null; alwaysOpen?: boolean
 }) {
   const [open, setOpen]             = useState(false)
   const [requests, setRequests]     = useState<DjReqEntry[]>([])
@@ -956,15 +956,16 @@ function DjRequestPanel({
 
   const tier     = getTier(userTier)
   const isFree   = !tier.canRequestDJ // FREE = must pay
+  const isOpen   = alwaysOpen || open
 
   useEffect(() => {
-    if (!open) return
+    if (!isOpen) return
     setLoading(true)
     api.get<{ data: DjReqEntry[] }>(`/events/${eventId}/dj-requests`)
       .then(r => setRequests(r.data ?? []))
       .catch(silent('events/[id]'))
       .finally(() => setLoading(false))
-  }, [open, eventId])
+  }, [isOpen, eventId])
 
   async function handleSubmit() {
     if (!song.trim()) return
@@ -1010,42 +1011,44 @@ function DjRequestPanel({
   const pendingCount = requests.filter(r => r.status === 'PENDING').length
 
   return (
-    <div className="rounded-xl overflow-hidden mb-6" style={{ border: '1px solid rgba(168,85,247,0.18)' }}>
-      {/* Header */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 transition-all"
-        style={{ background: 'rgba(168,85,247,0.03)' }}>
-        <div className="flex items-center gap-2">
-          <Music2 size={12} style={{ color: 'rgba(168,85,247,0.6)' }} />
-          <span className="text-xs font-black tracking-widest" style={{ color: '#e0f2fe' }}>REQUEST A SONG</span>
-          {pendingCount > 0 && (
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.25)', color: 'rgba(168,85,247,0.8)' }}>
-              {pendingCount}
-            </span>
-          )}
-          {isFree && (
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.2)', color: 'rgba(255,214,0,0.7)' }}>
-              £1 / REQUEST
-            </span>
-          )}
-          {!isFree && (
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', color: 'rgba(0,255,136,0.7)' }}>
-              FREE WITH PLAN
-            </span>
-          )}
-        </div>
-        {open
-          ? <ChevronUp size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
-          : <ChevronDown size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
-        }
-      </button>
+    <div className={alwaysOpen ? '' : 'rounded-xl overflow-hidden mb-6'} style={alwaysOpen ? {} : { border: '1px solid rgba(168,85,247,0.18)' }}>
+      {/* Collapsible header — hidden when rendered inside a tab (alwaysOpen) */}
+      {!alwaysOpen && (
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 transition-all"
+          style={{ background: 'rgba(168,85,247,0.03)' }}>
+          <div className="flex items-center gap-2">
+            <Music2 size={12} style={{ color: 'rgba(168,85,247,0.6)' }} />
+            <span className="text-xs font-black tracking-widest" style={{ color: '#e0f2fe' }}>REQUEST A SONG</span>
+            {pendingCount > 0 && (
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.25)', color: 'rgba(168,85,247,0.8)' }}>
+                {pendingCount}
+              </span>
+            )}
+            {isFree && (
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.2)', color: 'rgba(255,214,0,0.7)' }}>
+                £1 / REQUEST
+              </span>
+            )}
+            {!isFree && (
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', color: 'rgba(0,255,136,0.7)' }}>
+                FREE WITH PLAN
+              </span>
+            )}
+          </div>
+          {open
+            ? <ChevronUp size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
+            : <ChevronDown size={14} style={{ color: 'rgba(168,85,247,0.4)' }} />
+          }
+        </button>
+      )}
 
-      {open && (
-        <div className="p-4 space-y-4" style={{ borderTop: '1px solid rgba(168,85,247,0.1)' }}>
+      {isOpen && (
+        <div className="p-4 space-y-4" style={alwaysOpen ? {} : { borderTop: '1px solid rgba(168,85,247,0.1)' }}>
 
           {/* Submit form */}
           <div className="space-y-2.5">
@@ -1261,6 +1264,7 @@ export default function EventDetailPage() {
   const [cancelLoading, setCancelLoading] = useState(false)
   const [publishLoading, setPublishLoading] = useState(false)
   const [djToggleLoading, setDjToggleLoading] = useState(false)
+  const [chatTab, setChatTab] = useState<'chat' | 'dj'>('chat')
   const [friendsGoing, setFriendsGoing] = useState<{ count: number; friends: Array<{ id: string; displayName: string; photoUrl: string | null }> }>({ count: 0, friends: [] })
   const [msgOpen, setMsgOpen] = useState(false)
   const [msgText, setMsgText] = useState('')
@@ -1951,15 +1955,6 @@ export default function EventDetailPage() {
         {/* ── Highlights of the Night ── */}
         <HighlightsOfTheNight event={event} color={tc.color} />
 
-        {/* ── DJ Song Requests — shown when host has enabled it ── */}
-        {event.djRequestsEnabled && (
-          <DjRequestPanel
-            eventId={event.id}
-            isHost={isHost}
-            userTier={dbUser?.subscriptionTier}
-          />
-        )}
-
         {/* ── Venue Community Chat ── */}
         {(event as any).venue && (
           <div className="mb-6 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,214,0,0.15)' }}>
@@ -2467,9 +2462,48 @@ export default function EventDetailPage() {
               </>
             )}
 
-            {/* Live chat */}
-            <div className="mt-1.5 flex justify-center">
-              <EventChat eventId={event.id} eventName={event.name} hostId={event.hostId} hostName={event.host.displayName} />
+            {/* Live chat + DJ Requests tabs */}
+            <div className="mt-1.5">
+              {/* Tab switcher */}
+              <div className="flex items-center gap-1 px-1 mb-2">
+                <button
+                  onClick={() => setChatTab('chat')}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
+                  style={{
+                    background: chatTab === 'chat' ? 'rgba(0,229,255,0.1)' : 'transparent',
+                    border: chatTab === 'chat' ? '1px solid rgba(0,229,255,0.25)' : '1px solid transparent',
+                    color: chatTab === 'chat' ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+                  }}>
+                  <MessageCircle size={10} />
+                  LIVE CHAT
+                </button>
+                {event.djRequestsEnabled && (
+                  <button
+                    onClick={() => setChatTab('dj')}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
+                    style={{
+                      background: chatTab === 'dj' ? 'rgba(168,85,247,0.1)' : 'transparent',
+                      border: chatTab === 'dj' ? '1px solid rgba(168,85,247,0.3)' : '1px solid transparent',
+                      color: chatTab === 'dj' ? '#a855f7' : 'rgba(74,96,128,0.5)',
+                    }}>
+                    <Music2 size={10} />
+                    DJ REQUESTS
+                  </button>
+                )}
+              </div>
+              {/* Tab content */}
+              {chatTab === 'chat' || !event.djRequestsEnabled ? (
+                <div className="flex justify-center">
+                  <EventChat eventId={event.id} eventName={event.name} hostId={event.hostId} hostName={event.host.displayName} />
+                </div>
+              ) : (
+                <DjRequestPanel
+                  eventId={event.id}
+                  isHost={isHost}
+                  userTier={dbUser?.subscriptionTier}
+                  alwaysOpen
+                />
+              )}
             </div>
           </div>
         </div>

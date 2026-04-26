@@ -892,13 +892,13 @@ router.get('/:groupId/pub-crawl', optionalAuth, async (req: AuthRequest, res, ne
 
     // All-time leaderboard across all crawls for this group
     const allTimeCheckins = await prisma.pubCrawlCheckIn.groupBy({
-      by: ['userId'],
+      by: ['userId'] as const,
       where: { stop: { crawl: { groupId } } },
       _sum: { score: true },
       _count: { id: true },
-      orderBy: { _sum: { score: 'desc' } },
+      orderBy: { _sum: { score: 'desc' as const } },
       take: 10,
-    }) as Array<{ userId: string; _sum: { score: number | null }; _count: { id: number } }>
+    }) as unknown as Array<{ userId: string; _sum: { score: number | null }; _count: { id: number } }>
     const leaderboardUsers = await prisma.user.findMany({
       where: { id: { in: allTimeCheckins.map(c => c.userId) } },
       select: { id: true, displayName: true, username: true, photoUrl: true },
