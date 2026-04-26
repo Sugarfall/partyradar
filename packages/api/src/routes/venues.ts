@@ -230,9 +230,10 @@ const UNSPLASH_BY_TYPE: Record<string, string> = {
 }
 
 /**
- * GET /api/venues/:id/photo — server-side Google Places photo proxy.
- * Fetches the venue photo from Google using the server-side API key (never exposed to clients),
- * caches the response for 24 h, and falls back to a venue-type Unsplash image if Google fails.
+ * GET /api/venues/:id/photo — venue photo endpoint.
+ * First tries to stream the real Google Places photo (key stays server-side, never exposed).
+ * Falls back immediately to a venue-type Unsplash image if Google fails or returns quickly.
+ * Uses a short 2 s Google timeout so the fallback fires fast instead of hanging.
  */
 router.get('/:id/photo', async (req, res, next) => {
   try {
@@ -246,18 +247,18 @@ router.get('/:id/photo', async (req, res, next) => {
 
     if (!venue) return res.status(404).end()
 
-    // Try proxying the Google Places photo (key stays server-side)
+    // Try Google Places photo — short 2 s timeout so failures resolve quickly
     if (venue.photoUrl && GOOGLE_API_KEY) {
       let photoRef: string | null = null
       try {
         photoRef = new URL(venue.photoUrl).searchParams.get('photo_reference')
-      } catch { /* not a parseable URL */ }
+      } catch { /* not a valid URL */ }
 
       if (photoRef) {
         const googleUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${w}&photo_reference=${photoRef}&key=${GOOGLE_API_KEY}`
         try {
           const ctrl = new AbortController()
-          const timer = setTimeout(() => ctrl.abort(), 7000)
+          const timer = setTimeout(() => ctrl.abort(), 2000) // 2 s max — fail fast
           const googleResp = await fetch(googleUrl, { signal: ctrl.signal })
           clearTimeout(timer)
           if (googleResp.ok) {
@@ -266,15 +267,31 @@ router.get('/:id/photo', async (req, res, next) => {
             res.set('Content-Type', ct)
             return res.send(Buffer.from(await googleResp.arrayBuffer()))
           }
-        } catch (err) {
-          console.warn(`[photo-proxy] Google fetch failed for venue ${id}:`, (err as Error).message)
+        } catch {
+          // Google timed out or rejected — fall through to Unsplash immediately
         }
       }
     }
 
-    // Fallback: redirect to a venue-type Unsplash image (no API key required)
+    // Serve Unsplash image by venue type — fetch server-side so the browser gets
+    // a direct image response (no second round-trip redirect for the client)
     const photoId = UNSPLASH_BY_TYPE[venue.type ?? 'BAR'] ?? UNSPLASH_BY_TYPE['BAR']!
-    return res.redirect(302, `https://images.unsplash.com/${photoId}?w=${w}&h=${Math.round(w * 0.625)}&fit=crop&auto=format&q=80`)
+    const unsplashUrl = `https://images.unsplash.com/${photoId}?w=${w}&h=${Math.round(w * 0.625)}&fit=crop&auto=format&q=80`
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 5000)
+      const unsplashResp = await fetch(unsplashUrl, { signal: ctrl.signal })
+      clearTimeout(timer)
+      if (unsplashResp.ok) {
+        const ct = unsplashResp.headers.get('content-type') || 'image/jpeg'
+        res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+        res.set('Content-Type', ct)
+        return res.send(Buffer.from(await unsplashResp.arrayBuffer()))
+      }
+    } catch { /* fall through to redirect */ }
+
+    // Last resort: simple redirect (client makes second request to Unsplash)
+    return res.redirect(302, unsplashUrl)
   } catch (err) { next(err) }
 })
 
