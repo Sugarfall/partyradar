@@ -69,8 +69,8 @@ interface EventCardProps {
 export function EventCard({ event, compact = false, currency }: EventCardProps) {
   const isFree = (event.price ?? 0) === 0
   const color = TYPE_COLORS[event.type] ?? 'var(--accent)'
-  const countdown = useCountdown(event.startsAt, (event as any).endsAt, event.type)
-  const showCountdown = countdown && (event as any).host?.subscriptionTier !== 'FREE'
+  const countdown = useCountdown(event.startsAt, event.endsAt, event.type)
+  const showCountdown = countdown && event.host?.subscriptionTier !== 'FREE'
 
   return (
     <Link href={`/events/${event.id}`}>
@@ -212,10 +212,10 @@ export function EventCard({ event, compact = false, currency }: EventCardProps) 
               {formatPrice(event.price, currency)}
             </span>
             <span className="text-[10px] flex items-center gap-2" style={{ color: 'rgba(74,96,128,0.7)' }}>
-              {(event as any).savesCount > 0 && (
+              {(event.savesCount ?? 0) > 0 && (
                 <span className="flex items-center gap-0.5">
                   <Star size={8} />
-                  {(event as any).savesCount}
+                  {event.savesCount}
                 </span>
               )}
               {(event.guestCount ?? 0) > 0 && (

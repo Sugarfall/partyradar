@@ -80,13 +80,12 @@ export async function deleteCloudinaryAsset(url: string, resourceType: 'image' |
 }
 
 export async function getSignedUploadUrl(folder: string, transformation?: string) {
+  const apiSecret = process.env['CLOUDINARY_API_SECRET']
+  if (!apiSecret) throw new Error('Cloudinary not configured: CLOUDINARY_API_SECRET is missing')
   const timestamp = Math.round(Date.now() / 1000)
   const params: Record<string, string | number> = { timestamp, folder }
   if (transformation) params['transformation'] = transformation
-  const signature = cloudinary.utils.api_sign_request(
-    params,
-    process.env['CLOUDINARY_API_SECRET']!
-  )
+  const signature = cloudinary.utils.api_sign_request(params, apiSecret)
   return {
     timestamp,
     signature,

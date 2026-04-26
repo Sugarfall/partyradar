@@ -127,7 +127,9 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     // Geo filter
     if (lat && lng) {
-      const latN = Number(lat), lngN = Number(lng), radN = Number(radius)
+      const latN = Number(lat), lngN = Number(lng)
+      // Clamp radius to 1–500 km to prevent abuse / runaway DB scans
+      const radN = Math.min(Math.max(Number(radius), 1), 500)
       // Bug 13 fix: 111 km per degree latitude (was 69, which is miles — radius is in km)
       const latDelta = radN / 111
       const lngDelta = radN / (111 * Math.cos((latN * Math.PI) / 180))
@@ -364,7 +366,11 @@ router.post('/ai-sync', requireAuth, async (req: AuthRequest, res, next) => {
       throw new AppError('city, lat and lng are required', 400)
     }
 
-    const cityKey = String(city).toLowerCase().trim()
+    const cityKey = String(city).trim().toLowerCase().slice(0, 100)
+    // Reject city names containing special characters to prevent prompt injection / log spam
+    if (!/^[a-z0-9\s\-',\.]+$/.test(cityKey)) {
+      throw new AppError('Invalid city name — letters, numbers and basic punctuation only', 400)
+    }
     const isAdmin = req.user!.dbUser.isAdmin
     const forceOverride = force === true && isAdmin
 

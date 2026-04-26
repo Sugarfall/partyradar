@@ -412,7 +412,8 @@ async function syncTicketmaster(
         },
       })
       imported++
-    } catch {
+    } catch (err: any) {
+      if (err?.code !== 'P2002') console.warn('[sync:ticketmaster] import error:', err?.message ?? err)
       skipped++
     }
   }
@@ -563,7 +564,8 @@ async function syncSkiddle(
         },
       })
       imported++
-    } catch {
+    } catch (err: any) {
+      if (err?.code !== 'P2002') console.warn('[sync:skiddle] import error:', err?.message ?? err)
       skipped++
     }
   }
@@ -714,7 +716,8 @@ async function syncEventbrite(
         },
       })
       imported++
-    } catch {
+    } catch (err: any) {
+      if (err?.code !== 'P2002') console.warn('[sync:eventbrite] import error:', err?.message ?? err)
       skipped++
     }
   }
@@ -989,7 +992,8 @@ async function syncSerpApi(
         },
       })
       imported++
-    } catch {
+    } catch (err: any) {
+      if (err?.code !== 'P2002') console.warn('[sync:serpapi] import error:', err?.message ?? err)
       skipped++
     }
   }
@@ -1184,7 +1188,8 @@ async function syncPerplexity(
         },
       })
       imported++
-    } catch {
+    } catch (err: any) {
+      if (err?.code !== 'P2002') console.warn('[sync:perplexity] import error:', err?.message ?? err)
       skipped++
     }
   }
@@ -1240,8 +1245,8 @@ export async function syncExternalEvents(
       totalImported += result.imported
       totalSkipped += result.skipped
       sources.push('ticketmaster')
-    } catch {
-      // source failure is non-fatal
+    } catch (err) {
+      console.error('[sync:ticketmaster] source sync failed:', err)
     }
   }
 
@@ -1252,8 +1257,8 @@ export async function syncExternalEvents(
       totalImported += result.imported
       totalSkipped += result.skipped
       sources.push('skiddle')
-    } catch {
-      // source failure is non-fatal
+    } catch (err) {
+      console.error('[sync:skiddle] source sync failed:', err)
     }
   }
 
@@ -1264,8 +1269,8 @@ export async function syncExternalEvents(
       totalImported += result.imported
       totalSkipped += result.skipped
       sources.push('eventbrite')
-    } catch {
-      // source failure is non-fatal
+    } catch (err) {
+      console.error('[sync:eventbrite] source sync failed:', err)
     }
   }
 
@@ -1276,8 +1281,8 @@ export async function syncExternalEvents(
       totalImported += result.imported
       totalSkipped += result.skipped
       sources.push('serpapi')
-    } catch {
-      // source failure is non-fatal
+    } catch (err) {
+      console.error('[sync:serpapi] source sync failed:', err)
     }
   }
 
@@ -1288,8 +1293,8 @@ export async function syncExternalEvents(
       totalImported += result.imported
       totalSkipped += result.skipped
       sources.push('perplexity')
-    } catch {
-      // source failure is non-fatal
+    } catch (err) {
+      console.error('[sync:perplexity] source sync failed:', err)
     }
   }
 

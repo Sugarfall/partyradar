@@ -36,15 +36,20 @@ export interface User {
   displayName: string
   bio?: string | null
   photoUrl?: string | null
+  profileBgImage?: string | null
   gender?: Gender | null
   ageVerified: boolean
   alcoholFriendly: boolean
   showAlcoholEvents: boolean
+  showInNearby?: boolean
+  showProfileViews?: boolean
+  allowGoOutFromStrangers?: boolean
   phoneNumber?: string | null
   phoneVerified: boolean
   profileBg?: string | null
   themeColor?: string | null
   themeName?: string | null
+  notifPrefs?: Record<string, boolean> | null
   socialScore: number
   lastLat?: number | null
   lastLng?: number | null
@@ -54,6 +59,8 @@ export interface User {
   appRole?: AppRole
   isAdmin?: boolean
   stripeCustomerId?: string | null
+  stripeConnectId?: string | null
+  stripeConnectChargesEnabled?: boolean
   createdAt: string
 }
 
@@ -117,7 +124,10 @@ export interface Event {
   accentColor?: string | null
   hostRating?: number | null
   guestCount: number
+  savesCount?: number
   genderRatio?: GenderRatio | null
+  venueId?: string | null
+  venue?: { id: string; name: string; address: string; lat: number; lng: number } | null
   createdAt: string
   /** External sync fields */
   externalSource?: string | null

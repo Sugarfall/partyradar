@@ -5,12 +5,13 @@ import { fetcher, api } from '@/lib/api'
 import type { Subscription } from '@partyradar/shared'
 
 export function useSubscription() {
-  const { data, isLoading, mutate } = useSWR<{ data: Subscription | null }>(
+  const { data, error, isLoading, mutate } = useSWR<{ data: Subscription | null }>(
     '/subscriptions/status',
-    fetcher
+    fetcher,
+    { shouldRetryOnError: true, errorRetryCount: 2, errorRetryInterval: 3000 }
   )
 
-  return { subscription: data?.data, isLoading, mutate }
+  return { subscription: data?.data, isLoading, error: error ?? null, mutate }
 }
 
 export async function checkoutSubscription(tier: 'BASIC' | 'PRO' | 'PREMIUM') {

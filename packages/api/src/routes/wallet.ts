@@ -299,21 +299,28 @@ router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {
         },
       })
 
+      // Record platform revenue and partnership totals inside the transaction so
+      // the accounting rows are always consistent with the wallet debit — no gaps
+      // if the process crashes between the transaction commit and the revenue write.
+      if (platformCut > 0) {
+        await tx.platformRevenue.create({
+          data: {
+            source: 'venue_commission',
+            amount: platformCut,
+            referenceId: venueId,
+            description: `${commissionRate}% commission on £${amount} wallet spend`,
+          },
+        })
+        if (partnership) {
+          await tx.venuePartnership.update({
+            where: { venueId },
+            data: { totalRevenue: { increment: amount }, totalOrders: { increment: 1 } },
+          })
+        }
+      }
+
       return { updated: u, drinksEarned: drinks, newPoints: updatedPoints }
     })
-
-    // Record platform revenue
-    if (platformCut > 0) {
-      await recordPlatformRevenue('venue_commission', platformCut, venueId, `${commissionRate}% commission on £${amount} wallet spend`)
-
-      // Update partnership totals
-      if (partnership) {
-        await prisma.venuePartnership.update({
-          where: { venueId },
-          data: { totalRevenue: { increment: amount }, totalOrders: { increment: 1 } },
-        })
-      }
-    }
 
     res.json({
       data: {
