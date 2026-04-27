@@ -221,17 +221,25 @@ export default function GlobeLanding() {
   // ── Globe config ─────────────────────────────────────────────────────────
   const globeProps = {
     ref: globeRef,
-    onGlobeReady: () => setGlobeReady(true),
+    onGlobeReady: () => {
+      setGlobeReady(true)
+      // Set device pixel ratio on the underlying WebGL renderer — this is the
+      // correct API for react-globe.gl (pixelRatio is not a React prop).
+      // Caps at 2× to keep GPU memory reasonable on 3× phones.
+      if (globeRef.current) {
+        try {
+          const renderer = (globeRef.current as any).renderer?.()
+          if (renderer?.setPixelRatio) {
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+          }
+        } catch { /* non-critical */ }
+      }
+    },
     width: typeof window !== 'undefined' ? window.innerWidth : 1200,
     height: typeof window !== 'undefined' ? window.innerHeight : 800,
 
-    // Match the device's physical pixel density — fixes pixelation on retina/2x/3x phones
-    pixelRatio: typeof window !== 'undefined' ? Math.min(window.devicePixelRatio, 2) : 1,
-    // Smooth WebGL edges
-    rendererConfig: { antialias: true, alpha: false },
-
-    // High-res NASA Black Marble night-earth (3600×1800 — ~3× the resolution of the old unpkg image)
-    globeImageUrl: 'https://eoimages.gsfc.nasa.gov/images/imagerecords/79000/79765/dnb_land_ocean_ice.2012.3600x1800.jpg',
+    // Earth textures from unpkg (same-origin CORS policy — always loads correctly)
+    globeImageUrl: 'https://unpkg.com/three-globe/example/img/earth-night.jpg',
     bumpImageUrl: 'https://unpkg.com/three-globe/example/img/earth-topology.png',
 
     // Starfield background
