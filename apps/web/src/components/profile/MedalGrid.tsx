@@ -15,7 +15,7 @@ interface Props {
   isMe?: boolean
 }
 
-// ── Catalogue — only used to show locked/unearned medals below earned ones ──
+// ── Catalogue — shown greyed-out below earned medals for discovery ───────────
 
 const CATALOGUE = [
   { slug: 'social-butterfly', name: 'Social Butterfly', icon: '🦋', hint: 'Gain followers on PartyRadar' },
@@ -45,11 +45,45 @@ const TIER_GLOW: Record<string, string> = {
 }
 const TIER_ORDER: Record<string, number> = { BRONZE: 0, SILVER: 1, GOLD: 2 }
 
-const HEX_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
-const W  = 46
-const H  = Math.round(W * 1.1547)   // ≈ 53 px  (proper hexagon ratio)
-const GAP = 6
-const COLS = 4
+// ── Honeycomb geometry ────────────────────────────────────────────────────────
+//
+//  Pointy-top hexagons. The clip-path uses the ratio H = W × (2/√3) ≈ W × 1.1547.
+//  Honeycomb packing:
+//    • Columns step by COL_STEP = W + GAP
+//    • Rows step by ROW_STEP ≈ H × 0.75  (rows overlap by 25 %)
+//    • Odd rows shift right by ROW_OFFSET = COL_STEP / 2
+//  Container width accounts for the extra half-step on offset rows.
+//  Container height is computed dynamically from the actual row count.
+
+const HEX_CLIP  = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
+const COLS      = 4
+const W         = 48                            // hex width  (px)
+const H         = Math.round(W * 1.1547)        // hex height (px) ≈ 55
+const GAP       = 3                             // gap between hexes
+const COL_STEP  = W + GAP                       // 51 px
+const ROW_STEP  = Math.round(H * 0.75)          // 41 px  — proper honeycomb overlap
+const ROW_OFFSET = Math.round(COL_STEP / 2)     // 26 px  — odd-row horizontal shift
+
+/** Pixel position of item at `idx` within the container. */
+function hexPos(idx: number) {
+  const row = Math.floor(idx / COLS)
+  const col = idx % COLS
+  return {
+    x: col * COL_STEP + (row % 2 === 1 ? ROW_OFFSET : 0),
+    y: row * ROW_STEP,
+  }
+}
+
+/** Container pixel size for `total` items. */
+function containerSize(total: number) {
+  const numRows = Math.ceil(total / COLS)
+  return {
+    // Width: even-row right edge + extra half-step for offset rows
+    w: (COLS - 1) * COL_STEP + W + ROW_OFFSET,
+    // Height: last row top + hex height
+    h: (numRows - 1) * ROW_STEP + H,
+  }
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -57,44 +91,45 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
   const [activeKey, setActiveKey] = useState<string | null>(null)
 
   // ── Build display list ───────────────────────────────────────────────────
-  // 1. Earned medals — sourced directly from the API (any slug, newest first)
-  //    De-duplicate by (slug, tier): keep highest tier per slug if awarded twice.
+
+  // 1. Earned medals — from API, newest first, any slug (custom ones included)
   const seenSlugTier = new Set<string>()
   const earnedItems = profileMedals
-    .slice()                                     // preserve original newest-first order
     .filter(um => {
-      const key = `${um.medal.slug}:${um.medal.tier}`
-      if (seenSlugTier.has(key)) return false
-      seenSlugTier.add(key)
+      const k = `${um.medal.slug}:${um.medal.tier}`
+      if (seenSlugTier.has(k)) return false
+      seenSlugTier.add(k)
       return true
     })
     .map(um => ({
-      key:     um.id,
-      slug:    um.medal.slug,
-      name:    um.medal.name,
-      icon:    um.medal.icon,
-      tier:    um.medal.tier,
-      earnedAt:um.earnedAt,
-      earned:  true,
-      hint:    null as string | null,
+      key:      um.id,
+      slug:     um.medal.slug,
+      name:     um.medal.name,
+      icon:     um.medal.icon,
+      tier:     um.medal.tier,
+      earnedAt: um.earnedAt,
+      earned:   true,
+      hint:     null as string | null,
     }))
 
-  // 2. Unearned catalogue medals (greyed out, for discovery)
+  // 2. Unearned catalogue medals — greyed out at the end
   const earnedSlugs = new Set(profileMedals.map(um => um.medal.slug))
   const unearnedItems = CATALOGUE
     .filter(def => !earnedSlugs.has(def.slug))
     .map(def => ({
-      key:     def.slug,
-      slug:    def.slug,
-      name:    def.name,
-      icon:    def.icon,
-      tier:    null as string | null,
-      earnedAt:null as string | null,
-      earned:  false,
-      hint:    def.hint,
+      key:      def.slug,
+      slug:     def.slug,
+      name:     def.name,
+      icon:     def.icon,
+      tier:     null as string | null,
+      earnedAt: null as string | null,
+      earned:   false,
+      hint:     def.hint,
     }))
 
   const allItems = [...earnedItems, ...unearnedItems]
+  const numRows  = Math.ceil(allItems.length / COLS)
+  const { w: cW, h: cH } = containerSize(allItems.length)
 
   return (
     <div
@@ -103,7 +138,7 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
       onClick={e => { if (e.currentTarget === e.target) setActiveKey(null) }}
     >
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 mb-3">
+      <div className="flex items-center justify-between px-4 mb-4">
         <div className="flex items-center gap-1.5">
           <span
             className="text-[10px] font-black tracking-widest"
@@ -129,25 +164,24 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
         )}
       </div>
 
-      {/* ── CSS grid — 4 columns, no absolute positioning → no overlap ── */}
+      {/* ── Honeycomb hex grid ─────────────────────────────────────────────
+           Each item is absolutely positioned within a fixed-size container.
+           Odd rows are shifted right by ROW_OFFSET (half a column step).
+           Container height is computed from the actual number of rows so
+           items never bleed outside or overlap each other.
+      ──────────────────────────────────────────────────────────────────── */}
       <div className="flex justify-center px-3">
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${COLS}, ${W}px)`,
-            gap: GAP,
-          }}
-        >
-          {allItems.map(item => {
-            const tc    = item.tier ? (TIER_COLOR[item.tier] ?? '#9EA0A5') : 'rgba(var(--accent-rgb),0.18)'
-            const tb    = item.tier ? (TIER_BG[item.tier]    ?? 'rgba(158,160,165,0.15)') : 'rgba(var(--accent-rgb),0.04)'
-            const tg    = item.tier ? TIER_GLOW[item.tier]   : undefined
-            const active = activeKey === item.key
-
-            // Tooltip direction: show above by default; if this is in the first
-            // row (index < COLS) show below so it doesn't clip off the top.
-            const idx        = allItems.indexOf(item)
-            const tipBelow   = idx < COLS
+        {/* overflow:visible so tooltips can spill outside the container */}
+        <div style={{ position: 'relative', width: cW, height: cH, overflow: 'visible' }}>
+          {allItems.map((item, idx) => {
+            const { x, y }  = hexPos(idx)
+            const row        = Math.floor(idx / COLS)
+            const tc         = item.tier ? (TIER_COLOR[item.tier] ?? '#9EA0A5') : 'rgba(var(--accent-rgb),0.18)'
+            const tb         = item.tier ? (TIER_BG[item.tier]    ?? 'rgba(158,160,165,0.15)') : 'rgba(var(--accent-rgb),0.04)'
+            const tg         = item.tier ? TIER_GLOW[item.tier]   : undefined
+            const active     = activeKey === item.key
+            // Show tooltip above for all rows except the first row
+            const tipBelow   = row === 0
             const tierLabel  = item.tier
               ? (TIER_ORDER[item.tier] === 2 ? 'GOLD — MAX TIER' : item.tier)
               : 'LOCKED'
@@ -156,12 +190,14 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
               <div
                 key={item.key}
                 style={{
-                  position:   'relative',
+                  position:   'absolute',
+                  left:       x,
+                  top:        y,
                   width:      W,
                   height:     H,
-                  opacity:    item.earned ? 1 : 0.3,
-                  cursor:     'pointer',
+                  opacity:    item.earned ? 1 : 0.28,
                   zIndex:     active ? 20 : 1,
+                  cursor:     'pointer',
                   transition: 'opacity 0.2s',
                 }}
                 onMouseEnter={() => setActiveKey(item.key)}
@@ -172,19 +208,20 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
                 {active && (
                   <div style={{
                     position:      'absolute',
-                    left:          '50%',
+                    left:          W / 2,
                     transform:     'translateX(-50%)',
                     ...(tipBelow
                       ? { top:    H + 8 }
                       : { bottom: H + 8 }),
                     width:         160,
                     background:    'rgba(7,7,26,0.97)',
-                    border:        `1px solid ${tc}50`,
+                    border:        `1px solid ${tc}55`,
                     borderRadius:  10,
                     padding:       '8px 10px',
                     pointerEvents: 'none',
-                    zIndex:        30,
-                    boxShadow:     '0 4px 24px rgba(0,0,0,0.65)',
+                    zIndex:        40,
+                    boxShadow:     '0 4px 24px rgba(0,0,0,0.7)',
+                    whiteSpace:    'normal',
                   }}>
                     {/* Arrow */}
                     <div style={{
@@ -194,19 +231,17 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
                       width: 8, height: 8,
                       background: 'rgba(7,7,26,0.97)',
                       ...(tipBelow
-                        ? { top: -5,    borderLeft: `1px solid ${tc}50`, borderTop:    `1px solid ${tc}50` }
-                        : { bottom: -5, borderRight:`1px solid ${tc}50`, borderBottom: `1px solid ${tc}50` }),
+                        ? { top: -5,    borderLeft: `1px solid ${tc}55`, borderTop:    `1px solid ${tc}55` }
+                        : { bottom: -5, borderRight:`1px solid ${tc}55`, borderBottom: `1px solid ${tc}55` }),
                     }} />
-
-                    {/* Medal name + icon */}
+                    {/* Name + icon */}
                     <div className="flex items-center gap-1.5 mb-1.5">
                       <span style={{ fontSize: 14, lineHeight: 1 }}>{item.icon}</span>
                       <span style={{ color: '#e0f2fe', fontSize: 10, fontWeight: 900, letterSpacing: '0.05em' }}>
                         {item.name}
                       </span>
                     </div>
-
-                    {/* Tier / status badge */}
+                    {/* Tier badge */}
                     <span style={{
                       display:       'inline-block',
                       fontSize:       8,
@@ -221,7 +256,6 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
                     }}>
                       {tierLabel}
                     </span>
-
                     {/* Earned date or hint */}
                     {item.earnedAt ? (
                       <p style={{ color: 'rgba(224,242,254,0.4)', fontSize: 9, marginTop: 2 }}>
@@ -237,22 +271,23 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
 
                 {/* ── Hex border layer ── */}
                 <div style={{
-                  position: 'absolute', inset: 0,
-                  clipPath:  HEX_CLIP,
-                  background: tc,
-                  ...(tg ? { filter: `drop-shadow(0 0 ${Math.round(W * 0.14)}px ${tg})` } : {}),
+                  position:   'absolute',
+                  inset:       0,
+                  clipPath:    HEX_CLIP,
+                  background:  tc,
+                  ...(tg ? { filter: `drop-shadow(0 0 ${Math.round(W * 0.13)}px ${tg})` } : {}),
                 }} />
 
                 {/* ── Hex fill + icon ── */}
                 <div style={{
-                  position:   'absolute',
+                  position:       'absolute',
                   top: 2, left: 2, right: 2, bottom: 2,
-                  clipPath:   HEX_CLIP,
-                  background: tb,
-                  display:    'flex',
-                  alignItems: 'center',
+                  clipPath:       HEX_CLIP,
+                  background:     tb,
+                  display:        'flex',
+                  alignItems:     'center',
                   justifyContent: 'center',
-                  filter: item.earned ? undefined : 'grayscale(100%)',
+                  filter:         item.earned ? undefined : 'grayscale(100%)',
                 }}>
                   <span style={{ fontSize: W * 0.4, lineHeight: 1, userSelect: 'none' }}>
                     {item.icon}
@@ -264,11 +299,14 @@ export default function MedalGrid({ profileMedals, isMe }: Props) {
         </div>
       </div>
 
+      {/* ── Bottom padding so tooltip on last row doesn't clip card ── */}
+      <div style={{ height: 12 }} />
+
       {/* ── Empty state ── */}
       {earnedItems.length === 0 && (
         <p
-          className="text-center text-[9px] font-black mt-4"
-          style={{ color: 'rgba(var(--accent-rgb),0.25)', letterSpacing: '0.12em' }}
+          className="text-center text-[9px] font-black"
+          style={{ color: 'rgba(var(--accent-rgb),0.25)', letterSpacing: '0.12em', marginTop: -8 }}
         >
           NO MEDALS EARNED YET — TAP A MEDAL TO SEE HOW
         </p>
