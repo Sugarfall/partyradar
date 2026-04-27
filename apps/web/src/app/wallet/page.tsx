@@ -162,12 +162,14 @@ export default function WalletPage() {
   const [topUpSuccess, setTopUpSuccess] = useState(false)
 
   // Stripe Issuing — virtual / physical card
-  const [issuedCards, setIssuedCards]           = useState<IssuedCard[]>([])
-  const [issuingActivating, setIssuingActivating] = useState(false)
-  const [issuingFreezing, setIssuingFreezing]   = useState(false)
-  const [issuingError, setIssuingError]         = useState<string | null>(null)
-  const [showCardDetails, setShowCardDetails]   = useState(false)
-  const [showPhysicalForm, setShowPhysicalForm] = useState(false)
+  const [issuedCards, setIssuedCards]               = useState<IssuedCard[]>([])
+  const [issuingActivating, setIssuingActivating]   = useState(false)
+  const [issuingFreezing, setIssuingFreezing]       = useState(false)
+  const [issuingError, setIssuingError]             = useState<string | null>(null)
+  const [phoneRequired, setPhoneRequired]           = useState(false)
+  const [activationPhone, setActivationPhone]       = useState('')
+  const [showCardDetails, setShowCardDetails]       = useState(false)
+  const [showPhysicalForm, setShowPhysicalForm]     = useState(false)
   const [physName, setPhysName]                 = useState('')
   const [physLine1, setPhysLine1]               = useState('')
   const [physCity, setPhysCity]                 = useState('')
@@ -280,15 +282,24 @@ export default function WalletPage() {
     setIssuingActivating(true)
     setIssuingError(null)
     try {
-      const res = await api.post<{ data: IssuedCard }>('/wallet/issuing/activate', {})
+      const body: Record<string, string> = {}
+      if (activationPhone.trim()) body.phoneNumber = activationPhone.trim()
+      const res = await api.post<{ data: IssuedCard }>('/wallet/issuing/activate', body)
       if (res?.data) {
+        setPhoneRequired(false)
         setIssuedCards(prev => {
           const exists = prev.find(c => c.id === res.data.id)
           return exists ? prev : [...prev, res.data]
         })
       }
     } catch (err: unknown) {
-      setIssuingError((err as { message?: string })?.message ?? 'Activation failed — please try again')
+      const e = err as { message?: string; code?: string }
+      if (e?.code === 'phone_required' || e?.message?.toLowerCase().includes('phone')) {
+        setPhoneRequired(true)
+        setIssuingError(null)
+      } else {
+        setIssuingError(e?.message ?? 'Activation failed — please try again')
+      }
     } finally {
       setIssuingActivating(false)
     }
@@ -604,13 +615,40 @@ export default function WalletPage() {
                         Get a virtual Visa debit card linked directly to your wallet balance
                       </p>
 
+                      {/* Phone number prompt — shown when Stripe requires it for 3DS */}
+                      {phoneRequired && (
+                        <div
+                          className="rounded-xl p-3 space-y-2"
+                          style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.18)' }}
+                        >
+                          <p className="text-[10px] font-black" style={{ color: 'var(--accent)' }}>
+                            📱 MOBILE NUMBER REQUIRED
+                          </p>
+                          <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                            Stripe uses your mobile number for 3D Secure payment authentication.
+                          </p>
+                          <input
+                            type="tel"
+                            value={activationPhone}
+                            onChange={e => setActivationPhone(e.target.value)}
+                            placeholder="+44 7700 900000"
+                            className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                            style={{
+                              background: 'rgba(255,255,255,0.04)',
+                              border: '1px solid rgba(var(--accent-rgb),0.25)',
+                              color: '#e0f2fe',
+                            }}
+                          />
+                        </div>
+                      )}
+
                       {issuingError && (
                         <p className="text-[10px] font-bold text-center" style={{ color: '#ff006e' }}>{issuingError}</p>
                       )}
 
                       <button
                         onClick={activateCard}
-                        disabled={issuingActivating || !wallet}
+                        disabled={issuingActivating || !wallet || (phoneRequired && !activationPhone.trim())}
                         className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all duration-150 active:scale-[0.97]"
                         style={{
                           background: issuingActivating
@@ -626,7 +664,7 @@ export default function WalletPage() {
                             <Loader2 size={14} className="animate-spin" />
                             ACTIVATING…
                           </span>
-                        ) : 'ACTIVATE YOUR VIRTUAL CARD'}
+                        ) : phoneRequired ? 'CONTINUE WITH THIS NUMBER' : 'ACTIVATE YOUR VIRTUAL CARD'}
                       </button>
 
                       {!wallet && (

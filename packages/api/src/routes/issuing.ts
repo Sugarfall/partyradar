@@ -128,14 +128,51 @@ router.post('/activate', async (req: AuthRequest, res: Response, next: NextFunct
     if (!wallet) throw new AppError('Wallet not found — top up first to create your wallet', 404)
     if (!user?.email) throw new AppError('Account email required', 400)
 
+    // Phone number is required by Stripe Issuing for 3DS authentication.
+    // Accept it from the request body so the UI can collect it inline if
+    // the user profile doesn't have one yet.
+    const bodyPhone = typeof req.body?.phoneNumber === 'string' ? req.body.phoneNumber.trim() : null
+    const resolvedPhone = user.phoneNumber ?? bodyPhone
+
+    if (!resolvedPhone) {
+      throw new AppError(
+        'A mobile number is required to activate your card — used for 3D Secure payment authentication.',
+        400,
+        'phone_required',
+      )
+    }
+
+    // Normalise to E.164 (+44...) so Stripe accepts it.
+    // Handles 07xxx, 447xxx, +447xxx forms.
+    const normaliseUkPhone = (raw: string): string => {
+      const digits = raw.replace(/\D/g, '')
+      if (digits.startsWith('447')) return `+${digits}`
+      if (digits.startsWith('44'))  return `+${digits}`
+      if (digits.startsWith('07'))  return `+44${digits.slice(1)}`
+      if (digits.startsWith('7') && digits.length === 10) return `+44${digits}`
+      // Non-UK or already normalised — add + if missing
+      return raw.startsWith('+') ? raw : `+${digits}`
+    }
+    const e164Phone = normaliseUkPhone(resolvedPhone)
+
+    // If we received a phone in the body and the user profile doesn't have one,
+    // persist it so future activations don't need to ask again.
+    if (bodyPhone && !user.phoneNumber) {
+      await prisma.user.update({ where: { id: dbUser.id }, data: { phoneNumber: e164Phone } })
+    }
+
     const cardholderId = await getOrCreateCardholderId(
       stripe,
       dbUser.id,
       user.email,
       user.displayName ?? dbUser.displayName ?? user.email.split('@')[0],
       req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0',
-      user.phoneNumber,
+      e164Phone,
     )
+
+    // Ensure the cardholder has the phone number — update idempotently
+    // (covers cardholders created before phone was collected).
+    await stripe.issuing.cardholders.update(cardholderId, { phone_number: e164Phone })
 
     // Create the virtual card in Stripe Issuing
     const stripeCard = await stripe.issuing.cards.create({
