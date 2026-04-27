@@ -8,6 +8,7 @@ import { Zap, Compass, User, Plus, Bell, Calendar, Ticket, Star, X, Building2, M
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { getCurrencySymbol, detectCurrency } from '@/lib/currency'
 import type { Notification } from '@partyradar/shared'
 
 // ── Desktop nav links ─────────────────────────────────────────────────────────
@@ -172,6 +173,9 @@ function NavbarInner() {
   const { dbUser } = useAuth()
   const { t } = useLanguage()
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  // Currency symbol — reads the city/GPS-detected currency the discover page stored,
+  // with a timezone-based fallback so it works on first visit too
+  const [currencySymbol, setCurrencySymbol] = useState<string>('£')
 
   // Load wallet balance for bottom tab display
   useEffect(() => {
@@ -180,6 +184,19 @@ function NavbarInner() {
       .then(r => setWalletBalance(r?.data?.balance ?? null))
       .catch(() => {})
   }, [dbUser?.id])
+
+  // Resolve currency on mount (and keep in sync when discover page updates it)
+  useEffect(() => {
+    function resolveCurrency() {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('pr_currency') : null
+      const cur = stored ?? detectCurrency()
+      setCurrencySymbol(getCurrencySymbol(cur))
+    }
+    resolveCurrency()
+    // Re-run if discover page updates the stored currency while nav is mounted
+    window.addEventListener('storage', resolveCurrency)
+    return () => window.removeEventListener('storage', resolveCurrency)
+  }, [])
 
   // Mode is localStorage-first so it works without login and reacts instantly
   const [isHost, setIsHost] = useState(false)
@@ -492,7 +509,7 @@ function NavbarInner() {
             <Wallet size={16} strokeWidth={pathname.startsWith('/wallet') ? 2 : 1.5}
               style={pathname.startsWith('/wallet') ? { filter: 'drop-shadow(0 0 6px rgba(0,255,136,0.6))' } : undefined} />
             <span className="text-[8px] font-medium tracking-tight leading-none">
-              {dbUser && walletBalance !== null ? `£${walletBalance.toFixed(2)}` : 'Wallet'}
+              {dbUser && walletBalance !== null ? `${currencySymbol}${walletBalance.toFixed(2)}` : 'Wallet'}
             </span>
           </Link>
 
