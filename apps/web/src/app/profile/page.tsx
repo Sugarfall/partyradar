@@ -317,7 +317,7 @@ export default function ProfilePage() {
   const [followingCount, setFollowingCount] = useState(0)
 
   // Medals
-  type EarnedMedal = { id: string; medal: { slug: string; name: string; icon: string; tier: string } }
+  type EarnedMedal = { id: string; earnedAt: string; medal: { slug: string; name: string; icon: string; tier: string } }
   const [profileMedals, setProfileMedals] = useState<EarnedMedal[]>([])
 
   // "Going Out Tonight?" toggle — persisted in localStorage
