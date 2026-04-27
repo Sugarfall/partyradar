@@ -13,6 +13,7 @@ import { silent, logError } from '@/lib/logError'
 import { uploadImage } from '@/lib/cloudinary'
 import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
 import { formatPrice } from '@/lib/currency'
+import { useUserLocation } from '@/contexts/UserLocationContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -840,6 +841,7 @@ function GroupChatView({
   token: string
   onGroupUpdate: (id: string, patch: Partial<GroupChat>) => void
 }) {
+  const userLoc = useUserLocation()
   const [group, setGroup] = useState<GroupChat | null>(null)
   const [messages, setMessages] = useState<GroupMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -946,14 +948,10 @@ function GroupChatView({
     setPlannerError('')
     setPlannerResult(null)
     try {
-      const loc = await new Promise<{ lat: number; lng: number }>((resolve) => {
-        if (!navigator.geolocation) { resolve({ lat: 55.8642, lng: -4.2518 }); return }
-        navigator.geolocation.getCurrentPosition(
-          ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude }),
-          () => resolve({ lat: 55.8642, lng: -4.2518 }),
-          { enableHighAccuracy: false, timeout: 6000 },
-        )
-      })
+      // Use context location; fall back to a generic UK fallback only if GPS never resolved
+      const loc = userLoc.ready
+        ? { lat: userLoc.lat, lng: userLoc.lng }
+        : { lat: 51.5074, lng: -0.1278 } // London — least bad universal default
       const json = await api.post<{ data: any }>('/pub-crawl/generate', {
         lat: loc.lat, lng: loc.lng,
         groupSize: plannerGroupSize, startTime: plannerStartTime,
@@ -3245,6 +3243,7 @@ function PeopleSearch({ dbUserId }: { dbUserId: string | null }) {
 
 export default function MessagesPage() {
   const { dbUser, firebaseUser } = useAuth()
+  const userLoc = useUserLocation()
   const [tab, setTab] = useState<'dms' | 'people' | 'community'>('dms')
   const [groups, setGroups] = useState<GroupChat[]>([])
   const [groupsLoading, setGroupsLoading] = useState(true)
@@ -3266,8 +3265,8 @@ export default function MessagesPage() {
     return () => window.removeEventListener('partyradar:mode-change', onModeChange)
   }, [])
 
+  // Use the app-wide location context for proximity-sorted venue groups
   useEffect(() => {
-    // Try to get user location for proximity-sorted venue groups
     function fetchGroups(lat?: number, lng?: number) {
       const params = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
       api.get<{ data: GroupChat[] }>(`/groups${params}`)
@@ -3275,16 +3274,12 @@ export default function MessagesPage() {
         .catch(() => {})
         .finally(() => setGroupsLoading(false))
     }
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => fetchGroups(coords.latitude, coords.longitude),
-        () => fetchGroups(),
-        { timeout: 3000 },
-      )
+    if (userLoc.ready) {
+      fetchGroups(userLoc.lat, userLoc.lng)
     } else {
       fetchGroups()
     }
-  }, [dbUser?.id])
+  }, [dbUser?.id, userLoc.ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleGroupUpdate(id: string, patch: Partial<GroupChat>) {
     setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)))

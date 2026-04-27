@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import Link from 'next/link'
 import { MapPin, Users, RefreshCw, Heart, X, MessageCircle, Star, Lock, UserCircle } from 'lucide-react'
+import { useUserLocation } from '@/contexts/UserLocationContext'
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -348,6 +349,7 @@ function MatchModal({ profile, conversationId, onClose }: {
 
 export default function NearbyPage() {
   const { dbUser } = useAuth()
+  const userLoc = useUserLocation()
   const [tab, setTab] = useState<'nearby' | 'match'>('nearby')
 
   // ── Nearby state ──────────────────────────────────────────────────────────
@@ -370,21 +372,17 @@ export default function NearbyPage() {
     finally { setNearbyLoading(false) }
   }, [])
 
+  // Use the app-wide location context instead of a separate GPS call
   useEffect(() => {
-    // Only request GPS for paid users — FREE users see the paywall and don't need it
+    // Only need location for paid users — FREE users see the paywall
     if (!dbUser || dbUser.subscriptionTier === 'FREE') return
-    if (typeof window === 'undefined' || !navigator.geolocation) { setLocationDenied(true); return }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords
-        setCoords({ lat, lng })
-        updateLocation(lat, lng)
-        fetchPeople(lat, lng)
-      },
-      () => setLocationDenied(true),
-      { timeout: 8000 },
-    )
-  }, [dbUser?.id, dbUser?.subscriptionTier])
+    if (!userLoc.ready) return
+
+    const { lat, lng } = userLoc
+    setCoords({ lat, lng })
+    updateLocation(lat, lng)
+    fetchPeople(lat, lng)
+  }, [dbUser?.id, dbUser?.subscriptionTier, userLoc.ready, userLoc.lat, userLoc.lng]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function toggleFollow(userId: string, currentlyFollowing: boolean) {
     // Bug 1 fix: optimistically flip isFollowing directly in the people array

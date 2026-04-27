@@ -8,6 +8,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { Search, MapPin, Phone, Globe, Zap, CheckCircle, X, Loader2, Compass, Map as MapIcon } from 'lucide-react'
 
 import { api } from '@/lib/api'
+import { useUserLocation } from '@/contexts/UserLocationContext'
 const MAPBOX_TOKEN = process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -276,6 +277,7 @@ function VenueSkeleton() {
 
 export default function VenuesPage() {
   const router = useRouter()
+  const userLoc = useUserLocation()
 
   const [venues, setVenues] = useState<Venue[]>([])
   const [loading, setLoading] = useState(true)
@@ -283,21 +285,24 @@ export default function VenuesPage() {
   // Lazy-init from sessionStorage so back-navigation restores last position
   const [search, setSearch] = useState<string>(() => readVenueSession()?.search ?? '')
   const [typeFilter, setTypeFilter] = useState<VenueType | 'ALL'>(() => readVenueSession()?.typeFilter ?? 'ALL')
-  const [cityLabel, setCityLabel] = useState<string>(() => readVenueSession()?.cityLabel ?? 'NEARBY')
+  const [cityLabel, setCityLabel] = useState<string>(() => {
+    // Prefer context city, then saved session, then generic label
+    return readVenueSession()?.cityLabel ?? 'NEARBY'
+  })
   const [viewState, setViewState] = useState<{ latitude: number; longitude: number; zoom: number }>(() => {
     const saved = readVenueSession()?.viewState
-    return saved as { latitude: number; longitude: number; zoom: number } ?? { latitude: 55.8642, longitude: -4.2518, zoom: 12 }
+    return saved as { latitude: number; longitude: number; zoom: number } ?? { latitude: 0, longitude: 0, zoom: 12 }
   })
-  // True if we loaded a saved map position — used to skip geolocation centering
-  const [hasSavedView] = useState<boolean>(() => !!readVenueSession()?.viewState)
+  // Whether we've already centred the map on the user's real location this session
+  const centredRef = useRef(false)
+
   const [popupVenue, setPopupVenue] = useState<Venue | null>(null)
   const [discoveredCount, setDiscoveredCount] = useState(0)
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapVisible, setMapVisible] = useState(true)
-  // Set to true once we know where to fetch (geolocation resolved or timed out)
+  // Set to true once we have a real location (from context) or have timed out
   const [locationReady, setLocationReady] = useState(false)
-  // Ref holds geolocation result so the initial-fetch effect reads the real coords
-  // even if the React viewState update hasn't flushed yet
+  // Ref holds the real GPS coords so the initial-fetch effect sees them even
+  // before the viewState React update has flushed
   const geoRef = useRef<{ lat: number; lng: number } | null>(null)
 
   // Track last discovered center to avoid re-fetching same area
@@ -305,40 +310,39 @@ export default function VenuesPage() {
   const discoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Resolve user location BEFORE the initial venue fetch fires
+  // React to the app-wide location context (fires as soon as GPS resolves)
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationReady(true) // no geo support — use saved/default
-      return
+    if (!userLoc.ready) return
+
+    const { lat: geoLat, lng: geoLng, city } = userLoc
+    geoRef.current = { lat: geoLat, lng: geoLng }
+
+    // Update city label from context if we have one
+    if (city) setCityLabel(city.toUpperCase())
+
+    if (!centredRef.current) {
+      centredRef.current = true
+      const savedSession = readVenueSession()
+      const savedViewState = savedSession?.viewState as { latitude: number; longitude: number } | undefined
+
+      // Re-centre the map unless the user has a recent saved session
+      // and is still in the same area (< 50 km away)
+      const shouldRecentre = !savedViewState ||
+        haversineKm(geoLat, geoLng, savedViewState.latitude, savedViewState.longitude) > 50
+
+      if (shouldRecentre) {
+        setViewState((v) => ({ ...v, latitude: geoLat, longitude: geoLng }))
+      }
     }
-    // Capture the current default/saved coords at mount time for the distance check
-    const savedLat = viewState.latitude
-    const savedLng = viewState.longitude
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const geoLat = pos.coords.latitude
-        const geoLng = pos.coords.longitude
-        geoRef.current = { lat: geoLat, lng: geoLng }
-        setUserLocation({ lat: geoLat, lng: geoLng })
+    setLocationReady(true)
+  }, [userLoc.ready, userLoc.lat, userLoc.lng]) // eslint-disable-line react-hooks/exhaustive-deps
 
-        // Re-center the map if:
-        //   a) there's no saved session (fresh visit), OR
-        //   b) the user is in a different city — more than 50 km from the saved center
-        //      (prevents old Glasgow session from overriding a Vilnius visitor)
-        const distKm = haversineKm(geoLat, geoLng, savedLat, savedLng)
-        if (!hasSavedView || distKm > 50) {
-          setViewState((v) => ({ ...v, latitude: geoLat, longitude: geoLng }))
-        }
-        setLocationReady(true)
-      },
-      () => {
-        // Permission denied or unavailable — fall back to saved/default position
-        setLocationReady(true)
-      },
-      { enableHighAccuracy: false, maximumAge: 60000, timeout: 7000 },
-    )
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Fallback: if context never becomes ready (no geo support), unblock after 10 s
+  useEffect(() => {
+    const t = setTimeout(() => setLocationReady(true), 10_000)
+    return () => clearTimeout(t)
+  }, [])
 
   // Persist map/search state to sessionStorage on every change
   useEffect(() => {
@@ -462,6 +466,8 @@ export default function VenuesPage() {
   const filteredVenues = typeFilter === 'ALL'
     ? venues
     : venues.filter((v) => v.type === typeFilter)
+
+  const userLocation = userLoc.ready ? { lat: userLoc.lat, lng: userLoc.lng } : null
 
   const displayVenues = userLocation
     ? [...filteredVenues].sort(

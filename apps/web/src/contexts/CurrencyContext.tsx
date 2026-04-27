@@ -6,17 +6,19 @@
  * Detection pipeline (each step is a fallback for the one before):
  *   1. localStorage('pr_currency')     — instant, from a previous session
  *   2. Intl.Locale(navigator.language) — sync, correct for most devices
- *   3. GPS → Mapbox country reverse-geocode → COUNTRY_CURRENCY map
+ *   3. UserLocationContext lat/lng → Mapbox country reverse-geocode → COUNTRY_CURRENCY map
  *      → stored in localStorage for next session
  *
  * Step 3 is the authoritative source and requires no per-country hardcoding:
  * Mapbox returns a country code ("LT", "FR", "JP" …) which we look up in
  * a comprehensive ISO 3166 → ISO 4217 table. Any country in the world just works.
+ * Uses the shared UserLocationContext so there's only one GPS call for the whole app.
  */
 
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { detectCurrency, getCurrencyFromCountryCode, getCurrencySymbol } from '@/lib/currency'
+import { useUserLocation } from '@/contexts/UserLocationContext'
 
 const STORAGE_KEY = 'pr_currency'
 const MAPBOX_TOKEN = typeof process !== 'undefined'
@@ -36,6 +38,9 @@ const CurrencyContext = createContext<CurrencyContextValue>({
 })
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
+  const userLoc = useUserLocation()
+  const didLookup = useRef(false)
+
   const [currency, setCurrencyState] = useState<string>(() => {
     // Step 1 & 2 — sync init so there's no flash on first render
     if (typeof window === 'undefined') return detectCurrency()
@@ -47,34 +52,26 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(STORAGE_KEY, code) } catch {}
   }
 
+  // Step 3 — once the shared UserLocationContext has GPS coords, do a single
+  // Mapbox country lookup and update currency. Only runs once per session.
   useEffect(() => {
-    // Step 3 — GPS → Mapbox country lookup (async, overwrites the sync guess)
-    if (!navigator.geolocation || !MAPBOX_TOKEN) return
+    if (!userLoc.ready || didLookup.current || !MAPBOX_TOKEN) return
+    didLookup.current = true
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const { latitude, longitude } = pos.coords
-          const res = await fetch(
-            `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json` +
-            `?types=country&limit=1&access_token=${MAPBOX_TOKEN}`
-          )
-          if (!res.ok) return
-          const json = await res.json()
-          // Mapbox returns short_code like "lt", "gb", "us"
-          const countryCode: string | undefined =
-            json.features?.[0]?.properties?.short_code
-          if (countryCode) {
-            setCurrency(getCurrencyFromCountryCode(countryCode))
-          }
-        } catch {
-          // Silent — keep whatever we already resolved
-        }
-      },
-      () => { /* permission denied — keep timezone/localStorage fallback */ },
-      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 8_000 },
+    const { lat, lng } = userLoc
+    fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json` +
+      `?types=country&limit=1&access_token=${MAPBOX_TOKEN}`
     )
-  }, []) // Run once on app boot
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        // Mapbox returns short_code like "lt", "gb", "us"
+        const countryCode: string | undefined =
+          json?.features?.[0]?.properties?.short_code
+        if (countryCode) setCurrency(getCurrencyFromCountryCode(countryCode))
+      })
+      .catch(() => { /* Silent — keep whatever we already resolved */ })
+  }, [userLoc.ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <CurrencyContext.Provider value={{ currency, symbol: getCurrencySymbol(currency), setCurrency }}>
