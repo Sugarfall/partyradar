@@ -182,9 +182,21 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
 /** POST /api/auth/age-verify */
 router.post('/age-verify', requireAuth, async (req: AuthRequest, res, next) => {
   try {
+    const schema = z.object({
+      dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
+    })
+    const { dateOfBirth } = schema.parse(req.body)
+
+    // Validate the user is at least 18 years old
+    const dob = new Date(dateOfBirth)
+    if (isNaN(dob.getTime())) throw new AppError('Invalid date of birth', 400)
+    const today = new Date()
+    const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
+    if (dob > eighteenYearsAgo) throw new AppError('You must be 18 or older to verify your age.', 400)
+
     const user = await prisma.user.update({
       where: { id: req.user!.dbUser.id },
-      data: { ageVerified: true },
+      data: { ageVerified: true, dateOfBirth: dob },
     })
     res.json({ data: user })
   } catch (err) {

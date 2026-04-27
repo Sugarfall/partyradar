@@ -306,11 +306,49 @@ export default function ProfilePage() {
   const [savedOk, setSavedOk] = useState(false)
   const [focused, setFocused] = useState<string | null>(null)
 
-  // Bug 5 fix: useState initialiser runs once (server value = null), so use useEffect to hydrate
-  const [localGender, setLocalGender] = useState<string | null>(null)
-  useEffect(() => {
-    setLocalGender(localStorage.getItem('partyradar_gender'))
-  }, [])
+  // Gender picker
+  const [showGenderPicker, setShowGenderPicker] = useState(false)
+  const [genderSaving, setGenderSaving] = useState(false)
+
+  // Age verification
+  const [showAgeVerify, setShowAgeVerify] = useState(false)
+  const [ageVerifyDob, setAgeVerifyDob] = useState('')
+  const [ageVerifyLoading, setAgeVerifyLoading] = useState(false)
+  const [ageVerifyError, setAgeVerifyError] = useState<string | null>(null)
+
+  async function saveGender(g: Gender | null) {
+    setGenderSaving(true)
+    try {
+      await api.put('/auth/profile', { gender: g })
+      await refreshUser()
+      setShowGenderPicker(false)
+    } catch { /* keep old value on failure */ } finally {
+      setGenderSaving(false)
+    }
+  }
+
+  async function submitAgeVerify() {
+    if (!ageVerifyDob) return
+    setAgeVerifyLoading(true)
+    setAgeVerifyError(null)
+    try {
+      await api.post('/auth/age-verify', { dateOfBirth: ageVerifyDob })
+      await refreshUser()
+      setShowAgeVerify(false)
+      setAgeVerifyDob('')
+    } catch (err: unknown) {
+      setAgeVerifyError((err as { message?: string })?.message ?? 'Verification failed — try again')
+    } finally {
+      setAgeVerifyLoading(false)
+    }
+  }
+
+  // Max DOB date = 18 years ago today
+  const maxDob = (() => {
+    const d = new Date()
+    d.setFullYear(d.getFullYear() - 18)
+    return d.toISOString().split('T')[0]
+  })()
 
   // Social counts — fetched from API
   const [followersCount, setFollowersCount] = useState(0)
@@ -1349,27 +1387,41 @@ export default function ProfilePage() {
           <div className="px-4 py-2.5" style={{ background: 'rgba(var(--accent-rgb),0.04)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>IDENTITY</p>
           </div>
+
+          {/* Email — private, only visible to you */}
           <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)' }}>
-            <div className="flex items-center gap-2.5">
-              <User size={13} style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <User size={13} className="shrink-0" style={{ color: 'rgba(var(--accent-rgb),0.35)' }} />
               <span className="text-sm truncate" style={{ color: 'rgba(224,242,254,0.7)' }}>{dbUser.email}</span>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0" style={{ color: 'rgba(var(--accent-rgb),0.45)', border: '1px solid rgba(var(--accent-rgb),0.15)', background: 'rgba(var(--accent-rgb),0.05)' }}>VERIFIED</span>
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+              <span style={{ fontSize: 11 }}>🔒</span>
+              <span className="text-[9px] font-bold tracking-wider" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>PRIVATE</span>
+            </div>
           </div>
-          <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)', borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+
+          {/* Gender — tappable picker */}
+          <button
+            className="w-full px-4 py-3 flex items-center justify-between"
+            style={{ background: 'rgba(7,7,26,0.5)', borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}
+            onClick={() => setShowGenderPicker(true)}
+          >
             <div className="flex items-center gap-2.5">
-              <span className="text-sm" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>⚧</span>
-              <span className="text-sm" style={{ color: 'rgba(224,242,254,0.7)' }}>
-                {localGender ? GENDER_LABELS[localGender as Gender] ?? localGender : 'Not set'}
+              <span className="text-sm shrink-0" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>⚧</span>
+              <span className="text-sm" style={{ color: dbUser.gender ? 'rgba(224,242,254,0.7)' : 'rgba(var(--accent-rgb),0.35)' }}>
+                {dbUser.gender ? GENDER_LABELS[dbUser.gender] : 'Set gender'}
               </span>
             </div>
-          </div>
+            <ChevronRight size={13} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
+          </button>
+
+          {/* Age Verified */}
           <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(7,7,26,0.5)', borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}>
             <div className="flex items-center gap-2.5">
-              <ShieldCheck size={13} style={{ color: dbUser.ageVerified ? '#00ff88' : 'rgba(var(--accent-rgb),0.35)' }} />
+              <ShieldCheck size={13} className="shrink-0" style={{ color: dbUser.ageVerified ? '#00ff88' : 'rgba(var(--accent-rgb),0.35)' }} />
               <span className="text-sm" style={{ color: 'rgba(224,242,254,0.7)' }}>Age Verified</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {dbUser.phoneVerified && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                   style={{ background: 'rgba(0,255,136,0.1)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
@@ -1378,7 +1430,15 @@ export default function ProfilePage() {
               )}
               {dbUser.ageVerified
                 ? <span className="text-[10px] font-bold" style={{ color: '#00ff88' }}>✓ VERIFIED</span>
-                : <button className="text-[10px] font-bold px-2.5 py-1 rounded-lg" style={{ color: '#ffd600', border: '1px solid rgba(255,214,0,0.3)', background: 'rgba(255,214,0,0.06)' }}>VERIFY →</button>
+                : (
+                  <button
+                    className="text-[10px] font-bold px-2.5 py-1 rounded-lg"
+                    style={{ color: '#ffd600', border: '1px solid rgba(255,214,0,0.3)', background: 'rgba(255,214,0,0.06)' }}
+                    onClick={() => setShowAgeVerify(true)}
+                  >
+                    VERIFY →
+                  </button>
+                )
               }
             </div>
           </div>
@@ -1747,6 +1807,124 @@ export default function ProfilePage() {
                   </div>
                 </div>
               ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Gender Picker Sheet ───────────────────────────────────────────────── */}
+      {showGenderPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowGenderPicker(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl overflow-hidden pb-safe-bottom"
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.14)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>Your Gender</p>
+              <button onClick={() => setShowGenderPicker(false)} style={{ color: 'rgba(224,242,254,0.3)', fontSize: 18 }}>✕</button>
+            </div>
+            <div className="py-2">
+              {(['MALE', 'FEMALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY'] as Gender[]).map(g => (
+                <button
+                  key={g}
+                  className="w-full flex items-center justify-between px-5 py-4"
+                  style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.05)' }}
+                  onClick={() => saveGender(g)}
+                  disabled={genderSaving}
+                >
+                  <span className="text-sm" style={{ color: dbUser.gender === g ? 'var(--accent)' : 'rgba(224,242,254,0.75)' }}>
+                    {GENDER_LABELS[g]}
+                  </span>
+                  {dbUser.gender === g && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                </button>
+              ))}
+              {dbUser.gender && (
+                <button
+                  className="w-full px-5 py-3.5 text-sm text-left"
+                  style={{ color: 'rgba(255,80,80,0.55)', borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}
+                  onClick={() => saveGender(null)}
+                  disabled={genderSaving}
+                >
+                  Clear gender
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Age Verify Sheet ─────────────────────────────────────────────────── */}
+      {showAgeVerify && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+          onClick={() => { if (!ageVerifyLoading) setShowAgeVerify(false) }}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl overflow-hidden pb-safe-bottom"
+            style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(var(--accent-rgb),0.14)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+              <div>
+                <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>Verify Your Age</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>Must be 18 or older</p>
+              </div>
+              <button
+                onClick={() => { if (!ageVerifyLoading) setShowAgeVerify(false) }}
+                style={{ color: 'rgba(224,242,254,0.3)', fontSize: 18 }}
+              >✕</button>
+            </div>
+            <div className="px-5 py-5 space-y-4">
+              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.45)', lineHeight: 1.5 }}>
+                Enter your date of birth to unlock all PartyRadar features. Your date of birth is stored securely and never shared with other users.
+              </p>
+              <div>
+                <label className="text-[10px] font-bold tracking-widest block mb-2"
+                  style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+                  DATE OF BIRTH
+                </label>
+                <input
+                  type="date"
+                  value={ageVerifyDob}
+                  onChange={e => { setAgeVerifyDob(e.target.value); setAgeVerifyError(null) }}
+                  max={maxDob}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm"
+                  style={{
+                    background: 'rgba(var(--accent-rgb),0.07)',
+                    border: '1px solid rgba(var(--accent-rgb),0.18)',
+                    color: '#e0f2fe',
+                    colorScheme: 'dark',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              {ageVerifyError && (
+                <p className="text-xs font-bold" style={{ color: '#ff4444' }}>⚠ {ageVerifyError}</p>
+              )}
+              <button
+                className="w-full py-3 rounded-xl text-sm font-black tracking-wider"
+                style={{
+                  background: ageVerifyDob ? 'rgba(0,255,136,0.12)' : 'rgba(var(--accent-rgb),0.05)',
+                  color: ageVerifyDob ? '#00ff88' : 'rgba(var(--accent-rgb),0.3)',
+                  border: `1px solid ${ageVerifyDob ? 'rgba(0,255,136,0.3)' : 'rgba(var(--accent-rgb),0.1)'}`,
+                  opacity: ageVerifyLoading ? 0.6 : 1,
+                }}
+                disabled={!ageVerifyDob || ageVerifyLoading}
+                onClick={submitAgeVerify}
+              >
+                {ageVerifyLoading ? 'Verifying…' : 'CONFIRM AGE'}
+              </button>
+              <p className="text-[9px] text-center" style={{ color: 'rgba(var(--accent-rgb),0.3)', letterSpacing: '0.05em' }}>
+                🔒 Your date of birth is private and never shown to others
+              </p>
             </div>
           </div>
         </div>

@@ -40,6 +40,7 @@ export interface User {
   profileBgImage?: string | null
   gender?: Gender | null
   ageVerified: boolean
+  dateOfBirth?: string | null
   alcoholFriendly: boolean
   showAlcoholEvents: boolean
   showInNearby?: boolean

@@ -111,6 +111,7 @@ model User {
   bio               String?
   photoUrl          String?
   ageVerified       Boolean          @default(false)
+  dateOfBirth       DateTime?        @db.Date
   alcoholFriendly   Boolean          @default(false)
   interests         String[]
   showAlcoholEvents Boolean          @default(true)
