@@ -10,9 +10,10 @@ import { api } from '@/lib/api'
 import { getStoredReferral, clearStoredReferral, captureReferral } from '@/lib/referral'
 import {
   Zap, Check, ChevronRight, Eye, EyeOff, Mail, Gift, X,
-  ShieldCheck, User, Calendar, ChevronDown,
+  ShieldCheck, User, Calendar, ChevronDown, Camera, Loader2, AtSign,
 } from 'lucide-react'
 import type { Gender } from '@partyradar/shared'
+import { uploadImage } from '@/lib/cloudinary'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -115,7 +116,9 @@ export default function RegisterPage() {
   // Credentials phase
   const [email, setEmail]           = useState('')
   const [password, setPassword]     = useState('')
+  const [confirmPw, setConfirmPw]   = useState('')
   const [showPw, setShowPw]         = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
   const [loading, setLoading]       = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [appleLoading, setAppleLoading]   = useState(false)
@@ -143,10 +146,13 @@ export default function RegisterPage() {
 
   // Profile phase
   const [displayName, setDisplayName]   = useState('')
+  const [username, setUsername]         = useState('')
   const [bio, setBio]                   = useState('')
   const [photoUrl, setPhotoUrl]         = useState('')
+  const [photoUploading, setPhotoUploading] = useState(false)
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   // Interests phase
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
@@ -176,12 +182,24 @@ export default function RegisterPage() {
     }
   }
 
+  // Password strength: 0-4
+  function pwStrength(pw: string): number {
+    let score = 0
+    if (pw.length >= 8) score++
+    if (pw.length >= 12) score++
+    if (/[A-Z]/.test(pw)) score++
+    if (/[0-9]/.test(pw)) score++
+    if (/[^A-Za-z0-9]/.test(pw)) score++
+    return Math.min(score, 4)
+  }
+
   async function handleCredentials(e: React.FormEvent) {
     e.preventDefault()
     if (password.length < 8) { setError('Password must be at least 8 characters'); return }
     if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
       setError('Password must include at least one letter and one number'); return
     }
+    if (password !== confirmPw) { setError('Passwords do not match'); return }
     setLoading(true)
     setError(null)
     try {
@@ -290,13 +308,28 @@ export default function RegisterPage() {
 
   // ── Profile setup phase ──────────────────────────────────────────────────
 
+  async function handlePhotoUpload(file: File) {
+    if (!file) return
+    setPhotoUploading(true)
+    try {
+      const url = await uploadImage(file, 'avatars')
+      setPhotoUrl(url)
+    } catch {
+      setProfileError('Photo upload failed — please try again')
+    } finally { setPhotoUploading(false) }
+  }
+
   async function handleProfileFinish(e: React.FormEvent) {
     e.preventDefault()
     if (!displayName.trim()) { setProfileError('Please enter your display name'); return }
+    if (username.trim() && !/^[a-z0-9_]{2,30}$/.test(username.trim())) {
+      setProfileError('Username can only contain lowercase letters, numbers, and underscores (2–30 chars)'); return
+    }
     setProfileSaving(true); setProfileError(null)
     try {
       await api.put('/auth/profile', {
         displayName: displayName.trim(),
+        ...(username.trim() ? { username: username.trim() } : {}),
         bio: bio.trim() || undefined,
         photoUrl: photoUrl.trim() || undefined,
       })
@@ -419,7 +452,7 @@ export default function RegisterPage() {
           </div>
           <div>
             <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-              STEP 2 OF 5
+              STEP 2 OF 6
             </p>
             <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>CHECK YOUR INBOX</h1>
             <p className="text-sm mt-3" style={{ color: 'rgba(224,242,254,0.5)', lineHeight: 1.6 }}>
@@ -471,7 +504,7 @@ export default function RegisterPage() {
               <ShieldCheck size={28} style={{ color: '#ff006e' }} />
             </div>
             <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(255,0,110,0.5)' }}>
-              STEP 3 OF 5
+              STEP 3 OF 6
             </p>
             <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>AGE VERIFICATION</h1>
             <p className="text-sm mt-2" style={{ color: 'rgba(224,242,254,0.45)', lineHeight: 1.6 }}>
@@ -548,7 +581,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
             <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-              STEP 4 OF 5
+              STEP 4 OF 6
             </p>
             <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>
               {t('register.gender.title')}
@@ -646,6 +679,50 @@ export default function RegisterPage() {
           </div>
 
           <form onSubmit={handleProfileFinish} className="space-y-3">
+            {/* Photo upload — tap-to-upload circle */}
+            <div className="flex flex-col items-center mb-1">
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoUploading}
+                className="relative w-20 h-20 rounded-full overflow-hidden flex items-center justify-center transition-all active:scale-95 disabled:opacity-70"
+                style={{
+                  background: photoUrl ? 'transparent' : 'rgba(var(--accent-rgb),0.06)',
+                  border: `2px solid ${photoUrl ? 'rgba(var(--accent-rgb),0.55)' : 'rgba(var(--accent-rgb),0.2)'}`,
+                  boxShadow: photoUrl ? '0 0 20px rgba(var(--accent-rgb),0.2)' : 'none',
+                }}
+              >
+                {photoUploading ? (
+                  <Loader2 size={22} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                ) : photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={photoUrl} alt="Profile preview" className="w-full h-full object-cover" />
+                ) : (
+                  <Camera size={22} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                )}
+                {!photoUploading && (
+                  <div
+                    className="absolute inset-x-0 bottom-0 flex items-center justify-center py-1.5"
+                    style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.55))' }}
+                  >
+                    <span className="text-[8px] font-black tracking-widest" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                      {photoUrl ? 'CHANGE' : 'ADD PHOTO'}
+                    </span>
+                  </div>
+                )}
+              </button>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f) }}
+              />
+              <p className="text-[9px] mt-2" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                Tap to upload a photo (optional)
+              </p>
+            </div>
+
             {/* Display name — required */}
             <div>
               <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5"
@@ -663,6 +740,42 @@ export default function RegisterPage() {
                 onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
                 onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.2)'; e.target.style.boxShadow = 'none' }}
               />
+            </div>
+
+            {/* Username — optional */}
+            <div>
+              <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5"
+                style={{ color: 'rgba(224,242,254,0.4)' }}>
+                USERNAME <span style={{ color: 'rgba(224,242,254,0.2)', fontWeight: 400 }}>(optional)</span>
+              </label>
+              <div className="relative">
+                <AtSign size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(
+                    e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30)
+                  )}
+                  placeholder="your_handle"
+                  maxLength={30}
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  className="w-full pl-8 pr-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all"
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${username && username.length < 2 ? 'rgba(255,0,110,0.3)' : 'rgba(var(--accent-rgb),0.15)'}`,
+                    color: '#e0f2fe',
+                    fontFamily: 'ui-monospace, monospace',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.4)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.08)' }}
+                  onBlur={e => { e.target.style.borderColor = username && username.length < 2 ? 'rgba(255,0,110,0.3)' : 'rgba(var(--accent-rgb),0.15)'; e.target.style.boxShadow = 'none' }}
+                />
+              </div>
+              <p className="text-[9px] mt-1" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                Lowercase letters, numbers and underscores · 2–30 characters
+              </p>
             </div>
 
             {/* Bio — optional */}
@@ -684,27 +797,6 @@ export default function RegisterPage() {
               />
               <p className="text-right text-[9px] mt-0.5" style={{ color: 'rgba(224,242,254,0.2)' }}>
                 {bio.length}/300
-              </p>
-            </div>
-
-            {/* Photo URL — optional */}
-            <div>
-              <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5"
-                style={{ color: 'rgba(224,242,254,0.4)' }}>
-                PROFILE PHOTO URL <span style={{ color: 'rgba(224,242,254,0.2)', fontWeight: 400 }}>(optional)</span>
-              </label>
-              <input
-                type="url"
-                value={photoUrl}
-                onChange={e => setPhotoUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full px-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }}
-                onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.4)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.15)' }}
-              />
-              <p className="text-[9px] mt-1" style={{ color: 'rgba(224,242,254,0.2)' }}>
-                Tip: upload to Imgur or Cloudinary first, then paste the link here
               </p>
             </div>
 
@@ -771,7 +863,7 @@ export default function RegisterPage() {
 
         <div className="text-center mb-6">
           <p className="text-[10px] font-bold tracking-[0.25em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-            STEP 1 OF 5 · CREATE ACCOUNT
+            STEP 1 OF 6 · CREATE ACCOUNT
           </p>
           <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.3), transparent)' }} />
         </div>
@@ -846,7 +938,7 @@ export default function RegisterPage() {
             <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>PASSWORD</label>
             <div className="relative">
               <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="Min. 8 chars (letters + numbers)" required minLength={6} autoComplete="new-password"
+                placeholder="Min. 8 chars — letters + numbers" required minLength={8} autoComplete="new-password"
                 className="w-full px-3 py-2.5 pr-10 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
                 style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.18)', color: '#e0f2fe' }}
                 onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
@@ -857,6 +949,55 @@ export default function RegisterPage() {
                 {showPw ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>
             </div>
+            {/* Strength bar */}
+            {password.length > 0 && (() => {
+              const s = pwStrength(password)
+              const colors = ['#ff006e','#ff006e','#ffd600','#00ff88','#00ff88']
+              const labels = ['Too weak','Weak','Fair','Strong','Very strong']
+              return (
+                <div className="mt-1.5">
+                  <div className="flex gap-1">
+                    {[1,2,3,4].map(i => (
+                      <div key={i} className="flex-1 h-1 rounded-full transition-all duration-300"
+                        style={{ background: i <= s ? colors[s] : 'rgba(255,255,255,0.08)' }} />
+                    ))}
+                  </div>
+                  <p className="text-[9px] mt-0.5" style={{ color: colors[s] ?? 'rgba(224,242,254,0.3)' }}>
+                    {labels[s]}
+                  </p>
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Confirm password */}
+          <div>
+            <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CONFIRM PASSWORD</label>
+            <div className="relative">
+              <input type={showConfirmPw ? 'text' : 'password'} value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+                placeholder="Repeat your password" required minLength={8} autoComplete="new-password"
+                className="w-full px-3 py-2.5 pr-10 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
+                style={{
+                  background: 'rgba(var(--accent-rgb),0.04)',
+                  border: `1px solid ${confirmPw && confirmPw !== password ? 'rgba(255,0,110,0.4)' : 'rgba(var(--accent-rgb),0.18)'}`,
+                  color: '#e0f2fe',
+                }}
+                onFocus={e => { e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
+                onBlur={e => { e.target.style.boxShadow = 'none' }}
+              />
+              <button type="button" onClick={() => setShowConfirmPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+                {showConfirmPw ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            {confirmPw && confirmPw !== password && (
+              <p className="text-[9px] mt-1" style={{ color: '#ff006e' }}>Passwords don&apos;t match</p>
+            )}
+            {confirmPw && confirmPw === password && (
+              <p className="text-[9px] mt-1 flex items-center gap-1" style={{ color: '#00ff88' }}>
+                <Check size={9} /> Passwords match
+              </p>
+            )}
           </div>
 
           {/* Referral code — collapsible */}
