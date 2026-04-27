@@ -113,6 +113,53 @@ router.post('/stripe', async (req: Request, res: Response) => {
         }
         break
       }
+
+      // ── Stripe Issuing ─────────────────────────────────────────────────────
+      // CRITICAL: issuing_authorization.request must approve/decline within 2 s.
+      // We deduct from the wallet balance atomically inside a DB transaction,
+      // then approve via the Stripe API. If DB fails → decline for safety.
+      case 'issuing_authorization.request': {
+        const authorization = event.data.object as Stripe.Issuing.Authorization
+        await handleIssuingAuthorizationRequest(authorization, stripe)
+        break
+      }
+
+      // issuing_transaction.created fires once the charge settles (usually
+      // instantly for card-present or within seconds for online). This is where
+      // we create the permanent ledger entry and link it to the IssuedCard.
+      case 'issuing_transaction.created': {
+        const txn = event.data.object as Stripe.Issuing.Transaction
+        await handleIssuingTransaction(txn)
+        break
+      }
+
+      // issuing_authorization.updated fires when an auth is reversed without
+      // a matching capture (e.g. hotel hold released, merchant cancelled).
+      // We add the held funds back to the user's wallet.
+      case 'issuing_authorization.updated': {
+        const authorization = event.data.object as Stripe.Issuing.Authorization
+        if (authorization.status === 'reversed' || authorization.status === 'closed') {
+          await handleIssuingAuthorizationReversed(authorization)
+        }
+        break
+      }
+
+      // Physical card shipping status updates
+      case 'issuing_card.updated': {
+        const card = event.data.object as Stripe.Issuing.Card
+        if (card.shipping?.status) {
+          await prisma.issuedCard.updateMany({
+            where: { stripeCardId: card.id },
+            data: {
+              shippingStatus: card.shipping.status,
+              trackingUrl: card.shipping.tracking_url ?? undefined,
+              // Mark as ACTIVE once Stripe confirms delivery
+              ...(card.shipping.status === 'delivered' ? { status: 'SHIPPING' } : {}),
+            },
+          })
+        }
+        break
+      }
     }
 
     res.json({ received: true })
@@ -872,6 +919,214 @@ async function handleConnectAccountDeauthorized(connectedAccountId: string) {
       stripeConnectPayoutsEnabled: false,
       stripeConnectDetailsSubmitted: false,
     },
+  })
+}
+
+// ─── Stripe Issuing handlers ──────────────────────────────────────────────────
+
+/**
+ * SYNCHRONOUS authorization gate — must call approve/decline within 2 seconds.
+ * Strategy: deduct from wallet in a DB transaction first. If that succeeds,
+ * approve. If it fails (insufficient funds or DB error), decline. If Stripe
+ * approve call fails after a successful deduction, add funds back.
+ */
+async function handleIssuingAuthorizationRequest(
+  authorization: Stripe.Issuing.Authorization,
+  stripe: ReturnType<typeof ensureStripe>,
+) {
+  const stripeCardId = authorization.card.id
+  const amountPence  = authorization.amount            // Stripe uses pence
+  const amountGBP    = amountPence / 100
+
+  const card = await prisma.issuedCard.findUnique({
+    where: { stripeCardId },
+    select: { id: true, walletId: true, status: true },
+  })
+
+  // Decline immediately for unknown or frozen/cancelled cards
+  if (!card || card.status !== 'ACTIVE') {
+    await stripe.issuing.authorizations.decline(authorization.id)
+    return
+  }
+
+  // Atomic: check balance and deduct inside a single DB transaction
+  let deducted = false
+  try {
+    await prisma.$transaction(async (tx) => {
+      const wallet = await tx.wallet.findUniqueOrThrow({
+        where: { id: card.walletId },
+        select: { id: true, balance: true },
+      })
+
+      if (wallet.balance < amountGBP) throw new Error('INSUFFICIENT_FUNDS')
+
+      await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { decrement: amountGBP } },
+      })
+      deducted = true
+    })
+  } catch (err: any) {
+    await stripe.issuing.authorizations.decline(authorization.id)
+    return
+  }
+
+  // Approve — if Stripe call fails, refund the deducted amount
+  try {
+    await stripe.issuing.authorizations.approve(authorization.id)
+  } catch (approveErr) {
+    console.error('[issuing] Approve call failed — refunding deduction', approveErr)
+    await prisma.wallet.update({
+      where: { id: card.walletId },
+      data: { balance: { increment: amountGBP } },
+    })
+  }
+}
+
+/**
+ * Called when a card transaction settles. Creates the permanent ledger entry
+ * and IssuingTransaction record. Balance was already deducted at authorization;
+ * for refunds we add funds back here.
+ */
+async function handleIssuingTransaction(txn: Stripe.Issuing.Transaction) {
+  const stripeCardId       = typeof txn.card === 'string' ? txn.card : txn.card?.id
+  const stripeAuthId       = typeof txn.authorization === 'string' ? txn.authorization : txn.authorization?.id
+  const stripeTransactionId = txn.id
+  const amountGBP          = Math.abs(txn.amount) / 100
+  const isRefund           = txn.type === 'refund'
+  const merchantName       = txn.merchant_data?.name ?? 'Card payment'
+  const merchantCity       = txn.merchant_data?.city ?? null
+  const merchantCategory   = txn.merchant_data?.category ?? null
+
+  if (!stripeCardId) return
+
+  const card = await prisma.issuedCard.findUnique({
+    where: { stripeCardId },
+    select: { id: true, walletId: true, userId: true, last4: true },
+  })
+  if (!card) { console.warn('[issuing] Transaction for unknown card:', stripeCardId); return }
+
+  // Idempotency
+  const exists = await prisma.issuingTransaction.findUnique({ where: { stripeTransactionId } })
+  if (exists) return
+
+  await prisma.$transaction(async (tx) => {
+    // Refunds: add funds back (original deduction was at authorization)
+    if (isRefund) {
+      await tx.wallet.update({
+        where: { id: card.walletId },
+        data: { balance: { increment: amountGBP } },
+      })
+    } else {
+      // For non-refund captures, update lifetimeSpent
+      await tx.wallet.update({
+        where: { id: card.walletId },
+        data: { lifetimeSpent: { increment: amountGBP } },
+      })
+    }
+
+    // Ledger entry (for wallet transaction history display)
+    const walletBalance = await tx.wallet.findUniqueOrThrow({
+      where: { id: card.walletId },
+      select: { balance: true },
+    })
+
+    const walletTx = await tx.walletTransaction.create({
+      data: {
+        walletId: card.walletId,
+        type: isRefund ? 'CARD_REFUND' : 'CARD_PAYMENT',
+        amount: isRefund ? amountGBP : -amountGBP,
+        balanceAfter: walletBalance.balance,
+        description: isRefund
+          ? `Refund · ${merchantName}`
+          : `${merchantName}${merchantCity ? ` · ${merchantCity}` : ''}`,
+        status: 'COMPLETED',
+        metadata: {
+          merchantName,
+          merchantCity,
+          merchantCategory,
+          cardLast4: card.last4,
+          stripeTransactionId,
+        },
+      },
+    })
+
+    // IssuingTransaction record (for card-specific history tab)
+    await tx.issuingTransaction.create({
+      data: {
+        cardId: card.id,
+        userId: card.userId,
+        walletId: card.walletId,
+        stripeTransactionId,
+        stripeAuthorizationId: stripeAuthId ?? null,
+        amount: isRefund ? amountGBP : -amountGBP,
+        currency: txn.currency.toUpperCase(),
+        merchantName,
+        merchantCity,
+        merchantCategory,
+        type: txn.type,
+        status: 'settled',
+        walletTransactionId: walletTx.id,
+      },
+    })
+  })
+}
+
+/**
+ * Authorization reversed without a matching capture — add held funds back.
+ * Guards against duplicate credit via the IssuingTransaction unique index.
+ */
+async function handleIssuingAuthorizationReversed(authorization: Stripe.Issuing.Authorization) {
+  const stripeCardId = authorization.card.id
+  const amountGBP    = authorization.amount / 100
+
+  // If a transaction was already recorded for this auth, funds are handled
+  const alreadySettled = await prisma.issuingTransaction.findUnique({
+    where: { stripeAuthorizationId: authorization.id },
+  })
+  if (alreadySettled) return
+
+  const card = await prisma.issuedCard.findUnique({
+    where: { stripeCardId },
+    select: { id: true, walletId: true },
+  })
+  if (!card) return
+
+  await prisma.$transaction(async (tx) => {
+    const wallet = await tx.wallet.update({
+      where: { id: card.walletId },
+      data: { balance: { increment: amountGBP } },
+      select: { balance: true },
+    })
+
+    await tx.walletTransaction.create({
+      data: {
+        walletId: card.walletId,
+        type: 'CARD_REFUND',
+        amount: amountGBP,
+        balanceAfter: wallet.balance,
+        description: 'Authorization reversed (merchant cancelled)',
+        status: 'COMPLETED',
+        metadata: { authorizationId: authorization.id },
+      },
+    })
+
+    // Record so future reversed events don't double-credit
+    await tx.issuingTransaction.create({
+      data: {
+        cardId: card.id,
+        userId: (await prisma.issuedCard.findUnique({ where: { id: card.id }, select: { userId: true } }))!.userId,
+        walletId: card.walletId,
+        stripeTransactionId: `rev_${authorization.id}`,
+        stripeAuthorizationId: authorization.id,
+        amount: amountGBP,
+        currency: 'GBP',
+        merchantName: 'Authorization reversed',
+        type: 'refund',
+        status: 'reversed',
+        walletTransactionId: null,
+      },
+    })
   })
 }
 

@@ -190,6 +190,7 @@ model User {
   groupMemberships  GroupMembership[]
   sentGroupMessages GroupMessage[] @relation("SentGroupMessages")
   wallet            Wallet?
+  issuedCards       IssuedCard[]      @relation("UserIssuedCards")
 
   profileViewsReceived ProfileView[] @relation("ProfileViewed")
   profileViewsGiven    ProfileView[] @relation("ProfileViewer")
@@ -927,6 +928,8 @@ enum WalletTxType {
   BONUS
   WITHDRAWAL
   GROUP_SUB_REVENUE
+  CARD_PAYMENT   // Stripe Issuing debit
+  CARD_REFUND    // Stripe Issuing refund / reversed auth
 }
 
 enum WalletTxStatus {
@@ -992,6 +995,7 @@ model Wallet {
 
   transactions WalletTransaction[]
   cardOrders   CardOrder[]
+  issuedCards  IssuedCard[]
 }
 
 model WalletTransaction {
@@ -1034,6 +1038,84 @@ model CardOrder {
 
   @@index([userId])
   @@index([status])
+}
+
+// ─── Stripe Issuing ──────────────────────────────────────────────────────────
+
+enum IssuedCardType {
+  VIRTUAL
+  PHYSICAL
+}
+
+enum IssuedCardStatus {
+  ACTIVE
+  INACTIVE
+  CANCELED
+  SHIPPING  // physical card in transit
+}
+
+model IssuedCard {
+  id                 String           @id @default(cuid())
+  userId             String
+  walletId           String
+  user               User             @relation("UserIssuedCards", fields: [userId], references: [id], onDelete: Cascade)
+  wallet             Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  // Stripe refs
+  stripeCardholderId String           @unique
+  stripeCardId       String           @unique
+
+  type               IssuedCardType   @default(VIRTUAL)
+  status             IssuedCardStatus @default(ACTIVE)
+  last4              String
+  expMonth           Int
+  expYear            Int
+  brand              String           @default("Visa")
+
+  // Physical card shipping (null for virtual cards)
+  shippingName       String?
+  shippingLine1      String?
+  shippingCity       String?
+  shippingPostcode   String?
+  shippingCountry    String           @default("GB")
+  shippingStatus     String?          // pending | fulfilled | delivered
+  trackingUrl        String?
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  transactions       IssuingTransaction[]
+
+  @@index([userId])
+  @@index([walletId])
+}
+
+// Record of every real-world card spend / refund
+model IssuingTransaction {
+  id                    String     @id @default(cuid())
+  cardId                String
+  card                  IssuedCard @relation(fields: [cardId], references: [id])
+  userId                String
+  walletId              String
+
+  stripeTransactionId   String     @unique
+  stripeAuthorizationId String?    @unique
+
+  amount                Float      // positive = refund credit, negative = spend debit (GBP)
+  currency              String     @default("GBP")
+  merchantName          String
+  merchantCity          String?
+  merchantCategory      String?
+  type                  String     // capture | refund | dispute
+  status                String     // pending | settled | reversed
+
+  // Link back to the WalletTransaction created for the ledger
+  walletTransactionId   String?    @unique
+
+  createdAt             DateTime   @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([userId])
 }
 
 // ─── Venue Partnerships ──────────────────────────────────────────────────────

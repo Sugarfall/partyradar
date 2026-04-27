@@ -53,6 +53,7 @@ import dashboardRouter from './routes/dashboard'
 import leaderboardRouter from './routes/leaderboard'
 import venueDiscoverRouter from './routes/venue-discover'
 import walletRouter from './routes/wallet'
+import issuingRouter from './routes/issuing'
 import usersRouter from './routes/users'
 import nearbyRouter from './routes/nearby'
 import socialScoreRouter from './routes/social-score'
@@ -471,6 +472,8 @@ app.use('/api/wallet/top-up', paymentLimiter)
 app.use('/api/wallet/payment-intent', paymentLimiter)
 app.use('/api/wallet/spend', paymentLimiter)
 app.use('/api/wallet/order-card', paymentLimiter)
+app.use('/api/wallet/issuing/activate', paymentLimiter)
+app.use('/api/wallet/issuing', paymentLimiter)
 app.use('/api/connect', paymentLimiter)
 app.use('/api/venues/discover', discoverLimiter)
 app.use('/api/dm', dmWriteLimiter)
@@ -534,6 +537,7 @@ app.use('/api/blast', blastRouter)
 app.use('/api/groups', groupsRouter)
 app.use('/api/referrals', referralsRouter)
 app.use('/api/wallet', walletRouter)
+app.use('/api/wallet/issuing', issuingRouter)
 app.use('/api/dashboard', dashboardRouter)
 app.use('/api/leaderboard', leaderboardRouter)
 app.use('/api/users', usersRouter)

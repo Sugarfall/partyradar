@@ -9,6 +9,7 @@ import {
   Wallet, CreditCard, Gift, TrendingUp,
   ArrowUp, ArrowDown, Zap, Star, CheckCircle,
   Package, ChevronDown, ChevronUp, Sparkles,
+  Snowflake, Wifi, Shield, MapPin, Truck, Eye, EyeOff, Loader2,
 } from 'lucide-react'
 import { TopUpModal } from '@/components/wallet/TopUpModal'
 
@@ -47,6 +48,32 @@ interface CardOrder {
   createdAt: string
 }
 
+interface IssuedCard {
+  id: string
+  type: 'VIRTUAL' | 'PHYSICAL'
+  status: 'ACTIVE' | 'INACTIVE' | 'CANCELED' | 'SHIPPING'
+  last4: string
+  expMonth: number
+  expYear: number
+  brand: string
+  shippingName?: string
+  shippingCity?: string
+  shippingStatus?: string
+  trackingUrl?: string
+  createdAt: string
+  transactions?: IssuingTx[]
+}
+
+interface IssuingTx {
+  id: string
+  amount: number
+  merchantName: string
+  merchantCity?: string
+  type: string
+  status: string
+  createdAt: string
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function txIcon(type: string) {
@@ -58,6 +85,8 @@ function txIcon(type: string) {
     case 'DRINK_REWARD':    return <Gift       size={14} style={{ color: '#ffd600' }} />
     case 'REFERRAL_CREDIT': return <TrendingUp size={14} style={{ color: '#00ff88' }} />
     case 'BONUS':           return <Star       size={14} style={{ color: '#ffd600' }} />
+    case 'CARD_PAYMENT':    return <CreditCard size={14} style={{ color: '#ff006e' }} />
+    case 'CARD_REFUND':     return <ArrowDown  size={14} style={{ color: '#00ff88' }} />
     case 'WITHDRAWAL':      return <ArrowUp    size={14} style={{ color: '#3b82f6' }} />
     default:                return <Zap        size={14} style={{ color: 'rgba(224,242,254,0.4)' }} />
   }
@@ -132,7 +161,22 @@ export default function WalletPage() {
   const [topUpTierId, setTopUpTierId]   = useState<string | null>(null)
   const [topUpSuccess, setTopUpSuccess] = useState(false)
 
-  // Card ordering state
+  // Stripe Issuing — virtual / physical card
+  const [issuedCards, setIssuedCards]           = useState<IssuedCard[]>([])
+  const [issuingActivating, setIssuingActivating] = useState(false)
+  const [issuingFreezing, setIssuingFreezing]   = useState(false)
+  const [issuingError, setIssuingError]         = useState<string | null>(null)
+  const [showCardDetails, setShowCardDetails]   = useState(false)
+  const [showPhysicalForm, setShowPhysicalForm] = useState(false)
+  const [physName, setPhysName]                 = useState('')
+  const [physLine1, setPhysLine1]               = useState('')
+  const [physCity, setPhysCity]                 = useState('')
+  const [physPost, setPhysPost]                 = useState('')
+  const [physExpedited, setPhysExpedited]       = useState(false)
+  const [physOrdering, setPhysOrdering]         = useState(false)
+  const [physError, setPhysError]               = useState<string | null>(null)
+
+  // Card ordering state (existing merchandise cards)
   const [cardOrders, setCardOrders]         = useState<CardOrder[]>([])
   const [showCardOrder, setShowCardOrder]   = useState(false)
   const [selectedDesign, setSelectedDesign] = useState<string>('CLASSIC_BLACK')
@@ -150,14 +194,17 @@ export default function WalletPage() {
     setLoading(true)
     setLoadError(null)
     try {
-      const res = await api.get<{ data: WalletData & { transactions: WalletTransaction[] } }>('/wallet')
+      const [res, issuingRes, cardsRes] = await Promise.all([
+        api.get<{ data: WalletData & { transactions: WalletTransaction[] } }>('/wallet'),
+        api.get<{ data: IssuedCard[] }>('/wallet/issuing'),
+        api.get<{ data: { orders: CardOrder[] } }>('/wallet/cards'),
+      ])
       if (res?.data) {
         const { transactions: txs, ...walletData } = res.data
         setWallet(walletData as WalletData)
         setTransactions(txs ?? [])
       }
-      // Load card orders in parallel
-      const cardsRes = await api.get<{ data: { orders: CardOrder[] } }>('/wallet/cards')
+      if (issuingRes?.data) setIssuedCards(issuingRes.data)
       if (cardsRes?.data?.orders) setCardOrders(cardsRes.data.orders)
     } catch {
       setLoadError('Failed to load wallet — please try again')
@@ -224,6 +271,65 @@ export default function WalletPage() {
       setCardOrderError((err as { message?: string })?.message ?? 'Order failed — please try again')
     } finally {
       setCardOrdering(false)
+    }
+  }
+
+  // ── Stripe Issuing handlers ────────────────────────────────────────────────
+
+  async function activateCard() {
+    setIssuingActivating(true)
+    setIssuingError(null)
+    try {
+      const res = await api.post<{ data: IssuedCard }>('/wallet/issuing/activate', {})
+      if (res?.data) {
+        setIssuedCards(prev => {
+          const exists = prev.find(c => c.id === res.data.id)
+          return exists ? prev : [...prev, res.data]
+        })
+      }
+    } catch (err: unknown) {
+      setIssuingError((err as { message?: string })?.message ?? 'Activation failed — please try again')
+    } finally {
+      setIssuingActivating(false)
+    }
+  }
+
+  async function toggleFreeze(cardId: string) {
+    setIssuingFreezing(true)
+    setIssuingError(null)
+    try {
+      const res = await api.post<{ data: IssuedCard; frozen: boolean }>(`/wallet/issuing/${cardId}/freeze`, {})
+      if (res?.data) setIssuedCards(prev => prev.map(c => c.id === cardId ? res.data : c))
+    } catch (err: unknown) {
+      setIssuingError((err as { message?: string })?.message ?? 'Failed to update card')
+    } finally {
+      setIssuingFreezing(false)
+    }
+  }
+
+  async function orderPhysical(virtualCardId: string) {
+    if (!physName.trim() || !physLine1.trim() || !physCity.trim() || !physPost.trim()) {
+      setPhysError('Please fill in all shipping details')
+      return
+    }
+    setPhysOrdering(true)
+    setPhysError(null)
+    try {
+      const res = await api.post<{ data: IssuedCard }>(`/wallet/issuing/${virtualCardId}/physical`, {
+        name: physName.trim(),
+        line1: physLine1.trim(),
+        city: physCity.trim(),
+        postcode: physPost.trim().toUpperCase(),
+        expedited: physExpedited,
+      })
+      if (res?.data) {
+        setIssuedCards(prev => [...prev, res.data])
+        setShowPhysicalForm(false)
+      }
+    } catch (err: unknown) {
+      setPhysError((err as { message?: string })?.message ?? 'Failed to order physical card')
+    } finally {
+      setPhysOrdering(false)
     }
   }
 
@@ -419,6 +525,449 @@ export default function WalletPage() {
               </div>
             )}
           </SectionCard>
+
+          {/* ── Stripe Issuing — Virtual / Physical Debit Card ───────────── */}
+          {(() => {
+            const virtualCard = issuedCards.find(c => c.type === 'VIRTUAL')
+            const physicalCard = issuedCards.find(c => c.type === 'PHYSICAL')
+            const isFrozen = virtualCard?.status === 'INACTIVE'
+            const isActive = virtualCard?.status === 'ACTIVE'
+
+            return (
+              <SectionCard className="overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center gap-2 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.07)' }}>
+                  <Wifi size={14} style={{ color: 'var(--accent)' }} />
+                  <p className="text-[10px] font-black tracking-widest flex-1" style={{ color: 'rgba(224,242,254,0.6)' }}>
+                    PARTYRADAR DEBIT CARD
+                  </p>
+                  {virtualCard && (
+                    <span
+                      className="text-[8px] font-black tracking-wider px-2 py-0.5 rounded-full"
+                      style={{
+                        background: isActive
+                          ? 'rgba(0,255,136,0.1)'
+                          : isFrozen
+                            ? 'rgba(59,130,246,0.1)'
+                            : 'rgba(255,214,0,0.1)',
+                        color: isActive ? '#00ff88' : isFrozen ? '#3b82f6' : '#ffd600',
+                        border: `1px solid ${isActive ? 'rgba(0,255,136,0.25)' : isFrozen ? 'rgba(59,130,246,0.25)' : 'rgba(255,214,0,0.25)'}`,
+                      }}
+                    >
+                      {isActive ? 'ACTIVE' : isFrozen ? '❄ FROZEN' : virtualCard.status}
+                    </span>
+                  )}
+                </div>
+
+                <div className="p-4 space-y-3">
+                  {!virtualCard ? (
+                    /* ── No card yet → Activate CTA ──────────────────────── */
+                    <div className="space-y-3">
+                      {/* Placeholder card */}
+                      <div
+                        className="relative w-full rounded-2xl overflow-hidden"
+                        style={{
+                          background: 'linear-gradient(135deg, #0f0f1a 0%, #1a1030 50%, #0a0a14 100%)',
+                          border: '1px solid rgba(var(--accent-rgb),0.12)',
+                          aspectRatio: '1.586',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                        }}
+                      >
+                        <div className="absolute inset-0 flex flex-col justify-between p-5">
+                          <div className="flex items-start justify-between">
+                            <p className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                              PARTYRADAR
+                            </p>
+                            <Wifi size={18} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+                          </div>
+                          <div>
+                            <div
+                              className="w-8 h-6 rounded-md mb-3"
+                              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+                            />
+                            <p className="text-sm font-mono font-bold tracking-[0.25em]" style={{ color: 'rgba(224,242,254,0.15)' }}>
+                              •••• •••• •••• ••••
+                            </p>
+                          </div>
+                          <div className="flex items-end justify-between">
+                            <p className="text-[10px] font-mono" style={{ color: 'rgba(224,242,254,0.12)' }}>——/——</p>
+                            <p className="text-lg font-black italic" style={{ color: 'rgba(224,242,254,0.1)', fontFamily: 'serif' }}>VISA</p>
+                          </div>
+                        </div>
+                        <div
+                          className="absolute inset-0 pointer-events-none"
+                          style={{ background: 'radial-gradient(ellipse at 70% 30%, rgba(var(--accent-rgb),0.03) 0%, transparent 60%)' }}
+                        />
+                      </div>
+
+                      <p className="text-[10px] text-center" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                        Get a virtual Visa debit card linked directly to your wallet balance
+                      </p>
+
+                      {issuingError && (
+                        <p className="text-[10px] font-bold text-center" style={{ color: '#ff006e' }}>{issuingError}</p>
+                      )}
+
+                      <button
+                        onClick={activateCard}
+                        disabled={issuingActivating || !wallet}
+                        className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all duration-150 active:scale-[0.97]"
+                        style={{
+                          background: issuingActivating
+                            ? 'rgba(var(--accent-rgb),0.06)'
+                            : 'linear-gradient(135deg, rgba(var(--accent-rgb),0.22), rgba(var(--accent-rgb),0.12))',
+                          border: '1px solid rgba(var(--accent-rgb),0.35)',
+                          color: 'var(--accent)',
+                          boxShadow: issuingActivating ? 'none' : '0 0 20px rgba(var(--accent-rgb),0.15)',
+                        }}
+                      >
+                        {issuingActivating ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <Loader2 size={14} className="animate-spin" />
+                            ACTIVATING…
+                          </span>
+                        ) : 'ACTIVATE YOUR VIRTUAL CARD'}
+                      </button>
+
+                      {!wallet && (
+                        <p className="text-[9px] text-center" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                          Top up your wallet first to activate your card
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    /* ── Card exists → Visual + controls ─────────────────── */
+                    <div className="space-y-3">
+                      {/* Card visual */}
+                      <div
+                        className="relative w-full rounded-2xl overflow-hidden"
+                        style={{
+                          background: isFrozen
+                            ? 'linear-gradient(135deg, #0a1020 0%, #0d1a30 50%, #0a0f1a 100%)'
+                            : 'linear-gradient(135deg, #0f0f24 0%, #1a0d35 35%, #0d1a24 65%, #060614 100%)',
+                          border: isFrozen
+                            ? '1px solid rgba(59,130,246,0.25)'
+                            : '1px solid rgba(var(--accent-rgb),0.2)',
+                          aspectRatio: '1.586',
+                          boxShadow: isFrozen
+                            ? '0 8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(59,130,246,0.08)'
+                            : '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(var(--accent-rgb),0.07)',
+                          filter: isFrozen ? 'saturate(0.3) brightness(0.75)' : 'none',
+                          transition: 'all 0.4s ease',
+                        }}
+                      >
+                        <div className="absolute inset-0 flex flex-col justify-between p-5">
+                          {/* Top */}
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                                PARTYRADAR
+                              </p>
+                              {isFrozen && (
+                                <p className="text-[8px] font-bold mt-0.5" style={{ color: '#3b82f6' }}>❄ FROZEN</p>
+                              )}
+                            </div>
+                            <Wifi size={18} style={{ color: isFrozen ? 'rgba(59,130,246,0.5)' : 'rgba(var(--accent-rgb),0.5)' }} />
+                          </div>
+
+                          {/* Chip + number */}
+                          <div>
+                            <div
+                              className="w-8 h-6 rounded-md mb-3 flex items-center justify-center"
+                              style={{
+                                background: 'linear-gradient(135deg, #c8a84b 0%, #ffd700 40%, #c8a84b 70%, #a67c00 100%)',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                              }}
+                            >
+                              <div className="grid grid-cols-2 gap-[2px] opacity-40">
+                                {[...Array(4)].map((_, i) => (
+                                  <div key={i} className="w-1.5 h-1 rounded-[1px]" style={{ background: '#6a4800' }} />
+                                ))}
+                              </div>
+                            </div>
+                            <p
+                              className="text-sm font-mono font-bold tracking-[0.25em]"
+                              style={{ color: 'rgba(224,242,254,0.9)', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
+                            >
+                              •••• •••• •••• {virtualCard.last4}
+                            </p>
+                          </div>
+
+                          {/* Bottom */}
+                          <div className="flex items-end justify-between">
+                            <div>
+                              <p className="text-[7px] font-bold tracking-widest mb-0.5" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                                EXPIRES
+                              </p>
+                              <p className="text-[11px] font-mono font-bold" style={{ color: 'rgba(224,242,254,0.8)' }}>
+                                {String(virtualCard.expMonth).padStart(2, '0')}/{String(virtualCard.expYear).slice(-2)}
+                              </p>
+                            </div>
+                            <p
+                              className="text-xl font-black italic"
+                              style={{ color: 'rgba(224,242,254,0.65)', fontFamily: 'Georgia, serif', letterSpacing: '-0.01em' }}
+                            >
+                              VISA
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Ambient glow */}
+                        <div
+                          className="absolute inset-0 pointer-events-none"
+                          style={{
+                            background: isFrozen
+                              ? 'radial-gradient(ellipse at 30% 70%, rgba(59,130,246,0.05) 0%, transparent 55%)'
+                              : 'radial-gradient(ellipse at 70% 30%, rgba(var(--accent-rgb),0.06) 0%, transparent 55%)',
+                          }}
+                        />
+                      </div>
+
+                      {/* Error */}
+                      {issuingError && (
+                        <p className="text-[10px] font-bold text-center" style={{ color: '#ff006e' }}>{issuingError}</p>
+                      )}
+
+                      {/* Action row */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => toggleFreeze(virtualCard.id)}
+                          disabled={issuingFreezing || virtualCard.status === 'CANCELED'}
+                          className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all duration-150 active:scale-[0.96]"
+                          style={{
+                            background: isFrozen ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)',
+                            border: isFrozen ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                            color: isFrozen ? '#3b82f6' : 'rgba(224,242,254,0.45)',
+                            opacity: issuingFreezing ? 0.6 : 1,
+                          }}
+                        >
+                          {issuingFreezing
+                            ? <Loader2 size={12} className="animate-spin" />
+                            : <Snowflake size={12} />
+                          }
+                          {isFrozen ? 'UNFREEZE' : 'FREEZE'}
+                        </button>
+
+                        {!physicalCard ? (
+                          <button
+                            onClick={() => setShowPhysicalForm(v => !v)}
+                            className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all duration-150 active:scale-[0.96]"
+                            style={{
+                              background: showPhysicalForm ? 'rgba(168,85,247,0.12)' : 'rgba(168,85,247,0.06)',
+                              border: '1px solid rgba(168,85,247,0.25)',
+                              color: '#a855f7',
+                            }}
+                          >
+                            <Truck size={12} />
+                            GET PHYSICAL
+                          </button>
+                        ) : (
+                          <div
+                            className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black tracking-widest"
+                            style={{
+                              background: physicalCard.status === 'ACTIVE'
+                                ? 'rgba(0,255,136,0.06)'
+                                : 'rgba(59,130,246,0.06)',
+                              border: physicalCard.status === 'ACTIVE'
+                                ? '1px solid rgba(0,255,136,0.2)'
+                                : '1px solid rgba(59,130,246,0.2)',
+                              color: physicalCard.status === 'ACTIVE' ? 'rgba(0,255,136,0.7)' : '#3b82f6',
+                            }}
+                          >
+                            <Package size={12} />
+                            {physicalCard.status === 'SHIPPING' ? 'SHIPPING' : 'PHYSICAL ✓'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Physical card shipping status */}
+                      {physicalCard?.status === 'SHIPPING' && (
+                        <div
+                          className="rounded-xl p-3 flex items-start gap-2.5"
+                          style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}
+                        >
+                          <Truck size={14} style={{ color: '#3b82f6', flexShrink: 0, marginTop: 1 }} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-black" style={{ color: '#3b82f6' }}>PHYSICAL CARD EN ROUTE</p>
+                            <p className="text-[9px] mt-0.5" style={{ color: 'rgba(59,130,246,0.6)' }}>
+                              •••• •••• •••• {physicalCard.last4} · Arrives in 5–7 business days
+                            </p>
+                            {physicalCard.trackingUrl && (
+                              <a
+                                href={physicalCard.trackingUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[9px] font-bold mt-1 block"
+                                style={{ color: '#3b82f6' }}
+                              >
+                                TRACK PACKAGE →
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Physical card order form */}
+                      {showPhysicalForm && !physicalCard && (
+                        <div
+                          className="rounded-xl p-4 space-y-3"
+                          style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.15)' }}
+                        >
+                          <p className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(168,85,247,0.8)' }}>
+                            ORDER PHYSICAL CARD
+                          </p>
+                          <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                            A real Visa debit card linked to your wallet. Tap and pay anywhere Visa is accepted.
+                          </p>
+
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={physName}
+                              onChange={e => setPhysName(e.target.value)}
+                              placeholder="Name on card"
+                              className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(168,85,247,0.18)', color: '#e0f2fe' }}
+                            />
+                            <input
+                              type="text"
+                              value={physLine1}
+                              onChange={e => setPhysLine1(e.target.value)}
+                              placeholder="Street address"
+                              className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(168,85,247,0.18)', color: '#e0f2fe' }}
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                value={physCity}
+                                onChange={e => setPhysCity(e.target.value)}
+                                placeholder="City"
+                                className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(168,85,247,0.18)', color: '#e0f2fe' }}
+                              />
+                              <input
+                                type="text"
+                                value={physPost}
+                                onChange={e => setPhysPost(e.target.value.toUpperCase())}
+                                placeholder="Postcode"
+                                className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(168,85,247,0.18)', color: '#e0f2fe' }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Express toggle */}
+                          <div
+                            className="rounded-xl p-3 flex items-center gap-3"
+                            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(168,85,247,0.1)' }}
+                          >
+                            <div className="flex-1">
+                              <p className="text-[10px] font-bold" style={{ color: '#e0f2fe' }}>Express shipping</p>
+                              <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.35)' }}>2–3 business days instead of 5–7</p>
+                            </div>
+                            <button
+                              onClick={() => setPhysExpedited(v => !v)}
+                              className="relative w-10 h-5 rounded-full transition-all duration-200 shrink-0"
+                              style={{ background: physExpedited ? '#a855f7' : 'rgba(255,255,255,0.08)' }}
+                            >
+                              <div
+                                className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all duration-200"
+                                style={{ left: physExpedited ? '22px' : '2px' }}
+                              />
+                            </button>
+                          </div>
+
+                          {physError && (
+                            <p className="text-[10px] font-bold" style={{ color: '#ff006e' }}>{physError}</p>
+                          )}
+
+                          <button
+                            onClick={() => orderPhysical(virtualCard.id)}
+                            disabled={physOrdering}
+                            className="w-full py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all duration-150 active:scale-[0.97]"
+                            style={{
+                              background: physOrdering
+                                ? 'rgba(168,85,247,0.07)'
+                                : 'linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.12))',
+                              border: '1px solid rgba(168,85,247,0.35)',
+                              color: '#a855f7',
+                            }}
+                          >
+                            {physOrdering ? (
+                              <span className="flex items-center justify-center gap-2">
+                                <Loader2 size={12} className="animate-spin" />
+                                ORDERING…
+                              </span>
+                            ) : `ORDER PHYSICAL CARD${physExpedited ? ' (EXPRESS)' : ''}`}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Recent card spend */}
+                      {(() => {
+                        const txs = virtualCard.transactions
+                        if (!txs || txs.length === 0) return null
+                        return (
+                          <div>
+                            <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                              RECENT CARD SPEND
+                            </p>
+                            <div className="space-y-1">
+                              {txs.slice(0, 5).map(tx => {
+                                const isCredit = tx.amount >= 0
+                                return (
+                                  <div key={tx.id} className="flex items-center gap-2.5 py-1.5">
+                                    <div
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                                      style={{
+                                        background: isCredit ? 'rgba(0,255,136,0.07)' : 'rgba(255,0,110,0.07)',
+                                        border: isCredit ? '1px solid rgba(0,255,136,0.15)' : '1px solid rgba(255,0,110,0.15)',
+                                      }}
+                                    >
+                                      {isCredit
+                                        ? <ArrowDown size={10} style={{ color: '#00ff88' }} />
+                                        : <ArrowUp size={10} style={{ color: '#ff006e' }} />
+                                      }
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] font-bold truncate" style={{ color: '#e0f2fe' }}>
+                                        {tx.merchantName}
+                                      </p>
+                                      <p className="text-[8px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                                        {tx.merchantCity ? `${tx.merchantCity} · ` : ''}{timeAgo(tx.createdAt)}
+                                      </p>
+                                    </div>
+                                    <p
+                                      className="text-[10px] font-black shrink-0"
+                                      style={{ color: isCredit ? '#00ff88' : '#ff006e' }}
+                                    >
+                                      {isCredit ? '+' : '-'}£{Math.abs(tx.amount).toFixed(2)}
+                                    </p>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Footer */}
+                  <div
+                    className="flex items-center gap-2 pt-2"
+                    style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}
+                  >
+                    <Shield size={10} style={{ color: 'rgba(var(--accent-rgb),0.3)', flexShrink: 0 }} />
+                    <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                      Powered by Stripe Issuing · Visa debit · Balance protected — spend only what's in your wallet
+                    </p>
+                  </div>
+                </div>
+              </SectionCard>
+            )
+          })()}
 
           {/* ── Loyalty progress bar ─────────────────────────────────────── */}
           {wallet && (
