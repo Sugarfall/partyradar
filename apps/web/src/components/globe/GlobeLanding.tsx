@@ -122,7 +122,12 @@ export default function GlobeLanding() {
 
   const getLocationAndZoom = useCallback(() => {
     setPhase('zooming')
-    navigator.geolocation?.getCurrentPosition(
+    if (!navigator.geolocation) {
+      fetchNearestEvent(55.861, -4.251)
+      zoomToCoords(55.861, -4.251)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         setUserLat(coords.latitude)
         setUserLng(coords.longitude)
@@ -134,7 +139,14 @@ export default function GlobeLanding() {
         fetchNearestEvent(55.861, -4.251)
         zoomToCoords(55.861, -4.251)
       },
-      { timeout: 4000 }
+      {
+        // enableHighAccuracy: false  → use network/cell location, resolves in ~1s vs 5–15s for GPS
+        // maximumAge: 60000          → accept a cached fix from the last 60s (instant if browser has one)
+        // timeout: 9000              → give the permission prompt + network lookup enough time before Glasgow fallback
+        enableHighAccuracy: false,
+        maximumAge: 60000,
+        timeout: 9000,
+      }
     )
   }, [fetchNearestEvent, zoomToCoords])
 
@@ -213,8 +225,13 @@ export default function GlobeLanding() {
     width: typeof window !== 'undefined' ? window.innerWidth : 1200,
     height: typeof window !== 'undefined' ? window.innerHeight : 800,
 
-    // Dark night earth showing city lights
-    globeImageUrl: 'https://unpkg.com/three-globe/example/img/earth-night.jpg',
+    // Match the device's physical pixel density — fixes pixelation on retina/2x/3x phones
+    pixelRatio: typeof window !== 'undefined' ? Math.min(window.devicePixelRatio, 2) : 1,
+    // Smooth WebGL edges
+    rendererConfig: { antialias: true, alpha: false },
+
+    // High-res NASA Black Marble night-earth (3600×1800 — ~3× the resolution of the old unpkg image)
+    globeImageUrl: 'https://eoimages.gsfc.nasa.gov/images/imagerecords/79000/79765/dnb_land_ocean_ice.2012.3600x1800.jpg',
     bumpImageUrl: 'https://unpkg.com/three-globe/example/img/earth-topology.png',
 
     // Starfield background
