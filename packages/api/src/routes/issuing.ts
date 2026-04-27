@@ -33,6 +33,7 @@ async function getOrCreateCardholderId(
   userId: string,
   email: string,
   displayName: string,
+  ip: string,
   phoneNumber?: string | null,
 ): Promise<string> {
   // Reuse cardholder if any card already exists for this user
@@ -40,9 +41,32 @@ async function getOrCreateCardholderId(
     where: { userId },
     select: { stripeCardholderId: true },
   })
-  if (existing) return existing.stripeCardholderId
 
-  const cardholder = await stripe.issuing.cardholders.create({
+  if (existing) {
+    // Refresh ToS acceptance — Stripe UK requires user_terms_acceptance to be
+    // present on the cardholder before any card can be activated. This is a
+    // no-op if already set, but clears "outstanding requirements" if missing.
+    try {
+      await (stripe.issuing.cardholders.update as Function)(existing.stripeCardholderId, {
+        individual: {
+          card_issuing: {
+            user_terms_acceptance: {
+              date: Math.floor(Date.now() / 1000),
+              ip,
+            },
+          },
+        },
+      })
+    } catch { /* non-fatal — card creation will surface any real error */ }
+    return existing.stripeCardholderId
+  }
+
+  // Split display name into first / last for Stripe's individual cardholder
+  const parts = displayName.trim().split(/\s+/)
+  const firstName = parts[0] ?? displayName
+  const lastName  = parts.length > 1 ? parts.slice(1).join(' ') : firstName
+
+  const cardholder = await (stripe.issuing.cardholders.create as Function)({
     type: 'individual',
     name: displayName,
     email,
@@ -55,6 +79,18 @@ async function getOrCreateCardholderId(
         city: 'London',
         postal_code: 'EC1A 1BB',
         country: 'GB',
+      },
+    },
+    // UK Issuing: must confirm user accepted Stripe's Issuing ToS before
+    // a card can be activated. Date + IP are logged for compliance.
+    individual: {
+      first_name: firstName,
+      last_name:  lastName,
+      card_issuing: {
+        user_terms_acceptance: {
+          date: Math.floor(Date.now() / 1000),
+          ip,
+        },
       },
     },
     status: 'active',
@@ -97,6 +133,7 @@ router.post('/activate', async (req: AuthRequest, res: Response, next: NextFunct
       dbUser.id,
       user.email,
       user.displayName ?? dbUser.displayName ?? user.email.split('@')[0],
+      req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0',
       user.phoneNumber,
     )
 
