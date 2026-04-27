@@ -69,6 +69,7 @@ import reportsRouter from './routes/reports'
 import spotifyRouter from './routes/spotify'
 import connectRouter from './routes/connect'
 import medalsRouter from './routes/medals'
+import specialEventsRouter from './routes/special-events'
 import compGroupsRouter from './routes/comp-groups'
 import challengesRouter, { dispatchWeekendChallenges } from './routes/challenges'
 import { errorHandler } from './middleware/errorHandler'
@@ -551,6 +552,7 @@ app.use('/api/reports', reportsRouter)
 app.use('/api/spotify', spotifyRouter)
 app.use('/api/connect', connectRouter)
 app.use('/api/medals', medalsRouter)
+app.use('/api/special-events', specialEventsRouter)
 app.use('/api/comp-groups', compGroupsRouter)
 app.use('/api/challenges', challengesRouter)
 
@@ -903,6 +905,74 @@ cron.schedule('0 14 * * 6', async () => {
   }
 })
 
+// ── Special Event lifecycle notifications ─────────────────────────────────────
+// Every 15 minutes: check for events that are starting soon, just started,
+// or ending soon, and push the appropriate notification to all users.
+// A SpecialEventPush row is written after each send so we never double-fire.
+cron.schedule('*/15 * * * *', async () => {
+  try {
+    const now = new Date()
+
+    // Helper: get all non-banned user IDs once per tick
+    const getUserIds = async () => {
+      const users = await prisma.user.findMany({ where: { isBanned: false }, select: { id: true } })
+      return users.map((u) => u.id)
+    }
+
+    // 1. Starting in ~24 h (window: 23 h 45 m – 24 h 15 m from now)
+    const in23h45m = new Date(now.getTime() + (23 * 60 + 45) * 60_000)
+    const in24h15m = new Date(now.getTime() + (24 * 60 + 15) * 60_000)
+    const startingSoon = await prisma.specialEvent.findMany({
+      where: { isPublished: true, startsAt: { gte: in23h45m, lte: in24h15m } },
+    })
+    for (const event of startingSoon) {
+      const alreadySent = await prisma.specialEventPush.findFirst({ where: { specialEventId: event.id, type: 'STARTING_SOON' } })
+      if (alreadySent) continue
+      const userIds = await getUserIds()
+      const title = `⏰ ${event.name} starts tomorrow!`
+      const body = 'Get ready — the special event kicks off in 24 hours!'
+      await sendNotificationToMany(userIds, { type: 'SPECIAL_EVENT', title, body, data: { specialEventId: event.id } })
+      await prisma.specialEventPush.create({ data: { specialEventId: event.id, type: 'STARTING_SOON', title, body, recipientCount: userIds.length } })
+      console.log(`[Cron] SpecialEvent "starting soon" push sent for "${event.name}" (${userIds.length} users)`)
+    }
+
+    // 2. Just started (startsAt within the last 15 min)
+    const fifteenMinAgo = new Date(now.getTime() - 15 * 60_000)
+    const justStarted = await prisma.specialEvent.findMany({
+      where: { isPublished: true, startsAt: { gte: fifteenMinAgo, lte: now } },
+    })
+    for (const event of justStarted) {
+      const alreadySent = await prisma.specialEventPush.findFirst({ where: { specialEventId: event.id, type: 'STARTED' } })
+      if (alreadySent) continue
+      const userIds = await getUserIds()
+      const title = `🚀 ${event.name} has started!`
+      const body = 'The special event is live now — go earn your medals before time runs out!'
+      await sendNotificationToMany(userIds, { type: 'SPECIAL_EVENT', title, body, data: { specialEventId: event.id } })
+      await prisma.specialEventPush.create({ data: { specialEventId: event.id, type: 'STARTED', title, body, recipientCount: userIds.length } })
+      console.log(`[Cron] SpecialEvent "started" push sent for "${event.name}" (${userIds.length} users)`)
+    }
+
+    // 3. Ending in ~2 h (window: 1 h 45 m – 2 h 15 m from now)
+    const in1h45m = new Date(now.getTime() + (1 * 60 + 45) * 60_000)
+    const in2h15m = new Date(now.getTime() + (2 * 60 + 15) * 60_000)
+    const endingSoon = await prisma.specialEvent.findMany({
+      where: { isPublished: true, endsAt: { gte: in1h45m, lte: in2h15m } },
+    })
+    for (const event of endingSoon) {
+      const alreadySent = await prisma.specialEventPush.findFirst({ where: { specialEventId: event.id, type: 'ENDING_SOON' } })
+      if (alreadySent) continue
+      const userIds = await getUserIds()
+      const title = `⚡ ${event.name} ends in 2 hours!`
+      const body = 'Hurry up — time is running out to earn your medals!'
+      await sendNotificationToMany(userIds, { type: 'SPECIAL_EVENT', title, body, data: { specialEventId: event.id } })
+      await prisma.specialEventPush.create({ data: { specialEventId: event.id, type: 'ENDING_SOON', title, body, recipientCount: userIds.length } })
+      console.log(`[Cron] SpecialEvent "ending soon" push sent for "${event.name}" (${userIds.length} users)`)
+    }
+  } catch (err) {
+    console.error('[Cron] Error in special event lifecycle cron:', err)
+  }
+})
+
 // Bot-post cron removed — feed shows real users only
 
 // ─── Auto-reseed events when they all expire ──────────────────────────────────
@@ -1068,20 +1138,22 @@ if (!process.env['INTERNAL_API_KEY']) {
 }
 
 // ─── Startup schema guard ─────────────────────────────────────────────────────
-// Creates the Medal / UserMedal tables if they don't exist yet in production.
+// Creates Medal/UserMedal/SpecialEvent/SpecialEventPush tables if missing.
+// Also adds new enum values and columns that may be absent on older DB builds.
 // Runs as a non-blocking background task so it never delays the healthcheck.
 async function ensureMedalSchema() {
+  // ── Medal table ────────────────────────────────────────────────────────────
   try {
-    await (prisma as any).medal.count() // fast check — returns immediately if table exists
+    await (prisma as any).medal.count()
     console.log('[schema] Medal table OK')
   } catch (e: any) {
-    if (e?.code !== 'P2021') return // unknown error — don't try to auto-create
-    console.log('[schema] Medal table missing — creating now...')
+    if (e?.code !== 'P2021') return
+    console.log('[schema] Medal table missing — creating now…')
     const stmts = [
       `DO $$ BEGIN CREATE TYPE "MedalTier" AS ENUM ('BRONZE','SILVER','GOLD'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
       `DO $$ BEGIN CREATE TYPE "MedalCategory" AS ENUM ('SOCIAL','EVENTS','HOST','EXPLORER','LOYALTY','SPECIAL'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
       `DO $$ BEGIN CREATE TYPE "MedalCondition" AS ENUM ('FOLLOWERS_COUNT','FOLLOWING_COUNT','EVENTS_ATTENDED','EVENTS_ORGANISED','TICKETS_BOUGHT','CHECKINS_COUNT','REFERRALS_MADE','VENUES_VISITED','POSTS_COUNT','SPECIFIC_EVENT'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
-      `CREATE TABLE IF NOT EXISTS "Medal" ("id" TEXT NOT NULL,"slug" TEXT NOT NULL,"name" TEXT NOT NULL,"description" TEXT NOT NULL,"icon" TEXT NOT NULL,"tier" "MedalTier" NOT NULL,"category" "MedalCategory" NOT NULL,"conditionType" "MedalCondition" NOT NULL,"threshold" INTEGER NOT NULL DEFAULT 1,"eventId" TEXT,"sortOrder" INTEGER NOT NULL DEFAULT 0,"isActive" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Medal_pkey" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "Medal" ("id" TEXT NOT NULL,"slug" TEXT NOT NULL,"name" TEXT NOT NULL,"description" TEXT NOT NULL,"icon" TEXT NOT NULL,"tier" "MedalTier" NOT NULL,"category" "MedalCategory" NOT NULL,"conditionType" "MedalCondition" NOT NULL,"threshold" INTEGER NOT NULL DEFAULT 1,"eventId" TEXT,"sortOrder" INTEGER NOT NULL DEFAULT 0,"isActive" BOOLEAN NOT NULL DEFAULT true,"specialEventId" TEXT,"startsAt" TIMESTAMP(3),"endsAt" TIMESTAMP(3),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Medal_pkey" PRIMARY KEY ("id"))`,
       `CREATE TABLE IF NOT EXISTS "UserMedal" ("id" TEXT NOT NULL,"userId" TEXT NOT NULL,"medalId" TEXT NOT NULL,"earnedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "UserMedal_pkey" PRIMARY KEY ("id"))`,
       `CREATE UNIQUE INDEX IF NOT EXISTS "Medal_slug_tier_key" ON "Medal"("slug","tier")`,
       `CREATE INDEX IF NOT EXISTS "Medal_category_isActive_idx" ON "Medal"("category","isActive")`,
@@ -1089,10 +1161,43 @@ async function ensureMedalSchema() {
       `DO $$ BEGIN ALTER TABLE "UserMedal" ADD CONSTRAINT "UserMedal_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
       `DO $$ BEGIN ALTER TABLE "UserMedal" ADD CONSTRAINT "UserMedal_medalId_fkey" FOREIGN KEY ("medalId") REFERENCES "Medal"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
     ]
-    for (const sql of stmts) {
-      await prisma.$executeRawUnsafe(sql)
-    }
-    console.log('[schema] Medal and UserMedal tables created successfully')
+    for (const sql of stmts) { await prisma.$executeRawUnsafe(sql) }
+    console.log('[schema] Medal and UserMedal tables created')
+  }
+
+  // ── Add new Medal columns (idempotent) ─────────────────────────────────────
+  for (const sql of [
+    `ALTER TABLE "Medal" ADD COLUMN IF NOT EXISTS "specialEventId" TEXT`,
+    `ALTER TABLE "Medal" ADD COLUMN IF NOT EXISTS "startsAt" TIMESTAMP(3)`,
+    `ALTER TABLE "Medal" ADD COLUMN IF NOT EXISTS "endsAt" TIMESTAMP(3)`,
+    `CREATE INDEX IF NOT EXISTS "Medal_specialEventId_idx" ON "Medal"("specialEventId")`,
+  ]) {
+    try { await prisma.$executeRawUnsafe(sql) } catch { /* column already exists */ }
+  }
+
+  // ── Add SPECIAL_EVENT to NotificationType enum ─────────────────────────────
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'SPECIAL_EVENT'`)
+  } catch { /* already exists or not supported */ }
+
+  // ── SpecialEvent table ─────────────────────────────────────────────────────
+  try {
+    await (prisma as any).specialEvent.count()
+    console.log('[schema] SpecialEvent table OK')
+  } catch (e: any) {
+    if (e?.code !== 'P2021') return
+    console.log('[schema] SpecialEvent table missing — creating now…')
+    const stmts = [
+      `CREATE TABLE IF NOT EXISTS "SpecialEvent" ("id" TEXT NOT NULL,"name" TEXT NOT NULL,"description" TEXT NOT NULL DEFAULT '\'\'','coverImageUrl" TEXT,"startsAt" TIMESTAMP(3) NOT NULL,"endsAt" TIMESTAMP(3) NOT NULL,"isPublished" BOOLEAN NOT NULL DEFAULT false,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "SpecialEvent_pkey" PRIMARY KEY ("id"))`,
+      `CREATE INDEX IF NOT EXISTS "SpecialEvent_startsAt_idx" ON "SpecialEvent"("startsAt")`,
+      `CREATE INDEX IF NOT EXISTS "SpecialEvent_isPublished_startsAt_idx" ON "SpecialEvent"("isPublished","startsAt")`,
+      `CREATE TABLE IF NOT EXISTS "SpecialEventPush" ("id" TEXT NOT NULL,"specialEventId" TEXT NOT NULL,"type" TEXT NOT NULL,"title" TEXT NOT NULL,"body" TEXT NOT NULL,"sentAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"recipientCount" INTEGER NOT NULL DEFAULT 0,CONSTRAINT "SpecialEventPush_pkey" PRIMARY KEY ("id"))`,
+      `CREATE INDEX IF NOT EXISTS "SpecialEventPush_specialEventId_type_idx" ON "SpecialEventPush"("specialEventId","type")`,
+      `DO $$ BEGIN ALTER TABLE "SpecialEventPush" ADD CONSTRAINT "SpecialEventPush_specialEventId_fkey" FOREIGN KEY ("specialEventId") REFERENCES "SpecialEvent"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+      `DO $$ BEGIN ALTER TABLE "Medal" ADD CONSTRAINT "Medal_specialEventId_fkey" FOREIGN KEY ("specialEventId") REFERENCES "SpecialEvent"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    ]
+    for (const sql of stmts) { await prisma.$executeRawUnsafe(sql) }
+    console.log('[schema] SpecialEvent and SpecialEventPush tables created')
   }
 }
 

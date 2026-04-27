@@ -90,8 +90,19 @@ router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
+    const now = new Date()
     const [medals, alreadyEarned, stats] = await Promise.all([
-      prisma.medal.findMany({ where: { isActive: true, NOT: { conditionType: 'SPECIFIC_EVENT' } } }),
+      prisma.medal.findMany({
+        where: {
+          isActive: true,
+          NOT: { conditionType: 'SPECIFIC_EVENT' },
+          // Respect optional time windows — only include medals whose window is currently open
+          AND: [
+            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+          ],
+        },
+      }),
       prisma.userMedal.findMany({ where: { userId }, select: { medalId: true } }),
       getUserStats(userId),
     ])
@@ -152,8 +163,18 @@ router.post('/seed', requireAuth, async (req: AuthRequest, res, next) => {
 router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     if (!req.user?.dbUser.isAdmin) return res.status(403).json({ error: 'Admin only' })
-    const { slug, name, description, icon, tier, category, conditionType, threshold, eventId, sortOrder } = req.body
-    const medal = await prisma.medal.create({ data: { slug, name, description, icon, tier, category, conditionType, threshold: threshold ?? 1, eventId, sortOrder: sortOrder ?? 0 } })
+    const { slug, name, description, icon, tier, category, conditionType, threshold, eventId, sortOrder, specialEventId, startsAt, endsAt } = req.body
+    const medal = await prisma.medal.create({
+      data: {
+        slug, name, description, icon, tier, category, conditionType,
+        threshold: threshold ?? 1,
+        eventId: eventId ?? null,
+        sortOrder: sortOrder ?? 0,
+        specialEventId: specialEventId ?? null,
+        startsAt: startsAt ? new Date(startsAt) : null,
+        endsAt: endsAt ? new Date(endsAt) : null,
+      },
+    })
     res.json({ data: medal })
   } catch (err) { next(err) }
 })
@@ -176,16 +197,27 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   } catch (err) { next(err) }
 })
 
-// Admin: manually award medal to user
-router.post('/:id/award/:userId', requireAuth, async (req: AuthRequest, res, next) => {
+// Admin: manually award medal to user (accepts username OR user ID)
+router.post('/:id/award/:userRef', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     if (!req.user?.dbUser.isAdmin) return res.status(403).json({ error: 'Admin only' })
+    const userRef = req.params['userRef']!
+
+    // Resolve userRef — could be a cuid (user ID) or a username string
+    const targetUser = await prisma.user.findFirst({
+      where: { OR: [{ id: userRef }, { username: userRef }] },
+      select: { id: true, displayName: true, username: true },
+    })
+    if (!targetUser) {
+      return res.status(404).json({ error: `No user found with ID or username "${userRef}"` })
+    }
+
     const um = await prisma.userMedal.upsert({
-      where: { userId_medalId: { userId: req.params['userId']!, medalId: req.params['id']! } },
-      create: { userId: req.params['userId']!, medalId: req.params['id']! },
+      where: { userId_medalId: { userId: targetUser.id, medalId: req.params['id']! } },
+      create: { userId: targetUser.id, medalId: req.params['id']! },
       update: {},
     })
-    res.json({ data: um })
+    res.json({ data: um, user: { id: targetUser.id, displayName: targetUser.displayName, username: targetUser.username } })
   } catch (err) { next(err) }
 })
 

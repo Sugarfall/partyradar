@@ -137,7 +137,20 @@ interface AdminMedal {
   id: string; slug: string; name: string; description: string; icon: string
   tier: 'BRONZE' | 'SILVER' | 'GOLD'; category: string; conditionType: string
   threshold: number; isActive: boolean; sortOrder: number
+  specialEventId?: string | null; startsAt?: string | null; endsAt?: string | null
   _count: { earnedBy: number }
+}
+
+interface SpecialEventPushLog {
+  id: string; type: string; title: string; sentAt: string; recipientCount: number
+}
+
+interface AdminSpecialEvent {
+  id: string; name: string; description: string; coverImageUrl?: string | null
+  startsAt: string; endsAt: string; isPublished: boolean; createdAt: string
+  medals: { id: string; name: string; icon: string; tier: string }[]
+  pushLog: SpecialEventPushLog[]
+  _count: { pushLog: number }
 }
 
 // ─── Role badge ───────────────────────────────────────────────────────────────
@@ -181,7 +194,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals'
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals' | 'special-events'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
@@ -192,6 +205,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'moderation', label: 'Mod Queue', icon: <ShieldAlert size={14} /> },
   { id: 'pipeline', label: 'Pipeline', icon: <Activity size={14} /> },
   { id: 'medals', label: '🏅 Medals', icon: null },
+  { id: 'special-events', label: '🎪 Events', icon: null },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -221,12 +235,22 @@ export default function AdminPage() {
   const [medals, setMedals] = useState<AdminMedal[]>([])
   const [medalsLoading, setMedalsLoading] = useState(false)
   const [showMedalForm, setShowMedalForm] = useState(false)
-  const [medalForm, setMedalForm] = useState({ slug: '', name: '', description: '', icon: '🏅', tier: 'BRONZE', category: 'SOCIAL', conditionType: 'FOLLOWERS_COUNT', threshold: 10, sortOrder: 0 })
+  const [medalForm, setMedalForm] = useState({ slug: '', name: '', description: '', icon: '🏅', tier: 'BRONZE', category: 'SOCIAL', conditionType: 'FOLLOWERS_COUNT', threshold: 10, sortOrder: 0, specialEventId: '', startsAt: '', endsAt: '' })
   const [awardModal, setAwardModal] = useState<{ medalId: string; medalName: string } | null>(null)
   const [awardUserId, setAwardUserId] = useState('')
   const [awarding, setAwarding] = useState(false)
   const [editingMedal, setEditingMedal] = useState<string | null>(null)
   const [editMedalData, setEditMedalData] = useState<Partial<AdminMedal>>({})
+  // Special events state
+  const [specialEvents, setSpecialEvents] = useState<AdminSpecialEvent[]>([])
+  const [specialEventsLoading, setSpecialEventsLoading] = useState(false)
+  const [showSpecialEventForm, setShowSpecialEventForm] = useState(false)
+  const [specialEventForm, setSpecialEventForm] = useState({ name: '', description: '', coverImageUrl: '', startsAt: '', endsAt: '' })
+  const [editingSpecialEvent, setEditingSpecialEvent] = useState<string | null>(null)
+  const [editSpecialEventData, setEditSpecialEventData] = useState<Partial<AdminSpecialEvent>>({})
+  const [notifyModal, setNotifyModal] = useState<{ eventId: string; eventName: string } | null>(null)
+  const [notifyForm, setNotifyForm] = useState({ title: '', body: '' })
+  const [notifying, setNotifying] = useState(false)
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok })
@@ -264,6 +288,8 @@ export default function AdminPage() {
       api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((r) => setDiagnostics(r.data)).catch(silent('admin:diagnostics'))
     } else if (tab === 'medals') {
       loadMedals()
+    } else if (tab === 'special-events') {
+      loadSpecialEvents()
     }
   }, [tab, isStaff])
 
@@ -273,6 +299,14 @@ export default function AdminPage() {
       const r = await api.get<{ data: AdminMedal[] }>('/medals/admin')
       setMedals(r.data)
     } catch {} finally { setMedalsLoading(false) }
+  }, [])
+
+  const loadSpecialEvents = useCallback(async () => {
+    setSpecialEventsLoading(true)
+    try {
+      const r = await api.get<{ data: AdminSpecialEvent[] }>('/special-events/admin')
+      setSpecialEvents(r.data)
+    } catch {} finally { setSpecialEventsLoading(false) }
   }, [])
 
   // ─── Actions ────────────────────────────────────────────────────────────────
@@ -1290,12 +1324,39 @@ export default function AdminPage() {
                     className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
                 </div>
+                {/* Optional time window & special event */}
+                <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mt-1">Optional: Special Event / Time Window</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={medalForm.specialEventId} onChange={e => setMedalForm(f => ({ ...f, specialEventId: e.target.value }))}
+                    className="col-span-2 px-3 py-2 rounded-xl text-xs text-white outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <option value="">No special event</option>
+                    {specialEvents.map(se => <option key={se.id} value={se.id}>{se.name}</option>)}
+                  </select>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-white/30 pl-1">Starts at (optional)</label>
+                    <input type="datetime-local" value={medalForm.startsAt} onChange={e => setMedalForm(f => ({ ...f, startsAt: e.target.value }))}
+                      className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-white/30 pl-1">Ends at (optional)</label>
+                    <input type="datetime-local" value={medalForm.endsAt} onChange={e => setMedalForm(f => ({ ...f, endsAt: e.target.value }))}
+                      className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
+                  </div>
+                </div>
                 <button
                   onClick={async () => {
                     try {
-                      await api.post('/medals', medalForm)
+                      await api.post('/medals', {
+                        ...medalForm,
+                        specialEventId: medalForm.specialEventId || null,
+                        startsAt: medalForm.startsAt || null,
+                        endsAt: medalForm.endsAt || null,
+                      })
                       setShowMedalForm(false)
-                      setMedalForm({ slug: '', name: '', description: '', icon: '🏅', tier: 'BRONZE', category: 'SOCIAL', conditionType: 'FOLLOWERS_COUNT', threshold: 10, sortOrder: 0 })
+                      setMedalForm({ slug: '', name: '', description: '', icon: '🏅', tier: 'BRONZE', category: 'SOCIAL', conditionType: 'FOLLOWERS_COUNT', threshold: 10, sortOrder: 0, specialEventId: '', startsAt: '', endsAt: '' })
                       loadMedals()
                       showToast('Medal created')
                     } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
@@ -1391,6 +1452,233 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── Special Events tab ── */}
+        {tab === 'special-events' && (
+          <div className="space-y-4">
+            {/* Header row */}
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-black text-white">Special Events</h2>
+                <p className="text-[10px] text-white/30 mt-0.5">Create time-limited events with medals & auto push notifications</p>
+              </div>
+              <button
+                onClick={() => setShowSpecialEventForm(f => !f)}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold shrink-0"
+                style={{ background: showSpecialEventForm ? 'rgba(255,255,255,0.06)' : '#a855f720', color: showSpecialEventForm ? 'rgba(255,255,255,0.4)' : '#a855f7', border: `1px solid ${showSpecialEventForm ? 'rgba(255,255,255,0.1)' : '#a855f740'}` }}
+              >
+                {showSpecialEventForm ? 'Cancel' : '+ New Event'}
+              </button>
+            </div>
+
+            {/* Create form */}
+            {showSpecialEventForm && (
+              <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.15)' }}>
+                <p className="text-xs font-black tracking-widest" style={{ color: '#a855f7' }}>NEW SPECIAL EVENT</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={specialEventForm.name} onChange={e => setSpecialEventForm(f => ({ ...f, name: e.target.value }))} placeholder="Event name (e.g. Easter Pub Crawl)"
+                    className="col-span-2 px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <textarea value={specialEventForm.description} onChange={e => setSpecialEventForm(f => ({ ...f, description: e.target.value }))} placeholder="Description (shown on the event card)"
+                    rows={2}
+                    className="col-span-2 px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none resize-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <input value={specialEventForm.coverImageUrl} onChange={e => setSpecialEventForm(f => ({ ...f, coverImageUrl: e.target.value }))} placeholder="Cover image URL (optional)"
+                    className="col-span-2 px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-white/30 pl-1">Starts at</label>
+                    <input type="datetime-local" value={specialEventForm.startsAt} onChange={e => setSpecialEventForm(f => ({ ...f, startsAt: e.target.value }))}
+                      className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-white/30 pl-1">Ends at</label>
+                    <input type="datetime-local" value={specialEventForm.endsAt} onChange={e => setSpecialEventForm(f => ({ ...f, endsAt: e.target.value }))}
+                      className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!specialEventForm.name || !specialEventForm.startsAt || !specialEventForm.endsAt) {
+                      showToast('Name, start date and end date are required', false); return
+                    }
+                    try {
+                      await api.post('/special-events', {
+                        name: specialEventForm.name,
+                        description: specialEventForm.description,
+                        coverImageUrl: specialEventForm.coverImageUrl || null,
+                        startsAt: specialEventForm.startsAt,
+                        endsAt: specialEventForm.endsAt,
+                      })
+                      setShowSpecialEventForm(false)
+                      setSpecialEventForm({ name: '', description: '', coverImageUrl: '', startsAt: '', endsAt: '' })
+                      loadSpecialEvents()
+                      showToast('Special event created')
+                    } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                  }}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold"
+                  style={{ background: '#a855f720', color: '#a855f7', border: '1px solid #a855f740' }}
+                >
+                  Create Special Event
+                </button>
+              </div>
+            )}
+
+            {/* Event list */}
+            {specialEventsLoading ? (
+              <div className="text-center py-12 text-white/30 text-sm">Loading special events…</div>
+            ) : specialEvents.length === 0 ? (
+              <div className="text-center py-12 text-white/30 text-sm">No special events yet — create one above</div>
+            ) : (
+              <div className="space-y-3">
+                {specialEvents.map(ev => {
+                  const now = new Date()
+                  const starts = new Date(ev.startsAt)
+                  const ends = new Date(ev.endsAt)
+                  const isLive = ev.isPublished && starts <= now && ends >= now
+                  const isPast = ends < now
+                  const isEditing = editingSpecialEvent === ev.id
+
+                  const statusColor = isLive ? '#10b981' : isPast ? 'rgba(255,255,255,0.2)' : ev.isPublished ? '#f59e0b' : '#a855f7'
+                  const statusLabel = isLive ? 'LIVE' : isPast ? 'ENDED' : ev.isPublished ? 'PUBLISHED' : 'DRAFT'
+
+                  return (
+                    <div key={ev.id} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${isLive ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.07)'}` }}>
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input defaultValue={ev.name} onChange={e => setEditSpecialEventData(d => ({ ...d, name: e.target.value }))} placeholder="Name"
+                              className="col-span-2 px-3 py-2 rounded-xl text-xs text-white outline-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <textarea defaultValue={ev.description} onChange={e => setEditSpecialEventData(d => ({ ...d, description: e.target.value }))} placeholder="Description"
+                              rows={2} className="col-span-2 px-3 py-2 rounded-xl text-xs text-white outline-none resize-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <div className="flex flex-col gap-0.5">
+                              <label className="text-[10px] text-white/30 pl-1">Starts at</label>
+                              <input type="datetime-local" defaultValue={ev.startsAt.slice(0, 16)} onChange={e => setEditSpecialEventData(d => ({ ...d, startsAt: e.target.value }))}
+                                className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <label className="text-[10px] text-white/30 pl-1">Ends at</label>
+                              <input type="datetime-local" defaultValue={ev.endsAt.slice(0, 16)} onChange={e => setEditSpecialEventData(d => ({ ...d, endsAt: e.target.value }))}
+                                className="px-3 py-2 rounded-xl text-xs text-white outline-none"
+                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={async () => {
+                              try {
+                                await api.put(`/special-events/${ev.id}`, editSpecialEventData)
+                                setEditingSpecialEvent(null); setEditSpecialEventData({}); loadSpecialEvents(); showToast('Event updated')
+                              } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                            }} className="flex-1 py-2 rounded-xl text-xs font-bold" style={{ background: '#10b98115', color: '#10b981', border: '1px solid #10b98130' }}>Save</button>
+                            <button onClick={() => { setEditingSpecialEvent(null); setEditSpecialEventData({}) }} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-start gap-3">
+                            {ev.coverImageUrl && (
+                              <img src={ev.coverImageUrl} alt="" className="w-12 h-12 rounded-xl object-cover shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="text-sm font-bold text-white">{ev.name}</span>
+                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40` }}>
+                                  {statusLabel}
+                                </span>
+                                {ev.medals.length > 0 && (
+                                  <span className="text-[10px] text-white/30">{ev.medals.length} medal{ev.medals.length !== 1 ? 's' : ''}</span>
+                                )}
+                                {ev._count.pushLog > 0 && (
+                                  <span className="text-[10px] text-white/20">{ev._count.pushLog} push{ev._count.pushLog !== 1 ? 'es' : ''} sent</span>
+                                )}
+                              </div>
+                              {ev.description && <p className="text-xs text-white/40 line-clamp-2 mb-1">{ev.description}</p>}
+                              <p className="text-[10px] text-white/25">
+                                {new Date(ev.startsAt).toLocaleDateString()} → {new Date(ev.endsAt).toLocaleDateString()}
+                              </p>
+                              {/* Linked medals */}
+                              {ev.medals.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {ev.medals.map(m => (
+                                    <span key={m.id} className="text-[10px] px-1.5 py-0.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.45)' }}>
+                                      {m.icon} {m.name} · {m.tier}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {/* Recent pushes */}
+                              {ev.pushLog.length > 0 && (
+                                <div className="mt-2 space-y-0.5">
+                                  {ev.pushLog.slice(0, 3).map(p => (
+                                    <p key={p.id} className="text-[10px] text-white/20">
+                                      <span className="font-mono text-white/30">[{p.type}]</span> {p.title} — {p.recipientCount.toLocaleString()} recipients · {new Date(p.sentAt).toLocaleDateString()}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-3">
+                            {/* Publish button — only shown if not yet published */}
+                            {!ev.isPublished && (
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`Publish "${ev.name}" and send launch push to all users?`)) return
+                                  try {
+                                    const r = await api.post<{ ok: boolean; recipientCount: number }>(`/special-events/${ev.id}/publish`, {})
+                                    loadSpecialEvents()
+                                    showToast(`Published! Push sent to ${(r as any).recipientCount?.toLocaleString() ?? 'all'} users`)
+                                  } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold"
+                                style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b98140' }}
+                              >
+                                🚀 Publish
+                              </button>
+                            )}
+                            {/* Notify button — manual blast */}
+                            <button
+                              onClick={() => { setNotifyModal({ eventId: ev.id, eventName: ev.name }); setNotifyForm({ title: '', body: '' }) }}
+                              className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold"
+                              style={{ background: '#f59e0b15', color: '#f59e0b', border: '1px solid #f59e0b30' }}
+                            >
+                              📣 Notify
+                            </button>
+                            {/* Edit */}
+                            <button
+                              onClick={() => { setEditingSpecialEvent(ev.id); setEditSpecialEventData({}) }}
+                              className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold"
+                              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}
+                            >
+                              Edit
+                            </button>
+                            {/* Delete */}
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete "${ev.name}" and all its push logs?`)) return
+                                try { await api.delete(`/special-events/${ev.id}`); loadSpecialEvents(); showToast('Event deleted') }
+                                catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                              }}
+                              className="p-1.5 rounded-lg"
+                              style={{ background: '#ff006e10', color: '#ff006e80', border: '1px solid #ff006e20' }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
       {/* Award modal */}
@@ -1401,11 +1689,11 @@ export default function AdminPage() {
               <h3 className="text-sm font-black text-white">Award: {awardModal.medalName}</h3>
               <button onClick={() => setAwardModal(null)}><X size={16} style={{ color: 'rgba(255,255,255,0.4)' }} /></button>
             </div>
-            <p className="text-xs text-white/40">Enter the user's ID (visible in the Users tab). The medal will be immediately granted to that user.</p>
+            <p className="text-xs text-white/40">Enter the user's <strong className="text-white/60">username</strong> (e.g. <span className="font-mono">galaxyhorror</span>) or their user ID. The medal will be immediately granted.</p>
             <input
               value={awardUserId}
               onChange={e => setAwardUserId(e.target.value)}
-              placeholder="User ID (cuid...)"
+              placeholder="Username or user ID"
               className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
               style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
             />
@@ -1424,6 +1712,51 @@ export default function AdminPage() {
               style={{ background: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }}
             >
               {awarding ? 'Awarding…' : 'Award Medal'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Notify modal */}
+      {notifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: 'rgba(0,0,0,0.75)' }} onClick={() => setNotifyModal(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: '#12122a', border: '1px solid rgba(255,255,255,0.1)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-white">📣 Push Notification</h3>
+              <button onClick={() => setNotifyModal(null)}><X size={16} style={{ color: 'rgba(255,255,255,0.4)' }} /></button>
+            </div>
+            <p className="text-xs text-white/40">Send a custom push to <strong className="text-white/60">all users</strong> for <span className="text-amber-400">{notifyModal.eventName}</span>.</p>
+            <input
+              value={notifyForm.title}
+              onChange={e => setNotifyForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="Notification title"
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+            />
+            <textarea
+              value={notifyForm.body}
+              onChange={e => setNotifyForm(f => ({ ...f, body: e.target.value }))}
+              placeholder="Notification body"
+              rows={3}
+              className="w-full px-3 py-2 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+            />
+            <button
+              disabled={notifying || !notifyForm.title.trim() || !notifyForm.body.trim()}
+              onClick={async () => {
+                setNotifying(true)
+                try {
+                  const r = await api.post<{ ok: boolean; recipientCount: number }>(`/special-events/${notifyModal.eventId}/notify`, notifyForm)
+                  showToast(`Push sent to ${(r as any).recipientCount?.toLocaleString() ?? 'all'} users`)
+                  setNotifyModal(null)
+                  loadSpecialEvents()
+                } catch (e: any) { showToast(e?.message ?? 'Failed', false) }
+                finally { setNotifying(false) }
+              }}
+              className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40"
+              style={{ background: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40' }}
+            >
+              {notifying ? 'Sending…' : 'Send Push'}
             </button>
           </div>
         </div>

@@ -67,6 +67,7 @@ enum NotificationType {
   GROUP_INVITE_RECEIVED
   COMMENT_MENTION
   POST_COMMENT
+  SPECIAL_EVENT
 }
 
 enum Gender {
@@ -1368,25 +1369,32 @@ enum MedalCondition {
 }
 
 model Medal {
-  id            String        @id @default(cuid())
-  slug          String
-  name          String
-  description   String
-  icon          String
-  tier          MedalTier
-  category      MedalCategory
-  conditionType MedalCondition
-  threshold     Int           @default(1)
-  eventId       String?
-  sortOrder     Int           @default(0)
-  isActive      Boolean       @default(true)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  slug           String
+  name           String
+  description    String
+  icon           String
+  tier           MedalTier
+  category       MedalCategory
+  conditionType  MedalCondition
+  threshold      Int           @default(1)
+  eventId        String?
+  sortOrder      Int           @default(0)
+  isActive       Boolean       @default(true)
+  // Special event campaign linkage
+  specialEventId String?
+  specialEvent   SpecialEvent? @relation(fields: [specialEventId], references: [id], onDelete: SetNull)
+  // Time-limited window: if set, medal can only be earned between these dates
+  startsAt       DateTime?
+  endsAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  earnedBy      UserMedal[]
+  earnedBy       UserMedal[]
 
   @@unique([slug, tier])
   @@index([category, isActive])
+  @@index([specialEventId])
 }
 
 model UserMedal {
@@ -1400,6 +1408,44 @@ model UserMedal {
   @@unique([userId, medalId])
   @@index([userId])
   @@index([medalId])
+}
+
+// ─── Special Events ────────────────────────────────────────────────────────────
+
+/// Admin-created special event campaigns (e.g. "Easter Pub Crawl").
+/// Medals linked to a SpecialEvent can only be earned during the event window.
+model SpecialEvent {
+  id            String    @id @default(cuid())
+  name          String
+  description   String    @db.Text
+  coverImageUrl String?
+  startsAt      DateTime
+  endsAt        DateTime
+  isPublished   Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  medals        Medal[]
+  pushLog       SpecialEventPush[]
+
+  @@index([startsAt])
+  @@index([isPublished, startsAt])
+}
+
+/// Log of every push notification sent for a SpecialEvent (launch blast,
+/// starting-soon, ended-soon, manual). Used to prevent duplicate sends.
+model SpecialEventPush {
+  id             String       @id @default(cuid())
+  specialEventId String
+  specialEvent   SpecialEvent @relation(fields: [specialEventId], references: [id], onDelete: Cascade)
+  /// 'LAUNCH' | 'STARTING_SOON' | 'STARTED' | 'ENDING_SOON' | 'MANUAL'
+  type           String
+  title          String
+  body           String
+  sentAt         DateTime     @default(now())
+  recipientCount Int          @default(0)
+
+  @@index([specialEventId, type])
 }
 
 // ─── Competition Groups ───────────────────────────────────────────────────────

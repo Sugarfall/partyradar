@@ -25,6 +25,7 @@ export type NotificationType =
   | 'POST_COMMENT'
   | 'MESSAGE'
   | 'INTEREST_MATCH'
+  | 'SPECIAL_EVENT'
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
