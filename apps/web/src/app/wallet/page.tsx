@@ -294,7 +294,8 @@ export default function WalletPage() {
       }
     } catch (err: unknown) {
       const e = err as { message?: string; code?: string }
-      if (e?.code === 'phone_required' || e?.message?.toLowerCase().includes('phone')) {
+      const msg = e?.message?.toLowerCase() ?? ''
+      if (e?.code === 'phone_required' || msg.includes('phone') || msg.includes('mobile')) {
         setPhoneRequired(true)
         setIssuingError(null)
       } else {
