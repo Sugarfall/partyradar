@@ -159,7 +159,7 @@ function PayForm({ amount, bonusPercent, totalCredit, onSuccess, onClose }: PayF
       </div>
 
       {/* Stripe Payment Element — Apple Pay disabled to route all payments through Stripe card processing */}
-      <PaymentElement options={{ layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } }} />
+      <PaymentElement options={{ layout: { type: 'accordion', defaultCollapsed: false }, wallets: { applePay: 'never', googlePay: 'never' } }} />
 
       {/* Error */}
       {error && (

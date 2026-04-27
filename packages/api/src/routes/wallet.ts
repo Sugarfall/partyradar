@@ -187,7 +187,9 @@ router.post('/payment-intent', requireAuth, async (req: AuthRequest, res, next) 
       amount: Math.round(topUpAmount * 100),
       currency: 'gbp',
       customer: stripeCustomerId2,
-      automatic_payment_methods: { enabled: true },
+      // Explicit card-only — prevents redirect-based payment methods (bank transfer,
+      // iDEAL, etc.) that cause confirmPayment() to hang with redirect:'if_required'.
+      payment_method_types: ['card'],
       metadata: {
         type: 'wallet_topup',
         userId,
