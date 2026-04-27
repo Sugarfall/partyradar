@@ -454,18 +454,25 @@ function NavbarInner() {
           })}
 
           {/* Centre pill — adapts to mode */}
-          <div className="flex-1 flex items-center justify-center">
+          <div className="flex-1 flex items-center justify-center" style={{ position: 'relative' }}>
             {isHost ? (
-              /* HOST: create event */
+              /* HOST: floating create-event FAB */
               <Link href={dbUser ? '/events/create' : '/login'}
-                className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(168,85,247,0.3) 0%, rgba(var(--accent-rgb),0.2) 100%)',
-                  border: '1px solid rgba(168,85,247,0.5)',
-                  boxShadow: '0 0 20px rgba(168,85,247,0.2)',
-                }}
+                className="flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
+                style={{ marginTop: -28 }}
               >
-                <Plus size={20} style={{ color: '#a855f7' }} />
+                <div
+                  className="w-14 h-14 rounded-full flex items-center justify-center"
+                  style={{
+                    background: 'rgba(4,4,13,0.85)',
+                    border: '2px solid rgba(168,85,247,0.7)',
+                    boxShadow: '0 0 0 4px rgba(4,4,13,0.95), 0 0 18px rgba(168,85,247,0.35)',
+                    backdropFilter: 'blur(12px)',
+                  }}
+                >
+                  <Plus size={22} style={{ color: '#a855f7' }} strokeWidth={2} />
+                </div>
+                <span className="text-[8px] font-black tracking-widest" style={{ color: 'rgba(168,85,247,0.8)', letterSpacing: '0.12em' }}>HOST</span>
               </Link>
             ) : (
               /* ATTENDEE: my tickets */
