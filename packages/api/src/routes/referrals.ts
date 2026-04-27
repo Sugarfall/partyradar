@@ -13,6 +13,11 @@ function generateCode(username: string): string {
   return `${username.toUpperCase().slice(0, 8)}-${suffix}`
 }
 
+/** Validate a custom referral code: 3-20 alphanumeric + dash, uppercase only */
+function isValidCustomCode(code: string): boolean {
+  return /^[A-Z0-9][A-Z0-9-]{1,18}[A-Z0-9]$/.test(code)
+}
+
 /** GET /api/referrals — get my referral info */
 router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -61,6 +66,62 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         config: REFERRAL_CONFIG,
       },
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/referrals/check/:code — check if a code is available */
+router.get('/check/:code', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const raw = (req.params['code'] ?? '').trim().toUpperCase()
+    if (!raw || raw.length < 3 || raw.length > 20) {
+      return res.json({ data: { available: false, reason: 'Code must be 3–20 characters' } })
+    }
+    if (!isValidCustomCode(raw)) {
+      return res.json({ data: { available: false, reason: 'Only letters, numbers, and dashes allowed' } })
+    }
+    const existing = await prisma.user.findUnique({ where: { referralCode: raw }, select: { id: true } })
+    if (existing) {
+      return res.json({ data: { available: false, reason: 'That code is already taken' } })
+    }
+    return res.json({ data: { available: true } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** PUT /api/referrals/code — set or change your own referral code */
+router.put('/code', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { code } = req.body as { code: string }
+    if (!code?.trim()) throw new AppError('Code is required', 400)
+
+    const normalized = code.trim().toUpperCase()
+
+    if (normalized.length < 3 || normalized.length > 20) {
+      throw new AppError('Code must be 3–20 characters', 400)
+    }
+    if (!isValidCustomCode(normalized)) {
+      throw new AppError('Only letters, numbers, and dashes allowed', 400)
+    }
+
+    // Check uniqueness — exclude current user so they can re-save same code
+    const conflict = await prisma.user.findFirst({
+      where: { referralCode: normalized, id: { not: userId } },
+      select: { id: true },
+    })
+    if (conflict) {
+      throw new AppError('That referral code is already taken — try another', 409)
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { referralCode: normalized },
+      select: { referralCode: true },
+    })
+    res.json({ data: { code: updated.referralCode } })
   } catch (err) {
     next(err)
   }

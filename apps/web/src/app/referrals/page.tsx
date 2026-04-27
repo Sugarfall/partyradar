@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
   Copy, Check, Users, TrendingUp, Wallet, Gift, Crown, Share2,
-  Ticket, CreditCard, Calculator, Megaphone, Star,
+  Ticket, CreditCard, Calculator, Megaphone, Star, Edit3, X, AlertCircle,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -171,6 +171,15 @@ export default function ReferralsPage() {
   const [requestingPayout, setRequestingPayout] = useState(false)
   const [payoutMsg, setPayoutMsg] = useState('')
 
+  // Custom code editor
+  const [editingCode, setEditingCode] = useState(false)
+  const [customCode, setCustomCode] = useState('')
+  const [codeAvailable, setCodeAvailable] = useState<boolean | null>(null)
+  const [codeReason, setCodeReason] = useState('')
+  const [codeSaving, setCodeSaving] = useState(false)
+  const [codeSaved, setCodeSaved] = useState(false)
+  const checkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     if (authLoading) return                        // wait for Firebase to resolve
     if (!dbUser) { setLoading(false); return }     // confirmed not logged in
@@ -222,6 +231,48 @@ export default function ReferralsPage() {
     } catch (err: unknown) {
       setPayoutMsg(err instanceof Error ? err.message : 'Network error')
     } finally { setRequestingPayout(false) }
+  }
+
+  function handleCustomCodeChange(val: string) {
+    const upper = val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 20)
+    setCustomCode(upper)
+    setCodeAvailable(null)
+    setCodeReason('')
+    setCodeSaved(false)
+    if (checkDebounceRef.current) clearTimeout(checkDebounceRef.current)
+    if (!upper || upper.length < 3) return
+    checkDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await api.get<{ data: { available: boolean; reason?: string } }>(`/referrals/check/${upper}`)
+        // Ignore if it's the same as their current code
+        if (data?.code === upper) {
+          setCodeAvailable(true)
+          setCodeReason('')
+        } else {
+          setCodeAvailable(res?.data?.available ?? false)
+          setCodeReason(res?.data?.reason ?? (res?.data?.available ? '' : 'That code is already taken'))
+        }
+      } catch { setCodeAvailable(null) }
+    }, 500)
+  }
+
+  async function saveCustomCode() {
+    if (!customCode || !codeAvailable) return
+    setCodeSaving(true)
+    try {
+      const res = await api.put<{ data: { code: string } }>('/referrals/code', { code: customCode })
+      if (res?.data?.code) {
+        setData(d => d ? { ...d, code: res.data.code } : d)
+        setCodeSaved(true)
+        setEditingCode(false)
+        setCustomCode('')
+        setCodeAvailable(null)
+        setTimeout(() => setCodeSaved(false), 4000)
+      }
+    } catch (err: unknown) {
+      setCodeReason((err as { message?: string })?.message ?? 'Could not save code')
+      setCodeAvailable(false)
+    } finally { setCodeSaving(false) }
   }
 
   // Spinner while Firebase auth OR data is resolving
@@ -307,11 +358,91 @@ export default function ReferralsPage() {
             </button>
           </div>
           <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>
-            Send the link — no codes to type. The app links the account to you the moment they sign up.
+            Share the link <span style={{ color: 'rgba(224,242,254,0.2)' }}>or</span> give friends your code to enter manually at sign-up.
           </p>
-          <p className="text-[10px] mt-1" style={{ color: 'rgba(224,242,254,0.25)' }}>
-            Code: <span className="font-mono" style={{ color: 'rgba(0,255,136,0.6)' }}>{data.code}</span>
-          </p>
+
+          {/* Code display + customize toggle */}
+          <div className="flex items-center gap-2 mt-2">
+            {codeSaved ? (
+              <div className="flex items-center gap-1.5 flex-1">
+                <Check size={11} style={{ color: '#00ff88' }} />
+                <span className="text-[10px] font-bold" style={{ color: '#00ff88' }}>Code updated!</span>
+              </div>
+            ) : (
+              <span className="text-[10px] flex-1" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                Code: <span className="font-mono font-bold" style={{ color: 'rgba(0,255,136,0.6)' }}>{data.code}</span>
+              </span>
+            )}
+            <button
+              onClick={() => { setEditingCode(v => !v); setCustomCode(data.code); setCodeAvailable(null); setCodeReason('') }}
+              className="flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-lg transition-colors"
+              style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.2)', color: 'rgba(0,255,136,0.7)', letterSpacing: '0.08em' }}>
+              <Edit3 size={10} />
+              {editingCode ? 'CANCEL' : 'CUSTOMISE'}
+            </button>
+          </div>
+
+          {/* Custom code editor */}
+          {editingCode && (
+            <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid rgba(0,255,136,0.1)' }}>
+              <p className="text-[9px] font-bold tracking-widest" style={{ color: 'rgba(0,255,136,0.5)' }}>
+                SET YOUR CUSTOM CODE
+              </p>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={customCode}
+                  onChange={e => handleCustomCodeChange(e.target.value)}
+                  placeholder="e.g. RADIO1"
+                  maxLength={20}
+                  className="w-full px-3 py-2 pr-9 rounded-xl font-mono font-bold text-sm focus:outline-none uppercase tracking-widest transition-all"
+                  style={{
+                    background: 'rgba(0,0,0,0.3)',
+                    border: `1px solid ${codeAvailable === true ? 'rgba(0,255,136,0.5)' : codeAvailable === false ? 'rgba(255,0,110,0.4)' : 'rgba(0,255,136,0.2)'}`,
+                    color: codeAvailable === false ? '#ff006e' : '#00ff88',
+                    boxShadow: codeAvailable === true ? '0 0 12px rgba(0,255,136,0.15)' : 'none',
+                  }}
+                  onFocus={e => { e.target.style.boxShadow = '0 0 12px rgba(0,255,136,0.1)' }}
+                  onBlur={e => { e.target.style.boxShadow = codeAvailable === true ? '0 0 12px rgba(0,255,136,0.15)' : 'none' }}
+                />
+                {/* Availability indicator */}
+                {customCode.length >= 3 && codeAvailable !== null && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {codeAvailable
+                      ? <Check size={14} style={{ color: '#00ff88' }} />
+                      : <AlertCircle size={14} style={{ color: '#ff006e' }} />
+                    }
+                  </div>
+                )}
+              </div>
+
+              {/* Availability message */}
+              {customCode.length >= 3 && (
+                <p className="text-[10px] font-bold"
+                  style={{ color: codeAvailable === true ? '#00ff88' : codeAvailable === false ? '#ff006e' : 'rgba(224,242,254,0.3)' }}>
+                  {codeAvailable === true && '✓ Available — this code is yours to take'}
+                  {codeAvailable === false && `⚠ ${codeReason}`}
+                  {codeAvailable === null && customCode.length >= 3 && 'Checking…'}
+                </p>
+              )}
+
+              <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                3–20 characters · letters, numbers and dashes only
+              </p>
+
+              <button
+                onClick={saveCustomCode}
+                disabled={!customCode || !codeAvailable || codeSaving}
+                className="w-full py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-150 disabled:opacity-40"
+                style={{
+                  background: codeAvailable ? 'rgba(0,255,136,0.12)' : 'rgba(0,255,136,0.04)',
+                  border: `1px solid ${codeAvailable ? 'rgba(0,255,136,0.4)' : 'rgba(0,255,136,0.1)'}`,
+                  color: '#00ff88',
+                }}>
+                {codeSaving ? 'SAVING…' : 'SAVE CODE'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

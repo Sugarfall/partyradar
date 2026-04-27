@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
@@ -8,68 +8,149 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { sendEmailVerification } from '@/lib/firebase'
 import { api } from '@/lib/api'
 import { getStoredReferral, clearStoredReferral, captureReferral } from '@/lib/referral'
-import { Zap, Check, ChevronRight, Eye, EyeOff, Mail, Gift, X } from 'lucide-react'
+import {
+  Zap, Check, ChevronRight, Eye, EyeOff, Mail, Gift, X,
+  ShieldCheck, User, Calendar, ChevronDown,
+} from 'lucide-react'
 import type { Gender } from '@partyradar/shared'
 
-const GENDER_OPTIONS: { id: Gender; labelKey: string; emoji: string; color: string; glow: string }[] = [
-  { id: 'MALE',              labelKey: 'register.gender.man',        emoji: '♂',  color: '#3d5afe', glow: 'rgba(61,90,254,0.35)'  },
-  { id: 'FEMALE',            labelKey: 'register.gender.woman',      emoji: '♀',  color: '#ff006e', glow: 'rgba(255,0,110,0.35)' },
-  { id: 'NON_BINARY',        labelKey: 'register.gender.non_binary', emoji: '⚧',  color: 'var(--accent)', glow: 'rgba(var(--accent-rgb),0.35)' },
-  { id: 'PREFER_NOT_TO_SAY', labelKey: 'register.gender.prefer_not', emoji: '🔒', color: 'rgba(74,96,128,0.9)', glow: 'rgba(74,96,128,0.2)' },
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type Phase = 'credentials' | 'verify' | 'age' | 'gender' | 'profile'
+
+const GENDER_OPTIONS: { id: Gender; label: string; emoji: string; color: string; glow: string }[] = [
+  { id: 'MALE',              label: 'Man',              emoji: '♂',  color: '#3d5afe', glow: 'rgba(61,90,254,0.35)'  },
+  { id: 'FEMALE',            label: 'Woman',            emoji: '♀',  color: '#ff006e', glow: 'rgba(255,0,110,0.35)' },
+  { id: 'NON_BINARY',        label: 'Non-binary',       emoji: '⚧',  color: 'var(--accent)', glow: 'rgba(var(--accent-rgb),0.35)' },
+  { id: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say', emoji: '🔒', color: 'rgba(74,96,128,0.9)', glow: 'rgba(74,96,128,0.2)' },
 ]
 
-function saveGenderLocally(gender: Gender) {
-  try { localStorage.setItem('partyradar_gender', gender) } catch {}
+// 18 years ago today (max DOB for 18+ verification)
+function maxDob() {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 18)
+  return d.toISOString().split('T')[0]!
 }
 
-/**
- * Fire-and-forget POST /api/referrals/apply using the stored ref code.
- * Safe to call from multiple signup paths — the backend rejects duplicates.
- */
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
 async function applyStoredReferral() {
   const code = getStoredReferral()
   if (!code) return
   try {
     await api.post('/referrals/apply', { code })
   } catch {
-    // Already applied, invalid code, or user already referred — none are fatal
+    // non-fatal: already applied, invalid, self-referral etc.
   } finally {
     clearStoredReferral()
   }
 }
 
+function Logo() {
+  return (
+    <div className="flex items-center gap-2 mb-8">
+      <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
+        style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
+      <span className="font-black text-sm tracking-[0.2em]"
+        style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
+        PARTYRADAR
+      </span>
+    </div>
+  )
+}
+
+function StepDots({ phase }: { phase: Phase }) {
+  const steps: Phase[] = ['credentials', 'verify', 'age', 'gender', 'profile']
+  const current = steps.indexOf(phase)
+  return (
+    <div className="flex items-center gap-1.5 mb-8">
+      {steps.map((_, i) => (
+        <div
+          key={i}
+          className="rounded-full transition-all duration-300"
+          style={{
+            width: i === current ? 20 : 6,
+            height: 6,
+            background: i <= current
+              ? 'var(--accent)'
+              : 'rgba(var(--accent-rgb),0.15)',
+            boxShadow: i === current ? '0 0 8px rgba(var(--accent-rgb),0.6)' : 'none',
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function RegisterPage() {
   const router = useRouter()
   const { signUp, signInWithGoogle, signInWithApple, firebaseUser } = useAuth()
-  const { lang, setLang, t } = useLanguage()
+  const { t } = useLanguage()
 
-  // Language is auto-detected in LanguageContext (browser locale + timezone
-  // fallback). Users can change it anytime via Settings. No registration-flow
-  // prompt — keeps signup friction low.
-  const [phase, setPhase] = useState<'credentials' | 'verify' | 'gender'>('credentials')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw, setShowPw] = useState(false)
-  const [gender, setGender] = useState<Gender | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [phase, setPhase]           = useState<Phase>('credentials')
+
+  // Credentials phase
+  const [email, setEmail]           = useState('')
+  const [password, setPassword]     = useState('')
+  const [showPw, setShowPw]         = useState(false)
+  const [loading, setLoading]       = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [appleLoading, setAppleLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [verifyError, setVerifyError] = useState<string | null>(null)
-  const [checkingVerify, setCheckingVerify] = useState(false)
-  const [resendCooldown, setResendCooldown] = useState(0)
-  const [refCode, setRefCode] = useState<string | null>(null)
+  const [appleLoading, setAppleLoading]   = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+
+  // Referral code
+  const [refCode, setRefCode]       = useState<string | null>(null)
+  const [showRefInput, setShowRefInput] = useState(false)
+  const [manualRef, setManualRef]   = useState('')
   const [refBannerDismissed, setRefBannerDismissed] = useState(false)
 
-  /* ── Capture any ?ref= param & read stored code on mount ── */
+  // Verify phase
+  const [verifyError, setVerifyError]     = useState<string | null>(null)
+  const [checkingVerify, setCheckingVerify] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  // Age phase
+  const [dob, setDob]               = useState('')
+  const [ageLoading, setAgeLoading] = useState(false)
+  const [ageError, setAgeError]     = useState<string | null>(null)
+
+  // Gender phase
+  const [gender, setGender]         = useState<Gender | null>(null)
+  const [genderSaving, setGenderSaving] = useState(false)
+
+  // Profile phase
+  const [displayName, setDisplayName]   = useState('')
+  const [bio, setBio]                   = useState('')
+  const [photoUrl, setPhotoUrl]         = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+
+  /* ── On mount: capture ?ref= and read stored code ── */
   useEffect(() => {
     if (typeof window === 'undefined') return
     const urlRef = new URLSearchParams(window.location.search).get('ref')
     if (urlRef) captureReferral(urlRef)
-    setRefCode(getStoredReferral())
+    const stored = getStoredReferral()
+    setRefCode(stored)
+    if (stored) setManualRef(stored)
   }, [])
 
-  /* ── Phase 1: credentials ── */
+  // ── Credentials phase ────────────────────────────────────────────────────
+
+  function handleManualRefChange(val: string) {
+    setManualRef(val)
+    const cleaned = val.trim()
+    if (cleaned) {
+      captureReferral(cleaned) // save to localStorage
+      setRefCode(cleaned.toUpperCase())
+    } else {
+      clearStoredReferral()
+      setRefCode(null)
+    }
+  }
+
   async function handleCredentials(e: React.FormEvent) {
     e.preventDefault()
     if (password.length < 8) { setError('Password must be at least 8 characters'); return }
@@ -88,24 +169,61 @@ export default function RegisterPage() {
     }
   }
 
-  /* ── Phase 2: verify email ── */
+  function parseAuthError(err: unknown): string {
+    const e = err as { code?: string; message?: string }
+    const code = e?.code ?? ''
+    if (code === 'auth/unauthorized-domain') {
+      const domain = typeof window !== 'undefined' ? window.location.hostname : 'this domain'
+      return `Add "${domain}" to Firebase Console → Authentication → Authorised Domains`
+    }
+    if (code === 'auth/operation-not-allowed') return 'Google sign-in is not enabled'
+    if (code === 'auth/popup-blocked') return 'Popup was blocked — allow popups for this site'
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return ''
+    if (code === 'auth/account-exists-with-different-credential') return 'An account already exists with this email'
+    if (code === 'auth/email-already-in-use') return 'This email is already registered — sign in instead'
+    return e?.message?.replace('Firebase: ', '').replace(/\s*\(auth\/[^)]+\)\.?/, '') ?? `Sign-up failed (${code || 'unknown'})`
+  }
+
+  async function handleGoogleSignUp() {
+    setGoogleLoading(true); setError(null)
+    try {
+      await signInWithGoogle()
+      await applyStoredReferral()
+      setPhase('age')
+    } catch (err) {
+      const msg = parseAuthError(err)
+      if (msg) setError(msg)
+    } finally { setGoogleLoading(false) }
+  }
+
+  async function handleAppleSignUp() {
+    setAppleLoading(true); setError(null)
+    try {
+      await signInWithApple()
+      await applyStoredReferral()
+      setPhase('age')
+    } catch (err) {
+      const msg = parseAuthError(err)
+      if (msg) setError(msg)
+    } finally { setAppleLoading(false) }
+  }
+
+  // ── Verify email phase ───────────────────────────────────────────────────
+
   async function handleVerifyCheck() {
     if (!firebaseUser) return
-    setCheckingVerify(true)
-    setVerifyError(null)
+    setCheckingVerify(true); setVerifyError(null)
     try {
       await firebaseUser.reload()
       if (firebaseUser.emailVerified) {
         await applyStoredReferral()
-        setPhase('gender')
+        setPhase('age')
       } else {
-        setVerifyError('Email not verified yet — click the link in your inbox then try again')
+        setVerifyError("Email not verified yet — click the link in your inbox then try again")
       }
     } catch {
       setVerifyError('Could not check verification — please try again')
-    } finally {
-      setCheckingVerify(false)
-    }
+    } finally { setCheckingVerify(false) }
   }
 
   async function handleResend() {
@@ -114,110 +232,78 @@ export default function RegisterPage() {
       await sendEmailVerification(firebaseUser)
       setResendCooldown(60)
       const interval = setInterval(() => {
-        setResendCooldown(v => {
-          if (v <= 1) { clearInterval(interval); return 0 }
-          return v - 1
-        })
+        setResendCooldown(v => { if (v <= 1) { clearInterval(interval); return 0 }; return v - 1 })
       }, 1000)
       setVerifyError(null)
-    } catch {
-      setVerifyError('Could not resend — please try again shortly')
-    }
+    } catch { setVerifyError('Could not resend — please try again shortly') }
   }
 
-  function parseAuthError(err: any): string {
-    const code = err?.code ?? ''
-    if (code === 'auth/unauthorized-domain') {
-      const domain = typeof window !== 'undefined' ? window.location.hostname : 'this domain'
-      return `Add "${domain}" to Firebase Console → Authentication → Authorised Domains`
-    }
-    if (code === 'auth/operation-not-allowed') return 'Google sign-in is not enabled — check Firebase Console → Sign-in method'
-    if (code === 'auth/popup-blocked') return 'Popup was blocked — allow popups for this site and try again'
-    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return ''
-    if (code === 'auth/account-exists-with-different-credential') return 'An account already exists with this email — try signing in with email/password'
-    if (code === 'auth/email-already-in-use') return 'This email is already registered — sign in instead'
-    return err?.message?.replace('Firebase: ', '').replace(/\s*\(auth\/[^)]+\)\.?/, '') ?? `Sign-up failed (${code || 'unknown'})`
-  }
+  // ── Age verify phase ─────────────────────────────────────────────────────
 
-  async function handleGoogleSignUp() {
-    setGoogleLoading(true)
-    setError(null)
+  async function handleAgeVerify(e: React.FormEvent) {
+    e.preventDefault()
+    if (!dob) { setAgeError('Please enter your date of birth'); return }
+    setAgeLoading(true); setAgeError(null)
     try {
-      await signInWithGoogle()
-      await applyStoredReferral()
-      setPhase('gender') // Google accounts are always verified
-    } catch (err: any) {
-      const msg = parseAuthError(err)
-      if (msg) setError(msg)
-    } finally {
-      setGoogleLoading(false)
-    }
-  }
-
-  async function handleAppleSignUp() {
-    setAppleLoading(true)
-    setError(null)
-    try {
-      await signInWithApple()
-      await applyStoredReferral()
+      await api.post('/auth/age-verify', { dateOfBirth: dob })
       setPhase('gender')
-    } catch (err: any) {
-      const msg = parseAuthError(err)
-      if (msg) setError(msg)
-    } finally {
-      setAppleLoading(false)
-    }
+    } catch (err: unknown) {
+      setAgeError((err as { message?: string })?.message ?? 'Verification failed — please try again')
+    } finally { setAgeLoading(false) }
   }
 
-  /* ── Phase 2: gender → finish ── */
-  async function handleFinish() {
-    if (gender) {
-      saveGenderLocally(gender)
-      try {
-        await api.put('/auth/profile', { gender })
-      } catch {
-        // Don't block navigation if API call fails
-      }
-    }
-    router.push('/discover')
+  // ── Gender phase ─────────────────────────────────────────────────────────
+
+  async function handleGenderNext() {
+    if (!gender) return
+    setGenderSaving(true)
+    try {
+      await api.put('/auth/profile', { gender })
+    } catch { /* non-fatal */ } finally { setGenderSaving(false) }
+    setPhase('profile')
   }
 
-  /* ═══ PHASE: VERIFY EMAIL ════════════════════════════════════════════════ */
+  // ── Profile setup phase ──────────────────────────────────────────────────
+
+  async function handleProfileFinish(e: React.FormEvent) {
+    e.preventDefault()
+    if (!displayName.trim()) { setProfileError('Please enter your display name'); return }
+    setProfileSaving(true); setProfileError(null)
+    try {
+      await api.put('/auth/profile', {
+        displayName: displayName.trim(),
+        bio: bio.trim() || undefined,
+        photoUrl: photoUrl.trim() || undefined,
+      })
+      router.push('/discover')
+    } catch (err: unknown) {
+      setProfileError((err as { message?: string })?.message ?? 'Could not save profile — please try again')
+    } finally { setProfileSaving(false) }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE: VERIFY EMAIL
+  // ═══════════════════════════════════════════════════════════════════════════
+
   if (phase === 'verify') {
     return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
-        style={{ background: '#04040d' }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-8">
-          <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
-            style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
-          <span className="font-black text-sm tracking-[0.2em]"
-            style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
-            PARTYRADAR
-          </span>
-        </div>
-
-        <div className="w-full max-w-sm animate-fade-up text-center space-y-5">
-          {/* Icon */}
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#04040d' }}>
+        <Logo />
+        <StepDots phase="verify" />
+        <div className="w-full max-w-sm text-center space-y-5">
           <div className="flex items-center justify-center mx-auto w-16 h-16 rounded-2xl"
             style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
             <Mail size={28} style={{ color: 'var(--accent)' }} />
           </div>
-
-          {/* Header */}
           <div>
             <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-              ALMOST THERE
+              STEP 2 OF 5
             </p>
-            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe', letterSpacing: '0.04em' }}>
-              CHECK YOUR INBOX
-            </h1>
+            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>CHECK YOUR INBOX</h1>
             <p className="text-sm mt-3" style={{ color: 'rgba(224,242,254,0.5)', lineHeight: 1.6 }}>
               We sent a verification link to{' '}
               <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{email}</span>.
-              <br />Click the link, then come back here.
+              <br />Click the link, then tap below.
             </p>
           </div>
 
@@ -228,26 +314,18 @@ export default function RegisterPage() {
             </p>
           )}
 
-          {/* Verified button */}
-          <button
-            onClick={handleVerifyCheck}
-            disabled={checkingVerify}
+          <button onClick={handleVerifyCheck} disabled={checkingVerify}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black tracking-widest disabled:opacity-50"
-            style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}
-          >
+            style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)' }}>
             {checkingVerify
-              ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CHECKING...</>
-              : <><Check size={14} /> I&apos;VE VERIFIED MY EMAIL</>
+              ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CHECKING…</>
+              : <><Check size={14} /> I'VE VERIFIED MY EMAIL</>
             }
           </button>
 
-          {/* Resend */}
-          <button
-            onClick={handleResend}
-            disabled={resendCooldown > 0}
+          <button onClick={handleResend} disabled={resendCooldown > 0}
             className="text-xs font-bold"
-            style={{ color: resendCooldown > 0 ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.1em' }}
-          >
+            style={{ color: resendCooldown > 0 ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.1em' }}>
             {resendCooldown > 0 ? `RESEND IN ${resendCooldown}s` : 'RESEND VERIFICATION EMAIL'}
           </button>
         </div>
@@ -255,40 +333,111 @@ export default function RegisterPage() {
     )
   }
 
-  /* ═══ PHASE: GENDER SELECTION ═══════════════════════════════════════════ */
-  if (phase === 'gender') {
-    return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
-        style={{ background: '#04040d' }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-8">
-          <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
-            style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
-          <span className="font-black text-sm tracking-[0.2em]"
-            style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
-            PARTYRADAR
-          </span>
-        </div>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE: AGE VERIFICATION
+  // ═══════════════════════════════════════════════════════════════════════════
 
-        <div className="w-full max-w-sm animate-fade-up">
-          {/* Header */}
+  if (phase === 'age') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#04040d' }}>
+        <Logo />
+        <StepDots phase="age" />
+        <div className="w-full max-w-sm">
           <div className="text-center mb-8">
-            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(0,255,136,0.6)' }}>
-              {t('register.account_created')}
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-5"
+              style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+              <ShieldCheck size={28} style={{ color: '#ff006e' }} />
+            </div>
+            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(255,0,110,0.5)' }}>
+              STEP 3 OF 5
             </p>
-            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe', letterSpacing: '0.04em' }}>
-              {t('register.gender.title')}
-            </h1>
-            <p className="text-sm mt-2" style={{ color: 'rgba(74,96,128,0.8)' }}>
-              {t('register.gender.subtitle')}
+            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>AGE VERIFICATION</h1>
+            <p className="text-sm mt-2" style={{ color: 'rgba(224,242,254,0.45)', lineHeight: 1.6 }}>
+              PartyRadar is for adults only.<br />You must be 18 or older to continue.
             </p>
           </div>
 
-          {/* Gender tiles */}
+          <form onSubmit={handleAgeVerify} className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5"
+                style={{ color: 'rgba(224,242,254,0.4)' }}>
+                DATE OF BIRTH
+              </label>
+              <div className="relative">
+                <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)', pointerEvents: 'none' }} />
+                <input
+                  type="date"
+                  value={dob}
+                  onChange={e => setDob(e.target.value)}
+                  max={maxDob()}
+                  required
+                  className="w-full pl-9 pr-3 py-3 rounded-xl text-sm font-medium focus:outline-none transition-all"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: dob ? '#e0f2fe' : 'rgba(224,242,254,0.3)' }}
+                  onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
+                  onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.2)'; e.target.style.boxShadow = 'none' }}
+                />
+              </div>
+              <p className="text-[9px] mt-1.5" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                🔒 Your date of birth is stored securely and never shown publicly
+              </p>
+            </div>
+
+            {ageError && (
+              <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl"
+                style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                <X size={13} style={{ color: '#ff006e', marginTop: 1, flexShrink: 0 }} />
+                <p className="text-xs font-bold" style={{ color: '#ff006e' }}>{ageError}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={ageLoading || !dob}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-black tracking-widest transition-all duration-200"
+              style={{
+                background: dob && !ageLoading
+                  ? 'linear-gradient(135deg, rgba(255,0,110,0.18), rgba(255,0,110,0.08))'
+                  : 'rgba(255,0,110,0.04)',
+                border: `1px solid ${dob ? 'rgba(255,0,110,0.5)' : 'rgba(255,0,110,0.12)'}`,
+                color: dob ? '#ff006e' : 'rgba(255,0,110,0.25)',
+                boxShadow: dob ? '0 0 20px rgba(255,0,110,0.15)' : 'none',
+              }}
+            >
+              {ageLoading
+                ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> VERIFYING…</>
+                : <><ShieldCheck size={14} /> CONFIRM MY AGE</>
+              }
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE: GENDER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  if (phase === 'gender') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#04040d' }}>
+        <Logo />
+        <StepDots phase="gender" />
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+              STEP 4 OF 5
+            </p>
+            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>
+              {t('register.gender.title')}
+            </h1>
+            <p className="text-sm mt-2" style={{ color: 'rgba(74,96,128,0.8)' }}>
+              Used for event gender ratios and the match deck — always private
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 mb-6">
-            {GENDER_OPTIONS.map((opt) => {
+            {GENDER_OPTIONS.map(opt => {
               const selected = gender === opt.id
               return (
                 <button
@@ -302,34 +451,20 @@ export default function RegisterPage() {
                     transform: selected ? 'scale(1.03)' : 'scale(1)',
                   }}
                 >
-                  {/* Corner brackets on selected */}
                   {selected && <>
                     <div className="absolute top-2 left-2 w-3 h-3" style={{ borderTop: `1.5px solid ${opt.color}70`, borderLeft: `1.5px solid ${opt.color}70` }} />
                     <div className="absolute bottom-2 right-2 w-3 h-3" style={{ borderBottom: `1.5px solid ${opt.color}70`, borderRight: `1.5px solid ${opt.color}70` }} />
                   </>}
-
-                  <span
-                    className="text-3xl font-black"
-                    style={{
-                      color: selected ? opt.color : 'rgba(74,96,128,0.6)',
-                      textShadow: selected ? `0 0 16px ${opt.glow}` : 'none',
-                      fontFamily: 'system-ui',
-                    }}
-                  >
+                  <span className="text-3xl font-black" style={{ color: selected ? opt.color : 'rgba(74,96,128,0.6)', textShadow: selected ? `0 0 16px ${opt.glow}` : 'none', fontFamily: 'system-ui' }}>
                     {opt.emoji}
                   </span>
-                  <span
-                    className="text-[10px] font-black tracking-widest text-center leading-tight px-1"
-                    style={{ color: selected ? opt.color : 'rgba(74,96,128,0.6)' }}
-                  >
-                    {t(opt.labelKey)}
+                  <span className="text-[10px] font-black tracking-widest text-center leading-tight px-1"
+                    style={{ color: selected ? opt.color : 'rgba(74,96,128,0.6)' }}>
+                    {opt.label}
                   </span>
-
                   {selected && (
-                    <div
-                      className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
-                      style={{ background: opt.color, boxShadow: `0 0 8px ${opt.glow}` }}
-                    >
+                    <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                      style={{ background: opt.color, boxShadow: `0 0 8px ${opt.glow}` }}>
                       <Check size={10} color="#04040d" strokeWidth={3} />
                     </div>
                   )}
@@ -338,56 +473,162 @@ export default function RegisterPage() {
             })}
           </div>
 
-          {/* Info note */}
           <p className="text-center text-[10px] mb-6" style={{ color: 'rgba(74,96,128,0.6)' }}>
-            This is used to show gender ratios on event pages. You can update this anytime in settings.
+            You can update this anytime in Settings.
           </p>
 
-          {/* Continue */}
           <button
-            onClick={handleFinish}
+            onClick={handleGenderNext}
+            disabled={!gender || genderSaving}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all duration-200"
             style={{
-              background: gender
-                ? 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(61,90,254,0.12))'
-                : 'rgba(var(--accent-rgb),0.04)',
+              background: gender ? 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(61,90,254,0.12))' : 'rgba(var(--accent-rgb),0.04)',
               border: `1px solid ${gender ? 'rgba(var(--accent-rgb),0.5)' : 'rgba(var(--accent-rgb),0.12)'}`,
               color: gender ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)',
               boxShadow: gender ? '0 0 20px rgba(var(--accent-rgb),0.2)' : 'none',
               letterSpacing: '0.12em',
             }}
           >
-            {gender ? <><ChevronRight size={14} /> {t('register.enter_radar')}</> : t('register.select_continue')}
-          </button>
-
-          {/* Skip */}
-          <button
-            onClick={() => router.push('/discover')}
-            className="mt-3 w-full text-center text-[10px] font-bold"
-            style={{ color: 'rgba(74,96,128,0.4)', letterSpacing: '0.12em' }}
-          >
-            {t('register.skip')}
+            {genderSaving
+              ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> SAVING…</>
+              : gender ? <><ChevronRight size={14} /> NEXT</> : 'SELECT TO CONTINUE'
+            }
           </button>
         </div>
       </div>
     )
   }
 
-  /* ═══ PHASE: CREDENTIALS ══════════════════════════════════════════════════ */
-  return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
-      style={{ background: '#04040d' }}
-    >
-      {/* Logo */}
-      <div className="flex items-center gap-2 mb-8">
-        <Zap size={20} fill="rgba(var(--accent-rgb),0.2)"
-          style={{ color: 'var(--accent)', filter: 'drop-shadow(0 0 8px rgba(var(--accent-rgb),0.8))' }} />
-        <span className="font-black text-sm tracking-[0.2em]"
-          style={{ color: 'var(--accent)', textShadow: '0 0 16px rgba(var(--accent-rgb),0.6)' }}>
-          PARTYRADAR
-        </span>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE: PROFILE SETUP
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  if (phase === 'profile') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#04040d' }}>
+        <Logo />
+        <StepDots phase="profile" />
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-5"
+              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+              <User size={28} style={{ color: 'var(--accent)' }} />
+            </div>
+            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+              LAST STEP — 5 OF 5
+            </p>
+            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>SET UP YOUR PROFILE</h1>
+            <p className="text-sm mt-2" style={{ color: 'rgba(224,242,254,0.45)' }}>
+              Tell people who you are. You can always edit this later.
+            </p>
+          </div>
+
+          <form onSubmit={handleProfileFinish} className="space-y-3">
+            {/* Display name — required */}
+            <div>
+              <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5"
+                style={{ color: 'rgba(224,242,254,0.4)' }}>
+                DISPLAY NAME <span style={{ color: '#ff006e' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value.slice(0, 60))}
+                placeholder="How you appear to others"
+                maxLength={60}
+                className="w-full px-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: '#e0f2fe' }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.2)'; e.target.style.boxShadow = 'none' }}
+              />
+            </div>
+
+            {/* Bio — optional */}
+            <div>
+              <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5"
+                style={{ color: 'rgba(224,242,254,0.4)' }}>
+                BIO <span style={{ color: 'rgba(224,242,254,0.2)', fontWeight: 400 }}>(optional)</span>
+              </label>
+              <textarea
+                value={bio}
+                onChange={e => setBio(e.target.value.slice(0, 300))}
+                placeholder="What kind of nights are you into?"
+                rows={3}
+                maxLength={300}
+                className="w-full px-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all resize-none"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.4)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.08)' }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.15)'; e.target.style.boxShadow = 'none' }}
+              />
+              <p className="text-right text-[9px] mt-0.5" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                {bio.length}/300
+              </p>
+            </div>
+
+            {/* Photo URL — optional */}
+            <div>
+              <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5"
+                style={{ color: 'rgba(224,242,254,0.4)' }}>
+                PROFILE PHOTO URL <span style={{ color: 'rgba(224,242,254,0.2)', fontWeight: 400 }}>(optional)</span>
+              </label>
+              <input
+                type="url"
+                value={photoUrl}
+                onChange={e => setPhotoUrl(e.target.value)}
+                placeholder="https://..."
+                className="w-full px-3 py-2.5 rounded-xl text-sm font-medium focus:outline-none transition-all"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe' }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.4)' }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.15)' }}
+              />
+              <p className="text-[9px] mt-1" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                Tip: upload to Imgur or Cloudinary first, then paste the link here
+              </p>
+            </div>
+
+            {profileError && (
+              <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl"
+                style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                <X size={13} style={{ color: '#ff006e', marginTop: 1, flexShrink: 0 }} />
+                <p className="text-xs font-bold" style={{ color: '#ff006e' }}>{profileError}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={profileSaving || !displayName.trim()}
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all duration-200 mt-2"
+              style={{
+                background: displayName.trim()
+                  ? 'linear-gradient(135deg, rgba(var(--accent-rgb),0.2), rgba(0,255,136,0.1))'
+                  : 'rgba(var(--accent-rgb),0.04)',
+                border: `1px solid ${displayName.trim() ? 'rgba(var(--accent-rgb),0.5)' : 'rgba(var(--accent-rgb),0.12)'}`,
+                color: displayName.trim() ? 'var(--accent)' : 'rgba(var(--accent-rgb),0.3)',
+                boxShadow: displayName.trim() ? '0 0 20px rgba(var(--accent-rgb),0.2)' : 'none',
+                letterSpacing: '0.12em',
+              }}
+            >
+              {profileSaving
+                ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> SAVING…</>
+                : <><Zap size={14} /> ENTER PARTYRADAR</>
+              }
+            </button>
+          </form>
+        </div>
       </div>
+    )
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE: CREDENTIALS (default)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const activeRef = refCode && !refBannerDismissed
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#04040d' }}>
+      <Logo />
+      <StepDots phase="credentials" />
 
       <div
         className="w-full max-w-sm relative"
@@ -407,59 +648,38 @@ export default function RegisterPage() {
         <div className="absolute bottom-3 right-3 w-4 h-4" style={{ borderBottom: '2px solid rgba(var(--accent-rgb),0.4)', borderRight: '2px solid rgba(var(--accent-rgb),0.4)' }} />
 
         <div className="text-center mb-6">
-          <p className="text-[10px] font-bold tracking-[0.25em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>CREATE ACCOUNT</p>
+          <p className="text-[10px] font-bold tracking-[0.25em] mb-1" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
+            STEP 1 OF 5 · CREATE ACCOUNT
+          </p>
           <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.3), transparent)' }} />
         </div>
 
-        {/* Invited-by banner (dismissible) */}
-        {refCode && !refBannerDismissed && (
+        {/* Referral banner (link-based or manually entered) */}
+        {activeRef && (
           <div
             className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl mb-4"
-            style={{
-              background: 'rgba(0,255,136,0.06)',
-              border: '1px solid rgba(0,255,136,0.2)',
-            }}
+            style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}
           >
             <Gift size={14} style={{ color: '#00ff88', marginTop: 2, flexShrink: 0 }} />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-bold" style={{ color: '#00ff88' }}>
-                Invited by a friend
-              </p>
+              <p className="text-[11px] font-bold" style={{ color: '#00ff88' }}>Referral code active</p>
               <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.5)' }}>
-                Code <span className="font-mono font-bold" style={{ color: '#e0f2fe' }}>{refCode}</span> will link automatically — no need to type it.
+                Code <span className="font-mono font-bold" style={{ color: '#e0f2fe' }}>{refCode}</span> will link when you register.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setRefBannerDismissed(true)
-                setRefCode(null)
-                clearStoredReferral()
-              }}
-              aria-label="Dismiss referral"
-              className="p-0.5 rounded"
-              style={{ color: 'rgba(0,255,136,0.5)' }}
-            >
+            <button type="button"
+              onClick={() => { setRefBannerDismissed(true); setRefCode(null); setManualRef(''); clearStoredReferral() }}
+              className="p-0.5 rounded" style={{ color: 'rgba(0,255,136,0.5)' }}>
               <X size={12} />
             </button>
           </div>
         )}
 
         {/* Google */}
-        <button
-          onClick={handleGoogleSignUp}
-          disabled={googleLoading}
-          className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg font-bold text-xs mb-4 transition-all duration-200"
-          style={{
-            background: 'rgba(var(--accent-rgb),0.04)',
-            border: '1px solid rgba(var(--accent-rgb),0.15)',
-            color: 'rgba(224,242,254,0.7)',
-            letterSpacing: '0.08em',
-          }}
-        >
-          {googleLoading ? (
-            <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
-          ) : (
+        <button onClick={handleGoogleSignUp} disabled={googleLoading}
+          className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg font-bold text-xs mb-3 transition-all duration-200"
+          style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(224,242,254,0.7)', letterSpacing: '0.08em' }}>
+          {googleLoading ? <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> : (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M15.68 8.18c0-.57-.05-1.12-.14-1.64H8v3.1h4.31a3.68 3.68 0 01-1.6 2.42v2h2.58c1.51-1.39 2.39-3.45 2.39-5.88z" fill="#4285F4"/>
               <path d="M8 16c2.16 0 3.97-.72 5.3-1.94l-2.58-2a4.77 4.77 0 01-7.12-2.5H.64v2.06A8 8 0 008 16z" fill="#34A853"/>
@@ -471,20 +691,10 @@ export default function RegisterPage() {
         </button>
 
         {/* Apple */}
-        <button
-          onClick={handleAppleSignUp}
-          disabled={appleLoading}
+        <button onClick={handleAppleSignUp} disabled={appleLoading}
           className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg font-bold text-xs mb-4 transition-all duration-200"
-          style={{
-            background: 'rgba(var(--accent-rgb),0.04)',
-            border: '1px solid rgba(var(--accent-rgb),0.15)',
-            color: 'rgba(224,242,254,0.7)',
-            letterSpacing: '0.08em',
-          }}
-        >
-          {appleLoading ? (
-            <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
-          ) : (
+          style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(224,242,254,0.7)', letterSpacing: '0.08em' }}>
+          {appleLoading ? <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> : (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.467c-.034-.058-2.088-1.222-2.048-3.513.04-2.291 1.774-3.11 1.808-3.15.034-.04-1.004-1.443-2.648-1.443-1.152 0-1.698.693-2.538.693-.84 0-1.548-.664-2.538-.664C4.792 3.398 3 5.064 3 7.882c0 1.717.632 3.53 1.412 4.7.658.985 1.372 1.862 2.316 1.862.892 0 1.28-.585 2.392-.585 1.112 0 1.41.572 2.37.56.97-.012 1.63-.873 2.286-1.856.464-.695.794-1.36.96-1.72.028-.06.062-.13.062-.13s-.05-.028-.062-.038z"/>
             </svg>
@@ -499,46 +709,73 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleCredentials} className="space-y-3">
-          {/* Email */}
           <div>
             <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>EMAIL</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com"
+              required autoComplete="email"
               className="w-full px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
               style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.18)', color: '#e0f2fe' }}
-              onFocus={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
-              onBlur={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
+              onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
+              onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
             />
           </div>
 
-          {/* Password */}
           <div>
             <label className="block text-[10px] font-bold tracking-[0.2em] mb-1.5" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>PASSWORD</label>
             <div className="relative">
-              <input
-                type={showPw ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Min. 8 characters (letters + numbers)"
-                required
-                minLength={6}
-                autoComplete="new-password"
+              <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="Min. 8 chars (letters + numbers)" required minLength={6} autoComplete="new-password"
                 className="w-full px-3 py-2.5 pr-10 rounded-lg text-sm font-medium focus:outline-none transition-all duration-200"
                 style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.18)', color: '#e0f2fe' }}
-                onFocus={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
-                onBlur={(e) => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.5)'; e.target.style.boxShadow = '0 0 12px rgba(var(--accent-rgb),0.1)' }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(var(--accent-rgb),0.18)'; e.target.style.boxShadow = 'none' }}
               />
-              <button type="button" onClick={() => setShowPw((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+              <button type="button" onClick={() => setShowPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
                 {showPw ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>
             </div>
+          </div>
+
+          {/* Referral code — collapsible */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowRefInput(v => !v)}
+              className="flex items-center gap-1.5 text-[10px] font-bold transition-colors"
+              style={{ color: showRefInput || activeRef ? 'rgba(0,255,136,0.7)' : 'rgba(var(--accent-rgb),0.35)', letterSpacing: '0.1em' }}
+            >
+              <Gift size={11} />
+              HAVE A REFERRAL CODE?
+              <ChevronDown size={11} style={{ transform: showRefInput ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </button>
+
+            {showRefInput && (
+              <div className="mt-2">
+                <input
+                  type="text"
+                  value={manualRef}
+                  onChange={e => handleManualRefChange(e.target.value)}
+                  placeholder="e.g. RADIO1 or TRIPPYBOY"
+                  maxLength={20}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-mono font-bold focus:outline-none transition-all uppercase"
+                  style={{
+                    background: manualRef ? 'rgba(0,255,136,0.05)' : 'rgba(var(--accent-rgb),0.03)',
+                    border: manualRef ? '1px solid rgba(0,255,136,0.3)' : '1px solid rgba(var(--accent-rgb),0.15)',
+                    color: manualRef ? '#00ff88' : 'rgba(224,242,254,0.5)',
+                    letterSpacing: '0.1em',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = 'rgba(0,255,136,0.4)'; e.target.style.boxShadow = '0 0 10px rgba(0,255,136,0.08)' }}
+                  onBlur={e => {
+                    e.target.style.borderColor = manualRef ? 'rgba(0,255,136,0.3)' : 'rgba(var(--accent-rgb),0.15)'
+                    e.target.style.boxShadow = 'none'
+                  }}
+                />
+                <p className="text-[9px] mt-1" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                  Code will be applied automatically when you register
+                </p>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -547,9 +784,7 @@ export default function RegisterPage() {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
+          <button type="submit" disabled={loading}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm transition-all duration-200 mt-1"
             style={{
               background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(61,90,254,0.12))',
@@ -558,10 +793,9 @@ export default function RegisterPage() {
               boxShadow: '0 0 18px rgba(var(--accent-rgb),0.18)',
               letterSpacing: '0.1em',
               opacity: loading ? 0.7 : 1,
-            }}
-          >
+            }}>
             {loading
-              ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CREATING...</>
+              ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> CREATING…</>
               : <>CONTINUE <ChevronRight size={14} /></>
             }
           </button>
