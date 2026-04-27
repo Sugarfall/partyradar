@@ -8,7 +8,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import {
   ArrowLeft, MapPin, Phone, Globe, Tag, Calendar, Ticket,
   CheckCircle, Building2, Loader2, AlertTriangle, X,
-  ImageIcon, Send, Heart, Clock, Music2, Unlink2,
+  ImageIcon, Send, Heart, Clock, Music2, Unlink2, Bell, BellOff, Users,
 } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -55,6 +55,8 @@ interface Venue {
   createdAt: string
   spotifyConnected?: boolean
   spotifyDisplayName?: string
+  followersCount?: number
+  isFollowing?: boolean
 }
 
 interface VenuePost {
@@ -252,6 +254,11 @@ function VenueDetailInner() {
   const [spotifyConnecting, setSpotifyConnecting] = useState(false)
   const [spotifyDisconnecting, setSpotifyDisconnecting] = useState(false)
 
+  // ── Follow state ──
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [followersCount, setFollowersCount] = useState(0)
+  const [followLoading, setFollowLoading] = useState(false)
+
   // ── Venue events (separate fetch so we always get fresh data regardless of embed)
   const [venueEvents, setVenueEvents] = useState<UpcomingEvent[]>([])
   const [pastEvents, setPastEvents] = useState<UpcomingEvent[]>([])
@@ -265,6 +272,8 @@ function VenueDetailInner() {
         const data = res?.data ?? null
         if (!data) { setNotFound(true); return }
         setVenue(data)
+        setIsFollowing(data.isFollowing ?? false)
+        setFollowersCount(data.followersCount ?? 0)
       } catch (err) {
         console.error('[VenueDetail] fetch error:', err)
         setNotFound(true)
@@ -343,6 +352,23 @@ function VenueDetailInner() {
     finally { setSpotifyDisconnecting(false) }
   }
 
+  async function toggleFollow() {
+    if (!dbUser) return
+    setFollowLoading(true)
+    try {
+      if (isFollowing) {
+        const res = await api.delete<{ data: { isFollowing: boolean; followersCount: number } }>(`/venues/${id}/follow`)
+        setIsFollowing(res?.data?.isFollowing ?? false)
+        setFollowersCount(res?.data?.followersCount ?? Math.max(0, followersCount - 1))
+      } else {
+        const res = await api.post<{ data: { isFollowing: boolean; followersCount: number } }>(`/venues/${id}/follow`, {})
+        setIsFollowing(res?.data?.isFollowing ?? true)
+        setFollowersCount(res?.data?.followersCount ?? followersCount + 1)
+      }
+    } catch {}
+    finally { setFollowLoading(false) }
+  }
+
   async function submitPost() {
     if (!postText.trim()) return
     setPosting(true)
@@ -387,16 +413,43 @@ function VenueDetailInner() {
           <ArrowLeft size={12} /> VENUES
         </button>
 
-        {/* Manage button — owner only */}
-        {isOwner && (
-          <button
-            onClick={() => router.push(`/venues/${id}/manage`)}
-            className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
-            style={{ background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)', backdropFilter: 'blur(8px)' }}
-          >
-            ⚙ MANAGE
-          </button>
-        )}
+        {/* Top-right action cluster */}
+        <div className="absolute top-4 right-4 flex items-center gap-2">
+          {/* Follow button — visible to logged-in non-owners */}
+          {dbUser && !isOwner && (
+            <button
+              onClick={toggleFollow}
+              disabled={followLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95"
+              style={{
+                background: isFollowing ? 'rgba(var(--accent-rgb),0.18)' : 'rgba(4,4,13,0.6)',
+                border: isFollowing ? '1px solid rgba(var(--accent-rgb),0.5)' : '1px solid rgba(var(--accent-rgb),0.2)',
+                color: isFollowing ? 'var(--accent)' : '#e0f2fe',
+                backdropFilter: 'blur(8px)',
+                opacity: followLoading ? 0.6 : 1,
+              }}
+            >
+              {followLoading
+                ? <Loader2 size={11} className="animate-spin" />
+                : isFollowing
+                  ? <BellOff size={11} />
+                  : <Bell size={11} />
+              }
+              {isFollowing ? 'FOLLOWING' : 'FOLLOW'}
+            </button>
+          )}
+
+          {/* Manage button — owner only */}
+          {isOwner && (
+            <button
+              onClick={() => router.push(`/venues/${id}/manage`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ background: 'rgba(var(--accent-rgb),0.15)', border: '1px solid rgba(var(--accent-rgb),0.35)', color: 'var(--accent)', backdropFilter: 'blur(8px)' }}
+            >
+              ⚙ MANAGE
+            </button>
+          )}
+        </div>
 
         {/* Name + type */}
         <div className="absolute bottom-5 left-4 right-4">
@@ -415,7 +468,16 @@ function VenueDetailInner() {
           <h1 className="text-2xl md:text-3xl font-black" style={{ color: '#e0f2fe', textShadow: '0 2px 20px rgba(0,0,0,0.8)' }}>
             {venue.name}
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(224,242,254,0.55)' }}>{venue.address}</p>
+          <div className="flex items-center gap-3 mt-1.5">
+            <p className="text-sm" style={{ color: 'rgba(224,242,254,0.55)' }}>{venue.address}</p>
+            {followersCount > 0 && (
+              <span className="flex items-center gap-1 text-[10px] font-bold"
+                style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
+                <Users size={10} />
+                {followersCount.toLocaleString()}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

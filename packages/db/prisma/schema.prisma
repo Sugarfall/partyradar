@@ -223,6 +223,8 @@ model User {
   spotifyArtistData     String?   @db.Text
   spotifyArtistSyncedAt DateTime?
 
+  venueFollows          VenueFollow[] @relation("VenueFollows")
+
   @@index([lastKnownLat, lastKnownLng])        // nearby/match geo-filter
   @@index([lastKnownLat, lastKnownLng, lastSeenAt]) // nearby with recency filter
 }
@@ -475,6 +477,7 @@ model Venue {
   postTags    PostTag[] @relation("PostTaggedVenue")
   djRequests  DjRequest[]
   partnership VenuePartnership?
+  followers   VenueFollow[]
 
   @@index([lat, lng])
   @@index([city])
@@ -547,6 +550,19 @@ model Follow {
   @@unique([followerId, followingId])
   @@index([followerId])
   @@index([followingId])
+}
+
+model VenueFollow {
+  id        String   @id @default(cuid())
+  userId    String
+  venueId   String
+  user      User     @relation("VenueFollows", fields: [userId], references: [id], onDelete: Cascade)
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, venueId])
+  @@index([userId])
+  @@index([venueId])
 }
 
 model CheckIn {

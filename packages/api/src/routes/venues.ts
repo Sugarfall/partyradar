@@ -297,40 +297,80 @@ router.get('/:id/photo', async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+/** GET /api/venues/me/following — venues the current user follows */
+router.get('/me/following', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const page = Math.max(1, parseInt(String(req.query['page'] ?? '1')))
+    const limit = Math.min(50, parseInt(String(req.query['limit'] ?? '20')))
+    const skip = (page - 1) * limit
+
+    const [follows, total] = await Promise.all([
+      prisma.venueFollow.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          createdAt: true,
+          venue: { select: { ...venueSelect } },
+        },
+      }),
+      prisma.venueFollow.count({ where: { userId } }),
+    ])
+
+    res.json({
+      data: follows.map((f) => f.venue),
+      total,
+      page,
+      limit,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** GET /api/venues/:id — venue detail */
 router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params
+    const userId = req.user?.dbUser?.id ?? null
 
-    const venue = await prisma.venue.findUnique({
-      where: { id },
-      select: {
-        ...venueSelect,
-        claimedBy: {
-          select: { id: true, username: true, displayName: true, photoUrl: true },
-        },
-        events: {
-          where: {
-            isPublished: true,
-            isCancelled: false,
-            startsAt: { gte: new Date() },
+    const [venue, followersCount, isFollowing] = await Promise.all([
+      prisma.venue.findUnique({
+        where: { id },
+        select: {
+          ...venueSelect,
+          claimedBy: {
+            select: { id: true, username: true, displayName: true, photoUrl: true },
           },
-          orderBy: { startsAt: 'asc' },
-          take: 5,
-          select: {
-            id: true,
-            name: true,
-            startsAt: true,
-            price: true,
-            type: true,
-            coverImageUrl: true,
-            capacity: true,
-            ticketsRemaining: true,
-            host: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+          events: {
+            where: {
+              isPublished: true,
+              isCancelled: false,
+              startsAt: { gte: new Date() },
+            },
+            orderBy: { startsAt: 'asc' },
+            take: 5,
+            select: {
+              id: true,
+              name: true,
+              startsAt: true,
+              price: true,
+              type: true,
+              coverImageUrl: true,
+              capacity: true,
+              ticketsRemaining: true,
+              host: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+            },
           },
         },
-      },
-    })
+      }),
+      prisma.venueFollow.count({ where: { venueId: id } }),
+      userId
+        ? prisma.venueFollow.findUnique({ where: { userId_venueId: { userId, venueId: id } } }).then(Boolean)
+        : Promise.resolve(false),
+    ])
 
     if (!venue) throw new AppError('Venue not found', 404)
 
@@ -341,7 +381,80 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
       if (fetched) openingHours = fetched
     }
 
-    res.json({ data: { ...venue, openingHours } })
+    res.json({ data: { ...venue, openingHours, followersCount, isFollowing } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/venues/:id/follow — follow a venue */
+router.post('/:id/follow', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+    const userId = req.user!.dbUser.id
+
+    const venue = await prisma.venue.findUnique({ where: { id }, select: { id: true, name: true } })
+    if (!venue) throw new AppError('Venue not found', 404)
+
+    await prisma.venueFollow.upsert({
+      where: { userId_venueId: { userId, venueId: id } },
+      create: { userId, venueId: id },
+      update: {},
+    })
+
+    const followersCount = await prisma.venueFollow.count({ where: { venueId: id } })
+    res.json({ data: { isFollowing: true, followersCount } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** DELETE /api/venues/:id/follow — unfollow a venue */
+router.delete('/:id/follow', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+    const userId = req.user!.dbUser.id
+
+    await prisma.venueFollow.deleteMany({ where: { userId, venueId: id } })
+
+    const followersCount = await prisma.venueFollow.count({ where: { venueId: id } })
+    res.json({ data: { isFollowing: false, followersCount } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/venues/:id/followers — list users following this venue */
+router.get('/:id/followers', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+    const page = Math.max(1, parseInt(String(req.query['page'] ?? '1')))
+    const limit = Math.min(50, parseInt(String(req.query['limit'] ?? '20')))
+    const skip = (page - 1) * limit
+
+    const venue = await prisma.venue.findUnique({ where: { id }, select: { id: true } })
+    if (!venue) throw new AppError('Venue not found', 404)
+
+    const [followers, total] = await Promise.all([
+      prisma.venueFollow.findMany({
+        where: { venueId: id },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          user: { select: { id: true, username: true, displayName: true, photoUrl: true } },
+          createdAt: true,
+        },
+      }),
+      prisma.venueFollow.count({ where: { venueId: id } }),
+    ])
+
+    res.json({
+      data: followers.map((f) => ({ ...f.user, followedAt: f.createdAt })),
+      total,
+      page,
+      limit,
+    })
   } catch (err) {
     next(err)
   }
