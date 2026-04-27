@@ -72,10 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const res = await api.post<{ data: DBUser }>('/auth/sync')
     setDbUser(res.data)
-    // Set a lightweight presence cookie so Next.js middleware can gate
-    // protected routes before the client-side auth check fires.
-    // SameSite=Lax is safe here — this is just a "logged in?" flag.
-    if (typeof document !== 'undefined') {
+    // Only set the presence cookie once the email is verified.
+    // Unverified users get a DB record (needed by the registration wizard)
+    // but the cookie stays absent so Next.js middleware blocks protected routes.
+    if (typeof document !== 'undefined' && user.emailVerified) {
       document.cookie = 'pr_auth=1; Max-Age=86400; path=/; SameSite=Lax'
     }
     // Register FCM token (non-blocking)
@@ -140,9 +140,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     syncingRef.current = true
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password)
-      // Send verification email silently if not yet verified (non-blocking)
+      // Hard-block unverified accounts — resend the link and throw so the
+      // login page can surface a clear "check your inbox" message.
       if (!DEV_MODE && !cred.user.emailVerified) {
         sendEmailVerification(cred.user).catch(() => {})
+        // Sign out of Firebase so no stale session lingers in memory
+        await signOut(auth)
+        syncingRef.current = false
+        const err = new Error(
+          'Email not verified — we\'ve resent the link. Click it in your inbox, then sign in again.'
+        )
+        ;(err as any).code = 'auth/email-not-verified'
+        throw err
       }
       await syncUserOrMock(cred.user)
     } finally {

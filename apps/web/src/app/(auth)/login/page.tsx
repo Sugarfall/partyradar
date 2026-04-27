@@ -4,7 +4,9 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { Eye, EyeOff } from 'lucide-react'
+import { sendEmailVerification } from '@/lib/firebase'
+import { auth } from '@/lib/firebase'
+import { Eye, EyeOff, Mail } from 'lucide-react'
 
 /** Only allow relative same-origin redirects (defence against open-redirect). */
 function safeNext(raw: string | null): string {
@@ -25,18 +27,36 @@ function LoginInner() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [appleLoading, setAppleLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
+  const [resendCooldown, setResendCooldown] = useState(0)
   const [focused, setFocused] = useState<'email' | 'pass' | null>(null)
+
+  async function handleResendVerification() {
+    const user = auth.currentUser
+    if (!user || resendCooldown > 0) return
+    try {
+      await sendEmailVerification(user)
+      setResendCooldown(60)
+      const interval = setInterval(() => {
+        setResendCooldown(v => { if (v <= 1) { clearInterval(interval); return 0 }; return v - 1 })
+      }, 1000)
+    } catch { /* ignore */ }
+  }
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setUnverifiedEmail(null)
     try {
       await signIn(email, password)
       router.push(nextPath)
     } catch (err: any) {
       const code = err?.code ?? ''
-      if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-email') {
+      if (code === 'auth/email-not-verified') {
+        setUnverifiedEmail(email)
+        setError('EMAIL NOT VERIFIED — CHECK YOUR INBOX AND CLICK THE LINK WE JUST RESENT')
+      } else if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-email') {
         setError('INVALID CREDENTIALS — CHECK EMAIL & PASSWORD')
       } else if (code === 'auth/too-many-requests') {
         setError('TOO MANY ATTEMPTS — WAIT A MOMENT AND TRY AGAIN')
@@ -258,12 +278,29 @@ function LoginInner() {
 
             {/* Error */}
             {error && (
-              <p
-                className="text-[11px] font-bold px-3 py-2 rounded-lg"
-                style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)', letterSpacing: '0.05em' }}
+              <div
+                className="px-3 py-2.5 rounded-lg space-y-2"
+                style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}
               >
-                ⚠ {error}
-              </p>
+                <p className="text-[11px] font-bold flex items-start gap-1.5"
+                  style={{ color: '#ff006e', letterSpacing: '0.05em' }}>
+                  ⚠ {error}
+                </p>
+                {unverifiedEmail && (
+                  <div className="flex items-center gap-2">
+                    <Mail size={11} style={{ color: 'rgba(255,0,110,0.6)', flexShrink: 0 }} />
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={resendCooldown > 0}
+                      className="text-[10px] font-black tracking-widest transition-colors disabled:opacity-40"
+                      style={{ color: resendCooldown > 0 ? 'rgba(255,0,110,0.4)' : '#ff006e' }}
+                    >
+                      {resendCooldown > 0 ? `RESEND IN ${resendCooldown}s` : 'RESEND VERIFICATION EMAIL'}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Submit */}

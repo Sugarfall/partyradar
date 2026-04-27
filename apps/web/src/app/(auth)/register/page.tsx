@@ -108,7 +108,7 @@ function StepDots({ phase }: { phase: Phase }) {
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { signUp, signInWithGoogle, signInWithApple, firebaseUser } = useAuth()
+  const { signUp, signInWithGoogle, signInWithApple, firebaseUser, refreshUser } = useAuth()
   const { t } = useLanguage()
 
   const [phase, setPhase]           = useState<Phase>('credentials')
@@ -260,6 +260,10 @@ export default function RegisterPage() {
       await firebaseUser.reload()
       if (firebaseUser.emailVerified) {
         await applyStoredReferral()
+        // Re-sync so syncUser sees emailVerified=true and sets the pr_auth cookie.
+        // Without this the cookie stays absent and middleware blocks protected routes
+        // even though the user just verified.
+        await refreshUser()
         setPhase('age')
       } else {
         setVerifyError("Email not verified yet — click the link in your inbox then try again")
