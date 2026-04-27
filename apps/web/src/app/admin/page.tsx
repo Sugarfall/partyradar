@@ -10,7 +10,7 @@ import {
   Shield, ShieldAlert, ShieldCheck, Users, Calendar, MessageSquare,
   Flag, Search, Ban, ChevronDown, Trash2, BarChart3, Crown,
   AlertTriangle, CheckCircle, X, Star, Eye, Bot, FileWarning,
-  Activity, Database, Wifi, WifiOff, RefreshCw, Zap, MapPin
+  Activity, Database, Wifi, WifiOff, RefreshCw, Zap, MapPin, Building2
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -228,6 +228,11 @@ export default function AdminPage() {
   const [syncLng, setSyncLng] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ imported: number; skipped: number; sources: string[] } | null>(null)
+  // Venue search by name + city
+  const [venueSearchQ, setVenueSearchQ] = useState('')
+  const [venueSearchCity, setVenueSearchCity] = useState('')
+  const [venueSearching, setVenueSearching] = useState(false)
+  const [venueSearchResults, setVenueSearchResults] = useState<Array<{ id: string; name: string; city: string; address: string; type: string; rating?: number | null; photoUrl?: string | null; isClaimed: boolean }> | null>(null)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -1144,6 +1149,80 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
+
+                {/* ── Venue search by name + city ── */}
+                <div className="rounded-2xl p-4" style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.12)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Building2 size={14} style={{ color: '#a855f7' }} />
+                    <span className="text-xs font-black tracking-widest" style={{ color: '#a855f7' }}>VENUE SEARCH — CONFIRM BY NAME</span>
+                  </div>
+                  <p className="text-xs text-white/40 mb-3">Find any venue by name + city (searches Google Places + imports it automatically)</p>
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      value={venueSearchQ} onChange={e => setVenueSearchQ(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { /* trigger search below */ document.getElementById('venue-search-btn')?.click() } }}
+                      placeholder="Venue name (e.g. Room 2)"
+                      className="flex-1 px-3 py-2 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <input
+                      value={venueSearchCity} onChange={e => setVenueSearchCity(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { document.getElementById('venue-search-btn')?.click() } }}
+                      placeholder="City"
+                      className="w-28 px-3 py-2 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <button
+                      id="venue-search-btn"
+                      disabled={venueSearching || !venueSearchQ.trim()}
+                      onClick={async () => {
+                        setVenueSearching(true); setVenueSearchResults(null)
+                        try {
+                          const params = new URLSearchParams({ q: venueSearchQ.trim() })
+                          if (venueSearchCity.trim()) params.set('city', venueSearchCity.trim())
+                          const r = await api.get<{ data: { venues: typeof venueSearchResults } }>(`/venues/discover/search?${params}`)
+                          setVenueSearchResults(r.data.venues)
+                        } catch (e: any) { showToast(e?.message ?? 'Search failed', false) }
+                        finally { setVenueSearching(false) }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shrink-0"
+                      style={{ background: '#a855f720', color: '#a855f7', border: '1px solid #a855f740' }}
+                    >
+                      {venueSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+                      Search
+                    </button>
+                  </div>
+                  {venueSearchResults !== null && (
+                    venueSearchResults!.length === 0 ? (
+                      <p className="text-xs text-white/30 text-center py-4">No venues found — try a different name or city</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {venueSearchResults!.map(v => (
+                          <div key={v.id} className="flex items-center gap-3 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                            {v.photoUrl ? (
+                              <img src={v.photoUrl} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(168,85,247,0.15)' }}>
+                                <Building2 size={16} style={{ color: '#a855f7' }} />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-white">{v.name}</span>
+                                {v.isClaimed && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b98140' }}>CLAIMED</span>}
+                                <span className="text-[10px] text-white/30 capitalize">{v.type?.replace('_', ' ')}</span>
+                                {v.rating && <span className="text-[10px] text-amber-400">★ {v.rating}</span>}
+                              </div>
+                              <p className="text-xs text-white/40 truncate">{v.address}</p>
+                            </div>
+                            <span className="text-[10px] font-mono text-white/20 shrink-0">{v.id.slice(0, 6)}…</span>
+                          </div>
+                        ))}
+                        <p className="text-[10px] text-white/25 text-center">Found {venueSearchResults!.length} venue{venueSearchResults!.length !== 1 ? 's' : ''} · imported to DB automatically</p>
+                      </div>
+                    )
+                  )}
+                </div>
 
                 {/* ── Manual sync trigger ── */}
                 <div className="rounded-2xl p-4" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.12)' }}>

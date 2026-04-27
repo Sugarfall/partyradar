@@ -399,6 +399,86 @@ router.post('/', optionalAuth, async (req: AuthRequest, res, next) => {
 })
 
 /**
+ * GET /api/venues/discover/search?q=Room+2+Glasgow
+ *
+ * Text search by venue name (+ optional city). Calls Google Places Text Search,
+ * upserts matching nightlife venues into the DB, and returns them.
+ * Falls back to a DB ILIKE search if Google Places API is not configured.
+ *
+ * This lets admins / venue owners find and confirm a venue just by typing
+ * its name and city — no GPS coordinates needed.
+ */
+router.get('/search', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const rawQ    = (req.query['q'] as string | undefined)?.trim() ?? ''
+    const rawCity = (req.query['city'] as string | undefined)?.trim() ?? ''
+    const query   = rawCity ? `${rawQ} ${rawCity}`.trim() : rawQ
+
+    if (!query) return res.status(400).json({ error: 'q (search query) is required' })
+
+    // ── DB search first (always fast) ──────────────────────────────────────
+    const dbWhere: Record<string, unknown> = {}
+    if (rawQ)    dbWhere['name'] = { contains: rawQ,    mode: 'insensitive' }
+    if (rawCity) dbWhere['city'] = { contains: rawCity, mode: 'insensitive' }
+    const dbResults = await prisma.venue.findMany({ where: dbWhere, take: 10 })
+
+    // ── Google Places Text Search ───────────────────────────────────────────
+    if (!GOOGLE_API_KEY) {
+      return res.json({ data: { venues: dbResults.map((v) => withProxyPhoto(req, v)), source: 'database' } })
+    }
+
+    const googlePlaces = await fetchTextSearch(query, 55.86, -4.25, 50_000) // broad radius — city handles focus
+    const nightlifePlaces = googlePlaces.filter((p) => {
+      const types = p.types ?? []
+      return types.some((t) => NIGHTLIFE_TYPES.has(t)) && !isRejectedVenue(p.name)
+    })
+
+    // Dedupe against DB results already returned
+    const existingPlaceIds = new Set(dbResults.map((v) => v.googlePlaceId).filter(Boolean))
+    const newPlaces = nightlifePlaces.filter((p) => !existingPlaceIds.has(p.place_id))
+
+    // Upsert new Google places into DB
+    const upserted = await Promise.allSettled(newPlaces.slice(0, 15).map(async (place) => {
+      const types = place.types ?? []
+      const city  = rawCity || extractCity(place)
+      try {
+        return await prisma.venue.upsert({
+          where: { googlePlaceId: place.place_id },
+          create: {
+            googlePlaceId: place.place_id,
+            name: place.name,
+            address: place.formatted_address ?? place.vicinity ?? '',
+            city,
+            lat: place.geometry.location.lat,
+            lng: place.geometry.location.lng,
+            type: mapGoogleType(types),
+            photoUrl: getPhotoUrl(place) ?? null,
+            rating: place.rating ?? null,
+            vibeTags: extractVibeTags(place),
+          },
+          update: {
+            // Refresh rating/photo on repeated searches
+            ...(place.rating ? { rating: place.rating } : {}),
+            ...(getPhotoUrl(place) ? { photoUrl: getPhotoUrl(place) } : {}),
+          },
+        })
+      } catch { return null }
+    }))
+
+    const importedVenues = upserted
+      .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof prisma.venue.upsert>> | null> => r.status === 'fulfilled')
+      .map((r) => r.value)
+      .filter((v): v is NonNullable<typeof v> => v != null)
+
+    // Merge DB results + newly imported, dedupe by id
+    const allById = new Map([...dbResults, ...importedVenues].map((v) => [v.id, v]))
+    const merged  = Array.from(allById.values())
+
+    res.json({ data: { venues: merged.map((v) => withProxyPhoto(req, v)), source: 'google', imported: importedVenues.length } })
+  } catch (err) { next(err) }
+})
+
+/**
  * GET /api/venues/discover/status
  * Returns whether Google Places API is configured
  */
