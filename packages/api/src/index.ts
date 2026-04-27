@@ -905,6 +905,61 @@ cron.schedule('0 14 * * 6', async () => {
   }
 })
 
+// ── Monthly wallet loyalty bonus (1st of month, 10:00 UTC) ───────────────────
+// Awards 2.5% of balance as a loyalty bonus to all wallets with ≥ £1.
+// Capped at £50 per wallet per month to keep economics sane.
+// Uses lastBonusPaidAt to prevent double-payment even if cron fires twice.
+cron.schedule('0 10 1 * *', async () => {
+  try {
+    console.log('[Cron] Running monthly loyalty bonus…')
+    const BONUS_RATE  = 0.025  // 2.5 %
+    const BONUS_CAP   = 50     // £50 max
+    const MIN_BALANCE = 1      // £1 minimum to receive bonus
+
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    // Find wallets that haven't received a bonus this month and have ≥ £1
+    const wallets = await prisma.wallet.findMany({
+      where: {
+        balance: { gte: MIN_BALANCE },
+        OR: [
+          { lastBonusPaidAt: null },
+          { lastBonusPaidAt: { lt: monthStart } },
+        ],
+      },
+      select: { id: true, userId: true, balance: true },
+    })
+
+    let paid = 0
+    for (const wallet of wallets) {
+      const bonus = Math.min(Math.round(wallet.balance * BONUS_RATE * 100) / 100, BONUS_CAP)
+      if (bonus < 0.01) continue
+      await prisma.$transaction([
+        prisma.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: { increment: bonus }, lastBonusPaidAt: now },
+        }),
+        prisma.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: 'BONUS',
+            amount: bonus,
+            balanceAfter: wallet.balance + bonus,
+            description: `Monthly loyalty bonus (2.5% on £${wallet.balance.toFixed(2)})`,
+            status: 'COMPLETED',
+          },
+        }),
+      ])
+      paid++
+    }
+
+    console.log(`[Cron] Monthly bonus paid to ${paid} wallet(s)`)
+  } catch (err) {
+    console.error('[Cron] Error paying monthly bonus:', err)
+  }
+})
+
 // ── Special Event lifecycle notifications ─────────────────────────────────────
 // Every 15 minutes: check for events that are starting soon, just started,
 // or ending soon, and push the appropriate notification to all users.

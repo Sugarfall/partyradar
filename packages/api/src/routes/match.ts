@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { prisma } from '@partyradar/db'
 import { requireAuth, requireTier } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
+import { sendNotification } from '../lib/fcm'
 
 const router = Router()
 
@@ -14,8 +15,10 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-// GET /api/match/deck — up to 20 candidate profiles (BASIC+ required)
-router.get('/deck', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req: AuthRequest, res, next) => {
+// ── GET /api/match/deck ───────────────────────────────────────────────────────
+// All authenticated users may VIEW the deck. Only BASIC+ can SWIPE.
+// Users with showInMatchDeck = false are excluded from results.
+router.get('/deck', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const me = req.user!.dbUser
     const myUser = await prisma.user.findUnique({
@@ -29,7 +32,6 @@ router.get('/deck', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req
       return res.status(422).json({ error: 'GENDER_REQUIRED', message: 'Set your gender in your profile to start matching' })
     }
 
-    // Strict heterosexual matching: male sees females, female sees males
     const targetGenders: string[] = myUser.gender === 'MALE' ? ['FEMALE'] : ['MALE']
 
     const alreadySwiped = await prisma.swipeLike.findMany({
@@ -44,6 +46,7 @@ router.get('/deck', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req
         gender: { in: targetGenders as any },
         isBanned: false,
         photoUrl: { not: null },
+        showInMatchDeck: true,   // ← respect opt-out
       },
       select: {
         id: true,
@@ -52,6 +55,7 @@ router.get('/deck', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req
         photoUrl: true,
         bio: true,
         interests: true,
+        profilePrompts: true,
         gender: true,
         lastKnownLat: true,
         lastKnownLng: true,
@@ -73,6 +77,7 @@ router.get('/deck', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req
         photoUrl: c.photoUrl,
         bio: c.bio,
         interests: c.interests,
+        profilePrompts: c.profilePrompts ?? [],
         gender: c.gender,
         distance,
         lastSeenAt: c.lastSeenAt,
@@ -92,7 +97,7 @@ router.get('/deck', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req
   }
 })
 
-// POST /api/match/swipe — record a swipe, returns { match: boolean } (BASIC+ required)
+// ── POST /api/match/swipe — record a swipe (BASIC+ required to swipe) ─────────
 router.post('/swipe', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req: AuthRequest, res, next) => {
   try {
     const me = req.user!.dbUser
@@ -113,6 +118,42 @@ router.post('/swipe', requireAuth, requireTier('BASIC', 'Matchmaking'), async (r
         where: { fromUserId: toUserId, toUserId: me.id, liked: true },
       })
       if (mutual) isMatch = true
+
+      // Notify the liked user
+      const likedUser = await prisma.user.findUnique({
+        where: { id: toUserId },
+        select: { fcmToken: true, subscriptionTier: true, displayName: true, username: true },
+      })
+      if (likedUser?.fcmToken) {
+        if (isMatch) {
+          // Both users get a match notification
+          await sendNotification(likedUser.fcmToken, {
+            title: '💘 It\'s a Match!',
+            body: `You and ${me.displayName} liked each other!`,
+            data: { type: 'MATCH', userId: me.id },
+          })
+        } else if (likedUser.subscriptionTier === 'FREE') {
+          // Non-subscriber: tell them someone liked them (but hide who)
+          await sendNotification(likedUser.fcmToken, {
+            title: '💛 Someone liked you!',
+            body: 'Upgrade to Basic to see who it is and start matching.',
+            data: { type: 'LIKED_ME', screen: '/nearby' },
+          })
+        }
+      }
+
+      // Also create a DB notification for the liked user
+      await prisma.notification.create({
+        data: {
+          userId: toUserId,
+          type: isMatch ? 'INTEREST_MATCH' : 'FOLLOW',  // reuse INTEREST_MATCH for match, FOLLOW for like
+          title: isMatch ? '💘 It\'s a Match!' : '💛 Someone liked your profile',
+          body: isMatch
+            ? `You and ${me.displayName} liked each other! Start chatting.`
+            : 'Someone swiped right on you. Subscribe to see who.',
+          data: JSON.stringify({ type: isMatch ? 'MATCH' : 'LIKED_ME', fromUserId: me.id }),
+        },
+      }).catch(() => {}) // Non-blocking
     }
 
     // If it's a match, auto-open a DM conversation so they can message immediately
@@ -150,70 +191,43 @@ router.post('/swipe', requireAuth, requireTier('BASIC', 'Matchmaking'), async (r
   }
 })
 
-// POST /api/match/setup-test — seed a test liker for the calling user (dev/QA)
-router.post('/setup-test', requireAuth, async (req: AuthRequest, res, next) => {
+// ── GET /api/match/liked-me — who liked me ─────────────────────────────────────
+// FREE tier: gets count only (paywall to see who)
+// BASIC+: gets full profile list
+router.get('/liked-me', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const me = req.user!.dbUser
+    const tierOrder: Record<string, number> = { FREE: 0, BASIC: 1, PRO: 2, PREMIUM: 3 }
+    const isPaid = (tierOrder[me.subscriptionTier] ?? 0) >= 1
 
-    // 1. Ensure calling user has gender=MALE + subscription=BASIC so deck works
-    await prisma.user.update({
-      where: { id: me.id },
-      data: {
-        gender: 'MALE',
-        subscriptionTier: 'BASIC',
-        lastKnownLat:  55.8617,
-        lastKnownLng: -4.2583,
-        lastSeenAt:   new Date(),
-      },
+    // Find everyone who liked me (liked=true, not already mutual)
+    const likes = await prisma.swipeLike.findMany({
+      where: { toUserId: me.id, liked: true },
+      select: { fromUserId: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
     })
 
-    // 2. Upsert a realistic test "liker" (female, photo, Glasgow coords)
-    const testUid = 'test_liker_female_01'
-    const tester = await prisma.user.upsert({
-      where:  { firebaseUid: testUid },
-      create: {
-        firebaseUid:    testUid,
-        email:          'zara.test@partyradar.dev',
-        username:       'zara_radar',
-        displayName:    'Zara',
-        gender:         'FEMALE',
-        subscriptionTier: 'BASIC',
-        photoUrl:       'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop&crop=face',
-        bio:            'Love live music and late nights 🎶',
-        interests:      ['Music', 'Nightlife', 'Festivals'],
-        lastKnownLat:   55.8617,
-        lastKnownLng:  -4.2583,
-        lastSeenAt:     new Date(),
-      },
-      update: {
-        photoUrl:    'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop&crop=face',
-        gender:      'FEMALE',
-        subscriptionTier: 'BASIC',
-        lastKnownLat:  55.8617,
-        lastKnownLng: -4.2583,
-        lastSeenAt:   new Date(),
-      },
-    })
+    if (!isPaid) {
+      // Free tier: just return the count — don't reveal who
+      return res.json({ data: { count: likes.length, profiles: null, locked: true } })
+    }
 
-    // 3. Zara has already swiped right on the calling user
-    await prisma.swipeLike.upsert({
-      where:  { fromUserId_toUserId: { fromUserId: tester.id, toUserId: me.id } },
-      create: { fromUserId: tester.id, toUserId: me.id, liked: true },
-      update: { liked: true },
-    })
+    // Paid: return profiles of who liked me
+    const likerIds = likes.map((l) => l.fromUserId)
+    const profiles = likerIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: likerIds }, isBanned: false },
+          select: { id: true, displayName: true, username: true, photoUrl: true, bio: true, interests: true, profilePrompts: true },
+        })
+      : []
 
-    // 4. Clear any prior swipe from calling user → Zara so she appears in deck
-    await prisma.swipeLike.deleteMany({
-      where: { fromUserId: me.id, toUserId: tester.id },
-    })
-
-    res.json({ data: { testUserId: tester.id, displayName: tester.displayName, message: 'Test liker ready — refresh your deck!' } })
+    res.json({ data: { count: likes.length, profiles, locked: false } })
   } catch (err) {
     next(err)
   }
 })
 
-// GET /api/match/matches — get all mutual matches (BASIC+ required)
+// ── GET /api/match/matches — mutual matches (BASIC+) ─────────────────────────
 router.get('/matches', requireAuth, requireTier('BASIC', 'Matchmaking'), async (req: AuthRequest, res, next) => {
   try {
     const me = req.user!.dbUser
@@ -234,10 +248,53 @@ router.get('/matches', requireAuth, requireTier('BASIC', 'Matchmaking'), async (
 
     const users = await prisma.user.findMany({
       where: { id: { in: matchIds } },
-      select: { id: true, displayName: true, username: true, photoUrl: true, bio: true, interests: true },
+      select: { id: true, displayName: true, username: true, photoUrl: true, bio: true, interests: true, profilePrompts: true },
     })
 
     res.json({ data: users })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── POST /api/match/setup-test ────────────────────────────────────────────────
+router.post('/setup-test', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const me = req.user!.dbUser
+
+    await prisma.user.update({
+      where: { id: me.id },
+      data: { gender: 'MALE', subscriptionTier: 'BASIC', lastKnownLat: 55.8617, lastKnownLng: -4.2583, lastSeenAt: new Date() },
+    })
+
+    const testUid = 'test_liker_female_01'
+    const tester = await prisma.user.upsert({
+      where: { firebaseUid: testUid },
+      create: {
+        firebaseUid: testUid, email: 'zara.test@partyradar.dev', username: 'zara_radar',
+        displayName: 'Zara', gender: 'FEMALE', subscriptionTier: 'BASIC',
+        photoUrl: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop&crop=face',
+        bio: 'Love live music and late nights 🎶', interests: ['Music', 'Nightlife', 'Festivals'],
+        lastKnownLat: 55.8617, lastKnownLng: -4.2583, lastSeenAt: new Date(),
+        showInMatchDeck: true,
+        profilePrompts: [{ question: 'My idea of a perfect night out', answer: 'Live music then dancing until 3am 🎵' }],
+      },
+      update: {
+        photoUrl: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop&crop=face',
+        gender: 'FEMALE', subscriptionTier: 'BASIC', lastKnownLat: 55.8617, lastKnownLng: -4.2583,
+        lastSeenAt: new Date(), showInMatchDeck: true,
+      },
+    })
+
+    await prisma.swipeLike.upsert({
+      where: { fromUserId_toUserId: { fromUserId: tester.id, toUserId: me.id } },
+      create: { fromUserId: tester.id, toUserId: me.id, liked: true },
+      update: { liked: true },
+    })
+
+    await prisma.swipeLike.deleteMany({ where: { fromUserId: me.id, toUserId: tester.id } })
+
+    res.json({ data: { testUserId: tester.id, displayName: tester.displayName, message: 'Test liker ready — refresh your deck!' } })
   } catch (err) {
     next(err)
   }

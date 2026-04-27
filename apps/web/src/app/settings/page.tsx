@@ -144,6 +144,7 @@ export default function SettingsPage() {
     showProfileViews: true,
     allowGoOutFromStrangers: true,
   })
+  const [showInMatchDeck, setShowInMatchDeck] = useState(true)
 
   const [savingNotif, setSavingNotif]     = useState(false)
   const [savingPrivacy, setSavingPrivacy] = useState(false)
@@ -162,6 +163,9 @@ export default function SettingsPage() {
         showProfileViews: (dbUser as any).showProfileViews ?? true,
         allowGoOutFromStrangers: (dbUser as any).allowGoOutFromStrangers ?? true,
       }))
+    }
+    if ((dbUser as any).showInMatchDeck !== undefined) {
+      setShowInMatchDeck((dbUser as any).showInMatchDeck ?? true)
     }
   }, [dbUser])
 
@@ -432,6 +436,21 @@ export default function SettingsPage() {
               value={privacyPrefs.allowGoOutFromStrangers}
               onChange={v => savePrivacyPref('allowGoOutFromStrangers', v)}
               saving={savingPrivacy}
+            />
+            <Divider />
+            <ToggleRow
+              label="Show Me in Match Deck"
+              sublabel="Let others discover you when swiping in Match"
+              value={showInMatchDeck}
+              onChange={async (v) => {
+                setShowInMatchDeck(v)
+                try {
+                  await api.put('/auth/profile', { showInMatchDeck: v })
+                  await refreshUser()
+                } catch { setShowInMatchDeck(!v) }
+              }}
+              saving={savingPrivacy}
+              accent="#ff006e"
             />
           </SettingsCard>
         </div>

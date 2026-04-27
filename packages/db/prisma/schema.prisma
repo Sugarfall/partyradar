@@ -148,11 +148,14 @@ model User {
   referralBalance   Float            @default(0)
   referredBy        String?
   e2ePublicKey      String?          @db.Text
+  // Profile prompts (Hinge-style Q&A shown on swipe card)
+  profilePrompts    Json?            // [{ question: string, answer: string }]
   // Settings / preferences
   notifPrefs        Json?            // { RSVP_CONFIRMED: bool, FOLLOW: bool, ... }
   showInNearby      Boolean          @default(true)
   showProfileViews  Boolean          @default(true)
   allowGoOutFromStrangers Boolean    @default(true)
+  showInMatchDeck   Boolean          @default(true)  // opt out of swipe deck
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -964,6 +967,7 @@ model Wallet {
   freeDrinksEarned  Int       @default(0)
   freeDrinksUsed    Int       @default(0)
   stripeCustomerId  String?
+  lastBonusPaidAt   DateTime? // tracks last monthly loyalty bonus payment
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

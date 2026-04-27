@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { formatPrice, detectCurrency } from '@/lib/currency'
-import { WALLET_TOP_UP_TIERS } from '@partyradar/shared'
+import { WALLET_TOP_UP_TIERS, CARD_DESIGNS } from '@partyradar/shared'
 import {
   Wallet, CreditCard, Gift, TrendingUp,
   ArrowUp, ArrowDown, Zap, Star, CheckCircle,
+  Package, ChevronDown, ChevronUp, Sparkles,
 } from 'lucide-react'
 import { TopUpModal } from '@/components/wallet/TopUpModal'
 
@@ -31,6 +31,18 @@ interface WalletTransaction {
   amount: number
   balanceAfter: number
   description: string
+  status: string
+  createdAt: string
+}
+
+interface CardOrder {
+  id: string
+  design: string
+  nameOnCard: string
+  shippingAddress: string
+  shippingCity: string
+  shippingPostcode: string
+  price: number
   status: string
   createdAt: string
 }
@@ -61,6 +73,21 @@ function timeAgo(iso: string): string {
   const days = Math.floor(hrs / 24)
   if (days < 7)   return `${days}d ago`
   return new Date(iso).toLocaleDateString()
+}
+
+const CARD_VISUALS: Record<string, { gradient: string; emoji: string; accent: string }> = {
+  CLASSIC_BLACK:  { gradient: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #111 100%)', emoji: '🖤', accent: '#888' },
+  NEON_NIGHTS:    { gradient: 'linear-gradient(135deg, #0a0a1a 0%, #1a0533 50%, #0d1a0a 100%)', emoji: '🌃', accent: '#ff006e' },
+  GOLD_VIP:       { gradient: 'linear-gradient(135deg, #2a1a00 0%, #b8860b 50%, #ffd700 100%)', emoji: '👑', accent: '#ffd700' },
+  HOLOGRAPHIC:    { gradient: 'linear-gradient(135deg, #1a0533 0%, #003366 33%, #004d00 66%, #330033 100%)', emoji: '✨', accent: '#a855f7' },
+  CUSTOM:         { gradient: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', emoji: '🎨', accent: 'var(--accent)' },
+}
+
+const CARD_STATUS_COLORS: Record<string, string> = {
+  PENDING:    '#ffd600',
+  PROCESSING: 'var(--accent)',
+  SHIPPED:    '#3b82f6',
+  DELIVERED:  '#00ff88',
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -97,14 +124,27 @@ function SectionCard({ children, className = '' }: { children: React.ReactNode; 
 
 export default function WalletPage() {
   const { dbUser } = useAuth()
-  const router = useRouter()
 
-  const [wallet, setWallet]           = useState<WalletData | null>(null)
+  const [wallet, setWallet]             = useState<WalletData | null>(null)
   const [transactions, setTransactions] = useState<WalletTransaction[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [loadError, setLoadError]     = useState<string | null>(null)
-  const [topUpTierId, setTopUpTierId] = useState<string | null>(null)   // which tier modal is open for
+  const [loading, setLoading]           = useState(true)
+  const [loadError, setLoadError]       = useState<string | null>(null)
+  const [topUpTierId, setTopUpTierId]   = useState<string | null>(null)
   const [topUpSuccess, setTopUpSuccess] = useState(false)
+
+  // Card ordering state
+  const [cardOrders, setCardOrders]         = useState<CardOrder[]>([])
+  const [showCardOrder, setShowCardOrder]   = useState(false)
+  const [selectedDesign, setSelectedDesign] = useState<string>('CLASSIC_BLACK')
+  const [nameOnCard, setNameOnCard]         = useState('')
+  const [shipAddr, setShipAddr]             = useState('')
+  const [shipCity, setShipCity]             = useState('')
+  const [shipPost, setShipPost]             = useState('')
+  const [customImageUrl, setCustomImageUrl] = useState('')
+  const [cardPayWallet, setCardPayWallet]   = useState(false)
+  const [cardOrdering, setCardOrdering]     = useState(false)
+  const [cardOrderError, setCardOrderError] = useState<string | null>(null)
+  const [cardOrderSuccess, setCardOrderSuccess] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -116,8 +156,10 @@ export default function WalletPage() {
         setWallet(walletData as WalletData)
         setTransactions(txs ?? [])
       }
+      // Load card orders in parallel
+      const cardsRes = await api.get<{ data: { orders: CardOrder[] } }>('/wallet/cards')
+      if (cardsRes?.data?.orders) setCardOrders(cardsRes.data.orders)
     } catch {
-      // Bug 8 fix: show error instead of silent blank page
       setLoadError('Failed to load wallet — please try again')
     } finally {
       setLoading(false)
@@ -126,15 +168,13 @@ export default function WalletPage() {
 
   useEffect(() => {
     if (!dbUser) return
+    // Seed name on card from user display name
+    if (dbUser.displayName) setNameOnCard(dbUser.displayName.toUpperCase().slice(0, 30))
     load()
 
-    // Handle ?success=true redirect from Stripe Checkout
-    // Read from window.location so we don't need useSearchParams (avoids Next.js Suspense requirement)
     if (new URLSearchParams(window.location.search).get('success') === 'true') {
       setTopUpSuccess(true)
-      // Clean the query param without a full page reload
       window.history.replaceState({}, '', '/wallet')
-      // Auto-hide success banner after 6 s
       const t = setTimeout(() => setTopUpSuccess(false), 6000)
       return () => clearTimeout(t)
     }
@@ -145,9 +185,46 @@ export default function WalletPage() {
     setTopUpTierId(null)
     setTopUpSuccess(true)
     const t = setTimeout(() => setTopUpSuccess(false), 6000)
-    // Reload wallet so new balance appears immediately
     load()
     return () => clearTimeout(t)
+  }
+
+  async function submitCardOrder() {
+    if (!nameOnCard.trim() || !shipAddr.trim() || !shipCity.trim() || !shipPost.trim()) {
+      setCardOrderError('Please fill in all shipping details')
+      return
+    }
+    if (selectedDesign === 'CUSTOM' && !customImageUrl.trim()) {
+      setCardOrderError('Please enter an image URL for your custom design')
+      return
+    }
+    setCardOrdering(true)
+    setCardOrderError(null)
+    try {
+      const res = await api.post<{ data: { order?: CardOrder; url?: string; paidWith?: string } }>('/wallet/order-card', {
+        design: selectedDesign,
+        nameOnCard: nameOnCard.trim(),
+        shippingAddress: shipAddr.trim(),
+        shippingCity: shipCity.trim(),
+        shippingPostcode: shipPost.trim(),
+        customImageUrl: selectedDesign === 'CUSTOM' ? customImageUrl.trim() : undefined,
+        payWithWallet: cardPayWallet,
+      })
+      if (res?.data?.url) {
+        // Stripe redirect
+        window.location.href = res.data.url
+      } else if (res?.data?.order) {
+        // Paid with wallet
+        setCardOrderSuccess(true)
+        setShowCardOrder(false)
+        load()
+        setTimeout(() => setCardOrderSuccess(false), 6000)
+      }
+    } catch (err: unknown) {
+      setCardOrderError((err as { message?: string })?.message ?? 'Order failed — please try again')
+    } finally {
+      setCardOrdering(false)
+    }
   }
 
   // ── Auth gate ──────────────────────────────────────────────────────────────
@@ -185,7 +262,6 @@ export default function WalletPage() {
     )
   }
 
-  // Bug 8 fix: show load error instead of a blank page
   if (loadError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#04040d' }}>
@@ -203,6 +279,7 @@ export default function WalletPage() {
 
   const currency = detectCurrency()
   const POINTS_PER_DRINK = 500
+  const selectedDesignData = CARD_DESIGNS.find(d => d.id === selectedDesign)
 
   return (
     <div style={{ background: '#04040d', minHeight: '100vh', paddingTop: 56, paddingBottom: 88 }}>
@@ -226,7 +303,7 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* ── Top-up success banner (Stripe redirect) ────────────────────── */}
+      {/* ── Top-up success banner ──────────────────────────────────────────── */}
       {topUpSuccess && (
         <div
           className="mx-4 mt-4 flex items-center gap-3 p-4 rounded-2xl"
@@ -244,6 +321,27 @@ export default function WalletPage() {
             </p>
           </div>
           <button onClick={() => setTopUpSuccess(false)} style={{ color: 'rgba(0,255,136,0.4)', flexShrink: 0 }}>✕</button>
+        </div>
+      )}
+
+      {/* ── Card order success banner ──────────────────────────────────────── */}
+      {cardOrderSuccess && (
+        <div
+          className="mx-4 mt-4 flex items-center gap-3 p-4 rounded-2xl"
+          style={{
+            background: 'rgba(168,85,247,0.08)',
+            border: '1px solid rgba(168,85,247,0.3)',
+            boxShadow: '0 0 20px rgba(168,85,247,0.1)',
+          }}
+        >
+          <CheckCircle size={20} style={{ color: '#a855f7', flexShrink: 0 }} />
+          <div className="flex-1">
+            <p className="text-xs font-black" style={{ color: '#a855f7' }}>CARD ORDER PLACED! 🎉</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(168,85,247,0.6)' }}>
+              Your PartyRadar card is being prepared. We'll notify you when it ships.
+            </p>
+          </div>
+          <button onClick={() => setCardOrderSuccess(false)} style={{ color: 'rgba(168,85,247,0.4)', flexShrink: 0 }}>✕</button>
         </div>
       )}
 
@@ -368,6 +466,17 @@ export default function WalletPage() {
                   Earned <span className="font-bold" style={{ color: '#a855f7' }}>{wallet.freeDrinksEarned}</span> free drinks total · Spend with wallet to earn 10 pts / £1
                 </p>
               </div>
+
+              {/* Monthly loyalty bonus callout */}
+              <div
+                className="flex items-center gap-2 mt-3 pt-3 rounded-xl px-3 py-2.5"
+                style={{ background: 'rgba(255,214,0,0.05)', border: '1px solid rgba(255,214,0,0.12)' }}
+              >
+                <Sparkles size={12} style={{ color: '#ffd600', flexShrink: 0 }} />
+                <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                  <span className="font-black" style={{ color: '#ffd600' }}>2.5% monthly bonus</span> credited on the 1st of every month on balances over £1 (up to £50)
+                </p>
+              </div>
             </SectionCard>
           )}
 
@@ -421,6 +530,348 @@ export default function WalletPage() {
             <p className="text-[9px] mt-3" style={{ color: 'rgba(224,242,254,0.25)' }}>
               🔒 Pay in-app via Stripe · Funds added instantly after payment
             </p>
+          </SectionCard>
+
+          {/* ── PartyRadar Physical Card ──────────────────────────────────── */}
+          <SectionCard className="overflow-hidden">
+            {/* Section header */}
+            <button
+              className="w-full flex items-center gap-2 px-4 py-3.5 transition-colors"
+              style={{ borderBottom: showCardOrder ? '1px solid rgba(var(--accent-rgb),0.07)' : 'none' }}
+              onClick={() => setShowCardOrder(v => !v)}
+            >
+              <CreditCard size={14} style={{ color: '#a855f7' }} />
+              <p className="text-[10px] font-black tracking-widest flex-1 text-left" style={{ color: 'rgba(224,242,254,0.6)' }}>
+                PARTYRADAR CARD
+              </p>
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7' }}>
+                from £9.99
+              </span>
+              {showCardOrder
+                ? <ChevronUp size={14} style={{ color: 'rgba(224,242,254,0.3)' }} />
+                : <ChevronDown size={14} style={{ color: 'rgba(224,242,254,0.3)' }} />
+              }
+            </button>
+
+            {/* Existing orders */}
+            {cardOrders.length > 0 && !showCardOrder && (
+              <div className="px-4 pb-3">
+                {cardOrders.map(order => {
+                  const vis = CARD_VISUALS[order.design] ?? CARD_VISUALS['CLASSIC_BLACK']!
+                  const statusColor = CARD_STATUS_COLORS[order.status] ?? 'rgba(224,242,254,0.4)'
+                  return (
+                    <div
+                      key={order.id}
+                      className="flex items-center gap-3 py-2.5"
+                      style={{ borderBottom: '1px solid rgba(var(--accent-rgb),0.04)' }}
+                    >
+                      <div
+                        className="w-10 h-7 rounded-lg flex items-center justify-center text-[14px] shrink-0"
+                        style={{ background: vis.gradient, border: `1px solid ${vis.accent}33` }}
+                      >
+                        {vis.emoji}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold truncate" style={{ color: '#e0f2fe' }}>
+                          {CARD_DESIGNS.find(d => d.id === order.design)?.name ?? order.design}
+                        </p>
+                        <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                          {order.nameOnCard} · {timeAgo(order.createdAt)}
+                        </p>
+                      </div>
+                      <span
+                        className="text-[8px] font-black tracking-wider px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}33` }}
+                      >
+                        {order.status}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Order form */}
+            {showCardOrder && (
+              <div className="p-4 space-y-4">
+                {/* Intro blurb */}
+                <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                  Order your physical PartyRadar card — use it to pay at partner venues, earn points, and flex your membership. Money stays in the ecosystem.
+                </p>
+
+                {/* Design picker */}
+                <div>
+                  <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                    CHOOSE DESIGN
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {CARD_DESIGNS.map(design => {
+                      const vis = CARD_VISUALS[design.id] ?? CARD_VISUALS['CLASSIC_BLACK']!
+                      const isSelected = selectedDesign === design.id
+                      return (
+                        <button
+                          key={design.id}
+                          onClick={() => setSelectedDesign(design.id)}
+                          className="rounded-xl overflow-hidden transition-all duration-150 active:scale-[0.97]"
+                          style={{
+                            border: isSelected ? `2px solid ${vis.accent}` : '2px solid transparent',
+                            boxShadow: isSelected ? `0 0 12px ${vis.accent}44` : 'none',
+                            outline: 'none',
+                          }}
+                        >
+                          {/* Mini card preview */}
+                          <div
+                            className="h-16 flex flex-col justify-between p-2 relative overflow-hidden"
+                            style={{ background: vis.gradient }}
+                          >
+                            <div className="flex justify-between items-start">
+                              <span className="text-[16px]">{vis.emoji}</span>
+                              {isSelected && (
+                                <CheckCircle size={12} style={{ color: vis.accent }} />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-[8px] font-black truncate" style={{ color: 'rgba(255,255,255,0.9)', letterSpacing: '0.05em' }}>
+                                {design.name.toUpperCase()}
+                              </p>
+                              <p className="text-[8px] font-bold" style={{ color: vis.accent }}>
+                                £{design.price.toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                          <div
+                            className="px-2 py-1.5 text-[9px]"
+                            style={{
+                              background: isSelected ? `${vis.accent}18` : 'rgba(255,255,255,0.03)',
+                              color: isSelected ? vis.accent : 'rgba(224,242,254,0.35)',
+                            }}
+                          >
+                            {design.description}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom image URL (only for CUSTOM design) */}
+                {selectedDesign === 'CUSTOM' && (
+                  <div>
+                    <p className="text-[9px] font-black tracking-widest mb-1.5" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                      ARTWORK URL
+                    </p>
+                    <input
+                      type="url"
+                      value={customImageUrl}
+                      onChange={e => setCustomImageUrl(e.target.value)}
+                      placeholder="https://your-image.com/artwork.png"
+                      className="w-full rounded-xl px-3 py-2.5 text-xs font-medium outline-none"
+                      style={{
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(var(--accent-rgb),0.2)',
+                        color: '#e0f2fe',
+                      }}
+                    />
+                    <p className="text-[9px] mt-1" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                      Provide a direct image URL (PNG/JPG, min 1500×940px recommended)
+                    </p>
+                  </div>
+                )}
+
+                {/* Name on card */}
+                <div>
+                  <p className="text-[9px] font-black tracking-widest mb-1.5" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                    NAME ON CARD
+                  </p>
+                  <input
+                    type="text"
+                    value={nameOnCard}
+                    onChange={e => setNameOnCard(e.target.value.toUpperCase().slice(0, 30))}
+                    placeholder="YOUR NAME"
+                    className="w-full rounded-xl px-3 py-2.5 text-xs font-black tracking-widest outline-none"
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(var(--accent-rgb),0.2)',
+                      color: '#e0f2fe',
+                    }}
+                  />
+                </div>
+
+                {/* Shipping details */}
+                <div className="space-y-2">
+                  <p className="text-[9px] font-black tracking-widest" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                    SHIPPING ADDRESS
+                  </p>
+                  <input
+                    type="text"
+                    value={shipAddr}
+                    onChange={e => setShipAddr(e.target.value)}
+                    placeholder="Street address"
+                    className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(var(--accent-rgb),0.15)',
+                      color: '#e0f2fe',
+                    }}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={shipCity}
+                      onChange={e => setShipCity(e.target.value)}
+                      placeholder="City"
+                      className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                      style={{
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(var(--accent-rgb),0.15)',
+                        color: '#e0f2fe',
+                      }}
+                    />
+                    <input
+                      type="text"
+                      value={shipPost}
+                      onChange={e => setShipPost(e.target.value.toUpperCase())}
+                      placeholder="Postcode"
+                      className="w-full rounded-xl px-3 py-2.5 text-xs outline-none"
+                      style={{
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(var(--accent-rgb),0.15)',
+                        color: '#e0f2fe',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Payment method toggle */}
+                <div
+                  className="rounded-xl p-3 flex items-center gap-3"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
+                >
+                  <div className="flex-1">
+                    <p className="text-[10px] font-bold" style={{ color: '#e0f2fe' }}>Pay with wallet balance</p>
+                    <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                      Balance: <span style={{ color: wallet && wallet.balance >= (selectedDesignData?.price ?? 9.99) ? '#00ff88' : '#ff006e' }}>
+                        {wallet ? formatPrice(wallet.balance, currency) : '—'}
+                      </span>
+                      {wallet && wallet.balance < (selectedDesignData?.price ?? 9.99) && ' (insufficient)'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setCardPayWallet(v => !v)}
+                    disabled={!wallet || wallet.balance < (selectedDesignData?.price ?? 9.99)}
+                    className="relative w-10 h-5 rounded-full transition-all duration-200 shrink-0"
+                    style={{
+                      background: cardPayWallet ? 'var(--accent)' : 'rgba(255,255,255,0.08)',
+                      opacity: (!wallet || wallet.balance < (selectedDesignData?.price ?? 9.99)) ? 0.4 : 1,
+                    }}
+                  >
+                    <div
+                      className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all duration-200"
+                      style={{ left: cardPayWallet ? '22px' : '2px' }}
+                    />
+                  </button>
+                </div>
+
+                {/* Error */}
+                {cardOrderError && (
+                  <p className="text-[10px] font-bold text-center" style={{ color: '#ff006e' }}>
+                    {cardOrderError}
+                  </p>
+                )}
+
+                {/* Order summary + CTA */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                    <span>{selectedDesignData?.name ?? 'Card'}</span>
+                    <span className="font-bold" style={{ color: '#e0f2fe' }}>£{selectedDesignData?.price?.toFixed(2) ?? '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                    <span>Shipping</span>
+                    <span className="font-bold" style={{ color: '#00ff88' }}>FREE</span>
+                  </div>
+                  <div className="flex justify-between text-[10px] pt-1" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)', color: 'rgba(224,242,254,0.6)' }}>
+                    <span className="font-black">TOTAL</span>
+                    <span className="font-black" style={{ color: '#e0f2fe' }}>£{selectedDesignData?.price?.toFixed(2) ?? '—'}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={submitCardOrder}
+                  disabled={cardOrdering}
+                  className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all duration-150 active:scale-[0.97]"
+                  style={{
+                    background: cardOrdering
+                      ? 'rgba(168,85,247,0.1)'
+                      : 'linear-gradient(135deg, rgba(168,85,247,0.3), rgba(168,85,247,0.15))',
+                    border: '1px solid rgba(168,85,247,0.4)',
+                    color: '#a855f7',
+                    boxShadow: cardOrdering ? 'none' : '0 0 20px rgba(168,85,247,0.15)',
+                  }}
+                >
+                  {cardOrdering
+                    ? 'PROCESSING…'
+                    : cardPayWallet
+                      ? `ORDER WITH WALLET (£${selectedDesignData?.price?.toFixed(2) ?? '—'})`
+                      : `ORDER WITH CARD (£${selectedDesignData?.price?.toFixed(2) ?? '—'})`
+                  }
+                </button>
+
+                <p className="text-[9px] text-center" style={{ color: 'rgba(224,242,254,0.2)' }}>
+                  🚚 Free shipping UK-wide · Allow 5–10 business days
+                </p>
+              </div>
+            )}
+
+            {/* Existing orders (when form is open) */}
+            {showCardOrder && cardOrders.length > 0 && (
+              <div className="px-4 pb-4">
+                <p className="text-[9px] font-black tracking-widest mb-2" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                  YOUR ORDERS
+                </p>
+                {cardOrders.map(order => {
+                  const vis = CARD_VISUALS[order.design] ?? CARD_VISUALS['CLASSIC_BLACK']!
+                  const statusColor = CARD_STATUS_COLORS[order.status] ?? 'rgba(224,242,254,0.4)'
+                  return (
+                    <div
+                      key={order.id}
+                      className="flex items-center gap-3 py-2.5"
+                      style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)' }}
+                    >
+                      <div
+                        className="w-10 h-7 rounded-lg flex items-center justify-center text-[14px] shrink-0"
+                        style={{ background: vis.gradient, border: `1px solid ${vis.accent}33` }}
+                      >
+                        {vis.emoji}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold truncate" style={{ color: '#e0f2fe' }}>
+                          {CARD_DESIGNS.find(d => d.id === order.design)?.name ?? order.design}
+                        </p>
+                        <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                          {order.nameOnCard} · {timeAgo(order.createdAt)}
+                        </p>
+                      </div>
+                      <span
+                        className="text-[8px] font-black tracking-wider px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}33` }}
+                      >
+                        {order.status}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Empty state when no orders */}
+            {cardOrders.length === 0 && !showCardOrder && (
+              <div className="flex items-center gap-3 px-4 pb-4">
+                <Package size={16} style={{ color: 'rgba(168,85,247,0.35)' }} />
+                <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                  No cards ordered yet · Tap above to order yours
+                </p>
+              </div>
+            )}
           </SectionCard>
 
           {/* ── Transaction history ───────────────────────────────────────── */}

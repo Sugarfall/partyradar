@@ -27,6 +27,7 @@ interface MatchProfile {
   photoUrl: string | null
   bio: string | null
   interests: string[]
+  profilePrompts: Array<{ question: string; answer: string }>
   gender: string | null
   distance: number | null
 }
@@ -264,6 +265,18 @@ function SwipeCard({ profile, onLike, onPass, isTop }: {
           {profile.bio && (
             <p className="text-sm mt-2 line-clamp-2" style={{ color: 'rgba(224,242,254,0.7)' }}>{profile.bio}</p>
           )}
+          {/* Hinge-type prompt — show first answered prompt */}
+          {(profile.profilePrompts ?? []).length > 0 && (
+            <div className="mt-2 px-3 py-2 rounded-xl"
+              style={{ background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.15)' }}>
+              <p className="text-[9px] font-black tracking-wider mb-0.5" style={{ color: 'rgba(255,0,110,0.6)' }}>
+                {profile.profilePrompts[0].question}
+              </p>
+              <p className="text-xs font-bold" style={{ color: 'rgba(224,242,254,0.85)' }}>
+                {profile.profilePrompts[0].answer}
+              </p>
+            </div>
+          )}
           {profile.interests.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {profile.interests.slice(0, 4).map((tag) => (
@@ -399,7 +412,11 @@ export default function NearbyPage() {
   const [matchTab, setMatchTab] = useState<'swipe' | 'matches'>('swipe')
   const [matches, setMatches] = useState<MatchProfile[]>([])
   const [matchesLoading, setMatchesLoading] = useState(false)
+  const [likedMeCount, setLikedMeCount] = useState<number | null>(null)
   const deckLoadedRef = useRef(false)
+
+  const isFree = !dbUser || dbUser.subscriptionTier === 'FREE'
+  const hasGender = dbUser?.gender === 'MALE' || dbUser?.gender === 'FEMALE'
 
   async function loadDeck() {
     setDeckLoading(true)
@@ -421,12 +438,22 @@ export default function NearbyPage() {
     setMatchesLoading(false)
   }
 
-  // Lazy-load match deck only when the tab is first opened
+  async function loadLikedMe() {
+    try {
+      const j = await api.get<{ data: { count: number } }>('/match/liked-me')
+      setLikedMeCount(j?.data?.count ?? 0)
+    } catch {}
+  }
+
+  // Lazy-load match data when the tab is first opened
   useEffect(() => {
     if (tab === 'match' && dbUser && !deckLoadedRef.current) {
       deckLoadedRef.current = true
-      loadDeck()
-      loadMatches()
+      loadLikedMe()
+      if (!isFree && hasGender) {
+        loadDeck()
+        loadMatches()
+      }
     }
   }, [tab, dbUser?.id])
 
@@ -599,15 +626,72 @@ export default function NearbyPage() {
                 LOG IN
               </Link>
             </div>
-          /* FREE tier paywall */
-          ) : dbUser.subscriptionTier === 'FREE' ? (
-            <PaidGate
-              feature="MATCHMAKING"
-              icon={<Heart size={40} />}
-              description="Tinder-style matching at nightlife events. Men see women, women see men — match and message instantly."
-            />
+          /* FREE tier — show liked-me teaser, not a hard lock */
+          ) : isFree ? (
+            <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
+              {/* Liked-me count banner */}
+              {likedMeCount !== null && likedMeCount > 0 && (
+                <div className="rounded-2xl p-5 text-center space-y-3"
+                  style={{ background: 'linear-gradient(135deg, rgba(255,0,110,0.12), rgba(255,0,110,0.06))', border: '1px solid rgba(255,0,110,0.3)' }}>
+                  <div className="text-4xl">💛</div>
+                  <p className="text-2xl font-black" style={{ color: '#ff006e' }}>
+                    {likedMeCount} {likedMeCount === 1 ? 'person' : 'people'} liked you
+                  </p>
+                  <p className="text-sm" style={{ color: 'rgba(224,242,254,0.5)' }}>
+                    Upgrade to Basic to see who they are and start matching.
+                  </p>
+                  {/* Blurred profile silhouettes */}
+                  <div className="flex justify-center gap-2 py-2">
+                    {Array.from({ length: Math.min(likedMeCount, 5) }).map((_, i) => (
+                      <div key={i} className="w-12 h-12 rounded-full"
+                        style={{ background: 'rgba(255,0,110,0.15)', border: '2px solid rgba(255,0,110,0.2)', backdropFilter: 'blur(8px)' }}>
+                        <div className="w-full h-full rounded-full flex items-center justify-center text-xl" style={{ filter: 'blur(3px)' }}>👤</div>
+                      </div>
+                    ))}
+                    {likedMeCount > 5 && (
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-xs font-black"
+                        style={{ background: 'rgba(255,0,110,0.1)', border: '2px solid rgba(255,0,110,0.2)', color: '#ff006e' }}>
+                        +{likedMeCount - 5}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {likedMeCount === 0 && (
+                <div className="rounded-2xl p-5 text-center"
+                  style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.15)' }}>
+                  <div className="text-3xl mb-2">💘</div>
+                  <p className="text-sm font-black" style={{ color: 'rgba(224,242,254,0.6)' }}>You're in the deck</p>
+                  <p className="text-xs mt-1" style={{ color: 'rgba(224,242,254,0.35)' }}>Others can already see your profile. Upgrade to see who likes you and swipe back.</p>
+                </div>
+              )}
+
+              {/* Features & upgrade CTA */}
+              <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,0,110,0.15)', background: 'rgba(7,7,26,0.7)' }}>
+                <div className="px-4 py-3 space-y-2">
+                  <p className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(255,0,110,0.5)' }}>BASIC UNLOCKS</p>
+                  {[
+                    ['💘', 'See who liked you'],
+                    ['🔄', 'Swipe and match with people'],
+                    ['💬', 'Instant DM when you match'],
+                    ['📍', 'See who\'s nearby you'],
+                  ].map(([icon, text]) => (
+                    <div key={text} className="flex items-center gap-2.5 py-1">
+                      <span className="text-sm">{icon}</span>
+                      <span className="text-xs font-bold" style={{ color: 'rgba(224,242,254,0.6)' }}>{text}</span>
+                    </div>
+                  ))}
+                </div>
+                <Link href="/pricing"
+                  className="flex items-center justify-center gap-2 py-3.5 text-sm font-black tracking-widest"
+                  style={{ background: 'linear-gradient(135deg, rgba(255,0,110,0.25), rgba(255,0,110,0.12))', borderTop: '1px solid rgba(255,0,110,0.2)', color: '#ff006e', letterSpacing: '0.1em' }}>
+                  <Lock size={13} /> UPGRADE — FROM £4.99/MO
+                </Link>
+              </div>
+            </div>
           /* Gender not set */
-          ) : (dbUser.gender !== 'MALE' && dbUser.gender !== 'FEMALE') ? (
+          ) : !hasGender ? (
             <GenderPrompt />
           ) : (
             <div className="max-w-lg mx-auto px-4 pt-3">
