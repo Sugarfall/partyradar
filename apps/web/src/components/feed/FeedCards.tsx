@@ -28,8 +28,8 @@ export interface FeedUser {
   displayName: string
   photoUrl?: string | null
 }
-export interface FeedEvent { name: string; type?: string }
-export interface FeedVenue { name: string }
+export interface FeedEvent { id?: string; name: string; type?: string }
+export interface FeedVenue { id?: string; name: string }
 
 export interface OriginalPost {
   id: string
@@ -313,7 +313,17 @@ export function CheckInCard({ item, storyUserIds, onOpenUserStory }: {
           <p className="text-sm font-black leading-tight" style={{ color: '#e0f2fe' }}>
             <span style={{ color: 'var(--accent)' }}>{item.user.displayName}</span>
             <span style={{ color: 'rgba(224,242,254,0.55)', fontWeight: 600 }}> checked in at </span>
-            <span style={{ color: '#e0f2fe' }}>{item.venue?.name ?? item.event?.name ?? '??'}</span>
+            {item.venue?.id ? (
+              <Link href={`/venues/${item.venue.id}`} style={{ color: '#e0f2fe' }} className="hover:underline">
+                {item.venue.name}
+              </Link>
+            ) : item.event?.id ? (
+              <Link href={`/events/${item.event.id}`} style={{ color: '#e0f2fe' }} className="hover:underline">
+                {item.event.name}
+              </Link>
+            ) : (
+              <span style={{ color: '#e0f2fe' }}>{item.venue?.name ?? item.event?.name ?? '??'}</span>
+            )}
           </p>
           <div className="flex items-center gap-2 mt-1.5">
             <MapPin size={10} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />

@@ -484,18 +484,21 @@ export default function ProfilePage() {
     api.post('/medals/check', {}).catch(() => {}).finally(fetchMedals)
   }, [dbUser])
 
+  // My check-ins for the Activity tab
+  const [myCheckIns, setMyCheckIns] = useState<any[]>([])
+  const [checkInsLoading, setCheckInsLoading] = useState(false)
+  const [checkInsFetched, setCheckInsFetched] = useState(false)
+
+  async function deleteCheckIn(id: string) {
+    try {
+      await api.delete(`/checkins/${id}`)
+      setMyCheckIns(prev => prev.filter((c: any) => c.id !== id))
+    } catch { /* silent — item stays in list */ }
+  }
+
   // Load activity from API (GET /api/feed)
   useEffect(() => {
     if (!dbUser) return
-    async function loadActivity() {
-      try {
-        const res = await api.get<{ data: any[] }>('/feed')
-        const items = res?.data ?? []
-        setActivity(items)
-      } catch {
-        // Keep empty array on failure
-      }
-    }
     async function loadReviews() {
       try {
         const res = await api.get<{ data: any[] }>('/reviews/my')
@@ -505,9 +508,18 @@ export default function ProfilePage() {
         // Keep empty array in production — no fake data
       }
     }
-    loadActivity()
     loadReviews()
   }, [dbUser])
+
+  // Lazy-load own check-ins when Activity tab is opened
+  useEffect(() => {
+    if (profileTab !== 'activity' || checkInsFetched || !dbUser) return
+    setCheckInsLoading(true)
+    api.get<{ data: any[] }>('/checkins/my?limit=50')
+      .then(res => { setMyCheckIns(res?.data ?? []); setCheckInsFetched(true) })
+      .catch(() => {})
+      .finally(() => setCheckInsLoading(false))
+  }, [profileTab, checkInsFetched, dbUser])
 
   function toggleGoingOut() {
     const next = !goingOut
@@ -1108,52 +1120,74 @@ export default function ProfilePage() {
             ))}
           </div>
 
-          {/* Activity tab */}
+          {/* Activity tab — own check-ins */}
           {profileTab === 'activity' && (
             <div className="divide-y" style={{ borderColor: 'rgba(var(--accent-rgb),0.06)' }}>
-              {activity.length === 0 ? (
-                <div className="py-10 text-center">
-                  <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO ACTIVITY YET</p>
+              {checkInsLoading ? (
+                <div className="flex justify-center py-10">
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin"
+                    style={{ borderColor: 'rgba(var(--accent-rgb),0.1)', borderTopColor: 'var(--accent)' }} />
                 </div>
-              ) : activity.map((item, i) => (
-                <div key={i} className="flex items-start gap-3 px-4 py-3" style={{ background: 'rgba(7,7,26,0.4)' }}>
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                    style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}
-                  >
-                    {item.type === 'CHECKIN' && <MapPin size={12} style={{ color: 'var(--accent)' }} />}
-                    {item.type === 'RSVP'    && <Calendar size={12} style={{ color: '#a855f7' }} />}
-                    {item.type === 'POST'    && <MessageSquare size={12} style={{ color: '#ec4899' }} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold leading-tight" style={{ color: 'rgba(224,242,254,0.75)' }}>
-                      {item.type === 'CHECKIN' && (() => {
-                        const ev = (item as any).event as { id: string; name: string } | null | undefined
-                        const vn = (item as any).venue as { id?: string; name: string } | null | undefined
-                        return (
-                          <>
-                            Checked in
-                            {ev ? (
-                              <> at <Link href={`/events/${ev.id}`} className="hover:underline" style={{ color: 'var(--accent)' }}>{ev.name}</Link></>
-                            ) : vn ? (
-                              <> at <span style={{ color: 'var(--accent)' }}>{vn.name}</span></>
-                            ) : null}
-                            {(item as any).crowdLevel && (
-                              <span className="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded"
-                                style={{ color: CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)', border: `1px solid ${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}40`, background: `${CROWD_COLORS[(item as any).crowdLevel] ?? 'var(--accent)'}10` }}>
-                                {(item as any).crowdLevel}
-                              </span>
-                            )}
-                          </>
-                        )
-                      })()}
-                      {item.type === 'RSVP' && <>RSVP&apos;d to <span style={{ color: '#a855f7' }}>{(item as any).event?.name ?? (item as any).event}</span></>}
-                      {item.type === 'POST' && <span style={{ color: 'rgba(224,242,254,0.7)' }}>{(item as any).text}</span>}
-                    </p>
-                    <p className="text-[9px] font-bold mt-0.5" style={{ color: 'rgba(74,96,128,0.5)' }}>{timeAgo(item.createdAt)}</p>
-                  </div>
+              ) : myCheckIns.length === 0 ? (
+                <div className="py-10 text-center space-y-1">
+                  <p className="text-2xl">📍</p>
+                  <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO CHECK-INS YET</p>
+                  <p className="text-[9px]" style={{ color: 'rgba(74,96,128,0.3)' }}>Check in at events &amp; venues to see them here</p>
                 </div>
-              ))}
+              ) : myCheckIns.map((ci: any) => {
+                const ev = ci.event as { id: string; name: string } | null
+                const vn = ci.venue as { id: string; name: string } | null
+                const cl = ci.crowdLevel as string | null
+                const clColor = cl ? (CROWD_COLORS[cl] ?? 'var(--accent)') : null
+                return (
+                  <div key={ci.id} className="flex items-start gap-3 px-4 py-3"
+                    style={{ background: 'rgba(7,7,26,0.4)' }}>
+                    {/* Icon */}
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                      style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                      <MapPin size={12} style={{ color: 'var(--accent)' }} />
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold leading-tight" style={{ color: 'rgba(224,242,254,0.75)' }}>
+                        Checked in at{' '}
+                        {vn ? (
+                          <Link href={`/venues/${vn.id}`} className="hover:underline" style={{ color: 'var(--accent)' }}>
+                            {vn.name}
+                          </Link>
+                        ) : ev ? (
+                          <Link href={`/events/${ev.id}`} className="hover:underline" style={{ color: '#a855f7' }}>
+                            {ev.name}
+                          </Link>
+                        ) : <span style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>Unknown location</span>}
+                        {cl && clColor && (
+                          <span className="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded align-middle"
+                            style={{ color: clColor, border: `1px solid ${clColor}40`, background: `${clColor}10` }}>
+                            {cl}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[9px] font-bold mt-0.5" style={{ color: 'rgba(74,96,128,0.5)' }}>
+                        {timeAgo(ci.createdAt)}
+                        {ev && vn && (
+                          <span style={{ color: 'rgba(74,96,128,0.35)' }}> · {ev.name}</span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Delete button */}
+                    <button
+                      className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(255,0,110,0.06)', border: '1px solid rgba(255,0,110,0.12)' }}
+                      onClick={() => deleteCheckIn(ci.id)}
+                      title="Delete check-in"
+                    >
+                      <Trash2 size={11} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
 
