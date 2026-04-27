@@ -1011,20 +1011,20 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Stats row */}
-        <div className="grid grid-cols-6 gap-1.5">
+        {/* Stats grid — 3 columns so labels never collide on narrow phones */}
+        <div className="grid grid-cols-3 gap-2">
           {(accountMode === 'HOST' ? [
-            { label: 'EVENTS',    value: '—', icon: Calendar },
-            { label: 'GUESTS',    value: '—', icon: Users    },
-            { label: 'REVENUE',   value: '—', icon: Crown    },
-            { label: 'FOLLOWERS', value: String(followersCount), icon: Users },
-            { label: 'FOLLOWING', value: String(followingCount), icon: Users },
+            { label: 'EVENTS',    value: '—',                    icon: Calendar },
+            { label: 'GUESTS',    value: '—',                    icon: Users    },
+            { label: 'REVENUE',   value: '—',                    icon: Crown    },
+            { label: 'FOLLOWERS', value: String(followersCount), icon: Users    },
+            { label: 'FOLLOWING', value: String(followingCount), icon: Users    },
           ] : [
-            { label: 'HOSTED',    value: '—',              icon: Calendar },
-            { label: 'TICKETS',   value: '—',              icon: Ticket   },
-            { label: 'EVENTS',    value: '—',              icon: Crown    },
-            { label: 'FOLLOWERS', value: String(followersCount), icon: Users },
-            { label: 'FOLLOWING', value: String(followingCount), icon: Users },
+            { label: 'HOSTED',    value: '—',                    icon: Calendar },
+            { label: 'TICKETS',   value: '—',                    icon: Ticket   },
+            { label: 'EVENTS',    value: '—',                    icon: Crown    },
+            { label: 'FOLLOWERS', value: String(followersCount), icon: Users    },
+            { label: 'FOLLOWING', value: String(followingCount), icon: Users    },
           ]).map(({ label, value, icon: Icon }) => {
             const isFollowStat = label === 'FOLLOWERS' || label === 'FOLLOWING'
             const action = label === 'FOLLOWERS' ? () => setShowFollowList('followers')
@@ -1032,24 +1032,24 @@ export default function ProfilePage() {
               : undefined
             return (
               <button key={label} onClick={action}
-                className="p-2 rounded-xl text-center transition-all"
+                className="py-3 px-2 rounded-xl text-center transition-all"
                 style={{
-                  background: isFollowStat ? 'rgba(var(--accent-rgb),0.05)' : 'rgba(var(--accent-rgb),0.03)',
-                  border: isFollowStat ? '1px solid rgba(var(--accent-rgb),0.15)' : '1px solid rgba(var(--accent-rgb),0.08)',
+                  background: isFollowStat ? 'rgba(var(--accent-rgb),0.06)' : 'rgba(var(--accent-rgb),0.03)',
+                  border: isFollowStat ? '1px solid rgba(var(--accent-rgb),0.18)' : '1px solid rgba(var(--accent-rgb),0.08)',
                   cursor: isFollowStat ? 'pointer' : 'default',
                 }}>
-                <Icon size={12} style={{ color: 'rgba(var(--accent-rgb),0.35)', margin: '0 auto 3px' }} />
-                <p className="text-base font-black" style={{ color: '#e0f2fe' }}>{value}</p>
-                <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>{label}</p>
+                <Icon size={13} style={{ color: 'rgba(var(--accent-rgb),0.4)', margin: '0 auto 4px' }} />
+                <p className="text-lg font-black leading-none" style={{ color: '#e0f2fe' }}>{value}</p>
+                <p className="text-[9px] font-bold tracking-wider mt-1 leading-tight" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>{label}</p>
               </button>
             )
           })}
           {/* Social Score */}
-          <div className="p-2 rounded-xl text-center"
+          <div className="py-3 px-2 rounded-xl text-center"
             style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
-            <Zap size={12} style={{ color: 'rgba(var(--accent-rgb),0.35)', margin: '0 auto 3px' }} />
-            <p className="text-base font-black" style={{ color: dbUser.themeColor ?? 'var(--accent)' }}>{dbUser.socialScore ?? 0}</p>
-            <p className="text-[8px] font-bold tracking-widest leading-tight" style={{ color: 'rgba(var(--accent-rgb),0.35)' }}>SCORE</p>
+            <Zap size={13} style={{ color: 'rgba(var(--accent-rgb),0.4)', margin: '0 auto 4px' }} />
+            <p className="text-lg font-black leading-none" style={{ color: dbUser.themeColor ?? 'var(--accent)' }}>{dbUser.socialScore ?? 0}</p>
+            <p className="text-[9px] font-bold tracking-wider mt-1 leading-tight" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>SCORE</p>
           </div>
         </div>
 
