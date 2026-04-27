@@ -453,31 +453,30 @@ function NavbarInner() {
             )
           })}
 
-          {/* Centre pill — adapts to mode */}
-          <div className="flex-1 flex items-center justify-center" style={{ position: 'relative' }}>
+          {/* Centre slot */}
+          <div className="flex-1 relative">
             {isHost ? (
-              /* HOST: floating create-event FAB */
-              <Link href={dbUser ? '/events/create' : '/login'}
-                className="flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
-                style={{ marginTop: -28 }}
+              /* HOST: FAB centred on the top edge of the tab bar */
+              <Link
+                href={dbUser ? '/events/create' : '/login'}
+                className="absolute rounded-full flex items-center justify-center transition-all active:scale-95"
+                style={{
+                  width: 56, height: 56,
+                  top: 0, left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  background: 'rgba(4,4,13,0.92)',
+                  border: '2px solid rgba(168,85,247,0.75)',
+                  boxShadow: '0 0 0 5px rgba(4,4,13,0.95), 0 0 22px rgba(168,85,247,0.4)',
+                  backdropFilter: 'blur(14px)',
+                  zIndex: 10,
+                }}
               >
-                <div
-                  className="w-14 h-14 rounded-full flex items-center justify-center"
-                  style={{
-                    background: 'rgba(4,4,13,0.85)',
-                    border: '2px solid rgba(168,85,247,0.7)',
-                    boxShadow: '0 0 0 4px rgba(4,4,13,0.95), 0 0 18px rgba(168,85,247,0.35)',
-                    backdropFilter: 'blur(12px)',
-                  }}
-                >
-                  <Plus size={22} style={{ color: '#a855f7' }} strokeWidth={2} />
-                </div>
-                <span className="text-[8px] font-black tracking-widest" style={{ color: 'rgba(168,85,247,0.8)', letterSpacing: '0.12em' }}>HOST</span>
+                <Plus size={22} style={{ color: '#a855f7' }} strokeWidth={2} />
               </Link>
             ) : (
               /* ATTENDEE: my tickets */
               <Link href={dbUser ? '/tickets' : '/login'}
-                className="flex flex-col items-center justify-center gap-0.5 transition-all"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 transition-all"
                 style={{ color: pathname.startsWith('/tickets') ? '#fff' : 'rgba(255,255,255,0.35)' }}
               >
                 <Ticket size={16} strokeWidth={pathname.startsWith('/tickets') ? 2 : 1.5} />
