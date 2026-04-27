@@ -16,6 +16,7 @@ import { uploadImage } from '@/lib/cloudinary'
 import { loginHref } from '@/lib/authRedirect'
 import MedalGrid from '@/components/profile/MedalGrid'
 import PostDetailModal from '@/components/profile/PostDetailModal'
+import ComposePostModal from '@/components/feed/ComposePostModal'
 
 // ── Follow List Modal (own profile) ─────────────────────────────────────────
 function FollowListModal({ username, mode, onClose }: {
@@ -389,6 +390,7 @@ export default function ProfilePage() {
   const [myPhotos, setMyPhotos] = useState<{ id: string; imageUrl: string; likesCount: number; viewCount: number }[]>([])
   const [photosLoading, setPhotosLoading] = useState(false)
   const [photosFetched, setPhotosFetched] = useState(false)
+  const [showComposePost, setShowComposePost] = useState(false)
   const [openPostId, setOpenPostId] = useState<string | null>(null)
 
   // Spotify artist state
@@ -1243,14 +1245,49 @@ export default function ProfilePage() {
               </div>
             ) : myPhotos.length === 0 ? (
               <div className="py-12 flex flex-col items-center gap-3">
-                <Camera size={28} style={{ color: 'rgba(var(--accent-rgb),0.15)' }} />
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px dashed rgba(var(--accent-rgb),0.2)' }}
+                >
+                  <Camera size={24} style={{ color: 'rgba(var(--accent-rgb),0.3)' }} />
+                </div>
                 <p className="text-[11px] font-black tracking-widest" style={{ color: 'rgba(74,96,128,0.4)' }}>NO PHOTOS YET</p>
                 <p className="text-[10px] text-center px-8" style={{ color: 'rgba(224,242,254,0.25)' }}>
                   Share moments from events and venues to build your photo grid
                 </p>
+                <button
+                  onClick={() => setShowComposePost(true)}
+                  className="mt-1 flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs transition-all active:scale-95"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15), rgba(var(--accent-rgb),0.06))',
+                    border: '1px solid rgba(var(--accent-rgb),0.35)',
+                    color: 'var(--accent)',
+                    letterSpacing: '0.1em',
+                    boxShadow: '0 0 16px rgba(var(--accent-rgb),0.12)',
+                  }}
+                >
+                  <Plus size={13} /> POST A MOMENT
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-0.5">
+                {/* ── Add-post tile — always first ── */}
+                <button
+                  onClick={() => setShowComposePost(true)}
+                  className="aspect-square flex flex-col items-center justify-center gap-1.5 transition-all active:scale-95"
+                  style={{
+                    background: 'rgba(var(--accent-rgb),0.03)',
+                    border: '1px dashed rgba(var(--accent-rgb),0.18)',
+                  }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}
+                  >
+                    <Plus size={16} style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <span className="text-[8px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.45)' }}>POST</span>
+                </button>
                 {myPhotos.map((photo) => {
                   const isVid = photo.imageUrl.includes('/video/upload/')
                   return (
@@ -1611,6 +1648,18 @@ export default function ProfilePage() {
       {/* Post detail modal */}
       {openPostId && (
         <PostDetailModal postId={openPostId} onClose={() => setOpenPostId(null)} />
+      )}
+
+      {/* Compose post modal — opened from Photos tab "+" tile */}
+      {showComposePost && (
+        <ComposePostModal
+          onClose={() => setShowComposePost(false)}
+          onPosted={() => {
+            setShowComposePost(false)
+            // Re-trigger the photos fetch so new post appears immediately
+            setPhotosFetched(false)
+          }}
+        />
       )}
 
       {/* Follow list modal */}
