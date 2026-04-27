@@ -294,25 +294,49 @@ export default function VenuesPage() {
   const [discoveredCount, setDiscoveredCount] = useState(0)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapVisible, setMapVisible] = useState(true)
+  // Set to true once we know where to fetch (geolocation resolved or timed out)
+  const [locationReady, setLocationReady] = useState(false)
+  // Ref holds geolocation result so the initial-fetch effect reads the real coords
+  // even if the React viewState update hasn't flushed yet
+  const geoRef = useRef<{ lat: number; lng: number } | null>(null)
 
   // Track last discovered center to avoid re-fetching same area
   const lastDiscoverRef = useRef<{ lat: number; lng: number; zoom: number } | null>(null)
   const discoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Request user's geolocation on mount
+  // Resolve user location BEFORE the initial venue fetch fires
   useEffect(() => {
-    if (!navigator.geolocation) return
+    if (!navigator.geolocation) {
+      setLocationReady(true) // no geo support — use saved/default
+      return
+    }
+    // Capture the current default/saved coords at mount time for the distance check
+    const savedLat = viewState.latitude
+    const savedLng = viewState.longitude
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        // Only center the map if we didn't restore a saved position from sessionStorage
-        if (!hasSavedView) {
-          setViewState((v) => ({ ...v, latitude: pos.coords.latitude, longitude: pos.coords.longitude }))
+        const geoLat = pos.coords.latitude
+        const geoLng = pos.coords.longitude
+        geoRef.current = { lat: geoLat, lng: geoLng }
+        setUserLocation({ lat: geoLat, lng: geoLng })
+
+        // Re-center the map if:
+        //   a) there's no saved session (fresh visit), OR
+        //   b) the user is in a different city — more than 50 km from the saved center
+        //      (prevents old Glasgow session from overriding a Vilnius visitor)
+        const distKm = haversineKm(geoLat, geoLng, savedLat, savedLng)
+        if (!hasSavedView || distKm > 50) {
+          setViewState((v) => ({ ...v, latitude: geoLat, longitude: geoLng }))
         }
+        setLocationReady(true)
       },
-      () => { /* permission denied or unavailable — keep default Glasgow center */ },
-      { enableHighAccuracy: false, timeout: 8000 },
+      () => {
+        // Permission denied or unavailable — fall back to saved/default position
+        setLocationReady(true)
+      },
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 7000 },
     )
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -384,14 +408,18 @@ export default function VenuesPage() {
     }, 1500) // 1.5s debounce
   }, [fetchVenues, discoverVenues])
 
-  // Initial load
+  // Initial load — fires only after geolocation has resolved (or failed)
+  // so we always fetch venues for the user's real city, not the stale default
   useEffect(() => {
+    if (!locationReady) return
+    // Prefer real GPS coords from geoRef; fall back to saved/default viewState
+    const lat = geoRef.current?.lat ?? viewState.latitude
+    const lng = geoRef.current?.lng ?? viewState.longitude
     const radius = zoomToRadius(viewState.zoom)
-    fetchVenues(viewState.latitude, viewState.longitude, radius)
-    // Also trigger discover on initial load
-    discoverVenues(viewState.latitude, viewState.longitude, radius)
-    lastDiscoverRef.current = { lat: viewState.latitude, lng: viewState.longitude, zoom: viewState.zoom }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    fetchVenues(lat, lng, radius)
+    discoverVenues(lat, lng, radius)
+    lastDiscoverRef.current = { lat, lng, zoom: viewState.zoom }
+  }, [locationReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-fetch from DB when search/filter changes
   useEffect(() => {
