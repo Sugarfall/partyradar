@@ -404,13 +404,13 @@ function VenueDetailInner() {
         )}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(13,13,15,0.1) 0%, rgba(13,13,15,0.95) 100%)' }} />
 
-        {/* Back button */}
+        {/* Back button — goes to previous page (discover venues tab OR /venues list) */}
         <button
-          onClick={() => router.push('/venues')}
+          onClick={() => window.history.length > 1 ? router.back() : router.push('/venues')}
           className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
           style={{ background: 'rgba(4,4,13,0.6)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: '#e0f2fe', backdropFilter: 'blur(8px)' }}
         >
-          <ArrowLeft size={12} /> VENUES
+          <ArrowLeft size={12} /> BACK
         </button>
 
         {/* Top-right action cluster */}
