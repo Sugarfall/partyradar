@@ -22,8 +22,8 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
       where: { followerId: userId },
       select: { followingId: true },
     })
-    // Always include the user's own id so own posts appear in their own feed
-    const feedUserIds = [...new Set([...followingRows.map((f) => f.followingId), userId])]
+    // Following tab: only show posts from people the user follows, not their own
+    const feedUserIds = [...new Set(followingRows.map((f) => f.followingId))]
 
     // Fetch RSVPs, check-ins, and posts in parallel
     const [rsvps, checkIns, posts] = await Promise.all([
@@ -53,7 +53,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
       prisma.post.findMany({
         where: {
           userId: { in: feedUserIds },
-          OR: [{ isStory: false }, { expiresAt: { gt: new Date() } }],
+          isStory: false,
           user: { firebaseUid: { not: { startsWith: 'demo_' } } },
         },
         orderBy: { createdAt: 'desc' },

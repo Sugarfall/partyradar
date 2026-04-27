@@ -293,6 +293,7 @@ export default function AdminPage() {
       api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((r) => setDiagnostics(r.data)).catch(silent('admin:diagnostics'))
     } else if (tab === 'medals') {
       loadMedals()
+      loadSpecialEvents() // needed so medal form can show special events in picker
     } else if (tab === 'special-events') {
       loadSpecialEvents()
     }
@@ -443,6 +444,21 @@ export default function AdminPage() {
         <Link href="/" className="text-sm font-semibold mt-2" style={{ color: '#00c8ff' }}>← Back to app</Link>
       </div>
     )
+  }
+
+  // ─── Condition label map ─────────────────────────────────────────────────────
+
+  const CONDITION_LABELS: Record<string, string> = {
+    FOLLOWERS_COUNT:  'Gain followers',
+    FOLLOWING_COUNT:  'Follow people',
+    EVENTS_ATTENDED:  'Attend events',
+    EVENTS_ORGANISED: 'Host events',
+    TICKETS_BOUGHT:   'Buy tickets',
+    CHECKINS_COUNT:   'Check in at venues',
+    REFERRALS_MADE:   'Refer friends',
+    VENUES_VISITED:   'Visit unique venues',
+    POSTS_COUNT:      'Create posts',
+    SPECIFIC_EVENT:   'Attend specific event',
   }
 
   // Filtered users
@@ -1394,7 +1410,7 @@ export default function AdminPage() {
                   <select value={medalForm.conditionType} onChange={e => setMedalForm(f => ({ ...f, conditionType: e.target.value }))}
                     className="px-3 py-2 rounded-xl text-xs text-white outline-none"
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    {['FOLLOWERS_COUNT','FOLLOWING_COUNT','EVENTS_ATTENDED','EVENTS_ORGANISED','TICKETS_BOUGHT','CHECKINS_COUNT','REFERRALS_MADE','VENUES_VISITED','POSTS_COUNT','SPECIFIC_EVENT'].map(c => <option key={c} value={c}>{c}</option>)}
+                    {Object.entries(CONDITION_LABELS).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                   </select>
                   <input type="number" value={medalForm.threshold} onChange={e => setMedalForm(f => ({ ...f, threshold: Number(e.target.value) }))} placeholder="Threshold"
                     className="px-3 py-2 rounded-xl text-xs text-white placeholder-white/20 outline-none"
@@ -1404,13 +1420,31 @@ export default function AdminPage() {
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
                 </div>
                 {/* Optional time window & special event */}
-                <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mt-1">Optional: Special Event / Time Window</p>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mt-1">Special Event Link / Time Window</p>
+                {medalForm.specialEventId && (
+                  <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: '#a855f715', color: '#a855f7', border: '1px solid #a855f730' }}>
+                    🎪 Linked event medal — progress counts only during the event window
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2">
-                  <select value={medalForm.specialEventId} onChange={e => setMedalForm(f => ({ ...f, specialEventId: e.target.value }))}
+                  <select
+                    value={medalForm.specialEventId}
+                    onChange={e => {
+                      const se = specialEvents.find(s => s.id === e.target.value)
+                      setMedalForm(f => ({
+                        ...f,
+                        specialEventId: e.target.value,
+                        // Auto-fill window from the event so admin doesn't have to set it manually
+                        startsAt: se ? se.startsAt.slice(0, 16) : f.startsAt,
+                        endsAt:   se ? se.endsAt.slice(0, 16)   : f.endsAt,
+                        // Default to SPECIAL category for event-linked medals
+                        category: se ? 'SPECIAL' : f.category,
+                      }))
+                    }}
                     className="col-span-2 px-3 py-2 rounded-xl text-xs text-white outline-none"
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <option value="">No special event</option>
-                    {specialEvents.map(se => <option key={se.id} value={se.id}>{se.name}</option>)}
+                    <option value="">No special event (regular medal)</option>
+                    {specialEvents.map(se => <option key={se.id} value={se.id}>{se.name} ({new Date(se.startsAt).toLocaleDateString()} – {new Date(se.endsAt).toLocaleDateString()})</option>)}
                   </select>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[10px] text-white/30 pl-1">Starts at (optional)</label>
@@ -1496,11 +1530,19 @@ export default function AdminPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-semibold text-white">{m.name}</span>
                               <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: `${tierColor}20`, color: tierColor, border: `1px solid ${tierColor}40` }}>{m.tier}</span>
-                              <span className="text-[10px] text-white/30">{m.category}</span>
-                              <span className="text-[10px] text-white/20">{m.conditionType} ≥ {m.threshold}</span>
+                              {m.specialEventId
+                                ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#a855f720', color: '#a855f7', border: '1px solid #a855f730' }}>🎪 Event Medal</span>
+                                : <span className="text-[10px] text-white/30">{m.category}</span>
+                              }
+                              <span className="text-[10px] text-white/20">{CONDITION_LABELS[m.conditionType] ?? m.conditionType} ≥ {m.threshold}</span>
                             </div>
                             <p className="text-xs text-white/40 truncate">{m.description}</p>
-                            <p className="text-[10px] mt-0.5" style={{ color: '#00c8ff80' }}>{m._count.earnedBy} earned · sort {m.sortOrder}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px]" style={{ color: '#00c8ff80' }}>{m._count.earnedBy} earned</p>
+                              {m.startsAt && m.endsAt && (
+                                <p className="text-[10px] text-white/20">{new Date(m.startsAt).toLocaleDateString()} – {new Date(m.endsAt).toLocaleDateString()}</p>
+                              )}
+                            </div>
                           </div>
                           <div className="flex gap-1.5 flex-shrink-0">
                             <button onClick={() => setAwardModal({ medalId: m.id, medalName: m.name })}
@@ -1702,6 +1744,32 @@ export default function AdminPage() {
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5 mt-3">
+                            {/* Add Medal shortcut — pre-fills the medal form and switches to Medals tab */}
+                            <button
+                              onClick={() => {
+                                const safeName = ev.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+                                setMedalForm({
+                                  slug: `${safeName}-medal`,
+                                  name: `${ev.name} Champion`,
+                                  description: `Earned during ${ev.name}`,
+                                  icon: '🎪',
+                                  tier: 'GOLD',
+                                  category: 'SPECIAL',
+                                  conditionType: 'VENUES_VISITED',
+                                  threshold: 5,
+                                  sortOrder: 0,
+                                  specialEventId: ev.id,
+                                  startsAt: ev.startsAt.slice(0, 16),
+                                  endsAt: ev.endsAt.slice(0, 16),
+                                })
+                                setShowMedalForm(true)
+                                setTab('medals')
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold"
+                              style={{ background: '#00c8ff15', color: '#00c8ff', border: '1px solid #00c8ff30' }}
+                            >
+                              🏅 Add Medal
+                            </button>
                             {/* Publish button — only shown if not yet published */}
                             {!ev.isPublished && (
                               <button

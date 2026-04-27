@@ -23,6 +23,55 @@ async function getUserStats(userId: string) {
   return { FOLLOWERS_COUNT: followersCount, FOLLOWING_COUNT: followingCount, EVENTS_ATTENDED: eventsAttended, EVENTS_ORGANISED: eventsOrganised, TICKETS_BOUGHT: ticketsBought, CHECKINS_COUNT: checkinsCount, REFERRALS_MADE: referralsMade, VENUES_VISITED: venuesVisited, POSTS_COUNT: postsCount }
 }
 
+/**
+ * Same shape as getUserStats but scoped to a time window — used for Special
+ * Event medals where the threshold must be hit DURING the event, not all-time.
+ *
+ * e.g. "Easter Pub Crawl: check in at 5 different venues during Easter weekend"
+ *      → VENUES_VISITED conditionType with threshold 5, window = Easter dates
+ */
+async function getSpecialEventStats(userId: string, startsAt: Date, endsAt: Date) {
+  const window = { gte: startsAt, lte: endsAt }
+  const [checkinsCount, venuesVisited, eventsAttended, eventsOrganised, ticketsBought, postsCount] = await Promise.all([
+    prisma.checkIn.count({ where: { userId, createdAt: window } }),
+    prisma.checkIn.findMany({ where: { userId, venueId: { not: null }, createdAt: window }, distinct: ['venueId'], select: { venueId: true } }).then(r => r.length),
+    // Count events the user confirmed that START within the special-event window
+    prisma.eventGuest.count({ where: { userId, status: 'CONFIRMED', event: { startsAt: window } } }),
+    prisma.event.count({ where: { hostId: userId, isPublished: true, isCancelled: false, startsAt: window } }),
+    prisma.ticket.count({ where: { userId, createdAt: window } }),
+    prisma.post.count({ where: { userId, createdAt: window } }),
+  ])
+  // Social/referral counts don't make sense as time-windowed special-event goals
+  return { FOLLOWERS_COUNT: 0, FOLLOWING_COUNT: 0, REFERRALS_MADE: 0, EVENTS_ATTENDED: eventsAttended, EVENTS_ORGANISED: eventsOrganised, TICKETS_BOUGHT: ticketsBought, CHECKINS_COUNT: checkinsCount, VENUES_VISITED: venuesVisited, POSTS_COUNT: postsCount }
+}
+
+/** Build a window-keyed cache of special-event stats for a list of medals. */
+async function buildWindowCache(userId: string, medals: Array<{ specialEventId: string | null; startsAt: Date | null; endsAt: Date | null }>) {
+  type Stats = Awaited<ReturnType<typeof getUserStats>>
+  const cache = new Map<string, Stats>()
+  const seen = new Set<string>()
+  await Promise.all(medals.map(async m => {
+    if (!m.specialEventId || !m.startsAt || !m.endsAt) return
+    const key = `${m.startsAt.toISOString()}|${m.endsAt.toISOString()}`
+    if (seen.has(key)) return
+    seen.add(key)
+    cache.set(key, await getSpecialEventStats(userId, m.startsAt, m.endsAt))
+  }))
+  return cache
+}
+
+function pickStats<T extends { specialEventId: string | null; startsAt: Date | null; endsAt: Date | null }>(
+  medal: T,
+  allTimeStats: Awaited<ReturnType<typeof getUserStats>>,
+  windowCache: Map<string, Awaited<ReturnType<typeof getUserStats>>>,
+) {
+  if (medal.specialEventId && medal.startsAt && medal.endsAt) {
+    const key = `${medal.startsAt.toISOString()}|${medal.endsAt.toISOString()}`
+    return windowCache.get(key) ?? allTimeStats
+  }
+  return allTimeStats
+}
+
 // Public: list user's medals
 router.get('/user/:userId', async (req, res, next) => {
   try {
@@ -52,7 +101,7 @@ router.get('/admin', requireAuth, async (req: AuthRequest, res, next) => {
   } catch (err) { next(err) }
 })
 
-// My medals + progress
+// My medals + progress (special-event medals show time-windowed progress)
 router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
@@ -62,8 +111,13 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
       getUserStats(userId),
     ])
     const earnedIds = new Set(userMedals.map(um => um.medalId))
+
+    // For special-event medals, compute progress against their time window, not all-time counts
+    const windowCache = await buildWindowCache(userId, medals)
+
     const withProgress = medals.map(m => {
-      const currentValue = m.conditionType === 'SPECIFIC_EVENT' ? 0 : (stats[m.conditionType as keyof typeof stats] ?? 0)
+      const currentStats = pickStats(m, stats, windowCache)
+      const currentValue = m.conditionType === 'SPECIFIC_EVENT' ? 0 : (currentStats[m.conditionType as keyof typeof currentStats] ?? 0)
       return { ...m, earned: earnedIds.has(m.id), earnedAt: userMedals.find(um => um.medalId === m.id)?.earnedAt ?? null, progress: Math.min(currentValue / m.threshold, 1), currentValue }
     })
     res.json({ data: withProgress, earned: userMedals })
@@ -107,10 +161,15 @@ router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
       getUserStats(userId),
     ])
     const earnedIds = new Set(alreadyEarned.map(e => e.medalId))
+
+    // Special-event medals count activity within their time window, not all-time
+    const windowCache = await buildWindowCache(userId, medals)
+
     const newlyEarned: string[] = []
     for (const medal of medals) {
       if (earnedIds.has(medal.id)) continue
-      const value = stats[medal.conditionType as keyof typeof stats] ?? 0
+      const currentStats = pickStats(medal, stats, windowCache)
+      const value = currentStats[medal.conditionType as keyof typeof currentStats] ?? 0
       if (value >= medal.threshold) {
         await prisma.userMedal.upsert({ where: { userId_medalId: { userId, medalId: medal.id } }, create: { userId, medalId: medal.id }, update: {} })
         newlyEarned.push(medal.id)

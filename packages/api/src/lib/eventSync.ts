@@ -55,16 +55,33 @@ interface PlaceLookup {
 }
 const placeCache = new Map<string, PlaceLookup | null>()
 
-async function findPlace(venueName: string, city: string): Promise<PlaceLookup | null> {
+/**
+ * Resolve a venue name + city to its canonical Google Places address.
+ * Pass the event's lat/lng as a location bias so generic names (e.g. "The
+ * Garage") resolve to the venue near the event rather than an unrelated
+ * business in a different city.
+ */
+async function findPlace(
+  venueName: string,
+  city: string,
+  biasLat?: number,
+  biasLng?: number,
+): Promise<PlaceLookup | null> {
   if (!GOOGLE_API_KEY) return null
   const key = `${venueName.toLowerCase().trim()}|${city.toLowerCase().trim()}`
   if (placeCache.has(key)) return placeCache.get(key) ?? null
   try {
     const q = encodeURIComponent(`${venueName}, ${city}`)
+    // 10 km circle bias keeps results anchored to the right city/venue
+    const bias =
+      biasLat != null && biasLng != null
+        ? `&locationbias=circle:10000@${biasLat},${biasLng}`
+        : ''
     const url =
       `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
       `?input=${q}&inputtype=textquery` +
       `&fields=formatted_address,geometry,name` +
+      bias +
       `&key=${GOOGLE_API_KEY}`
     const r = await fetch(url)
     const data = await r.json() as {
@@ -412,9 +429,13 @@ async function syncTicketmaster(
       )?.url ?? ev.images?.[0]?.url ?? undefined
       const type = overrideTypeByVenue(venueName, mapTMEventType(ev.classifications))
       const vg = await resolveVenueGeo(venueName, address)
+      let tmGooglePlace: PlaceLookup | null = null
+      if (!vg && venueName && cityName) tmGooglePlace = await findPlace(venueName, cityName, evLat, evLng)
       const geo = vg
         ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
-        : { lat: evLat, lng: evLng, address }
+        : tmGooglePlace
+          ? { lat: tmGooglePlace.lat, lng: tmGooglePlace.lng, address: tmGooglePlace.formattedAddress }
+          : { lat: evLat, lng: evLng, address }
 
       await prisma.event.upsert({
         where: { ticketmasterId: ev.id },
@@ -545,9 +566,13 @@ async function syncSkiddle(
       const price = parseFloat(String(ev.entryprice ?? '0')) || 0
       const type = overrideTypeByVenue(venueName, mapSkiddleEventType(ev.genres))
       const vg = await resolveVenueGeo(venueName, address)
+      let skGooglePlace: PlaceLookup | null = null
+      if (!vg && venueName && townName) skGooglePlace = await findPlace(venueName, townName, evLat, evLng)
       const geo = vg
         ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
-        : { lat: evLat, lng: evLng, address }
+        : skGooglePlace
+          ? { lat: skGooglePlace.lat, lng: skGooglePlace.lng, address: skGooglePlace.formattedAddress }
+          : { lat: evLat, lng: evLng, address }
 
       await prisma.event.upsert({
         where: { skiddleId: ev.id },
@@ -585,7 +610,7 @@ async function syncSkiddle(
 // ── Eventbrite ────────────────────────────────────────────────────────────────
 
 interface EBVenue {
-  address?: { localized_address_display?: string; latitude?: string; longitude?: string }
+  address?: { localized_address_display?: string; latitude?: string; longitude?: string; city?: string }
   name?: string
 }
 
@@ -676,10 +701,15 @@ async function syncEventbrite(
       const categories = [ev.category?.name ?? '', ev.subcategory?.name ?? '']
       const type = overrideTypeByVenue(venueName, mapEBEventType(categories))
       const coverImageUrl = ev.logo?.original?.url ?? null
+      const ebCityName = addr.city ?? address.split(',').slice(-2)[0]?.trim() ?? ''
       const vg = await resolveVenueGeo(venueName, address)
+      let ebGooglePlace: PlaceLookup | null = null
+      if (!vg && venueName && ebCityName) ebGooglePlace = await findPlace(venueName, ebCityName, evLat, evLng)
       const geo = vg
         ? { lat: vg.lat, lng: vg.lng, address: vg.address, venueId: vg.id }
-        : { lat: evLat, lng: evLng, address }
+        : ebGooglePlace
+          ? { lat: ebGooglePlace.lat, lng: ebGooglePlace.lng, address: ebGooglePlace.formattedAddress }
+          : { lat: evLat, lng: evLng, address }
 
       await prisma.event.upsert({
         where: { eventbriteId: ev.id },
@@ -1177,12 +1207,20 @@ async function syncPerplexity(
       if (ev.venue) {
         const place = await findPlace(ev.venue, city)
         if (place) {
+          // Google verified the venue — use canonical address + real coordinates
           address = place.formattedAddress
           venueLat = place.lat
           venueLng = place.lng
+        } else {
+          // Google couldn't find the venue, so don't trust the AI's invented
+          // street address (Perplexity routinely fabricates plausible-looking
+          // but incorrect street numbers and postcodes). Fall back to the safe
+          // "Venue Name, City" form which is vague but never factually wrong.
+          address = `${ev.venue}, ${city}`
         }
       }
-      // If still vague (no venue, no place match), reverse-geocode the city pin
+      // If still vague (no venue at all, or place lookup failed), reverse-geocode
+      // the city centre pin so we at least store a real address string.
       if (isVagueAddress(address, city)) {
         const geo = await reverseGeocode(venueLat, venueLng)
         if (geo) address = geo
