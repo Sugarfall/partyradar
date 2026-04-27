@@ -471,6 +471,7 @@ model Venue {
   checkIns    CheckIn[]
   posts       Post[]
   postTags    PostTag[] @relation("PostTaggedVenue")
+  djRequests  DjRequest[]
   partnership VenuePartnership?
 
   @@index([lat, lng])
@@ -1219,6 +1220,7 @@ model DjRequest {
   userId        String
   eventId       String?
   venueId       String?
+  venue         Venue?          @relation(fields: [venueId], references: [id], onDelete: SetNull)
   song          String
   artist        String?
   message       String?         @db.Text

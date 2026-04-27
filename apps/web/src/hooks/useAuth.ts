@@ -72,6 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const res = await api.post<{ data: DBUser }>('/auth/sync')
     setDbUser(res.data)
+    // Set a lightweight presence cookie so Next.js middleware can gate
+    // protected routes before the client-side auth check fires.
+    // SameSite=Lax is safe here — this is just a "logged in?" flag.
+    if (typeof document !== 'undefined') {
+      document.cookie = 'pr_auth=1; Max-Age=86400; path=/; SameSite=Lax'
+    }
     // Register FCM token (non-blocking)
     getFCMToken().then((token) => {
       if (token) api.post('/notifications/fcm-token', { token }).catch(() => {})
@@ -178,6 +184,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     await signOut(auth)
     setDbUser(null)
+    // Clear the presence cookie so middleware redirects work correctly
+    document.cookie = 'pr_auth=; Max-Age=0; path=/'
   }
 
   async function refreshUser() {

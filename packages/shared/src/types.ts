@@ -287,7 +287,7 @@ export interface ApiError {
 
 // ─── Wallet ──────────────────────────────────────────────────────────────────
 
-export type WalletTxType = 'TOP_UP' | 'TICKET_PURCHASE' | 'DRINK_REWARD' | 'CARD_ORDER' | 'VENUE_SPEND' | 'REFERRAL_CREDIT' | 'BONUS' | 'WITHDRAWAL'
+export type WalletTxType = 'TOP_UP' | 'TICKET_PURCHASE' | 'DRINK_REWARD' | 'CARD_ORDER' | 'VENUE_SPEND' | 'REFERRAL_CREDIT' | 'BONUS' | 'WITHDRAWAL' | 'GROUP_SUB_REVENUE'
 export type WalletTxStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED'
 export type CardDesign = 'CLASSIC_BLACK' | 'NEON_NIGHTS' | 'GOLD_VIP' | 'HOLOGRAPHIC' | 'CUSTOM'
 export type CardOrderStatus = 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'
