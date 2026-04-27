@@ -156,6 +156,8 @@ model User {
   showProfileViews  Boolean          @default(true)
   allowGoOutFromStrangers Boolean    @default(true)
   showInMatchDeck   Boolean          @default(true)  // opt out of swipe deck
+  showAge           Boolean          @default(false) // display calculated age on profile
+  hideActivity      Boolean          @default(false) // hide activity tab from other viewers
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 

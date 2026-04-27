@@ -47,6 +47,8 @@ export interface User {
   showProfileViews?: boolean
   allowGoOutFromStrangers?: boolean
   showInMatchDeck?: boolean
+  showAge?: boolean
+  hideActivity?: boolean
   profilePrompts?: Array<{ question: string; answer: string }> | null
   phoneNumber?: string | null
   phoneVerified: boolean

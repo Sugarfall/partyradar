@@ -7,9 +7,22 @@ import {
   Beer, Users, Clock, MapPin, Zap, ChevronRight,
   Navigation, Loader2, Sparkles, ArrowRight, Star,
   CheckCircle, RotateCcw, Share2, Route, UserCheck, Map,
+  LocateFixed, AlertCircle,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
+
+// ── Client-side haversine (metres) ────────────────────────────────────────────
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const CHECKIN_RADIUS_M = 200
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,9 +90,55 @@ function formatDuration(mins: number): string {
 
 // ─── Stop Card ────────────────────────────────────────────────────────────────
 
+type CheckInState = 'idle' | 'locating' | 'posting' | 'success' | 'tooFar' | 'error'
+
 function StopCard({ stop, isLast }: { stop: CrawlStop; isLast: boolean }) {
   const color = TYPE_COLORS[stop.type] ?? '#00e5ff'
   const emoji = TYPE_EMOJIS[stop.type] ?? '🍻'
+
+  const [ciState, setCiState] = useState<CheckInState>('idle')
+  const [ciError, setCiError] = useState('')
+  const [distAway, setDistAway] = useState<number | null>(null)
+
+  async function handleCheckIn() {
+    if (ciState === 'success' || ciState === 'locating' || ciState === 'posting') return
+    setCiError('')
+    setDistAway(null)
+
+    if (!navigator.geolocation) {
+      setCiState('error')
+      setCiError('Geolocation not supported by your browser')
+      return
+    }
+
+    setCiState('locating')
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords
+        const dist = haversineM(latitude, longitude, stop.lat, stop.lng)
+        setDistAway(Math.round(dist))
+
+        if (dist > CHECKIN_RADIUS_M) {
+          setCiState('tooFar')
+          return
+        }
+
+        setCiState('posting')
+        try {
+          await api.post('/checkins', { venueId: stop.venueId, userLat: latitude, userLng: longitude })
+          setCiState('success')
+        } catch (err: any) {
+          setCiState('error')
+          setCiError(err?.message ?? 'Check-in failed — please try again')
+        }
+      },
+      () => {
+        setCiState('error')
+        setCiError('Could not get your location — please enable GPS and try again')
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+    )
+  }
 
   return (
     <div className="relative flex gap-4">
@@ -92,99 +151,152 @@ function StopCard({ stop, isLast }: { stop: CrawlStop; isLast: boolean }) {
       <div
         className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-black text-sm z-10 border-2 mt-1"
         style={{
-          background: `${color}18`,
-          borderColor: `${color}60`,
-          color,
-          boxShadow: `0 0 16px ${color}30`,
+          background: ciState === 'success' ? 'rgba(0,255,136,0.15)' : `${color}18`,
+          borderColor: ciState === 'success' ? 'rgba(0,255,136,0.6)' : `${color}60`,
+          color: ciState === 'success' ? '#00ff88' : color,
+          boxShadow: ciState === 'success' ? '0 0 16px rgba(0,255,136,0.3)' : `0 0 16px ${color}30`,
         }}
       >
-        {stop.order}
+        {ciState === 'success' ? <CheckCircle size={16} /> : stop.order}
       </div>
 
-      {/* Card */}
-      <Link
-        href={`/venues/${stop.venueId}`}
-        className="flex-1 rounded-2xl overflow-hidden mb-4 block transition-all active:scale-[0.98]"
-        style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: `1px solid ${color}25`,
-        }}
-      >
-        {/* Photo banner */}
-        {stop.photoUrl ? (
-          <div className="w-full h-28 relative overflow-hidden">
-            <img src={stop.photoUrl} alt={stop.name} className="w-full h-full object-cover" />
-            <div className="absolute inset-0" style={{ background: `linear-gradient(to top, rgba(7,7,26,0.9) 0%, transparent 60%)` }} />
-            <div className="absolute top-2 left-3">
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
-                style={{ background: `${color}22`, color, border: `1px solid ${color}50` }}>
-                {TYPE_LABELS[stop.type] ?? stop.type}
-              </span>
+      {/* Card + check-in */}
+      <div className="flex-1 mb-4">
+        {/* Main card — tappable to open venue */}
+        <Link
+          href={`/venues/${stop.venueId}`}
+          className="rounded-2xl overflow-hidden block transition-all active:scale-[0.98]"
+          style={{
+            background: 'rgba(255,255,255,0.03)',
+            border: `1px solid ${ciState === 'success' ? 'rgba(0,255,136,0.25)' : `${color}25`}`,
+          }}
+        >
+          {/* Photo banner */}
+          {stop.photoUrl ? (
+            <div className="w-full h-28 relative overflow-hidden">
+              <img src={stop.photoUrl} alt={stop.name} className="w-full h-full object-cover" />
+              <div className="absolute inset-0" style={{ background: `linear-gradient(to top, rgba(7,7,26,0.9) 0%, transparent 60%)` }} />
+              <div className="absolute top-2 left-3">
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                  style={{ background: `${color}22`, color, border: `1px solid ${color}50` }}>
+                  {TYPE_LABELS[stop.type] ?? stop.type}
+                </span>
+              </div>
+              <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between">
+                <p className="text-sm font-black" style={{ color: '#fff', textShadow: '0 1px 6px rgba(0,0,0,0.8)' }}>{stop.name}</p>
+                {stop.rating && (
+                  <span className="text-[10px] font-bold" style={{ color: '#ffd600' }}>★ {stop.rating.toFixed(1)}</span>
+                )}
+              </div>
             </div>
-            <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between">
-              <p className="text-sm font-black" style={{ color: '#fff', textShadow: '0 1px 6px rgba(0,0,0,0.8)' }}>{stop.name}</p>
-              {stop.rating && (
-                <span className="text-[10px] font-bold" style={{ color: '#ffd600' }}>★ {stop.rating.toFixed(1)}</span>
+          ) : (
+            <div className="px-4 pt-3.5 pb-0">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{emoji}</span>
+                  <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{stop.name}</p>
+                </div>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                  style={{ background: `${color}18`, color, border: `1px solid ${color}40` }}>
+                  {TYPE_LABELS[stop.type] ?? stop.type}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="px-4 py-3">
+            {/* Time row */}
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-1.5">
+                <Clock size={11} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
+                <span className="text-xs font-black" style={{ color: 'var(--accent)' }}>{stop.arrivalTime}</span>
+                <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>→</span>
+                <span className="text-xs font-black" style={{ color: 'var(--accent)' }}>{stop.departureTime}</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(var(--accent-rgb),0.06)', color: 'rgba(var(--accent-rgb),0.5)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                {formatDuration(stop.durationMins)} here
+              </span>
+              {stop.isClaimed && (
+                <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
+                  <CheckCircle size={8} /> CLAIMED
+                </span>
               )}
             </div>
-          </div>
-        ) : (
-          <div className="px-4 pt-3.5 pb-0">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{emoji}</span>
-                <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>{stop.name}</p>
-              </div>
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
-                style={{ background: `${color}18`, color, border: `1px solid ${color}40` }}>
-                {TYPE_LABELS[stop.type] ?? stop.type}
-              </span>
-            </div>
-          </div>
-        )}
 
-        <div className="px-4 py-3">
-          {/* Time row */}
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex items-center gap-1.5">
-              <Clock size={11} style={{ color: 'rgba(var(--accent-rgb),0.5)' }} />
-              <span className="text-xs font-black" style={{ color: 'var(--accent)' }}>{stop.arrivalTime}</span>
-              <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.35)' }}>→</span>
-              <span className="text-xs font-black" style={{ color: 'var(--accent)' }}>{stop.departureTime}</span>
-            </div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded"
-              style={{ background: 'rgba(var(--accent-rgb),0.06)', color: 'rgba(var(--accent-rgb),0.5)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
-              {formatDuration(stop.durationMins)} here
-            </span>
-            {stop.isClaimed && (
-              <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded"
-                style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)' }}>
-                <CheckCircle size={8} /> CLAIMED
-              </span>
+            {/* AI description */}
+            {stop.description && (
+              <p className="text-xs mb-2 leading-relaxed" style={{ color: 'rgba(224,242,254,0.55)' }}>
+                {stop.description}
+              </p>
+            )}
+
+            {/* Address + vibes */}
+            <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.3)' }}>{stop.address}</p>
+            {stop.vibeTags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {stop.vibeTags.slice(0, 4).map((t) => (
+                  <span key={t} className="text-[9px] px-1.5 py-0.5 rounded"
+                    style={{ color: 'rgba(var(--accent-rgb),0.45)', background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                    {t}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
+        </Link>
 
-          {/* AI description */}
-          {stop.description && (
-            <p className="text-xs mb-2 leading-relaxed" style={{ color: 'rgba(224,242,254,0.55)' }}>
-              {stop.description}
-            </p>
-          )}
+        {/* ── GPS-gated check-in button ── */}
+        {ciState === 'success' ? (
+          <div className="mt-2 flex items-center justify-center gap-1.5 py-2 rounded-xl"
+            style={{ background: 'rgba(0,255,136,0.07)', border: '1px solid rgba(0,255,136,0.2)' }}>
+            <CheckCircle size={12} style={{ color: '#00ff88' }} />
+            <span className="text-[10px] font-black" style={{ color: '#00ff88' }}>CHECKED IN ✓</span>
+          </div>
+        ) : (
+          <button
+            onClick={handleCheckIn}
+            disabled={ciState === 'locating' || ciState === 'posting'}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black transition-all active:scale-95 disabled:opacity-60"
+            style={{
+              background: ciState === 'tooFar' || ciState === 'error'
+                ? 'rgba(255,0,110,0.08)'
+                : 'rgba(var(--accent-rgb),0.07)',
+              border: `1px solid ${ciState === 'tooFar' || ciState === 'error' ? 'rgba(255,0,110,0.25)' : 'rgba(var(--accent-rgb),0.2)'}`,
+              color: ciState === 'tooFar' || ciState === 'error' ? '#ff006e' : 'var(--accent)',
+              letterSpacing: '0.1em',
+            }}
+          >
+            {ciState === 'locating' && <><Loader2 size={11} className="animate-spin" /> GETTING LOCATION…</>}
+            {ciState === 'posting'  && <><Loader2 size={11} className="animate-spin" /> CHECKING IN…</>}
+            {ciState === 'tooFar'   && (
+              <>
+                <AlertCircle size={11} />
+                YOU&apos;RE {distAway != null ? `${distAway}M` : 'TOO FAR'} AWAY — NEED TO BE WITHIN 200M
+              </>
+            )}
+            {ciState === 'error' && (
+              <>
+                <AlertCircle size={11} />
+                {ciError || 'TRY AGAIN'}
+              </>
+            )}
+            {ciState === 'idle' && <><LocateFixed size={11} /> CHECK IN HERE</>}
+          </button>
+        )}
 
-          {/* Address + vibes */}
-          <p className="text-[10px] truncate mb-1.5" style={{ color: 'rgba(224,242,254,0.3)' }}>{stop.address}</p>
-          {stop.vibeTags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {stop.vibeTags.slice(0, 4).map((t) => (
-                <span key={t} className="text-[9px] px-1.5 py-0.5 rounded"
-                  style={{ color: 'rgba(var(--accent-rgb),0.45)', background: 'rgba(var(--accent-rgb),0.05)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </Link>
+        {/* Retry hint for tooFar */}
+        {ciState === 'tooFar' && (
+          <button
+            onClick={() => setCiState('idle')}
+            className="mt-1 w-full text-center text-[9px]"
+            style={{ color: 'rgba(224,242,254,0.25)' }}
+          >
+            Tap to retry once you&apos;re closer
+          </button>
+        )}
+      </div>
     </div>
   )
 }

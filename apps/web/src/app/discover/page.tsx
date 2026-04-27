@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
@@ -105,6 +105,50 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 type SlideDir = 'next' | 'prev' | null
+
+// ── "For You" interest matching ───────────────────────────────────────────────
+const INTEREST_KEYWORDS: Record<string, string[]> = {
+  house_music:  ['house', 'house music', 'deep house', 'afro house'],
+  techno:       ['techno', 'electronic', 'industrial', 'trance'],
+  hip_hop:      ['hip hop', 'hip-hop', 'urban', 'trap', 'grime', 'rap'],
+  rnb:          ['r&b', 'rnb', 'soul', 'neo soul'],
+  live_music:   ['live music', 'live band', 'band', 'gig', 'acoustic'],
+  nightlife:    ['club', 'nightlife', 'clubbing', 'nightclub', 'late night'],
+  dancing:      ['dancing', 'dance', 'dancefloor', 'dance floor'],
+  cocktails:    ['cocktail', 'mixology', 'signature drinks', 'drinks'],
+  craft_beer:   ['beer', 'craft beer', 'brewery', 'ale', 'ipa', 'craft'],
+  rooftop:      ['rooftop', 'terrace', 'sky bar', 'rooftop bar'],
+  lgbtplus:     ['lgbtq', 'lgbt', 'queer', 'pride', 'gay', 'inclusive'],
+  sports:       ['sport', 'football', 'rugby', 'watch party', 'sports bar'],
+  festivals:    ['festival', 'outdoor', 'open air', 'rave', 'field party'],
+  networking:   ['networking', 'professional', 'social', 'meetup', 'mixer'],
+  yacht_party:  ['yacht', 'boat', 'nautical', 'sailing'],
+  beach_party:  ['beach', 'poolside', 'pool party', 'summer', 'outdoor'],
+  home_party:   ['house party', 'private party', 'intimate', 'house'],
+  pub_crawl:    ['pub crawl', 'crawl', 'bar hop', 'pub night'],
+}
+const INTEREST_EVENT_TYPES: Record<string, string[]> = {
+  nightlife:   ['CLUB_NIGHT'],
+  dancing:     ['CLUB_NIGHT'],
+  live_music:  ['CONCERT'],
+  craft_beer:  ['PUB_NIGHT'],
+  pub_crawl:   ['PUB_NIGHT'],
+  beach_party: ['BEACH_PARTY'],
+  yacht_party: ['YACHT_PARTY'],
+  home_party:  ['HOME_PARTY'],
+}
+function matchesInterests(event: Event, interests: string[]): boolean {
+  const vibes = (event.vibeTags ?? []).map(v => v.toLowerCase())
+  return interests.some(id => {
+    // Match via keywords in vibeTags
+    const kws = INTEREST_KEYWORDS[id] ?? []
+    if (kws.some(kw => vibes.some(v => v.includes(kw)))) return true
+    // Match via event type
+    const types = INTEREST_EVENT_TYPES[id] ?? []
+    if (types.includes(event.type)) return true
+    return false
+  })
+}
 
 // ── Locked card shown to FREE users for YACHT_PARTY / BEACH_PARTY events ──────
 function LockedEventListCard({ event, color, label }: { event: Event; color: string; label: string }) {
@@ -1382,7 +1426,7 @@ export default function DiscoverPage() {
   const [slideDir, setSlideDir] = useState<SlideDir>(null)
   const [showMap, setShowMap] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-  const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean }>({})
+  const [filters, setFilters] = useState<{ type?: EventType; search?: string; showFree?: boolean; tonight?: boolean; forYou?: boolean }>({})
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [geoResolved, setGeoResolved] = useState(false)
   // locationReady = we have actual coordinates (GPS lock OR user searched a city).
@@ -2245,14 +2289,35 @@ export default function DiscoverPage() {
         className="flex-shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar"
         style={{ background: 'rgba(4,4,13,0.85)', borderBottom: '1px solid rgba(var(--accent-rgb),0.08)' }}
       >
+        {/* FOR YOU pill — only shown if user has interests saved */}
+        {(() => {
+          const userInterests: string[] = (dbUser as any)?.interests ?? []
+          if (userInterests.length === 0) return null
+          const isActive = !!filters.forYou
+          return (
+            <button
+              onClick={() => setFilters(f => ({ ...f, forYou: !f.forYou, type: undefined }))}
+              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
+              style={{
+                background: isActive ? 'rgba(168,85,247,0.15)' : 'transparent',
+                border: `1px solid ${isActive ? 'rgba(168,85,247,0.55)' : 'rgba(var(--accent-rgb),0.1)'}`,
+                color: isActive ? '#a855f7' : 'rgba(74,96,128,0.6)',
+                boxShadow: isActive ? '0 0 10px rgba(168,85,247,0.2)' : 'none',
+                letterSpacing: '0.12em',
+              }}
+            >
+              <Sparkles size={9} /> FOR YOU
+            </button>
+          )
+        })()}
         {([undefined, 'HOME_PARTY', 'CLUB_NIGHT', 'PUB_NIGHT', 'CONCERT'] as (EventType | undefined)[]).map((type) => {
-          const isActive = filters.type === type
+          const isActive = filters.type === type && !filters.forYou
           const label = type === 'CONCERT' ? '🎭 CONCERTS' : type ? TYPE_LABELS[type] : 'ALL'
           const color = type ? TYPE_COLORS[type] : 'var(--accent)'
           return (
             <button
               key={type ?? 'all'}
-              onClick={() => setFilters(f => ({ ...f, type }))}
+              onClick={() => setFilters(f => ({ ...f, type, forYou: false }))}
               className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-black transition-all duration-200"
               style={{
                 background: isActive ? `${color}18` : 'transparent',
@@ -2382,13 +2447,19 @@ export default function DiscoverPage() {
           ) : events.length === 0 ? (
             <EmptyState loading={syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
           ) : (() => {
-            // Sort ALL events by distance from user — nearest first, all types mixed.
+            // Apply "For You" interest filter if active
+            const userInterests: string[] = (dbUser as any)?.interests ?? []
+            const baseEvents = filters.forYou && userInterests.length > 0
+              ? allEvents.filter(e => matchesInterests(e, userInterests))
+              : allEvents
+
+            // Sort by distance — nearest first, all types mixed.
             const eventsByDist = userLocation
-              ? [...allEvents].sort((a, b) =>
+              ? [...baseEvents].sort((a, b) =>
                   haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng) -
                   haversineKm(userLocation.lat, userLocation.lng, b.lat, b.lng)
                 )
-              : allEvents
+              : baseEvents
 
             const liveEvents     = eventsByDist.filter(e => isHappeningNow(e, now))
             const upcomingEvents = eventsByDist.filter(e => new Date(e.startsAt).getTime() > now)

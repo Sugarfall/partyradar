@@ -2118,8 +2118,6 @@ export default function EventDetailPage() {
                 style={{ border: '1px solid rgba(168,85,247,0.3)', color: 'rgba(168,85,247,0.8)', letterSpacing: '0.1em' }}>
                 <Megaphone size={13} /> MESSAGE GUESTS
               </button>
-              {/* Live chat — host */}
-              <EventChat eventId={event.id} eventName={event.name} hostId={event.hostId} hostName={event.host.displayName} />
               {/* Publish / Unpublish */}
               {!event.isCancelled && (
                 <button

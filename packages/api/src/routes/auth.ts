@@ -138,6 +138,9 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
     showProfileViews: z.boolean().optional(),
     allowGoOutFromStrangers: z.boolean().optional(),
     showInMatchDeck: z.boolean().optional(),
+    showAge: z.boolean().optional(),
+    hideActivity: z.boolean().optional(),
+    interests: z.array(z.string()).optional(),
     profilePrompts: z.array(z.object({ question: z.string().max(120), answer: z.string().max(300) })).max(3).optional().nullable(),
   })
 
@@ -214,6 +217,8 @@ router.put('/settings', requireAuth, async (req: AuthRequest, res, next) => {
     allowGoOutFromStrangers: z.boolean().optional(),
     showAlcoholEvents:       z.boolean().optional(),
     showInMatchDeck:         z.boolean().optional(),
+    showAge:                 z.boolean().optional(),
+    hideActivity:            z.boolean().optional(),
     notifPrefs:              z.record(z.boolean()).optional().nullable(),
   })
   try {

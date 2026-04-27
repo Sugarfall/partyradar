@@ -33,6 +33,8 @@ interface PrivacyPrefs {
   showInNearby: boolean
   showProfileViews: boolean
   allowGoOutFromStrangers: boolean
+  showAge: boolean
+  hideActivity: boolean
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -143,6 +145,8 @@ export default function SettingsPage() {
     showInNearby: true,
     showProfileViews: true,
     allowGoOutFromStrangers: true,
+    showAge: false,
+    hideActivity: false,
   })
   const [showInMatchDeck, setShowInMatchDeck] = useState(true)
 
@@ -162,6 +166,8 @@ export default function SettingsPage() {
         showInNearby: (dbUser as any).showInNearby ?? true,
         showProfileViews: (dbUser as any).showProfileViews ?? true,
         allowGoOutFromStrangers: (dbUser as any).allowGoOutFromStrangers ?? true,
+        showAge: (dbUser as any).showAge ?? false,
+        hideActivity: (dbUser as any).hideActivity ?? false,
       }))
     }
     if ((dbUser as any).showInMatchDeck !== undefined) {
@@ -451,6 +457,24 @@ export default function SettingsPage() {
               }}
               saving={savingPrivacy}
               accent="#ff006e"
+            />
+            <Divider />
+            <ToggleRow
+              label="Display My Age"
+              sublabel="Show your calculated age on your public profile"
+              value={privacyPrefs.showAge}
+              onChange={v => savePrivacyPref('showAge', v)}
+              saving={savingPrivacy}
+              accent="#ffd600"
+            />
+            <Divider />
+            <ToggleRow
+              label="Hide Activity Tab"
+              sublabel="Other users can't see your recent check-ins & activity"
+              value={privacyPrefs.hideActivity}
+              onChange={v => savePrivacyPref('hideActivity', v)}
+              saving={savingPrivacy}
+              accent="#a855f7"
             />
           </SettingsCard>
         </div>

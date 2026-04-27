@@ -16,7 +16,28 @@ import type { Gender } from '@partyradar/shared'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Phase = 'credentials' | 'verify' | 'age' | 'gender' | 'profile'
+type Phase = 'credentials' | 'verify' | 'age' | 'gender' | 'profile' | 'interests'
+
+const INTEREST_OPTIONS = [
+  { id: 'house_music',    label: 'House Music',     emoji: '🎛️' },
+  { id: 'techno',         label: 'Techno',          emoji: '🔊' },
+  { id: 'hip_hop',        label: 'Hip-Hop',         emoji: '🎤' },
+  { id: 'rnb',            label: 'R&B',             emoji: '🎵' },
+  { id: 'live_music',     label: 'Live Music',      emoji: '🎸' },
+  { id: 'nightlife',      label: 'Nightlife',       emoji: '🌃' },
+  { id: 'dancing',        label: 'Dancing',         emoji: '💃' },
+  { id: 'cocktails',      label: 'Cocktails',       emoji: '🍹' },
+  { id: 'craft_beer',     label: 'Craft Beer',      emoji: '🍺' },
+  { id: 'rooftop',        label: 'Rooftops',        emoji: '🌆' },
+  { id: 'lgbtplus',       label: 'LGBT+',           emoji: '🏳️‍🌈' },
+  { id: 'sports',         label: 'Sports',          emoji: '⚽' },
+  { id: 'festivals',      label: 'Festivals',       emoji: '🎪' },
+  { id: 'networking',     label: 'Networking',      emoji: '🤝' },
+  { id: 'yacht_party',    label: 'Yacht Parties',   emoji: '⛵' },
+  { id: 'beach_party',    label: 'Beach Parties',   emoji: '🏖️' },
+  { id: 'home_party',     label: 'House Parties',   emoji: '🏠' },
+  { id: 'pub_crawl',      label: 'Pub Crawls',      emoji: '🍻' },
+]
 
 const GENDER_OPTIONS: { id: Gender; label: string; emoji: string; color: string; glow: string }[] = [
   { id: 'MALE',              label: 'Man',              emoji: '♂',  color: '#3d5afe', glow: 'rgba(61,90,254,0.35)'  },
@@ -60,7 +81,7 @@ function Logo() {
 }
 
 function StepDots({ phase }: { phase: Phase }) {
-  const steps: Phase[] = ['credentials', 'verify', 'age', 'gender', 'profile']
+  const steps: Phase[] = ['credentials', 'verify', 'age', 'gender', 'profile', 'interests']
   const current = steps.indexOf(phase)
   return (
     <div className="flex items-center gap-1.5 mb-8">
@@ -126,6 +147,10 @@ export default function RegisterPage() {
   const [photoUrl, setPhotoUrl]         = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+
+  // Interests phase
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([])
+  const [interestsSaving, setInterestsSaving] = useState(false)
 
   /* ── On mount: capture ?ref= and read stored code ── */
   useEffect(() => {
@@ -275,10 +300,107 @@ export default function RegisterPage() {
         bio: bio.trim() || undefined,
         photoUrl: photoUrl.trim() || undefined,
       })
-      router.push('/discover')
+      setPhase('interests')
     } catch (err: unknown) {
       setProfileError((err as { message?: string })?.message ?? 'Could not save profile — please try again')
     } finally { setProfileSaving(false) }
+  }
+
+  // ── Interests phase ──────────────────────────────────────────────────────
+
+  function toggleInterest(id: string) {
+    setSelectedInterests(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id],
+    )
+  }
+
+  async function handleInterestsFinish() {
+    setInterestsSaving(true)
+    try {
+      if (selectedInterests.length > 0) {
+        await api.put('/auth/profile', { interests: selectedInterests })
+      }
+    } catch { /* non-fatal */ } finally { setInterestsSaving(false) }
+    router.push('/discover')
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE: INTERESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  if (phase === 'interests') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#04040d' }}>
+        <Logo />
+        <StepDots phase="interests" />
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-5"
+              style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)' }}>
+              <span className="text-3xl">🎉</span>
+            </div>
+            <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(168,85,247,0.6)' }}>
+              STEP 6 OF 6 · ALMOST THERE
+            </p>
+            <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>WHAT ARE YOU INTO?</h1>
+            <p className="text-sm mt-2" style={{ color: 'rgba(224,242,254,0.45)', lineHeight: 1.6 }}>
+              Pick your vibes — we&apos;ll surface events that match your interests.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-6">
+            {INTEREST_OPTIONS.map(opt => {
+              const active = selectedInterests.includes(opt.id)
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => toggleInterest(opt.id)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[11px] font-bold transition-all"
+                  style={{
+                    background: active ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.03)',
+                    border: active ? '1px solid rgba(168,85,247,0.5)' : '1px solid rgba(74,96,128,0.2)',
+                    color: active ? '#a855f7' : 'rgba(224,242,254,0.45)',
+                    boxShadow: active ? '0 0 12px rgba(168,85,247,0.15)' : 'none',
+                    transform: active ? 'scale(1.04)' : 'scale(1)',
+                  }}
+                >
+                  <span>{opt.emoji}</span>
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {selectedInterests.length > 0 && (
+            <p className="text-center text-[10px] mb-4" style={{ color: 'rgba(168,85,247,0.5)' }}>
+              {selectedInterests.length} selected — events matching your vibe will be highlighted
+            </p>
+          )}
+
+          <button
+            onClick={handleInterestsFinish}
+            disabled={interestsSaving}
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm transition-all duration-200"
+            style={{
+              background: selectedInterests.length > 0
+                ? 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(var(--accent-rgb),0.1))'
+                : 'rgba(var(--accent-rgb),0.06)',
+              border: `1px solid ${selectedInterests.length > 0 ? 'rgba(168,85,247,0.5)' : 'rgba(var(--accent-rgb),0.15)'}`,
+              color: selectedInterests.length > 0 ? '#a855f7' : 'rgba(var(--accent-rgb),0.4)',
+              boxShadow: selectedInterests.length > 0 ? '0 0 20px rgba(168,85,247,0.2)' : 'none',
+              letterSpacing: '0.12em',
+            }}
+          >
+            {interestsSaving
+              ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> SAVING…</>
+              : selectedInterests.length > 0
+                ? <><Zap size={14} /> ENTER PARTYRADAR</>
+                : 'SKIP & ENTER PARTYRADAR'
+            }
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -515,7 +637,7 @@ export default function RegisterPage() {
               <User size={28} style={{ color: 'var(--accent)' }} />
             </div>
             <p className="text-[10px] font-bold tracking-[0.3em] mb-2" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>
-              LAST STEP — 5 OF 5
+              STEP 5 OF 6
             </p>
             <h1 className="text-2xl font-black" style={{ color: '#e0f2fe' }}>SET UP YOUR PROFILE</h1>
             <p className="text-sm mt-2" style={{ color: 'rgba(224,242,254,0.45)' }}>
@@ -610,7 +732,7 @@ export default function RegisterPage() {
             >
               {profileSaving
                 ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> SAVING…</>
-                : <><Zap size={14} /> ENTER PARTYRADAR</>
+                : <><ChevronRight size={14} /> NEXT — PICK YOUR INTERESTS</>
               }
             </button>
           </form>
