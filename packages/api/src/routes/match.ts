@@ -124,36 +124,24 @@ router.post('/swipe', requireAuth, requireTier('BASIC', 'Matchmaking'), async (r
         where: { id: toUserId },
         select: { fcmToken: true, subscriptionTier: true, displayName: true, username: true },
       })
-      if (likedUser?.fcmToken) {
-        if (isMatch) {
-          // Both users get a match notification
-          await sendNotification(likedUser.fcmToken, {
-            title: '💘 It\'s a Match!',
-            body: `You and ${me.displayName} liked each other!`,
-            data: { type: 'MATCH', userId: me.id },
-          })
-        } else if (likedUser.subscriptionTier === 'FREE') {
-          // Non-subscriber: tell them someone liked them (but hide who)
-          await sendNotification(likedUser.fcmToken, {
-            title: '💛 Someone liked you!',
-            body: 'Upgrade to Basic to see who it is and start matching.',
-            data: { type: 'LIKED_ME', screen: '/nearby' },
-          })
-        }
-      }
-
-      // Also create a DB notification for the liked user
-      await prisma.notification.create({
-        data: {
+      if (isMatch) {
+        // Both users get a match notification
+        await sendNotification({
           userId: toUserId,
-          type: isMatch ? 'INTEREST_MATCH' : 'FOLLOW',  // reuse INTEREST_MATCH for match, FOLLOW for like
-          title: isMatch ? '💘 It\'s a Match!' : '💛 Someone liked your profile',
-          body: isMatch
-            ? `You and ${me.displayName} liked each other! Start chatting.`
-            : 'Someone swiped right on you. Subscribe to see who.',
-          data: JSON.stringify({ type: isMatch ? 'MATCH' : 'LIKED_ME', fromUserId: me.id }),
-        },
-      }).catch(() => {}) // Non-blocking
+          type: 'INTEREST_MATCH',
+          title: '💘 It\'s a Match!',
+          body: `You and ${me.displayName} liked each other!`,
+          data: { userId: me.id },
+        })
+      } else if (likedUser?.subscriptionTier === 'FREE') {
+        // Non-subscriber: tell them someone liked them (but hide who)
+        await sendNotification({
+          userId: toUserId,
+          type: 'INTEREST_MATCH',
+          title: '💛 Someone liked you!',
+          body: 'Upgrade to Basic to see who it is and start matching.',
+        })
+      }
     }
 
     // If it's a match, auto-open a DM conversation so they can message immediately

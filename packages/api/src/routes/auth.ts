@@ -171,11 +171,15 @@ router.put('/profile', requireAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
+    const { notifPrefs, profilePrompts, ...rest } = body
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
-        ...body,
-        notifPrefs: body.notifPrefs === null ? Prisma.JsonNull : body.notifPrefs,
+        ...rest,
+        notifPrefs: notifPrefs === null ? Prisma.JsonNull : notifPrefs,
+        ...(profilePrompts !== undefined
+          ? { profilePrompts: profilePrompts === null ? Prisma.JsonNull : profilePrompts }
+          : {}),
       },
     })
     res.json({ data: user })
