@@ -292,9 +292,9 @@ function NavbarInner() {
           <div className="flex items-center gap-1">
             {dbUser ? (
               <>
-                {/* Messages shortcut */}
+                {/* Messages shortcut — desktop only (bottom tab bar covers mobile) */}
                 <Link href="/messages"
-                  className="p-2 rounded-lg transition-all duration-150 relative"
+                  className="hidden md:flex p-2 rounded-lg transition-all duration-150 relative"
                   style={{
                     color: pathname.startsWith('/messages') ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
                     background: pathname.startsWith('/messages') ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
@@ -321,9 +321,9 @@ function NavbarInner() {
                   {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
                 </div>
 
-                {/* Avatar */}
+                {/* Avatar — desktop only (bottom tab bar covers mobile) */}
                 <Link href="/profile"
-                  className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center transition-all mx-1"
+                  className="hidden md:flex w-8 h-8 rounded-full overflow-hidden items-center justify-center transition-all mx-1"
                   style={{ border: '1px solid rgba(255,255,255,0.12)' }}
                 >
                   {dbUser.photoUrl
