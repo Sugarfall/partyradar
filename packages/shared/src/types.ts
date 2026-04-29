@@ -26,6 +26,7 @@ export type NotificationType =
   | 'MESSAGE'
   | 'INTEREST_MATCH'
   | 'SPECIAL_EVENT'
+  | 'PAYMENT_FAILED'
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ export interface User {
   appRole?: AppRole
   isAdmin?: boolean
   stripeCustomerId?: string | null
-  stripeConnectId?: string | null
+  stripeConnectAccountId?: string | null
   stripeConnectChargesEnabled?: boolean
   createdAt: string
 }
@@ -289,7 +290,7 @@ export interface ApiError {
 
 // ─── Wallet ──────────────────────────────────────────────────────────────────
 
-export type WalletTxType = 'TOP_UP' | 'TICKET_PURCHASE' | 'DRINK_REWARD' | 'CARD_ORDER' | 'VENUE_SPEND' | 'REFERRAL_CREDIT' | 'BONUS' | 'WITHDRAWAL' | 'GROUP_SUB_REVENUE'
+export type WalletTxType = 'TOP_UP' | 'TICKET_PURCHASE' | 'DRINK_REWARD' | 'CARD_ORDER' | 'VENUE_SPEND' | 'REFERRAL_CREDIT' | 'BONUS' | 'WITHDRAWAL' | 'GROUP_SUB_REVENUE' | 'CARD_PAYMENT' | 'CARD_REFUND' | 'EVENT_BOOST'
 export type WalletTxStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED'
 export type CardDesign = 'CLASSIC_BLACK' | 'NEON_NIGHTS' | 'GOLD_VIP' | 'HOLOGRAPHIC' | 'CUSTOM'
 export type CardOrderStatus = 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'

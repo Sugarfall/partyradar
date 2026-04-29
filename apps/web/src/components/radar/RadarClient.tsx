@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { SightingCard } from './SightingCard'
 import { SightingForm } from './SightingForm'
 import type { CelebritySighting, CreateSightingInput } from '@partyradar/shared'
-import { TIERS } from '@partyradar/shared'
+import { HOST_TIERS } from '@partyradar/shared'
 import type { SubscriptionTier } from '@partyradar/shared'
 import { Plus, Star, Lock } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
@@ -45,7 +45,7 @@ export default function RadarClient() {
   const sightings = data?.data ?? []
 
   const canUseRadar = dbUser
-    ? (TIERS[dbUser.subscriptionTier as SubscriptionTier]?.radar ?? false)
+    ? (HOST_TIERS[dbUser.subscriptionTier as SubscriptionTier]?.radar ?? false)
     : false
 
   const geojson = {

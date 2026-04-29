@@ -2,7 +2,12 @@ import type { SubscriptionTier } from './types'
 
 // ─── Subscription Tiers ───────────────────────────────────────────────────────
 
-export interface TierConfig {
+/**
+ * HostTierConfig — simple host-subscription gate values used server-side.
+ * For the full attendee + host feature matrix (25+ flags), use TIERS / getTier
+ * from tiers.ts (re-exported as TIERS from @partyradar/shared).
+ */
+export interface HostTierConfig {
   name: string
   price: number
   maxEvents: number        // -1 = unlimited
@@ -15,7 +20,7 @@ export interface TierConfig {
   perks: string[]
 }
 
-export const TIERS: Record<SubscriptionTier, TierConfig> = {
+export const HOST_TIERS: Record<SubscriptionTier, HostTierConfig> = {
   FREE: {
     name: 'Free',
     price: 0,
@@ -173,8 +178,6 @@ export const GROUP_PRICE_TIERS: GroupPriceTier[] = [
 export const REFERRAL_CONFIG = {
   /** % of platform revenue from the referred user paid to the referrer (lifetime). */
   REVENUE_SHARE_PERCENT: 10,
-  /** Platform cut from group subscription revenue (rest goes to group creator) */
-  GROUP_PLATFORM_CUT_PERCENT: 20,
   /** Minimum balance to request payout (£) */
   MIN_PAYOUT: 5.00,
 }
@@ -219,11 +222,11 @@ export interface CardDesignOption {
 }
 
 export const CARD_DESIGNS: CardDesignOption[] = [
-  { id: 'CLASSIC_BLACK',  name: 'Classic Black',   price: 9.99,  description: 'Matte black with embossed logo',     previewUrl: '' },
-  { id: 'NEON_NIGHTS',    name: 'Neon Nights',     price: 12.99, description: 'UV-reactive neon glow design',       previewUrl: '' },
-  { id: 'GOLD_VIP',       name: 'Gold VIP',        price: 19.99, description: 'Metallic gold with VIP hologram',    previewUrl: '' },
-  { id: 'HOLOGRAPHIC',    name: 'Holographic',     price: 14.99, description: 'Rainbow holographic shimmer',        previewUrl: '' },
-  { id: 'CUSTOM',         name: 'Custom Design',   price: 24.99, description: 'Upload your own artwork',            previewUrl: '' },
+  { id: 'CLASSIC_BLACK',  name: 'Classic Black',   price: 9.99,  description: 'Matte black with embossed logo',     previewUrl: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=600&h=380&fit=crop&auto=format' },
+  { id: 'NEON_NIGHTS',    name: 'Neon Nights',     price: 12.99, description: 'UV-reactive neon glow design',       previewUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&h=380&fit=crop&auto=format' },
+  { id: 'GOLD_VIP',       name: 'Gold VIP',        price: 19.99, description: 'Metallic gold with VIP hologram',    previewUrl: 'https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=600&h=380&fit=crop&auto=format' },
+  { id: 'HOLOGRAPHIC',    name: 'Holographic',     price: 14.99, description: 'Rainbow holographic shimmer',        previewUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&h=380&fit=crop&auto=format' },
+  { id: 'CUSTOM',         name: 'Custom Design',   price: 24.99, description: 'Upload your own artwork',            previewUrl: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&h=380&fit=crop&auto=format' },
 ]
 
 // ─── Platform Revenue Model ─────────────────────────────────────────────────
@@ -246,6 +249,11 @@ export const REVENUE_MODEL = {
   VENUE_COMMISSION_PERCENT: 3,          // 3% merchant fee venues pay on wallet transactions
   WALLET_FLOAT_INTEREST: true,          // Platform earns interest on held balances
 
+  // ── Card Transaction Fee ─────────────────────
+  CARD_TRANSACTION_FEE_PERCENT: 1.5,    // 1.5% on every card spend, deducted from wallet at auth
+  // Fully refunded to the user on merchant refund or authorization reversal.
+  CARD_MIN_TRANSACTION_FEE: 0.12,       // Minimum £0.12 fee per card transaction (covers Stripe issuing cost)
+
   // ── Physical Cards ────────────────────────────
   CARD_COST_OF_GOODS: 3.50,             // Approx production + shipping cost
   // Margin = card price - £3.50 (ranges £6.49 to £21.49 per card)
@@ -261,8 +269,10 @@ export const REVENUE_MODEL = {
 // ─── Design tokens (shared) ───────────────────────────────────────────────────
 
 export const CELEBRITY_MARKER_COLOR = '#f59e0b'  // gold
-export const RADAR_EXPIRY_HOURS = Number(process.env['CELEBRITY_EXPIRY_HOURS'] ?? 2)
-export const PLATFORM_FEE_PERCENT = 5
+export const CELEBRITY_EXPIRY_HOURS = Number(process.env['CELEBRITY_EXPIRY_HOURS'] ?? 2)
+// Note: the authoritative runtime value for the platform fee percentage lives in
+// packages/api/src/lib/stripe.ts (PLATFORM_FEE_PERCENT, reads from env).
+// For UI display use REVENUE_MODEL.TICKET_PLATFORM_FEE_PERCENT above.
 
 // ─── Celebrity autocomplete list ─────────────────────────────────────────────
 
