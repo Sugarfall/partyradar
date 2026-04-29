@@ -3,7 +3,7 @@ import { prisma } from '@partyradar/db'
 import { requireAuth, optionalAuth, hasRole } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
-import { getTier } from '@partyradar/shared'
+import { getTier, REVENUE_MODEL, WALLET_CONFIG } from '@partyradar/shared'
 import { ensureStripe } from '../lib/stripe'
 import { assertOwnImageUrl } from '../lib/cloudinary'
 import { z } from 'zod'
@@ -16,6 +16,7 @@ import { dedupeEvents } from '../lib/dedupeEvents'
 // event loop, causing the server to appear dead / zombie for 30+ seconds).
 import { syncExternalEvents } from '../lib/eventSync'
 import { moderateText, recordViolation } from '../lib/moderation'
+import { sendNotification } from '../lib/fcm'
 
 const router = Router()
 
@@ -60,7 +61,7 @@ const userSelect = {
 /** GET /api/events — discover events */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', tonight, past } = req.query
+    const { type, lat, lng, radius = 50, alcohol, search: searchParam, q, page = '1', tonight, past, showFree } = req.query
     // Support both ?q= (new search bar) and ?search= (existing filters panel)
     const search = q ?? searchParam
 
@@ -108,23 +109,39 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
         where['type'] = { notIn: excludeTypes }
       }
     }
+    // ?showFree=true — only return events with price = 0
+    if (showFree === 'true') {
+      where['price'] = 0
+    }
     if (search) {
-      // Push search into AND so it doesn't overwrite the timing OR filter above
+      // Push search into AND so it doesn't overwrite the timing OR filter above.
+      // NOTE: `type` is a Prisma enum — Postgres enums don't support LIKE/contains,
+      // so we omit it here to avoid a 500. Type filtering is handled by the ?type= param.
       ;(where['AND'] as any[]).push({
         OR: [
           { name:          { contains: search as string, mode: 'insensitive' } },
           { description:   { contains: search as string, mode: 'insensitive' } },
           { address:       { contains: search as string, mode: 'insensitive' } },
           { neighbourhood: { contains: search as string, mode: 'insensitive' } },
-          { type:          { contains: search as string, mode: 'insensitive' } },
         ],
       })
     }
 
     // Filter by specific venue or host
     const { venueId, hostId: hostIdFilter } = req.query
-    if (venueId) where['venueId'] = venueId as string
-    if (hostIdFilter) where['hostId'] = hostIdFilter as string
+    if (venueId) {
+      where['venueId'] = venueId as string
+      // Claimed venues only show events hosted by their venue admin — scraped
+      // / third-party events are excluded so the page reflects the admin's own listings.
+      const claimedVenue = await prisma.venue.findUnique({
+        where: { id: venueId as string },
+        select: { isClaimed: true, claimedById: true },
+      })
+      if (claimedVenue?.isClaimed && claimedVenue.claimedById) {
+        where['hostId'] = claimedVenue.claimedById
+      }
+    }
+    if (hostIdFilter && !where['hostId']) where['hostId'] = hostIdFilter as string
 
     // ?past=true — flip the time filter to return only ended events.
     // Only allowed when scoped to a specific venue to avoid full-table scans.
@@ -647,6 +664,20 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     const body = updateSchema.parse(req.body)
     const { accentColor, lineup, partySigns, ...rest } = body
 
+    // Guard: refuse to shrink capacity below the current confirmed guest count.
+    // Doing so would make confirmed guests exceed the cap and break UX / reporting.
+    if (rest.capacity !== undefined && rest.capacity < event.capacity) {
+      const confirmedCount = await prisma.eventGuest.count({
+        where: { eventId: event.id, status: 'CONFIRMED' },
+      })
+      if (rest.capacity < confirmedCount) {
+        throw new AppError(
+          `Cannot reduce capacity to ${rest.capacity} — ${confirmedCount} guest${confirmedCount !== 1 ? 's' : ''} already confirmed`,
+          400,
+        )
+      }
+    }
+
     // Reject hotlinked cover images — must be uploaded through our Cloudinary
     if (rest.coverImageUrl) assertOwnImageUrl(rest.coverImageUrl)
 
@@ -751,7 +782,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       })
 
       for (const ticket of tickets) {
-        if (ticket.pricePaid <= 0) continue
+        if (ticket.pricePaid.toNumber() <= 0) continue
 
         if (ticket.stripePaymentId) {
           // Return money to the original card via Stripe refund
@@ -777,7 +808,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
                 walletId:    wallet.id,
                 type:        'TOP_UP',
                 amount:      ticket.pricePaid,
-                balanceAfter: wallet.balance + ticket.pricePaid,
+                balanceAfter: wallet.balance.toNumber() + ticket.pricePaid.toNumber(),
                 description: `Refund: Event cancelled — "${event.name.slice(0, 60)}"`,
                 status:      'COMPLETED',
                 eventId,
@@ -849,6 +880,15 @@ router.post('/:id/moderators', requireAuth, async (req: AuthRequest, res, next) 
       },
     })
 
+    // Notify the new moderator
+    sendNotification({
+      userId,
+      type: 'INVITE_RECEIVED',
+      title: '🛡️ You\'re a moderator',
+      body: `You've been added as a moderator for ${event.name}`,
+      data: { eventId: event.id },
+    }).catch(() => {})
+
     res.status(201).json({ data: moderator })
   } catch (err) {
     next(err)
@@ -868,6 +908,92 @@ router.delete('/:id/moderators/:userId', requireAuth, async (req: AuthRequest, r
     })
 
     res.json({ data: { success: true } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ─── Paid featured boost ──────────────────────────────────────────────────────
+
+/**
+ * POST /api/events/:id/boost
+ * Pay per day for featured placement from the host's wallet.
+ * PREMIUM hosts already have featuredPlacement automatically; this is for
+ * lower tiers who want to boost a specific event.
+ *
+ * Body: { days: number }  — 1–30 days at £4.99/day
+ */
+router.post('/:id/boost', requireAuth, async (req: AuthRequest, res, next) => {
+  const schema = z.object({ days: z.number().int().min(1).max(30) })
+  try {
+    const eventId = String(req.params['id'])
+    const { days } = schema.parse(req.body)
+
+    const event = await prisma.event.findUnique({ where: { id: eventId } })
+    if (!event) throw new AppError('Event not found', 404)
+    if (event.hostId !== req.user!.dbUser.id) throw new AppError('Only the host can boost this event', 403)
+    if (event.isCancelled) throw new AppError('Cannot boost a cancelled event', 400)
+
+    const cost = Number((days * REVENUE_MODEL.FEATURED_EVENT_DAILY_RATE).toFixed(2))
+    const userId = req.user!.dbUser.id
+
+    // Upsert wallet (inlined to avoid circular import)
+    const wallet = await prisma.wallet.upsert({ where: { userId }, create: { userId }, update: {} })
+    if (wallet.balance.toNumber() < cost) throw new AppError('Insufficient wallet balance', 400)
+
+    const featuredUntil = new Date(
+      // Extend from current featuredUntil if still active, otherwise from now
+      Math.max(Date.now(), event.featuredUntil ? event.featuredUntil.getTime() : Date.now()) +
+      days * 24 * 60 * 60 * 1000,
+    )
+
+    const { updatedEvent, newBalance } = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.wallet.findUnique({ where: { id: wallet.id } })
+      if (!fresh || fresh.balance.toNumber() < cost) throw new AppError('Insufficient wallet balance', 400)
+
+      const u = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { decrement: cost }, lifetimeSpent: { increment: cost } },
+      })
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: 'EVENT_BOOST',
+          amount: -cost,
+          balanceAfter: u.balance,
+          description: `Featured boost: ${event.name} — ${days} day${days !== 1 ? 's' : ''}`,
+          eventId,
+        },
+      })
+
+      await tx.platformRevenue.create({
+        data: {
+          source: 'featured_event',
+          amount: cost,
+          referenceId: eventId,
+          description: `${days}-day featured boost for "${event.name}"`,
+        },
+      })
+
+      const ev = await tx.event.update({
+        where: { id: eventId },
+        data: { isFeatured: true, featuredUntil },
+      })
+
+      return { updatedEvent: ev, newBalance: u.balance.toNumber() }
+    })
+
+    res.json({
+      data: {
+        success: true,
+        isFeatured: updatedEvent.isFeatured,
+        featuredUntil: updatedEvent.featuredUntil,
+        days,
+        cost,
+        newBalance,
+      },
+    })
   } catch (err) {
     next(err)
   }

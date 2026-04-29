@@ -98,9 +98,9 @@ export function getCurrencySymbol(currency?: string | null): string {
   return CURRENCY_SYMBOLS[cur] ?? cur
 }
 
-export function formatPrice(amount: number, currency?: string | null): string {
+export function formatPrice(amount: number, currency?: string | null, showFree = true): string {
   const cur = currency || detectCurrency()
-  if (amount === 0) return 'FREE'
+  if (amount === 0 && showFree) return 'FREE'
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',

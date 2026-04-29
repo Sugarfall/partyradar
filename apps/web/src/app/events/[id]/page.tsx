@@ -20,7 +20,7 @@ import { loginHref } from '@/lib/authRedirect'
 import { DEV_MODE } from '@/lib/firebase'
 import EventChat from '@/components/EventChat'
 import InterestMatch from '@/components/InterestMatch'
-import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS, getTier } from '@partyradar/shared'
+import { ALCOHOL_POLICY_LABELS, AGE_RESTRICTION_LABELS, PUSH_BLAST_TIERS, getTier, REVENUE_MODEL } from '@partyradar/shared'
 import { formatPrice, detectCurrency } from '@/lib/currency'
 import type { PushBlastTier } from '@partyradar/shared'
 import useSWR from 'swr'
@@ -333,6 +333,7 @@ function HighlightsOfTheNight({ event, color }: { event: any; color: string }) {
     }
   }
 
+  // Clear UI feedback timers on unmount
   useEffect(() => {
     // Fetch all posts for this event (images + text)
     api.get<{ data: any[] }>(`/posts/event/${event.id}?limit=30`)
@@ -985,6 +986,9 @@ function DjRequestPanel({
   const [success, setSuccess]       = useState(false)
   const [upvoting, setUpvoting]     = useState<string | null>(null)
   const [managing, setManaging]     = useState<string | null>(null)
+  const uiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => { return () => { if (uiTimerRef.current) clearTimeout(uiTimerRef.current) } }, [])
 
   const tier     = getTier(userTier)
   const isFree   = !tier.canRequestDJ // FREE = must pay
@@ -1010,7 +1014,7 @@ function DjRequestPanel({
       setRequests(prev => [r.data, ...prev])
       setSong(''); setArtist(''); setNote('')
       setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
+      uiTimerRef.current = setTimeout(() => setSuccess(false), 3000)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to submit request')
     } finally {
@@ -1062,7 +1066,7 @@ function DjRequestPanel({
             {isFree && (
               <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
                 style={{ background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.2)', color: 'rgba(255,214,0,0.7)' }}>
-                £1 / REQUEST
+                {formatPrice(1)} / REQUEST
               </span>
             )}
             {!isFree && (
@@ -1085,7 +1089,7 @@ function DjRequestPanel({
           {/* Submit form */}
           <div className="space-y-2.5">
             <p className="text-[9px] font-bold tracking-[0.18em]" style={{ color: 'rgba(168,85,247,0.5)' }}>
-              {isFree ? 'REQUEST A SONG · £1.00 FROM WALLET' : 'REQUEST A SONG · FREE WITH YOUR PLAN'}
+              {isFree ? `REQUEST A SONG · ${formatPrice(1)} FROM WALLET` : 'REQUEST A SONG · FREE WITH YOUR PLAN'}
             </p>
 
             <input
@@ -1139,7 +1143,7 @@ function DjRequestPanel({
                 {submitting
                   ? <><Loader2 size={12} className="animate-spin" /> SENDING...</>
                   : isFree
-                  ? <><Music2 size={12} /> REQUEST · £1.00</>
+                  ? <><Music2 size={12} /> REQUEST · {formatPrice(1)}</>
                   : <><Music2 size={12} /> SEND REQUEST</>
                 }
               </button>
@@ -1304,7 +1308,15 @@ export default function EventDetailPage() {
   const [msgText, setMsgText] = useState('')
   const [msgSending, setMsgSending] = useState(false)
   const [msgSent, setMsgSent] = useState(false)
+  const [boostOpen, setBoostOpen] = useState(false)
+  const [boostDays, setBoostDays] = useState(3)
+  const [boostLoading, setBoostLoading] = useState(false)
+  const [boostError, setBoostError] = useState<string | null>(null)
+  const [boostSuccess, setBoostSuccess] = useState(false)
   const [interested, setInterested] = useState(false)
+  const uiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => { return () => { if (uiTimerRef.current) clearTimeout(uiTimerRef.current) } }, [])
 
   const isHostView = !!dbUser && event?.hostId === dbUser.id
 
@@ -1432,6 +1444,7 @@ export default function EventDetailPage() {
       await api.post(`/events/${event!.id}/guests/rsvp`)
       await mutate()
       setRsvpDone(true)
+      setTimeout(() => setRsvpDone(false), 5000)
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'RSVP failed')
     } finally {
@@ -1504,6 +1517,7 @@ export default function EventDetailPage() {
     try {
       await api.post('/checkins', { eventId: event!.id, userLat, userLng })
       setCheckInDone(true)
+      setTimeout(() => setCheckInDone(false), 5000)
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Check-in failed')
     } finally {
@@ -1516,7 +1530,9 @@ export default function EventDetailPage() {
     setTicketLoading(true)
     try {
       const res = await api.post<{ data: { url: string } }>('/tickets/checkout', { eventId: event!.id, quantity: ticketQty })
-      window.location.href = res.data.url
+      const checkoutUrl = res?.data?.url
+      if (!checkoutUrl) throw new Error('No checkout URL returned. Please try again.')
+      window.location.href = checkoutUrl
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Checkout failed')
       setTicketLoading(false)
@@ -1530,14 +1546,29 @@ export default function EventDetailPage() {
       const link = `${window.location.origin}/events/invite/${res.data.inviteToken}`
       await navigator.clipboard.writeText(link)
       setInviteCopied(true)
-      setTimeout(() => setInviteCopied(false), 2500)
+      uiTimerRef.current = setTimeout(() => setInviteCopied(false), 2500)
     } catch {
       // Fallback: copy current URL
       await navigator.clipboard.writeText(window.location.href)
       setInviteCopied(true)
-      setTimeout(() => setInviteCopied(false), 2500)
+      uiTimerRef.current = setTimeout(() => setInviteCopied(false), 2500)
     } finally {
       setInviteLoading(false)
+    }
+  }
+
+  async function handleBoost() {
+    if (!event || boostLoading) return
+    setBoostLoading(true)
+    setBoostError(null)
+    try {
+      await api.post(`/events/${event.id}/boost`, { days: boostDays })
+      setBoostSuccess(true)
+      await mutate()
+    } catch (err: unknown) {
+      setBoostError((err as any)?.message ?? 'Boost failed. Please try again.')
+    } finally {
+      setBoostLoading(false)
     }
   }
 
@@ -1608,7 +1639,7 @@ export default function EventDetailPage() {
       })
       setMsgSent(true)
       setMsgText('')
-      setTimeout(() => { setMsgOpen(false); setMsgSent(false) }, 2000)
+      uiTimerRef.current = setTimeout(() => { setMsgOpen(false); setMsgSent(false) }, 2000)
     } catch {
       // ignore
     } finally {
@@ -1655,7 +1686,7 @@ export default function EventDetailPage() {
       } else {
         await navigator.clipboard.writeText(url)
         setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+        uiTimerRef.current = setTimeout(() => setCopied(false), 2000)
       }
     } catch (e) { logError('events/[id]', e) }
   }
@@ -1792,7 +1823,7 @@ export default function EventDetailPage() {
           <div className="text-right">
             <p className="text-xl font-black"
               style={{ color: isFree ? '#00ff88' : '#e0f2fe', textShadow: isFree ? '0 0 12px rgba(0,255,136,0.6)' : 'none' }}>
-              {formatPrice(event.price, currency)}
+              {formatPrice(event.price, 'GBP')}
             </p>
             {!isFree && <p className="text-[10px] font-bold" style={{ color: 'rgba(74,96,128,0.6)' }}>PER TICKET</p>}
           </div>
@@ -2152,6 +2183,20 @@ export default function EventDetailPage() {
                   : <><Music2 size={12} /> DJ {event.djRequestsEnabled ? 'REQUESTS ON' : 'REQUESTS OFF'}</>
                 }
               </button>
+              {/* Boost event */}
+              {!event.isCancelled && (
+                <button
+                  onClick={() => { setBoostOpen(o => !o); setBoostSuccess(false); setBoostError(null) }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200"
+                  style={{
+                    border: `1px solid ${event.isFeatured ? 'rgba(255,214,0,0.5)' : 'rgba(255,214,0,0.25)'}`,
+                    color: event.isFeatured ? '#ffd600' : 'rgba(255,214,0,0.6)',
+                    background: boostOpen ? 'rgba(255,214,0,0.06)' : 'transparent',
+                    letterSpacing: '0.1em',
+                  }}>
+                  <Zap size={12} /> {event.isFeatured ? '★ FEATURED' : 'BOOST EVENT'}
+                </button>
+              )}
               {/* Cancel event */}
               {!event.isCancelled && (
                 <button
@@ -2203,6 +2248,48 @@ export default function EventDetailPage() {
               </div>
             )}
 
+            {/* Boost panel */}
+            {boostOpen && !event.isCancelled && (
+              <div className="p-4 rounded-xl space-y-3" style={{ background: 'rgba(255,214,0,0.04)', border: '1px solid rgba(255,214,0,0.2)' }}>
+                <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,214,0,0.7)' }}>
+                  ★ BOOST EVENT — £{REVENUE_MODEL.FEATURED_EVENT_DAILY_RATE}/DAY
+                </p>
+                {event.isFeatured && (event as any).featuredUntil && (
+                  <p className="text-[10px]" style={{ color: 'rgba(255,214,0,0.5)' }}>
+                    Currently featured until {new Date((event as any).featuredUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {' '}— adding more days extends this.
+                  </p>
+                )}
+                <div className="flex gap-2 flex-wrap">
+                  {[1, 3, 7, 14, 30].map((d) => (
+                    <button key={d} onClick={() => setBoostDays(d)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                      style={{
+                        background: boostDays === d ? 'rgba(255,214,0,0.15)' : 'transparent',
+                        border: `1px solid ${boostDays === d ? 'rgba(255,214,0,0.5)' : 'rgba(255,214,0,0.2)'}`,
+                        color: boostDays === d ? '#ffd600' : 'rgba(255,214,0,0.45)',
+                      }}>
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-black" style={{ color: '#ffd600' }}>
+                    Total: £{(boostDays * REVENUE_MODEL.FEATURED_EVENT_DAILY_RATE).toFixed(2)}
+                  </p>
+                  <button
+                    onClick={handleBoost}
+                    disabled={boostLoading || boostSuccess}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-40 transition-all"
+                    style={{ background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.35)', color: '#ffd600' }}>
+                    {boostLoading ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                    {boostSuccess ? '★ Boosted!' : boostLoading ? 'Boosting...' : 'Boost with Wallet'}
+                  </button>
+                </div>
+                {boostError && <p className="text-[10px] font-bold" style={{ color: '#ff006e' }}>{boostError}</p>}
+              </div>
+            )}
+
             {/* Push blast panel */}
             <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,0,110,0.2)' }}>
               <button
@@ -2246,7 +2333,7 @@ export default function EventDetailPage() {
                               {t.label}
                             </span>
                             <span className="text-[11px] font-black" style={{ color: blastTier.id === t.id ? '#ff006e' : 'rgba(224,242,254,0.5)' }}>
-                              £{t.price.toFixed(2)}
+                              {formatPrice(t.price)}
                             </span>
                           </div>
                           <p className="text-[9px]" style={{ color: 'rgba(74,96,128,0.7)' }}>{t.reach}</p>
@@ -2300,7 +2387,7 @@ export default function EventDetailPage() {
                     }}>
                     {blastLoading
                       ? <><Loader2 size={13} className="animate-spin" /> REDIRECTING TO PAYMENT...</>
-                      : <><Megaphone size={13} /> PAY £{blastTier.price.toFixed(2)} &amp; BLAST →</>
+                      : <><Megaphone size={13} /> PAY {formatPrice(blastTier.price)} &amp; BLAST →</>
                     }
                   </button>
                 </div>
@@ -2378,6 +2465,22 @@ export default function EventDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* DJ Request management — host view */}
+            {event.djRequestsEnabled && (
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.2)' }}>
+                <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: 'rgba(168,85,247,0.06)', borderBottom: '1px solid rgba(168,85,247,0.12)' }}>
+                  <Music2 size={12} style={{ color: 'rgba(168,85,247,0.7)' }} />
+                  <span className="text-xs font-black tracking-widest" style={{ color: '#a855f7' }}>DJ REQUESTS</span>
+                </div>
+                <DjRequestPanel
+                  eventId={event.id}
+                  isHost={true}
+                  userTier={dbUser?.subscriptionTier}
+                  alwaysOpen
+                />
+              </div>
+            )}
 
             {/* Moderator management */}
             <ModeratorPanel eventId={event.id} />
@@ -2520,7 +2623,7 @@ export default function EventDetailPage() {
                           }}>
                           {ticketLoading
                             ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /></>
-                            : <><QrCode size={14} /> BUY TICKET — {formatPrice(event.price * ticketQty, currency)}</>
+                            : <><QrCode size={14} /> BUY TICKET — {formatPrice(event.price * ticketQty, 'GBP')}</>
                           }
                         </button>
                       )}
@@ -2602,47 +2705,53 @@ export default function EventDetailPage() {
               )
             })()}
 
-            {/* Live chat + DJ Requests tabs */}
+            {/* Live chat + DJ Requests section */}
             <div className="mt-1.5">
-              {/* Tab switcher */}
-              <div className="flex items-center gap-1 px-1 mb-2">
-                <button
-                  onClick={() => setChatTab('chat')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
-                  style={{
-                    background: chatTab === 'chat' ? 'rgba(0,229,255,0.1)' : 'transparent',
-                    border: chatTab === 'chat' ? '1px solid rgba(0,229,255,0.25)' : '1px solid transparent',
-                    color: chatTab === 'chat' ? '#00e5ff' : 'rgba(74,96,128,0.5)',
-                  }}>
-                  <MessageCircle size={10} />
-                  LIVE CHAT
-                </button>
-                {event.djRequestsEnabled && (
-                  <button
-                    onClick={() => setChatTab('dj')}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
-                    style={{
-                      background: chatTab === 'dj' ? 'rgba(168,85,247,0.1)' : 'transparent',
-                      border: chatTab === 'dj' ? '1px solid rgba(168,85,247,0.3)' : '1px solid transparent',
-                      color: chatTab === 'dj' ? '#a855f7' : 'rgba(74,96,128,0.5)',
-                    }}>
-                    <Music2 size={10} />
-                    DJ REQUESTS
-                  </button>
-                )}
-              </div>
-              {/* Tab content */}
-              {chatTab === 'chat' || !event.djRequestsEnabled ? (
+              {event.djRequestsEnabled ? (
+                <>
+                  {/* Tab switcher — only needed when DJ requests are also available */}
+                  <div className="flex items-center gap-1 px-1 mb-2">
+                    <button
+                      onClick={() => setChatTab('chat')}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
+                      style={{
+                        background: chatTab === 'chat' ? 'rgba(0,229,255,0.1)' : 'transparent',
+                        border: chatTab === 'chat' ? '1px solid rgba(0,229,255,0.25)' : '1px solid transparent',
+                        color: chatTab === 'chat' ? '#00e5ff' : 'rgba(74,96,128,0.5)',
+                      }}>
+                      <MessageCircle size={10} />
+                      LIVE CHAT
+                    </button>
+                    <button
+                      onClick={() => setChatTab('dj')}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all"
+                      style={{
+                        background: chatTab === 'dj' ? 'rgba(168,85,247,0.1)' : 'transparent',
+                        border: chatTab === 'dj' ? '1px solid rgba(168,85,247,0.3)' : '1px solid transparent',
+                        color: chatTab === 'dj' ? '#a855f7' : 'rgba(74,96,128,0.5)',
+                      }}>
+                      <Music2 size={10} />
+                      DJ REQUESTS
+                    </button>
+                  </div>
+                  {chatTab === 'chat' ? (
+                    <div className="flex justify-center">
+                      <EventChat eventId={event.id} eventName={event.name} hostId={event.hostId} hostName={event.host.displayName} />
+                    </div>
+                  ) : (
+                    <DjRequestPanel
+                      eventId={event.id}
+                      isHost={isHost}
+                      userTier={dbUser?.subscriptionTier}
+                      alwaysOpen
+                    />
+                  )}
+                </>
+              ) : (
+                /* No DJ requests — EventChat has its own LIVE CHAT button; no tab wrapper needed */
                 <div className="flex justify-center">
                   <EventChat eventId={event.id} eventName={event.name} hostId={event.hostId} hostName={event.host.displayName} />
                 </div>
-              ) : (
-                <DjRequestPanel
-                  eventId={event.id}
-                  isHost={isHost}
-                  userTier={dbUser?.subscriptionTier}
-                  alwaysOpen
-                />
               )}
             </div>
           </div>

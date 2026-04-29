@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import {
   BarChart3, Users, Ticket, Crown, Zap, Calendar, Clock,
@@ -12,6 +12,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { silent, logError } from '@/lib/logError'
 import { PUSH_BLAST_TIERS } from '@partyradar/shared'
+import { formatPrice } from '@/lib/currency'
+
+/** All dashboard figures are in GBP (processed via Stripe UK). Always render as £.
+ *  showFree=false so £0.00 displays as "£0.00" not "FREE" for revenue figures. */
+const fmt = (amount: number) => formatPrice(amount, 'GBP', false)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -263,7 +268,7 @@ function AttendeesModal({ eventId, eventName, onClose }: {
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold truncate" style={{ color: '#e0f2fe' }}>{t.user.displayName}</p>
-                        <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>£{t.pricePaid.toFixed(2)} paid</p>
+                        <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{fmt(t.pricePaid)} paid</p>
                       </div>
                       <span className="text-[8px] font-black px-2 py-0.5 rounded-full shrink-0"
                         style={{
@@ -295,6 +300,7 @@ function BlastModal({ events, onClose }: {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
+  const [blastError, setBlastError] = useState<string | null>(null)
   const [result, setResult] = useState<{ checkoutUrl: string; queuePosition: number; estimatedSendTime: string } | null>(null)
 
   const upcomingEvents = events.filter((e) => isFuture(e.startsAt) && !e.isCancelled)
@@ -302,6 +308,7 @@ function BlastModal({ events, onClose }: {
 
   async function handleSend() {
     if (!selectedEvent || !title.trim() || !body.trim() || sending) return
+    setBlastError(null)
     setSending(true)
     try {
       const j = await api.post<{ data: { checkoutUrl: string; queuePosition: number; estimatedSendTime: string } }>(
@@ -309,8 +316,10 @@ function BlastModal({ events, onClose }: {
         { eventId: selectedEvent, tierId: selectedTier, title: title.trim(), body: body.trim() },
       )
       if (j.data?.checkoutUrl) setResult(j.data)
-    } catch (e) { logError('dashboard:blast', e) }
-    finally { setSending(false) }
+    } catch (e) {
+      logError('dashboard:blast', e)
+      setBlastError(e instanceof Error ? e.message : 'Failed to schedule blast. Please try again.')
+    } finally { setSending(false) }
   }
 
   return (
@@ -386,7 +395,7 @@ function BlastModal({ events, onClose }: {
                         border: `1px solid ${active ? 'rgba(168,85,247,0.4)' : 'rgba(168,85,247,0.08)'}`,
                       }}>
                       <p className="text-sm font-black" style={{ color: active ? '#a855f7' : 'rgba(224,242,254,0.5)' }}>
-                        £{t.price.toFixed(2)}
+                        {fmt(t.price)}
                       </p>
                       <p className="text-[9px]" style={{ color: active ? 'rgba(168,85,247,0.7)' : 'rgba(224,242,254,0.3)' }}>
                         {t.label}
@@ -424,11 +433,17 @@ function BlastModal({ events, onClose }: {
               </p>
             </div>
 
+            {blastError && (
+              <p className="text-xs px-3 py-2.5 rounded-xl" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                {blastError}
+              </p>
+            )}
+
             <button onClick={handleSend}
               disabled={!selectedEvent || !title.trim() || !body.trim() || sending}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.35)', color: '#a855f7' }}>
-              {sending ? 'PROCESSING...' : `SEND BLAST — £${tier?.price.toFixed(2) ?? '0.00'}`}
+              {sending ? 'PROCESSING...' : `SEND BLAST — ${tier ? fmt(tier.price) : fmt(0)}`}
             </button>
           </>
         )}
@@ -467,7 +482,10 @@ export default function DashboardPage() {
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  // Guard: don't fire the API call until Firebase auth has resolved.
+  // Without this guard, load() fires immediately on mount when auth.currentUser
+  // is still null, causing getAuthHeader() to return {} (no token) → 401.
+  useEffect(() => { if (!dbUser) return; load() }, [load, dbUser])
 
   // While Firebase auth is resolving, show the same spinner to avoid
   // a flash of the "log in" screen for already-logged-in users.
@@ -566,17 +584,17 @@ export default function DashboardPage() {
               }}>
               <p className="text-[9px] font-black tracking-widest mb-1" style={{ color: 'rgba(168,85,247,0.5)' }}>TOTAL NET REVENUE</p>
               <p className="text-3xl font-black" style={{ color: '#a855f7' }}>
-                £{netRevenue.toFixed(2)}
+                {fmt(netRevenue)}
               </p>
               <div className="flex gap-4 mt-2">
                 <span className="text-[10px]" style={{ color: 'rgba(0,255,136,0.5)' }}>
-                  Tickets: £{(stats.ticketRevenue - stats.platformFees).toFixed(2)}
+                  Tickets: {fmt(stats.ticketRevenue - stats.platformFees)}
                 </span>
                 <span className="text-[10px]" style={{ color: 'rgba(255,214,0,0.5)' }}>
-                  Groups: £{stats.groupRevenue.toFixed(2)}
+                  Groups: {fmt(stats.groupRevenue)}
                 </span>
                 <span className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
-                  Referrals: £{stats.referralBalance.toFixed(2)}
+                  Referrals: {fmt(stats.referralBalance)}
                 </span>
               </div>
             </div>
@@ -633,11 +651,11 @@ export default function DashboardPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold truncate" style={{ color: '#e0f2fe' }}>{g.name}</p>
                         <p className="text-[10px]" style={{ color: 'rgba(255,214,0,0.4)' }}>
-                          {g.subscriberCount} subs × £{g.priceMonthly?.toFixed(2)}/mo
+                          {g.subscriberCount} subs × {fmt(g.priceMonthly ?? 0)}/mo
                         </p>
                       </div>
                       <p className="text-sm font-black shrink-0" style={{ color: '#00ff88' }}>
-                        £{g.monthlyRevenue.toFixed(2)}<span className="text-[8px] font-normal">/mo</span>
+                        {fmt(g.monthlyRevenue)}<span className="text-[8px] font-normal">/mo</span>
                       </p>
                     </div>
                   ))}
@@ -707,7 +725,7 @@ export default function DashboardPage() {
                         </span>
                         {e.price > 0 && (
                           <span className="text-[10px]" style={{ color: 'rgba(255,214,0,0.5)' }}>
-                            £{e.price.toFixed(2)}
+                            {fmt(e.price)}
                           </span>
                         )}
                         <span className="text-[10px]" style={{ color: 'rgba(224,242,254,0.2)' }}>
@@ -827,7 +845,7 @@ export default function DashboardPage() {
                       <Radio size={8} /> {b.reach}
                     </span>
                     <span className="text-[9px]" style={{ color: 'rgba(224,242,254,0.25)' }}>
-                      £{b.price.toFixed(2)}
+                      {fmt(b.price)}
                     </span>
                     {b.recipientCount != null && (
                       <span className="text-[9px]" style={{ color: 'rgba(0,255,136,0.4)' }}>

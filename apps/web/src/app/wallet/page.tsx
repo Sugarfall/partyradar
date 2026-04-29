@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { formatPrice, detectCurrency } from '@/lib/currency'
@@ -9,7 +10,7 @@ import {
   Wallet, CreditCard, Gift, TrendingUp,
   ArrowUp, ArrowDown, Zap, Star, CheckCircle,
   Package, ChevronDown, ChevronUp, Sparkles,
-  Snowflake, Wifi, Shield, MapPin, Truck, Eye, EyeOff, Loader2,
+  Snowflake, Wifi, Shield, Truck, Loader2,
 } from 'lucide-react'
 import { TopUpModal } from '@/components/wallet/TopUpModal'
 
@@ -93,7 +94,9 @@ function txIcon(type: string) {
 }
 
 function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
+  const ts = new Date(iso).getTime()
+  if (isNaN(ts)) return '—'
+  const diff = Date.now() - ts
   const mins = Math.floor(diff / 60000)
   if (mins < 1)   return 'just now'
   if (mins < 60)  return `${mins}m ago`
@@ -168,7 +171,6 @@ export default function WalletPage() {
   const [issuingError, setIssuingError]             = useState<string | null>(null)
   const [phoneRequired, setPhoneRequired]           = useState(false)
   const [activationPhone, setActivationPhone]       = useState('')
-  const [showCardDetails, setShowCardDetails]       = useState(false)
   const [showPhysicalForm, setShowPhysicalForm]     = useState(false)
   const [physName, setPhysName]                 = useState('')
   const [physLine1, setPhysLine1]               = useState('')
@@ -192,8 +194,21 @@ export default function WalletPage() {
   const [cardOrderError, setCardOrderError] = useState<string | null>(null)
   const [cardOrderSuccess, setCardOrderSuccess] = useState(false)
 
-  async function load() {
-    setLoading(true)
+  // Track whether the component is still mounted so async callbacks don't
+  // attempt to set state after navigation away.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  // loadSeqRef prevents a slower earlier fetch from overwriting a fresher one
+  // when multiple concurrent load() calls overlap.
+  const loadSeqRef = useRef(0)
+
+  async function load(options?: { silent?: boolean }) {
+    const seq = ++loadSeqRef.current
+    if (!options?.silent) setLoading(true)
     setLoadError(null)
     try {
       const [res, issuingRes, cardsRes] = await Promise.all([
@@ -201,6 +216,8 @@ export default function WalletPage() {
         api.get<{ data: IssuedCard[] }>('/wallet/issuing'),
         api.get<{ data: { orders: CardOrder[] } }>('/wallet/cards'),
       ])
+      // Bail if component unmounted or a newer load() superseded this one
+      if (!mountedRef.current || seq !== loadSeqRef.current) return
       if (res?.data) {
         const { transactions: txs, ...walletData } = res.data
         setWallet(walletData as WalletData)
@@ -209,9 +226,10 @@ export default function WalletPage() {
       if (issuingRes?.data) setIssuedCards(issuingRes.data)
       if (cardsRes?.data?.orders) setCardOrders(cardsRes.data.orders)
     } catch {
+      if (!mountedRef.current || seq !== loadSeqRef.current) return
       setLoadError('Failed to load wallet — please try again')
     } finally {
-      setLoading(false)
+      if (mountedRef.current && seq === loadSeqRef.current) setLoading(false)
     }
   }
 
@@ -233,9 +251,9 @@ export default function WalletPage() {
   function handleTopUpSuccess() {
     setTopUpTierId(null)
     setTopUpSuccess(true)
-    const t = setTimeout(() => setTopUpSuccess(false), 6000)
-    load()
-    return () => clearTimeout(t)
+    // Clear banner after 6 s; silent refresh so the page doesn't flash a spinner
+    setTimeout(() => { if (mountedRef.current) setTopUpSuccess(false) }, 6000)
+    load({ silent: true })
   }
 
   async function submitCardOrder() {
@@ -243,9 +261,18 @@ export default function WalletPage() {
       setCardOrderError('Please fill in all shipping details')
       return
     }
-    if (selectedDesign === 'CUSTOM' && !customImageUrl.trim()) {
-      setCardOrderError('Please enter an image URL for your custom design')
-      return
+    if (selectedDesign === 'CUSTOM') {
+      if (!customImageUrl.trim()) {
+        setCardOrderError('Please enter an image URL for your custom design')
+        return
+      }
+      try {
+        const u = new URL(customImageUrl.trim())
+        if (u.protocol !== 'https:') throw new Error('Must be https')
+      } catch {
+        setCardOrderError('Artwork URL must be a valid https:// link')
+        return
+      }
     }
     setCardOrdering(true)
     setCardOrderError(null)
@@ -263,11 +290,11 @@ export default function WalletPage() {
         // Stripe redirect
         window.location.href = res.data.url
       } else if (res?.data?.order) {
-        // Paid with wallet
+        // Paid with wallet — silent refresh so the balance card updates without a full-page spinner
         setCardOrderSuccess(true)
         setShowCardOrder(false)
-        load()
-        setTimeout(() => setCardOrderSuccess(false), 6000)
+        load({ silent: true })
+        setTimeout(() => { if (mountedRef.current) setCardOrderSuccess(false) }, 6000)
       }
     } catch (err: unknown) {
       setCardOrderError((err as { message?: string })?.message ?? 'Order failed — please try again')
@@ -291,6 +318,8 @@ export default function WalletPage() {
           const exists = prev.find(c => c.id === res.data.id)
           return exists ? prev : [...prev, res.data]
         })
+        // Refresh wallet data silently so transactions list reflects activation
+        load({ silent: true })
       }
     } catch (err: unknown) {
       const e = err as { message?: string; code?: string }
@@ -363,7 +392,7 @@ export default function WalletPage() {
           <p className="text-sm font-black tracking-widest" style={{ color: 'rgba(224,242,254,0.5)' }}>
             LOG IN TO VIEW YOUR WALLET
           </p>
-          <a
+          <Link
             href="/login"
             className="inline-block px-6 py-2.5 rounded-xl text-xs font-black"
             style={{
@@ -374,7 +403,7 @@ export default function WalletPage() {
             }}
           >
             LOG IN
-          </a>
+          </Link>
         </div>
       </div>
     )
@@ -384,7 +413,7 @@ export default function WalletPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: '#04040d' }}>
         <p className="text-sm font-bold" style={{ color: 'rgba(255,0,110,0.7)' }}>{loadError}</p>
-        <button onClick={load}
+        <button onClick={() => load()}
           className="text-xs font-black px-4 py-2 rounded-xl"
           style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}>
           TRY AGAIN
@@ -395,7 +424,8 @@ export default function WalletPage() {
 
   // ── Main ───────────────────────────────────────────────────────────────────
 
-  const currency = detectCurrency()
+  // detectCurrency() reads navigator.language — memoize so it doesn't run each render
+  const currency = useMemo(() => detectCurrency(), [])
   const POINTS_PER_DRINK = 500
   const selectedDesignData = CARD_DESIGNS.find(d => d.id === selectedDesign)
 
@@ -476,11 +506,11 @@ export default function WalletPage() {
                   AVAILABLE BALANCE
                 </p>
                 <p className="text-4xl font-black truncate" style={{ color: '#e0f2fe', lineHeight: 1.1 }}>
-                  {wallet ? formatPrice(wallet.balance, currency) : '—'}
+                  {wallet ? formatPrice(wallet.balance, currency, false) : '—'}
                 </p>
               </div>
               <button
-                onClick={() => setTopUpTierId('MEDIUM')}
+                onClick={() => setTopUpTierId(WALLET_TOP_UP_TIERS[1]?.id ?? WALLET_TOP_UP_TIERS[0]?.id ?? null)}
                 className="flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 font-black text-[11px] tracking-widest transition-all duration-150 active:scale-[0.96] shrink-0"
                 style={{
                   background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.22), rgba(var(--accent-rgb),0.12))',
@@ -531,8 +561,8 @@ export default function WalletPage() {
             {wallet && (
               <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.07)' }}>
                 <div className="flex justify-between text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
-                  <span>Lifetime spent: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeSpent, currency)}</span></span>
-                  <span>Total top-ups: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeTopUp, currency)}</span></span>
+                  <span>Lifetime spent: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeSpent, currency, false)}</span></span>
+                  <span>Total top-ups: <span className="font-bold" style={{ color: 'rgba(224,242,254,0.55)' }}>{formatPrice(wallet.lifetimeTopUp, currency, false)}</span></span>
                 </div>
               </div>
             )}
@@ -671,6 +701,11 @@ export default function WalletPage() {
                       {!wallet && (
                         <p className="text-[9px] text-center" style={{ color: 'rgba(224,242,254,0.25)' }}>
                           Top up your wallet first to activate your card
+                        </p>
+                      )}
+                      {wallet && wallet.balance <= 0 && (
+                        <p className="text-[9px] text-center" style={{ color: 'rgba(245,158,11,0.7)' }}>
+                          ⚠ Your balance is £0 — top up before your first spend
                         </p>
                       )}
                     </div>
@@ -814,7 +849,13 @@ export default function WalletPage() {
                             }}
                           >
                             <Package size={12} />
-                            {physicalCard.status === 'SHIPPING' ? 'SHIPPING' : 'PHYSICAL ✓'}
+                            {physicalCard.status === 'ACTIVE'
+                              ? 'PHYSICAL ✓'
+                              : physicalCard.status === 'INACTIVE'
+                                ? '❄ CARD FROZEN'
+                                : physicalCard.status === 'CANCELED'
+                                  ? 'CANCELLED'
+                                  : 'SHIPPING'}
                           </div>
                         )}
                       </div>
@@ -829,7 +870,7 @@ export default function WalletPage() {
                           <div className="min-w-0 flex-1">
                             <p className="text-[10px] font-black" style={{ color: '#3b82f6' }}>PHYSICAL CARD EN ROUTE</p>
                             <p className="text-[9px] mt-0.5" style={{ color: 'rgba(59,130,246,0.6)' }}>
-                              •••• •••• •••• {physicalCard.last4} · Arrives in 5–7 business days
+                              •••• •••• •••• {physicalCard.last4} · Allow 2–7 business days
                             </p>
                             {physicalCard.trackingUrl && (
                               <a
@@ -907,6 +948,8 @@ export default function WalletPage() {
                             </div>
                             <button
                               onClick={() => setPhysExpedited(v => !v)}
+                              aria-label={physExpedited ? 'Disable express shipping' : 'Enable express shipping'}
+                              aria-pressed={physExpedited}
                               className="relative w-10 h-5 rounded-full transition-all duration-200 shrink-0"
                               style={{ background: physExpedited ? '#a855f7' : 'rgba(255,255,255,0.08)' }}
                             >
@@ -981,7 +1024,7 @@ export default function WalletPage() {
                                       className="text-[10px] font-black shrink-0"
                                       style={{ color: isCredit ? '#00ff88' : '#ff006e' }}
                                     >
-                                      {isCredit ? '+' : '-'}£{Math.abs(tx.amount).toFixed(2)}
+                                      {isCredit ? '+' : '-'}{formatPrice(Math.abs(tx.amount), 'GBP')}
                                     </p>
                                   </div>
                                 )
@@ -1020,7 +1063,9 @@ export default function WalletPage() {
 
               {/* Progress track */}
               {(() => {
-                const earned = wallet.rewardPoints % POINTS_PER_DRINK
+                // Use server-supplied pointsToNextDrink so the bar is accurate
+                // when rewardPoints is an exact multiple of POINTS_PER_DRINK.
+                const earned = POINTS_PER_DRINK - (wallet.pointsToNextDrink > 0 ? wallet.pointsToNextDrink : POINTS_PER_DRINK)
                 const pct = Math.min((earned / POINTS_PER_DRINK) * 100, 100)
                 return (
                   <>
@@ -1097,7 +1142,7 @@ export default function WalletPage() {
                   }}
                 >
                   <p className="text-sm font-black" style={{ color: '#e0f2fe' }}>
-                    £{tier.amount}
+                    {formatPrice(tier.amount, currency)}
                   </p>
                   {tier.bonusPercent > 0 ? (
                     <p className="text-[9px] font-bold mt-0.5" style={{ color: 'var(--accent)' }}>
@@ -1223,7 +1268,7 @@ export default function WalletPage() {
                                 {design.name.toUpperCase()}
                               </p>
                               <p className="text-[8px] font-bold" style={{ color: vis.accent }}>
-                                £{design.price.toFixed(2)}
+                                {formatPrice(design.price)}
                               </p>
                             </div>
                           </div>
@@ -1339,7 +1384,7 @@ export default function WalletPage() {
                     <p className="text-[10px] font-bold" style={{ color: '#e0f2fe' }}>Pay with wallet balance</p>
                     <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.35)' }}>
                       Balance: <span style={{ color: wallet && wallet.balance >= (selectedDesignData?.price ?? 9.99) ? '#00ff88' : '#ff006e' }}>
-                        {wallet ? formatPrice(wallet.balance, currency) : '—'}
+                        {wallet ? formatPrice(wallet.balance, currency, false) : '—'}
                       </span>
                       {wallet && wallet.balance < (selectedDesignData?.price ?? 9.99) && ' (insufficient)'}
                     </p>
@@ -1347,6 +1392,8 @@ export default function WalletPage() {
                   <button
                     onClick={() => setCardPayWallet(v => !v)}
                     disabled={!wallet || wallet.balance < (selectedDesignData?.price ?? 9.99)}
+                    aria-label={cardPayWallet ? 'Pay with wallet (enabled)' : 'Pay with wallet (disabled)'}
+                    aria-pressed={cardPayWallet}
                     className="relative w-10 h-5 rounded-full transition-all duration-200 shrink-0"
                     style={{
                       background: cardPayWallet ? 'var(--accent)' : 'rgba(255,255,255,0.08)',
@@ -1371,7 +1418,7 @@ export default function WalletPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
                     <span>{selectedDesignData?.name ?? 'Card'}</span>
-                    <span className="font-bold" style={{ color: '#e0f2fe' }}>£{selectedDesignData?.price?.toFixed(2) ?? '—'}</span>
+                    <span className="font-bold" style={{ color: '#e0f2fe' }}>{selectedDesignData?.price != null ? formatPrice(selectedDesignData.price) : '—'}</span>
                   </div>
                   <div className="flex justify-between text-[10px]" style={{ color: 'rgba(224,242,254,0.4)' }}>
                     <span>Shipping</span>
@@ -1379,7 +1426,7 @@ export default function WalletPage() {
                   </div>
                   <div className="flex justify-between text-[10px] pt-1" style={{ borderTop: '1px solid rgba(var(--accent-rgb),0.06)', color: 'rgba(224,242,254,0.6)' }}>
                     <span className="font-black">TOTAL</span>
-                    <span className="font-black" style={{ color: '#e0f2fe' }}>£{selectedDesignData?.price?.toFixed(2) ?? '—'}</span>
+                    <span className="font-black" style={{ color: '#e0f2fe' }}>{selectedDesignData?.price != null ? formatPrice(selectedDesignData.price) : '—'}</span>
                   </div>
                 </div>
 
@@ -1399,8 +1446,8 @@ export default function WalletPage() {
                   {cardOrdering
                     ? 'PROCESSING…'
                     : cardPayWallet
-                      ? `ORDER WITH WALLET (£${selectedDesignData?.price?.toFixed(2) ?? '—'})`
-                      : `ORDER WITH CARD (£${selectedDesignData?.price?.toFixed(2) ?? '—'})`
+                      ? `ORDER WITH WALLET (${selectedDesignData?.price != null ? formatPrice(selectedDesignData.price) : '—'})`
+                      : `ORDER WITH CARD (${selectedDesignData?.price != null ? formatPrice(selectedDesignData.price) : '—'})`
                   }
                 </button>
 

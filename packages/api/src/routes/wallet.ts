@@ -5,7 +5,7 @@ import type { AuthRequest } from '../middleware/auth'
 import { hasRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { ensureStripe, getOrCreateStripeCustomer } from '../lib/stripe'
-import { WALLET_CONFIG, WALLET_TOP_UP_TIERS, CARD_DESIGNS, REVENUE_MODEL } from '@partyradar/shared'
+import { WALLET_CONFIG, WALLET_TOP_UP_TIERS, CARD_DESIGNS, REVENUE_MODEL, REFERRAL_CONFIG } from '@partyradar/shared'
 import { z } from 'zod'
 import { signSpendToken, verifyAndConsumeSpendToken } from '../lib/spendToken'
 
@@ -43,21 +43,28 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
     })
 
     const freeDrinksAvailable = wallet.freeDrinksEarned - wallet.freeDrinksUsed
-    // Bug 17 fix: remainder of 0 means the user is exactly at a threshold (already earned a drink)
+    // A remainder of 0 means the user is exactly at a drink threshold — BUT only if they
+    // actually have points. A brand-new user with 0 points also gives remainder=0, so we
+    // must guard against that case to avoid falsely showing "You have a free drink waiting!".
     const remainder = wallet.rewardPoints % WALLET_CONFIG.POINTS_PER_FREE_DRINK
-    const pointsToNextDrink = remainder === 0 ? 0 : WALLET_CONFIG.POINTS_PER_FREE_DRINK - remainder
+    const pointsToNextDrink =
+      wallet.rewardPoints === 0
+        ? WALLET_CONFIG.POINTS_PER_FREE_DRINK          // New user — needs all points
+        : remainder === 0
+          ? 0                                           // Just hit a threshold — has a drink
+          : WALLET_CONFIG.POINTS_PER_FREE_DRINK - remainder
 
     res.json({
       data: {
         id: wallet.id,
-        balance: wallet.balance,
+        balance: wallet.balance.toNumber(),
         rewardPoints: wallet.rewardPoints,
         freeDrinksAvailable,
         freeDrinksUsed: wallet.freeDrinksUsed,
         freeDrinksEarned: wallet.freeDrinksEarned,
         pointsToNextDrink,
-        lifetimeSpent: wallet.lifetimeSpent,
-        lifetimeTopUp: wallet.lifetimeTopUp,
+        lifetimeSpent: wallet.lifetimeSpent.toNumber(),
+        lifetimeTopUp: wallet.lifetimeTopUp.toNumber(),
         transactions: recentTx,
         topUpTiers: WALLET_TOP_UP_TIERS,
         config: WALLET_CONFIG,
@@ -97,7 +104,7 @@ router.post('/top-up', requireAuth, async (req: AuthRequest, res, next) => {
     }
 
     // Check max balance
-    if (wallet.balance + topUpAmount > WALLET_CONFIG.MAX_BALANCE) {
+    if (wallet.balance.toNumber() + topUpAmount > WALLET_CONFIG.MAX_BALANCE) {
       throw new AppError(`Wallet balance cannot exceed £${WALLET_CONFIG.MAX_BALANCE}`, 400)
     }
 
@@ -132,6 +139,11 @@ router.post('/top-up', requireAuth, async (req: AuthRequest, res, next) => {
         walletId: wallet.id,
         topUpAmount: String(topUpAmount),
         bonusPercent: String(bonusPercent),
+      },
+      // Set description on the auto-created PaymentIntent so Stripe Dashboard
+      // shows "PartyRadar Wallet Top-Up — £X" instead of the generic account name.
+      payment_intent_data: {
+        description: `PartyRadar Wallet Top-Up — £${topUpAmount}`,
       },
     })
 
@@ -170,7 +182,7 @@ router.post('/payment-intent', requireAuth, async (req: AuthRequest, res, next) 
     }
 
     // Check max balance
-    if (wallet.balance + topUpAmount > WALLET_CONFIG.MAX_BALANCE) {
+    if (wallet.balance.toNumber() + topUpAmount > WALLET_CONFIG.MAX_BALANCE) {
       throw new AppError(`Wallet balance cannot exceed £${WALLET_CONFIG.MAX_BALANCE}`, 400)
     }
 
@@ -250,15 +262,22 @@ router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {
 
     // H16 fix: verify the spend token is server-signed by the venue POS device,
     // ensuring the amount was not client-asserted by the user.
+    // L4 fix: log token failures so abuse patterns are visible in Railway logs.
     try {
       verifyAndConsumeSpendToken(spendToken, venueId, amount)
     } catch (tokenErr: any) {
+      console.warn('[wallet/spend] Token verification failed:', {
+        reason: tokenErr.message,
+        venueId,
+        userId: req.user!.dbUser.id,
+        ip: req.ip,
+      })
       throw new AppError(`Invalid spend token: ${tokenErr.message}`, 400)
     }
     const userId = req.user!.dbUser.id
     const wallet = await getOrCreateWallet(userId)
 
-    if (wallet.balance < amount) {
+    if (wallet.balance.toNumber() < amount) {
       throw new AppError('Insufficient wallet balance', 400)
     }
 
@@ -272,7 +291,7 @@ router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {
     // Interactive transaction: re-validate balance and atomically update all wallet fields
     const { updated, drinksEarned, newPoints } = await prisma.$transaction(async (tx) => {
       const fresh = await tx.wallet.findUnique({ where: { id: wallet.id } })
-      if (!fresh || fresh.balance < amount) throw new AppError('Insufficient wallet balance', 400)
+      if (!fresh || fresh.balance.toNumber() < amount) throw new AppError('Insufficient wallet balance', 400)
 
       const oldDrinkCount = Math.floor(fresh.rewardPoints / WALLET_CONFIG.POINTS_PER_FREE_DRINK)
       const updatedPoints = fresh.rewardPoints + pointsEarned
@@ -327,7 +346,7 @@ router.post('/spend', requireAuth, async (req: AuthRequest, res, next) => {
     res.json({
       data: {
         success: true,
-        newBalance: updated.balance,
+        newBalance: updated.balance.toNumber(),
         pointsEarned,
         totalPoints: newPoints,
         freeDrinksEarned: drinksEarned > 0 ? drinksEarned : 0,
@@ -419,7 +438,7 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
 
     if (body.payWithWallet) {
       // Pay with wallet balance
-      if (wallet.balance < price) {
+      if (wallet.balance.toNumber() < price) {
         throw new AppError('Insufficient wallet balance', 400)
       }
 
@@ -430,7 +449,7 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
       // concurrent wallet operations.
       const order = await prisma.$transaction(async (tx) => {
         const fresh = await tx.wallet.findUnique({ where: { id: wallet.id }, select: { balance: true } })
-        if (!fresh || fresh.balance < price) throw new AppError('Insufficient wallet balance', 400)
+        if (!fresh || fresh.balance.toNumber() < price) throw new AppError('Insufficient wallet balance', 400)
         const updated = await tx.wallet.update({
           where: { id: wallet.id },
           data: { balance: { decrement: price }, lifetimeSpent: { increment: price } },
@@ -444,7 +463,10 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
             description: `Physical card: ${cardDesign.name}`,
           },
         })
-        return tx.cardOrder.create({
+        // M2 fix: move revenue write inside the transaction so it's atomic
+        // with the debit. Previously a process crash between the commit and the
+        // revenue write would silently lose the bookkeeping row.
+        const newOrder = await tx.cardOrder.create({
           data: {
             walletId: wallet.id,
             userId,
@@ -457,12 +479,18 @@ router.post('/order-card', requireAuth, async (req: AuthRequest, res, next) => {
             price,
           },
         })
-      })
 
-      // Record platform revenue (card sale margin) — safe to run outside the
-      // tx; at worst we miss a bookkeeping row on crash, order + debit are
-      // already consistent.
-      await recordPlatformRevenue('card_sale', price - REVENUE_MODEL.CARD_COST_OF_GOODS, order.id, `${cardDesign.name} card order`)
+        await tx.platformRevenue.create({
+          data: {
+            source: 'card_sale',
+            amount: price - REVENUE_MODEL.CARD_COST_OF_GOODS,
+            referenceId: newOrder.id,
+            description: `${cardDesign.name} card order`,
+          },
+        })
+
+        return newOrder
+      })
 
       res.json({ data: { order, paidWith: 'wallet' } })
     } else {
@@ -538,10 +566,11 @@ router.get('/rewards', requireAuth, async (req: AuthRequest, res, next) => {
     const spendToNextDrink = Number(((WALLET_CONFIG.POINTS_PER_FREE_DRINK - progressToNext) / WALLET_CONFIG.POINTS_PER_POUND).toFixed(2))
 
     // Tier based on lifetime spend
+    const lifetimeSpentNum = wallet.lifetimeSpent.toNumber()
     let loyaltyTier = 'Bronze'
-    if (wallet.lifetimeSpent >= 500) loyaltyTier = 'Platinum'
-    else if (wallet.lifetimeSpent >= 200) loyaltyTier = 'Gold'
-    else if (wallet.lifetimeSpent >= 50) loyaltyTier = 'Silver'
+    if (lifetimeSpentNum >= 500) loyaltyTier = 'Platinum'
+    else if (lifetimeSpentNum >= 200) loyaltyTier = 'Gold'
+    else if (lifetimeSpentNum >= 50) loyaltyTier = 'Silver'
 
     res.json({
       data: {
@@ -552,7 +581,7 @@ router.get('/rewards', requireAuth, async (req: AuthRequest, res, next) => {
         progressPercent,
         spendToNextDrink,
         loyaltyTier,
-        lifetimeSpent: wallet.lifetimeSpent,
+        lifetimeSpent: wallet.lifetimeSpent.toNumber(),
         perks: {
           Bronze: ['10 points per £1 spent', '1 free drink per 500 points'],
           Silver: ['10 points per £1 spent', '1 free drink per 500 points', 'Priority queue at partner venues'],
@@ -658,7 +687,7 @@ router.get('/revenue-model', requireAuth, async (req: AuthRequest, res, next) =>
           platformGets: '3% of transaction',
         },
         referral: {
-          referrerEarns: '10% of ticket + 15% of subscription + 10% of group',
+          referrerEarns: `${REFERRAL_CONFIG.REVENUE_SHARE_PERCENT}% of ticket + ${REFERRAL_CONFIG.REVENUE_SHARE_PERCENT}% of subscription + ${REFERRAL_CONFIG.REVENUE_SHARE_PERCENT}% of group`,
           firstPurchaseBonus: '£1.00',
         },
       },
