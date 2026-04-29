@@ -132,7 +132,7 @@ export default function ReferralCardPage() {
               {[
                 { label: 'TOTAL USES', value: card.totalUses },
                 { label: 'EARNED', value: formatPrice(card.totalEarned, undefined, false) },
-                { label: 'CONVERSIONS', value: card.conversions.length },
+                { label: 'CONVERSIONS', value: card.conversions?.length ?? 0 },
               ].map(({ label, value }) => (
                 <div key={label} className="p-3 rounded-xl text-center" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
                   <p className="text-base font-black" style={{ color: 'var(--accent)' }}>{value}</p>
@@ -142,7 +142,7 @@ export default function ReferralCardPage() {
             </div>
 
             {/* Recent conversions */}
-            {card.conversions.length > 0 && (
+            {(card.conversions?.length ?? 0) > 0 && (
               <div className="space-y-2">
                 <p className="text-[10px] font-black tracking-[0.2em] px-1" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>RECENT CONVERSIONS</p>
                 {card.conversions.map((c, i) => (

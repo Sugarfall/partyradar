@@ -41,6 +41,16 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     const code = generateCardCode(user.displayName)
     const card = await prisma.referralCard.create({
       data: { userId, code, displayName: user.displayName },
+      // Include conversions so the response shape matches GET /mine — without
+      // this the frontend would receive card.conversions = undefined and crash
+      // on card.conversions.length in the stats section.
+      include: {
+        conversions: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: { source: true, revenueAmount: true, commissionAmount: true, createdAt: true, isPaidOut: true },
+        },
+      },
     })
     res.status(201).json({ data: card })
   } catch (err) { next(err) }

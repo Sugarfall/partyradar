@@ -289,9 +289,14 @@ export default function VenuesPage() {
     // Prefer context city, then saved session, then generic label
     return readVenueSession()?.cityLabel ?? 'NEARBY'
   })
+  // Glasgow city centre is the fallback when GPS is denied and no session is saved.
+  // Using (0,0) (null island) caused the initial fetch to return no venues and left
+  // the page in a permanently-empty state when location access is denied.
+  const FALLBACK_LAT = 55.8642
+  const FALLBACK_LNG = -4.2518
   const [viewState, setViewState] = useState<{ latitude: number; longitude: number; zoom: number }>(() => {
     const saved = readVenueSession()?.viewState
-    return saved as { latitude: number; longitude: number; zoom: number } ?? { latitude: 0, longitude: 0, zoom: 12 }
+    return saved as { latitude: number; longitude: number; zoom: number } ?? { latitude: FALLBACK_LAT, longitude: FALLBACK_LNG, zoom: 12 }
   })
   // Whether we've already centred the map on the user's real location this session
   const centredRef = useRef(false)
@@ -432,9 +437,12 @@ export default function VenuesPage() {
   // so we always fetch venues for the user's real city, not the stale default
   useEffect(() => {
     if (!locationReady) return
-    // Prefer real GPS coords from geoRef; fall back to saved/default viewState
-    const lat = geoRef.current?.lat ?? viewState.latitude
-    const lng = geoRef.current?.lng ?? viewState.longitude
+    // Prefer real GPS coords from geoRef; fall back to saved/default viewState;
+    // if both are (0,0) (null island — geolocation denied, no session), use Glasgow.
+    const rawLat = geoRef.current?.lat ?? viewState.latitude
+    const rawLng = geoRef.current?.lng ?? viewState.longitude
+    const lat = (rawLat === 0 && rawLng === 0) ? FALLBACK_LAT : rawLat
+    const lng = (rawLat === 0 && rawLng === 0) ? FALLBACK_LNG : rawLng
     const radius = zoomToRadius(viewState.zoom)
     geoFetchedRef.current = !!(geoRef.current?.lat) // true if real GPS coords used
     fetchVenues(lat, lng, radius)
