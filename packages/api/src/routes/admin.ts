@@ -17,7 +17,7 @@ router.get('/events', requireAdmin, async (_req, res, next) => {
         host: { select: { id: true, username: true, displayName: true, email: true } },
         _count: { select: { guests: true, tickets: true } },
       },
-      take: 100,
+      take: 30,
     })
     res.json({ data: events })
   } catch (err) {
@@ -236,7 +236,7 @@ router.get('/groups', requireAuth, requireAppRole('MODERATOR'), async (_req, res
       include: {
         _count: { select: { memberships: true, messages: true } },
       },
-      take: 200,
+      take: 50,
     })
     // Enrich with creator info
     const creatorIds = groups.map((g) => g.createdById).filter(Boolean) as string[]

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, startTransition } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { silent } from '@/lib/logError'
@@ -281,22 +281,23 @@ export default function AdminPage() {
     }
   }, [loading, firebaseUser, router])
 
-  // Load data per tab
+  // Load data per tab — large list setState calls are wrapped in startTransition so
+  // they yield to the browser between chunks and don't freeze the main thread.
   useEffect(() => {
     if (!isStaff) return
     if (tab === 'stats') {
       api.get<{ data: Stats }>('/admin/stats').then((r) => setStats(r.data)).catch(silent('admin:stats'))
     } else if (tab === 'users') {
-      api.get<{ data: AdminUser[] }>('/admin/users').then((r) => setUsers(r.data)).catch(silent('admin:users'))
+      api.get<{ data: AdminUser[] }>('/admin/users').then((r) => startTransition(() => setUsers(r.data))).catch(silent('admin:users'))
     } else if (tab === 'events') {
-      api.get<{ data: AdminEvent[] }>('/admin/events').then((r) => setEvents(r.data)).catch(silent('admin:events'))
+      api.get<{ data: AdminEvent[] }>('/admin/events').then((r) => startTransition(() => setEvents(r.data))).catch(silent('admin:events'))
     } else if (tab === 'groups') {
-      api.get<{ data: AdminGroup[] }>('/admin/groups').then((r) => setGroups(r.data)).catch(silent('admin:groups'))
+      api.get<{ data: AdminGroup[] }>('/admin/groups').then((r) => startTransition(() => setGroups(r.data))).catch(silent('admin:groups'))
     } else if (tab === 'reports') {
-      api.get<{ data: AdminReport[] }>('/admin/reports').then((r) => setReports(r.data)).catch(silent('admin:reports'))
+      api.get<{ data: AdminReport[] }>('/admin/reports').then((r) => startTransition(() => setReports(r.data))).catch(silent('admin:reports'))
     } else if (tab === 'moderation') {
-      api.get<{ data: ModerationLog[] }>('/admin/moderation-logs').then((r) => setModLogs(r.data)).catch(silent('admin:moderation-logs'))
-      api.get<{ data: ContentReport[] }>('/admin/content-reports').then((r) => setContentReports(r.data)).catch(silent('admin:content-reports'))
+      api.get<{ data: ModerationLog[] }>('/admin/moderation-logs').then((r) => startTransition(() => setModLogs(r.data))).catch(silent('admin:moderation-logs'))
+      api.get<{ data: ContentReport[] }>('/admin/content-reports').then((r) => startTransition(() => setContentReports(r.data))).catch(silent('admin:content-reports'))
     } else if (tab === 'pipeline') {
       api.get<{ data: EventDiagnostics }>('/events/diagnostics').then((r) => setDiagnostics(r.data)).catch(silent('admin:diagnostics'))
     } else if (tab === 'medals') {
@@ -311,7 +312,7 @@ export default function AdminPage() {
     setMedalsLoading(true)
     try {
       const r = await api.get<{ data: AdminMedal[] }>('/medals/admin')
-      setMedals(r.data)
+      startTransition(() => setMedals(r.data))
     } catch {} finally { setMedalsLoading(false) }
   }, [])
 
@@ -319,7 +320,7 @@ export default function AdminPage() {
     setSpecialEventsLoading(true)
     try {
       const r = await api.get<{ data: AdminSpecialEvent[] }>('/special-events/admin')
-      setSpecialEvents(r.data)
+      startTransition(() => setSpecialEvents(r.data))
     } catch {} finally { setSpecialEventsLoading(false) }
   }, [])
 

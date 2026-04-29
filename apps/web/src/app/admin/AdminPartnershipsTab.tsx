@@ -21,7 +21,7 @@
  *  └──────────────────────────────────────────────────────────────────┘
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, startTransition } from 'react'
 import { api } from '@/lib/api'
 import {
   Building2, Plus, X, ChevronDown, Loader2, Trash2,
@@ -713,7 +713,7 @@ export default function AdminPartnershipsTab({
     setLoading(true)
     try {
       const r = await api.get<{ data: Partnership[] }>('/partnerships')
-      setPartnerships(r.data)
+      startTransition(() => setPartnerships(r.data))
     } catch { setPartnerships([]) } finally { setLoading(false) }
   }, [])
 
