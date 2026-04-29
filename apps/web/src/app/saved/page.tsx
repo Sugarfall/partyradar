@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
 import { loginHref } from '@/lib/authRedirect'
+import { formatPrice } from '@/lib/currency'
 
 const TYPE_COLORS: Record<string, string> = {
   HOME_PARTY: '#ff006e',
@@ -107,7 +108,7 @@ export default function SavedEventsPage() {
                       </div>
                       <span className="text-sm font-bold shrink-0"
                         style={{ color: isFree ? '#00ff88' : '#e0f2fe' }}>
-                        {isFree ? 'FREE' : `£${event.price}`}
+                        {isFree ? 'FREE' : formatPrice(event.price)}
                       </span>
                     </div>
                     <div className="flex items-center gap-4 flex-wrap">

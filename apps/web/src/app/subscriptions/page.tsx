@@ -1,11 +1,8 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-
-/** /subscriptions is deprecated — redirect to /pricing */
+/** /subscriptions is deprecated — use a server-side redirect so the browser
+ *  never renders a blank client component before navigating. This avoids a
+ *  flash of empty content and is SEO-friendly (308 Permanent Redirect). */
 export default function SubscriptionsPage() {
-  const router = useRouter()
-  useEffect(() => { router.replace('/pricing') }, [router])
-  return null
+  redirect('/pricing')
 }

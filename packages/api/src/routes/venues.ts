@@ -4,6 +4,8 @@ import { requireAuth, optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
+import { ensureStripe } from '../lib/stripe'
+import { REVENUE_MODEL } from '@partyradar/shared'
 
 const GOOGLE_API_KEY = process.env['GOOGLE_PLACES_API_KEY'] ?? ''
 
@@ -64,6 +66,9 @@ const venueSelect = {
   updatedAt: true,
   spotifyConnected: true,
   spotifyDisplayName: true,
+  isSponsored: true,
+  sponsoredUntil: true,
+  promotionRadius: true,
 }
 
 /** Normalise a venue name for cross-source deduplication.
@@ -169,16 +174,26 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const dedupedRaw = dedupeVenuesByName(rawVenues)
     const total = dedupedRaw.length
 
-    // Sort by Haversine distance when geo coords provided, then paginate in JS
+    // Sort by Haversine distance when geo coords provided, then paginate in JS.
+    // Sponsored venues are boosted to the top ONLY when the user is within that
+    // venue's promotionRadius — geo-local promotion, not platform-wide.
+    const now = new Date()
     const venues = hasGeo
       ? dedupedRaw
           .slice()
-          .sort((a, b) => haversineKm(latN, lngN, a.lat, a.lng) - haversineKm(latN, lngN, b.lat, b.lng))
+          .sort((a, b) => {
+            const aDist = haversineKm(latN, lngN, a.lat, a.lng)
+            const bDist = haversineKm(latN, lngN, b.lat, b.lng)
+            const aSponsored = (a as any).isSponsored && (a as any).sponsoredUntil && new Date((a as any).sponsoredUntil) > now && aDist <= ((a as any).promotionRadius ?? 5)
+            const bSponsored = (b as any).isSponsored && (b as any).sponsoredUntil && new Date((b as any).sponsoredUntil) > now && bDist <= ((b as any).promotionRadius ?? 5)
+            if (aSponsored && !bSponsored) return -1
+            if (bSponsored && !aSponsored) return 1
+            return aDist - bDist
+          })
           .slice(skip, skip + limitN)
       : dedupedRaw.slice(skip, skip + limitN)
 
     // Enrich with upcoming events count
-    const now = new Date()
     const venueIds = venues.map((v) => v.id)
     const upcomingCounts = await prisma.event.groupBy({
       by: ['venueId'],
@@ -336,6 +351,20 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
     const { id } = req.params
     const userId = req.user?.dbUser?.id ?? null
 
+    // Pre-check claim status so embedded events can be scoped to the venue admin.
+    // Claimed venues only show events created by their admin — scraped / third-party
+    // events are hidden so the venue page reflects the admin's own listings.
+    const claimInfo = await prisma.venue.findUnique({
+      where: { id },
+      select: { isClaimed: true, claimedById: true },
+    })
+    const embeddedEventsWhere: Record<string, unknown> = {
+      isPublished: true,
+      isCancelled: false,
+      startsAt: { gte: new Date() },
+      ...(claimInfo?.isClaimed && claimInfo.claimedById ? { hostId: claimInfo.claimedById } : {}),
+    }
+
     const [venue, followersCount, isFollowing] = await Promise.all([
       prisma.venue.findUnique({
         where: { id },
@@ -345,11 +374,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
             select: { id: true, username: true, displayName: true, photoUrl: true },
           },
           events: {
-            where: {
-              isPublished: true,
-              isCancelled: false,
-              startsAt: { gte: new Date() },
-            },
+            where: embeddedEventsWhere,
             orderBy: { startsAt: 'asc' },
             take: 5,
             select: {
@@ -522,6 +547,134 @@ router.post('/:id/claim', requireAuth, async (req: AuthRequest, res, next) => {
     })
 
     res.json({ data: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
+const promoteSchema = z.object({
+  promotionRadius: z.number().min(1).max(50).default(5),
+})
+
+/**
+ * POST /api/venues/:id/promote
+ *
+ * Creates a Stripe Checkout subscription (£49.99/month) that, once paid, gives
+ * the venue a boosted position in the discovery feed — but ONLY for users within
+ * `promotionRadius` km of the venue (geo-local promotion, not platform-wide).
+ *
+ * Requirements:
+ *  - Caller must be the venue's claimant (claimedById === userId)
+ *  - Venue must already be claimed (isClaimed === true)
+ */
+router.post('/:id/promote', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+    const userId = req.user!.dbUser.id
+
+    const venue = await prisma.venue.findUnique({
+      where: { id },
+      select: { id: true, name: true, isClaimed: true, claimedById: true, isSponsored: true, sponsoredUntil: true },
+    })
+    if (!venue) throw new AppError('Venue not found', 404)
+
+    if (!venue.isClaimed || venue.claimedById !== userId) {
+      throw new AppError('You must be the venue owner to promote it', 403)
+    }
+
+    // Already actively sponsored?
+    const now = new Date()
+    if (venue.isSponsored && venue.sponsoredUntil && venue.sponsoredUntil > now) {
+      res.json({ data: { alreadySponsored: true, sponsoredUntil: venue.sponsoredUntil } })
+      return
+    }
+
+    const { promotionRadius } = promoteSchema.parse(req.body)
+
+    const stripe = ensureStripe()
+
+    // Fetch full user row to get stripeCustomerId (auth middleware only exposes a subset)
+    const fullUser = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true, displayName: true, stripeCustomerId: true },
+    })
+
+    // Ensure the user has a Stripe customer
+    let stripeCustomerId = fullUser.stripeCustomerId
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: fullUser.email,
+        name: fullUser.displayName,
+        metadata: { userId },
+      })
+      stripeCustomerId = customer.id
+      await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } })
+    }
+
+    const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://partyradar.app'
+
+    const session = await stripe.checkout.sessions.create({
+      customer: stripeCustomerId,
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'gbp',
+            recurring: { interval: 'month' },
+            unit_amount: Math.round(REVENUE_MODEL.SPONSORED_VENUE_MONTHLY * 100), // £49.99 in pence
+            product_data: {
+              name: `Venue Spotlight — ${venue.name}`,
+              description: `Featured placement on PartyRadar for locals within ${promotionRadius}km of your venue`,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${frontendUrl}/venues/${id}?promoted=true`,
+      cancel_url: `${frontendUrl}/venues/${id}`,
+      metadata: {
+        type: 'venue_sponsorship',
+        venueId: id,
+        userId,
+        promotionRadius: String(promotionRadius),
+      },
+    })
+
+    res.json({ data: { checkoutUrl: session.url } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * DELETE /api/venues/:id/promote — cancel venue sponsorship
+ *
+ * Cancels the Stripe subscription at period end and marks the venue so it
+ * stops being boosted once the paid period expires.
+ */
+router.delete('/:id/promote', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+    const userId = req.user!.dbUser.id
+
+    const venue = await prisma.venue.findUnique({
+      where: { id },
+      select: { id: true, isClaimed: true, claimedById: true, stripeVenueSubId: true, isSponsored: true },
+    })
+    if (!venue) throw new AppError('Venue not found', 404)
+    if (!venue.isClaimed || venue.claimedById !== userId) {
+      throw new AppError('You must be the venue owner to manage its promotion', 403)
+    }
+    if (!venue.isSponsored || !venue.stripeVenueSubId) {
+      throw new AppError('This venue does not have an active promotion', 400)
+    }
+
+    const stripe = ensureStripe()
+    // Cancel at period end — venue stays promoted until the paid window closes
+    await stripe.subscriptions.update(venue.stripeVenueSubId, { cancel_at_period_end: true })
+
+    res.json({ data: { message: 'Venue promotion will expire at the end of the current billing period.' } })
   } catch (err) {
     next(err)
   }

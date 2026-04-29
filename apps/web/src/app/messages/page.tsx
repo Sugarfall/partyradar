@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   MessageCircle, Send, ArrowLeft, Search, LogIn, Zap, User, Bell, BellOff,
   Users, UserPlus, UserCheck, Hash, Lock, Crown, Eye, EyeOff, X,
@@ -14,6 +15,18 @@ import { uploadImage } from '@/lib/cloudinary'
 import { getOrCreateKeyPair, serializePublicKey, encryptMessage, decryptMessage } from '@/lib/e2e'
 import { formatPrice } from '@/lib/currency'
 import { useUserLocation } from '@/contexts/UserLocationContext'
+
+/** Haversine distance in metres between two lat/lng points */
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const CRAWL_CHECKIN_RADIUS_M = 200
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -160,6 +173,7 @@ function HostGroupDashboard({
   const [newPaid, setNewPaid] = useState(false)
   const [newPriceAmount, setNewPriceAmount] = useState('')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const myGroups = groups.filter((g) => g.isOwner)
   // Bug 13 fix: memberCount includes the owner — subtract 1 per paid group
@@ -191,8 +205,10 @@ function HostGroupDashboard({
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#a855f7')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceAmount('')
       }
-    } catch (e) { silent('messages:create-group')(e) }
-    finally { setCreating(false) }
+    } catch (e) {
+      logError('messages:create-group', e)
+      setCreateError(e instanceof Error ? e.message : 'Failed to create group. Please try again.')
+    } finally { setCreating(false) }
   }
 
   return (
@@ -403,7 +419,7 @@ function HostGroupDashboard({
                 </div>
                 {newPriceAmount && !isNaN(parseFloat(newPriceAmount)) && parseFloat(newPriceAmount) >= 0.5 && (
                   <p className="text-[9px] mt-1.5 font-bold" style={{ color: 'rgba(0,255,136,0.6)' }}>
-                    You earn £{(parseFloat(newPriceAmount) * 0.8).toFixed(2)}/mo per subscriber (80%)
+                    You earn {formatPrice(parseFloat(newPriceAmount) * 0.8)}/mo per subscriber (80%)
                   </p>
                 )}
                 <p className="text-[8px] mt-1" style={{ color: 'rgba(255,214,0,0.35)' }}>
@@ -417,7 +433,7 @@ function HostGroupDashboard({
               <div className="flex items-center justify-between">
                 <span className="text-2xl">{newEmoji}</span>
                 <div className="flex gap-1">
-                  {newPaid && newPriceAmount && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,214,0,0.15)', color: '#ffd600' }}>£{newPriceAmount}/mo</span>}
+                  {newPaid && newPriceAmount && !isNaN(parseFloat(newPriceAmount)) && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,214,0,0.15)', color: '#ffd600' }}>{formatPrice(parseFloat(newPriceAmount))}/mo</span>}
                   {newPrivate && !newPaid && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,0,110,0.12)', color: '#ff006e' }}>PRIVATE</span>}
                 </div>
               </div>
@@ -425,7 +441,12 @@ function HostGroupDashboard({
               {newDesc && <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{newDesc}</p>}
             </div>
 
-            <button onClick={handleCreate}
+            {createError && (
+              <p className="text-xs px-3 py-2 rounded-xl mb-1" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                {createError}
+              </p>
+            )}
+            <button onClick={() => { setCreateError(null); handleCreate() }}
               disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4) || (newPaid && (!newPriceAmount || parseFloat(newPriceAmount) < 0.5))}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
@@ -466,6 +487,7 @@ function GroupBrowser({
   const [newPriceAmount, setNewPriceAmount] = useState('')
   const [newGroupType, setNewGroupType] = useState<'GENRE' | 'FESTIVAL' | 'TRIP'>('GENRE')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const q = groupSearch.toLowerCase()
   const filteredGroups = q ? groups.filter((g) => g.name.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q)) : groups
@@ -508,8 +530,10 @@ function GroupBrowser({
         setShowCreate(false); setNewName(''); setNewDesc(''); setNewEmoji('💬'); setNewColor('#6366f1')
         setNewPrivate(false); setNewPassword(''); setNewPaid(false); setNewPriceAmount(''); setNewGroupType('GENRE')
       }
-    } catch (e) { silent('messages:create-group-extended')(e) }
-    finally { setCreating(false) }
+    } catch (e) {
+      logError('messages:create-group-extended', e)
+      setCreateError(e instanceof Error ? e.message : 'Failed to create group. Please try again.')
+    } finally { setCreating(false) }
   }
 
   const COLORS = ['#a855f7', '#3b82f6', '#ec4899', '#10b981', '#f97316', '#ef4444', '#06b6d4', '#6366f1', '#eab308', '#f43f5e']
@@ -790,7 +814,7 @@ function GroupBrowser({
                 </div>
                 {newPriceAmount && parseFloat(newPriceAmount) >= 0.5 && (
                   <p className="text-[8px] mt-1.5" style={{ color: 'rgba(255,214,0,0.5)' }}>
-                    You earn £{(parseFloat(newPriceAmount) * 0.8).toFixed(2)}/mo per member (80%)
+                    You earn {formatPrice(parseFloat(newPriceAmount) * 0.8)}/mo per member (80%)
                   </p>
                 )}
                 <p className="text-[8px] mt-0.5" style={{ color: 'rgba(255,214,0,0.35)' }}>
@@ -812,7 +836,12 @@ function GroupBrowser({
               {newDesc && <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.45)' }}>{newDesc}</p>}
             </div>
 
-            <button onClick={handleCreate}
+            {createError && (
+              <p className="text-xs px-3 py-2 rounded-xl mb-1" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                {createError}
+              </p>
+            )}
+            <button onClick={() => { setCreateError(null); handleCreate() }}
               disabled={!newName.trim() || creating || (newPrivate && !newPaid && newPassword.trim().length < 4) || (newPaid && (!newPriceAmount || parseFloat(newPriceAmount) < 0.5))}
               className="w-full py-3 rounded-xl text-xs font-black tracking-widest transition-all disabled:opacity-40"
               style={{
@@ -858,6 +887,7 @@ function GroupChatView({
   const [pwError, setPwError] = useState('')
   const [showSubModal, setShowSubModal] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
+  const [subError, setSubError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   // Tab + members panel
   const [activeTab, setActiveTab] = useState<'chat' | 'crawl' | 'members'>('chat')
@@ -970,14 +1000,29 @@ function GroupChatView({
     if (!plannerResult || crawlCreating) return
     setCrawlCreating(true)
     try {
-      const stops = plannerResult.route.map((s: any) => ({ name: s.name, address: s.address ?? '' }))
+      const stops = plannerResult.route.map((s: any) => ({ name: s.name, address: s.address ?? '', lat: s.lat ?? null, lng: s.lng ?? null }))
       const j = await api.post<{ data: unknown }>(`/groups/${groupId}/pub-crawl`, { name: plannerResult.crawlTitle, stops })
       if (j.data) { setCrawl(j.data); setShowPlanner(false); setPlannerResult(null) }
     } catch (e) { logError('messages:save-planner-crawl', e) }
     finally { setCrawlCreating(false) }
   }
 
-  async function checkIn(stopId: string) {
+  async function checkIn(stopId: string, stopLat?: number | null, stopLng?: number | null) {
+    // If stop has coordinates, verify user is close enough
+    if (stopLat != null && stopLng != null && navigator.geolocation) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 })
+        )
+        const dist = haversineM(pos.coords.latitude, pos.coords.longitude, stopLat, stopLng)
+        if (dist > CRAWL_CHECKIN_RADIUS_M) {
+          alert(`You need to be within ${CRAWL_CHECKIN_RADIUS_M}m of this stop to check in.\n(You are ${Math.round(dist)}m away.)`)
+          return
+        }
+      } catch {
+        // Geolocation denied or failed — allow check-in without location gate
+      }
+    }
     try {
       await api.post(`/groups/${groupId}/pub-crawl/stops/${stopId}/checkin`, {})
       await loadCrawl()
@@ -1036,6 +1081,7 @@ function GroupChatView({
   }
 
   async function handleSubscribe() {
+    setSubError(null)
     setSubscribing(true)
     try {
       const res = await api.post<{ data: { url?: string; subscribed?: boolean } }>(`/groups/${groupId}/subscribe`, {})
@@ -1050,8 +1096,9 @@ function GroupChatView({
       setGroup((g) => g ? { ...g, ...patch } : g)
       onGroupUpdate(groupId, patch)
       load()
-    } catch {}
-    finally { setSubscribing(false) }
+    } catch (err) {
+      setSubError(err instanceof Error ? err.message : 'Subscription failed. Please try again.')
+    } finally { setSubscribing(false) }
   }
 
   async function toggleNotifications() {
@@ -1417,7 +1464,7 @@ function GroupChatView({
                         </div>
                       </div>
                       {dbUserId && !stop.checkedIn && (
-                        <button onClick={() => checkIn(stop.id)}
+                        <button onClick={() => checkIn(stop.id, stop.lat, stop.lng)}
                           className="px-2.5 py-1 rounded-lg text-[9px] font-black shrink-0"
                           style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#f59e0b' }}>
                           CHECK IN
@@ -2194,13 +2241,18 @@ function GroupChatView({
       {showSubModal && group && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
-          onClick={() => setShowSubModal(false)}>
+          onClick={() => { setShowSubModal(false); setSubError(null) }}>
           <div className="w-full max-w-xs rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}
             style={{ background: 'rgba(7,7,26,0.98)', border: '1px solid rgba(255,214,0,0.25)' }}>
             <div className="flex items-center gap-2">
               <Crown size={16} style={{ color: '#ffd600' }} />
               <p className="text-sm font-black" style={{ color: '#ffd600' }}>SUBSCRIBE</p>
             </div>
+            {subError && (
+              <p className="text-xs px-3 py-2.5 rounded-xl" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                {subError}
+              </p>
+            )}
             <div className="p-3 rounded-xl" style={{ background: `${group.coverColor}15`, border: `1px solid ${group.coverColor}30` }}>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xl">{group.emoji}</span>
@@ -2581,6 +2633,7 @@ function InviteBubble({
 function DmSection({ dbUser }: {
   dbUser: { id: string; displayName?: string; photoUrl?: string | null } | null
 }) {
+  const router = useRouter()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [requestConvos, setRequestConvos] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -2781,8 +2834,8 @@ function DmSection({ dbUser }: {
   async function handleInviteAccept(targetGroupId: string, groupName: string) {
     try {
       await api.post(`/groups/${targetGroupId}/join`, {})
-      // Redirect to the group chat view within messages
-      window.location.assign(`/messages?group=${targetGroupId}`)
+      // Navigate to the group chat view within messages (SPA navigation — avoids full page reload)
+      router.push(`/messages?group=${targetGroupId}`)
     } catch (err: any) {
       const msg = err?.message || err?.body?.error || `Couldn't join "${groupName}"`
       alert(msg)
@@ -2836,15 +2889,15 @@ function DmSection({ dbUser }: {
             <ArrowLeft size={18} />
           </button>
           {activeOther && (
-            <a href={`/profile/${activeOther.username ?? activeOther.id}`}>
+            <Link href={`/profile/${activeOther.username ?? activeOther.id}`}>
               <Avatar user={activeOther} size={32} />
-            </a>
+            </Link>
           )}
           <div className="flex-1 min-w-0">
-            <a href={activeOther?.username ? `/profile/${activeOther.username}` : '#'} className="block">
+            <Link href={activeOther?.username ? `/profile/${activeOther.username}` : '/'} className="block">
               <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{activeOther?.displayName ?? '...'}</p>
               {activeOther?.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{activeOther.username}</p>}
-            </a>
+            </Link>
           </div>
           {/* E2E badge */}
           {e2eReady && otherPublicKey && (
@@ -3200,15 +3253,15 @@ function PeopleSearch({ dbUserId }: { dbUserId: string | null }) {
         return (
           <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl mb-2"
             style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
-            <a href={`/profile/${u.username}`} className="shrink-0">
+            <Link href={`/profile/${u.username}`} className="shrink-0">
               <Avatar user={u} size={44} />
-            </a>
+            </Link>
             <div className="flex-1 min-w-0">
-              <a href={`/profile/${u.username}`} className="block">
+              <Link href={`/profile/${u.username}`} className="block">
                 <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{u.displayName}</p>
                 {u.username && <p className="text-[10px]" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>@{u.username}</p>}
                 {u.bio && <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.35)' }}>{u.bio}</p>}
-              </a>
+              </Link>
             </div>
             <div className="flex flex-col gap-1.5 shrink-0">
               {dbUserId && (
@@ -3225,12 +3278,12 @@ function PeopleSearch({ dbUserId }: { dbUserId: string | null }) {
                   <span className="text-[9px] font-black tracking-wide">{loading ? '...' : following ? 'FOLLOWING' : 'FOLLOW'}</span>
                 </button>
               )}
-              <a href={`/profile/${u.username}`}
+              <Link href={`/profile/${u.username}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-center"
                 style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)', color: 'rgba(var(--accent-rgb),0.5)' }}>
                 <User size={11} />
                 <span className="text-[9px] font-black tracking-wide">PROFILE</span>
-              </a>
+              </Link>
             </div>
           </div>
         )

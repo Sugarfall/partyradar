@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -44,6 +44,9 @@ export default function ScanPage() {
   const [useCameraMode, setUseCameraMode] = useState(true)
   const [lastScanned, setLastScanned] = useState('')
   const [scanCount, setScanCount] = useState(0)
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => { return () => { if (scanTimerRef.current) clearTimeout(scanTimerRef.current) } }, [])
 
   if (!dbUser || (event && event.hostId !== dbUser.id)) {
     return (
@@ -71,7 +74,7 @@ export default function ScanPage() {
       setError(err instanceof Error ? err.message : 'Invalid or already scanned ticket')
     } finally {
       setScanning(false)
-      setTimeout(() => setLastScanned(''), 3000)
+      scanTimerRef.current = setTimeout(() => setLastScanned(''), 3000)
     }
   }
 

@@ -9,6 +9,7 @@ import {
   ArrowLeft, MapPin, Phone, Globe, Tag, Calendar, Ticket,
   CheckCircle, Building2, Loader2, AlertTriangle, X,
   ImageIcon, Send, Heart, Clock, Music2, Unlink2, Bell, BellOff, Users,
+  ShoppingCart, Plus, Minus,
 } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -72,6 +73,23 @@ interface VenuePost {
   /** PostTags on this post — used to detect feed-tagged posts */
   tags?: { taggedVenueId?: string | null; taggedVenue?: { id: string; name: string } | null }[]
   user: { id: string; displayName: string; username: string; photoUrl?: string }
+}
+
+interface DrinkMenuItem {
+  id: string
+  name: string
+  description?: string | null
+  price: number
+  category: string
+  imageUrl?: string | null
+  isAvailable: boolean
+}
+
+interface MenuPartnership {
+  id: string
+  isActive: boolean
+  drinkMenuItems: DrinkMenuItem[]
+  venue: { id: string; name: string; address: string; city: string; photoUrl?: string | null }
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -193,7 +211,32 @@ function OpeningHours({ hours }: { hours: unknown }) {
 
 // ─── Claim Modal ──────────────────────────────────────────────────────────────
 
-function ClaimModal({ venueName, onClose }: { venueName: string; onClose: () => void }) {
+function ClaimModal({
+  venueId, venueName, onClose, onClaimed,
+}: {
+  venueId: string
+  venueName: string
+  onClose: () => void
+  onClaimed: () => void
+}) {
+  const [claiming, setClaiming] = useState(false)
+  const [claimError, setClaimError] = useState<string | null>(null)
+  const [claimed, setClaimed] = useState(false)
+
+  async function handleClaim() {
+    setClaiming(true)
+    setClaimError(null)
+    try {
+      await api.post(`/venues/${venueId}/claim`, {})
+      setClaimed(true)
+      setTimeout(onClaimed, 1200)
+    } catch (e) {
+      setClaimError(e instanceof Error ? e.message : 'Claim failed. Please try again.')
+    } finally {
+      setClaiming(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}
       onClick={onClose}>
@@ -207,16 +250,31 @@ function ClaimModal({ venueName, onClose }: { venueName: string; onClose: () => 
           <button onClick={onClose}><X size={16} style={{ color: 'rgba(74,96,128,0.6)' }} /></button>
         </div>
         <p className="text-sm font-bold mb-2" style={{ color: '#e0f2fe' }}>{venueName}</p>
-        <p className="text-xs leading-relaxed mb-5" style={{ color: 'rgba(224,242,254,0.5)' }}>
-          To claim ownership of this venue and manage its details, please contact us. We'll verify your ownership and get you set up.
-        </p>
-        <a
-          href="mailto:hello@partyradar.app?subject=Venue Claim Request"
-          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold transition-all"
-          style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}
-        >
-          CONTACT US →
-        </a>
+
+        {claimed ? (
+          <p className="text-xs font-bold py-3 text-center" style={{ color: '#00ff88' }}>✓ Venue claimed! Redirecting…</p>
+        ) : (
+          <>
+            <p className="text-xs leading-relaxed mb-5" style={{ color: 'rgba(224,242,254,0.5)' }}>
+              Claim ownership to manage events, update details, and access venue analytics.
+            </p>
+            {claimError && (
+              <p className="text-xs px-3 py-2 rounded-lg mb-3" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+                {claimError}
+              </p>
+            )}
+            <button
+              onClick={handleClaim}
+              disabled={claiming}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+              style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}
+            >
+              {claiming
+                ? <><div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> CLAIMING…</>
+                : 'CLAIM THIS VENUE →'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -246,7 +304,7 @@ function VenueDetailInner() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'events' | 'feed'>('events')
+  const [activeTab, setActiveTab] = useState<'events' | 'menu' | 'feed'>('events')
   const [posts, setPosts] = useState<VenuePost[]>([])
   const [postsLoading, setPostsLoading] = useState(false)
   const [postText, setPostText] = useState('')
@@ -263,6 +321,16 @@ function VenueDetailInner() {
   const [venueEvents, setVenueEvents] = useState<UpcomingEvent[]>([])
   const [pastEvents, setPastEvents] = useState<UpcomingEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
+  const [eventsError, setEventsError] = useState<string | null>(null)
+
+  // ── Menu / order state ──
+  const [menuData, setMenuData] = useState<MenuPartnership | null | undefined>(undefined)
+  const [menuLoading, setMenuLoading] = useState(false)
+  const [cart, setCart] = useState<Record<string, number>>({})
+  const [ordering, setOrdering] = useState(false)
+  const [orderSuccess, setOrderSuccess] = useState<{ total: number; newBalance: number; pointsEarned: number; message: string } | null>(null)
+  const [orderError, setOrderError] = useState<string | null>(null)
+  const [walletBalance, setWalletBalance] = useState<number | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -296,7 +364,7 @@ function VenueDetailInner() {
         setVenueEvents(upcoming?.data ?? [])
         setPastEvents(past?.data ?? [])
       })
-      .catch(() => {})
+      .catch(() => setEventsError('Failed to load events'))
       .finally(() => setEventsLoading(false))
   }, [id])
 
@@ -308,6 +376,24 @@ function VenueDetailInner() {
       .catch(() => {})
       .finally(() => setPostsLoading(false))
   }, [id])
+
+  // Load menu partnership (including available items) the first time menu tab opens
+  useEffect(() => {
+    if (activeTab !== 'menu' || menuData !== undefined) return
+    setMenuLoading(true)
+    api.get<{ data: MenuPartnership }>(`/partnerships/venue/${id}`)
+      .then((json) => setMenuData(json?.data ?? null))
+      .catch(() => setMenuData(null))
+      .finally(() => setMenuLoading(false))
+  }, [activeTab, id, menuData])
+
+  // Load wallet balance once when menu tab opens (refreshed after a successful order)
+  useEffect(() => {
+    if (activeTab !== 'menu' || !dbUser || walletBalance !== null) return
+    api.get<{ data: { balance: number } }>('/wallet')
+      .then((json) => setWalletBalance(json?.data?.balance ?? 0))
+      .catch(() => {})
+  }, [activeTab, dbUser, walletBalance])
 
   // ── Loading ──
   if (loading) {
@@ -382,10 +468,55 @@ function VenueDetailInner() {
     finally { setPosting(false) }
   }
 
+  function addToCart(itemId: string) {
+    setCart((c) => ({ ...c, [itemId]: (c[itemId] ?? 0) + 1 }))
+  }
+  function removeFromCart(itemId: string) {
+    setCart((c) => {
+      const qty = (c[itemId] ?? 0) - 1
+      if (qty <= 0) { const next = { ...c }; delete next[itemId]; return next }
+      return { ...c, [itemId]: qty }
+    })
+  }
+  async function placeOrder() {
+    if (ordering || !menuData) return
+    const cartEntries = Object.entries(cart).filter(([, q]) => q > 0)
+    if (cartEntries.length === 0) return
+    setOrdering(true)
+    setOrderError(null)
+    try {
+      type OrderResult = { total: number; newBalance: number; pointsEarned: number; message: string }
+      const json = await api.post<{ data: OrderResult }>(
+        `/partnerships/venue/${id}/order`,
+        { items: cartEntries.map(([itemId, qty]) => ({ itemId, qty })) },
+      )
+      if (json?.data) {
+        setOrderSuccess(json.data)
+        setCart({})
+        setWalletBalance(json.data.newBalance)
+      }
+    } catch (err: unknown) {
+      const msg = (err as any)?.message ?? 'Order failed. Please try again.'
+      setOrderError(msg)
+    } finally {
+      setOrdering(false)
+    }
+  }
+
   return (
     <div className="min-h-screen" style={{ background: '#0d0d0f', paddingTop: 56, paddingBottom: 88 }}>
 
-      {claimOpen && <ClaimModal venueName={venue.name} onClose={() => setClaimOpen(false)} />}
+      {claimOpen && (
+        <ClaimModal
+          venueId={venue.id}
+          venueName={venue.name}
+          onClose={() => setClaimOpen(false)}
+          onClaimed={() => {
+            setVenue((v) => v ? { ...v, isClaimed: true } : v)
+            setClaimOpen(false)
+          }}
+        />
+      )}
 
       {/* ─── Spotify toast ─── */}
       {spotifyToast && (
@@ -612,7 +743,7 @@ function VenueDetailInner() {
 
         {/* ─── Tab switcher ─── */}
         <div className="flex gap-1 p-1 rounded-2xl" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
-          {(['events', 'feed'] as const).map((tab) => (
+          {(['events', 'menu', 'feed'] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className="flex-1 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all"
               style={{
@@ -620,7 +751,7 @@ function VenueDetailInner() {
                 border: activeTab === tab ? '1px solid rgba(var(--accent-rgb),0.25)' : '1px solid transparent',
                 color: activeTab === tab ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
               }}>
-              {tab === 'events' ? '📅 EVENTS' : '📸 FEED'}
+              {tab === 'events' ? '📅 EVENTS' : tab === 'menu' ? '🍺 MENU' : '📸 FEED'}
             </button>
           ))}
         </div>
@@ -685,6 +816,17 @@ function VenueDetailInner() {
           }
 
           const totalCount = liveEvents.length + upcomingEvents.length + pastEvents.length
+          if (eventsError && totalCount === 0) {
+            return (
+              <div className="py-8 rounded-xl flex flex-col items-center gap-2" style={{ background: 'rgba(255,0,110,0.03)', border: '1px solid rgba(255,0,110,0.12)' }}>
+                <Calendar size={24} style={{ color: 'rgba(255,0,110,0.3)' }} />
+                <p className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,0,110,0.5)' }}>FAILED TO LOAD</p>
+                <p className="text-[10px] text-center px-6" style={{ color: 'rgba(224,242,254,0.3)' }}>
+                  {eventsError} — pull to refresh
+                </p>
+              </div>
+            )
+          }
           if (totalCount === 0) {
             return (
               <div className="py-8 rounded-xl flex flex-col items-center gap-2" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
@@ -743,6 +885,182 @@ function VenueDetailInner() {
                   <div className="flex flex-col gap-2">
                     {pastEvents.map((event) => <EventCard key={event.id} event={event} dim />)}
                   </div>
+                </div>
+              )}
+
+            </div>
+          )
+        })()}
+
+        {/* ─── Menu tab ─── */}
+        {activeTab === 'menu' && (() => {
+          if (menuLoading || menuData === undefined) {
+            return (
+              <div className="flex flex-col gap-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.06)' }} />
+                ))}
+              </div>
+            )
+          }
+
+          if (!menuData || !menuData.isActive) {
+            return (
+              <div className="py-12 rounded-xl flex flex-col items-center gap-2" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                <span style={{ fontSize: 28 }}>🍺</span>
+                <p className="text-[10px] font-bold tracking-widest mt-1" style={{ color: 'rgba(74,96,128,0.4)' }}>
+                  {!menuData ? 'NO MENU AVAILABLE' : 'MENU TEMPORARILY UNAVAILABLE'}
+                </p>
+                <p className="text-[10px] text-center px-6" style={{ color: 'rgba(224,242,254,0.25)' }}>
+                  {!menuData
+                    ? "This venue hasn't set up in-app ordering yet"
+                    : 'In-app ordering is currently paused — visit the venue directly'}
+                </p>
+              </div>
+            )
+          }
+
+          if (menuData.drinkMenuItems.length === 0) {
+            return (
+              <div className="py-12 rounded-xl flex flex-col items-center gap-2" style={{ background: 'rgba(var(--accent-rgb),0.02)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                <span style={{ fontSize: 28 }}>🍺</span>
+                <p className="text-[10px] font-bold tracking-widest mt-1" style={{ color: 'rgba(74,96,128,0.4)' }}>MENU COMING SOON</p>
+                <p className="text-[10px] text-center px-6" style={{ color: 'rgba(224,242,254,0.25)' }}>No items have been added yet</p>
+              </div>
+            )
+          }
+
+          const categories = [...new Set(menuData.drinkMenuItems.map((i) => i.category))]
+          const cartEntries = Object.entries(cart).filter(([, q]) => q > 0)
+          const cartTotal = cartEntries.reduce((sum, [iid, qty]) => {
+            const item = menuData.drinkMenuItems.find((i) => i.id === iid)
+            return sum + (item?.price ?? 0) * qty
+          }, 0)
+          const cartCount = cartEntries.reduce((sum, [, q]) => sum + q, 0)
+
+          return (
+            <div className="flex flex-col gap-5">
+
+              {/* Order success banner */}
+              {orderSuccess && (
+                <div className="rounded-xl p-4" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
+                  <p className="text-sm font-bold mb-1" style={{ color: '#00ff88' }}>✓ Order placed!</p>
+                  <p className="text-xs" style={{ color: 'rgba(224,242,254,0.6)' }}>
+                    £{orderSuccess.total.toFixed(2)} paid · {orderSuccess.message}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                    New balance: £{orderSuccess.newBalance.toFixed(2)}
+                  </p>
+                  <button onClick={() => setOrderSuccess(null)} className="mt-2 text-[10px] font-bold" style={{ color: 'rgba(0,255,136,0.55)' }}>
+                    DISMISS
+                  </button>
+                </div>
+              )}
+
+              {/* Wallet balance strip */}
+              {dbUser && walletBalance !== null && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl"
+                  style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                  <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>WALLET BALANCE</span>
+                  <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>£{walletBalance.toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Items grouped by category */}
+              {categories.map((cat) => (
+                <div key={cat}>
+                  <p className="text-[10px] font-bold tracking-widest mb-2" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+                    {cat.toUpperCase()}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {menuData.drinkMenuItems.filter((i) => i.category === cat).map((item) => {
+                      const qty = cart[item.id] ?? 0
+                      return (
+                        <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl"
+                          style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-lg object-cover shrink-0" />
+                          ) : (
+                            <div className="w-14 h-14 rounded-lg shrink-0 flex items-center justify-center text-2xl"
+                              style={{ background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.1)' }}>
+                              🍺
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold truncate" style={{ color: '#e0f2fe' }}>{item.name}</p>
+                            {item.description && (
+                              <p className="text-[10px] mt-0.5 line-clamp-2" style={{ color: 'rgba(224,242,254,0.4)' }}>{item.description}</p>
+                            )}
+                            <p className="text-sm font-black mt-1" style={{ color: 'var(--accent)' }}>£{item.price.toFixed(2)}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {qty > 0 ? (
+                              <>
+                                <button onClick={() => removeFromCart(item.id)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center"
+                                  style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
+                                  <Minus size={12} />
+                                </button>
+                                <span className="w-5 text-center text-sm font-bold" style={{ color: '#e0f2fe' }}>{qty}</span>
+                                <button onClick={() => addToCart(item.id)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center"
+                                  style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
+                                  <Plus size={12} />
+                                </button>
+                              </>
+                            ) : (
+                              <button onClick={() => addToCart(item.id)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold"
+                                style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)' }}>
+                                <Plus size={10} /> ADD
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Cart summary */}
+              {cartEntries.length > 0 && (
+                <div className="rounded-2xl p-4" style={{ background: 'rgba(7,7,26,0.95)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart size={14} style={{ color: 'var(--accent)' }} />
+                      <span className="text-xs font-bold" style={{ color: '#e0f2fe' }}>
+                        {cartCount} item{cartCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <span className="text-base font-black" style={{ color: 'var(--accent)' }}>£{cartTotal.toFixed(2)}</span>
+                  </div>
+
+                  {orderError && (
+                    <p className="text-[10px] font-bold mb-2" style={{ color: '#ff006e' }}>{orderError}</p>
+                  )}
+
+                  {!dbUser ? (
+                    <Link href="/account"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold"
+                      style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}>
+                      Sign in to order →
+                    </Link>
+                  ) : walletBalance !== null && walletBalance < cartTotal ? (
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold mb-1.5" style={{ color: 'rgba(255,0,110,0.7)' }}>Insufficient wallet balance</p>
+                      <Link href="/wallet" className="text-[10px] font-bold" style={{ color: 'var(--accent)' }}>
+                        Top up wallet →
+                      </Link>
+                    </div>
+                  ) : (
+                    <button onClick={placeOrder} disabled={ordering}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+                      style={{ background: 'rgba(var(--accent-rgb),0.12)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.3)' }}>
+                      {ordering ? <Loader2 size={13} className="animate-spin" /> : <ShoppingCart size={13} />}
+                      {ordering ? 'PLACING ORDER...' : 'PAY WITH WALLET'}
+                    </button>
+                  )}
                 </div>
               )}
 

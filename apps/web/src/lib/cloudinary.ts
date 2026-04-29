@@ -16,7 +16,12 @@ export function isVideoUrl(url: string): boolean {
   return url.includes('/video/upload/') || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)
 }
 
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024  // 20 MB
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024 // 200 MB
+
 export async function uploadImage(file: File, folder: UploadFolder = 'events'): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('Please select an image file (JPG, PNG, GIF, WebP)')
+  if (file.size > MAX_IMAGE_BYTES) throw new Error(`Image must be under ${MAX_IMAGE_BYTES / 1024 / 1024} MB`)
   // Get signed credentials from our backend
   const res = await api.post<{ data: UploadCredentials }>('/uploads/image', { folder })
   const data = res.data
@@ -44,6 +49,8 @@ export async function uploadImage(file: File, folder: UploadFolder = 'events'): 
 }
 
 export async function uploadVideo(file: File, folder: UploadFolder = 'sightings'): Promise<string> {
+  if (!file.type.startsWith('video/')) throw new Error('Please select a video file (MP4, MOV, WebM)')
+  if (file.size > MAX_VIDEO_BYTES) throw new Error(`Video must be under ${MAX_VIDEO_BYTES / 1024 / 1024} MB`)
   const res = await api.post<{ data: UploadCredentials }>('/uploads/video', { folder })
   const data = res.data
 

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -124,6 +125,10 @@ export default function SettingsPage() {
   const router = useRouter()
   const { dbUser, loading, refreshUser } = useAuth()
   const { lang, setLang, t } = useLanguage()
+  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear timer on unmount to prevent state updates after unmount
+  useEffect(() => { return () => { if (notifTimerRef.current) clearTimeout(notifTimerRef.current) } }, [])
 
   // ── Notification prefs ─────────────────────────────────────────────────────
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({
@@ -181,7 +186,7 @@ export default function SettingsPage() {
       await api.put('/auth/profile', { notifPrefs: updated })
       await refreshUser()
       setNotifSaved(true)
-      setTimeout(() => setNotifSaved(false), 2000)
+      notifTimerRef.current = setTimeout(() => setNotifSaved(false), 2000)
     } catch { /* silent */ } finally {
       setSavingNotif(false)
     }
@@ -189,14 +194,18 @@ export default function SettingsPage() {
 
   async function savePrivacyPref(key: keyof PrivacyPrefs, value: boolean) {
     setSavingPrivacy(true)
+    // Capture the pre-optimistic value before applying the optimistic update.
+    // Using !value in the revert is wrong when two keys toggle concurrently.
+    const originalValue = privacyPrefs[key]
     const updated = { ...privacyPrefs, [key]: value }
     setPrivacyPrefs(updated)
     try {
       await api.put('/auth/profile', { [key]: value })
       await refreshUser()
     } catch {
-      // Bug 7 fix: use functional update to avoid stale closure reverting a concurrent change
-      setPrivacyPrefs(prev => ({ ...prev, [key]: !value }))
+      // Revert this specific key to its original value without disturbing
+      // any other keys that may have been toggled concurrently.
+      setPrivacyPrefs(prev => ({ ...prev, [key]: originalValue }))
     } finally {
       setSavingPrivacy(false)
     }
@@ -288,13 +297,13 @@ export default function SettingsPage() {
                   {subTier}
                 </span>
                 {subTier === 'FREE' && (
-                  <a
+                  <Link
                     href="/pricing"
                     className="text-[10px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1"
                     style={{ background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)' }}
                   >
                     UPGRADE <ChevronRight size={10} />
-                  </a>
+                  </Link>
                 )}
               </div>
             </div>

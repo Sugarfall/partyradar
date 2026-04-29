@@ -1,10 +1,39 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { getSignedUploadUrl } from '../lib/cloudinary'
 import { z } from 'zod'
 
 const router = Router()
+
+// ── Per-user upload rate limiters ─────────────────────────────────────────────
+const videoUploadLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,  // 24 hours
+  max: 10,                          // 10 video uploads per day per user
+  keyGenerator: (req) => (req as any).user?.uid ?? req.ip ?? 'anon',
+  message: { error: 'Daily video upload limit reached. Try again tomorrow.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+const audioUploadLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => (req as any).user?.uid ?? req.ip ?? 'anon',
+  message: { error: 'Daily audio upload limit reached. Try again tomorrow.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+const imageUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,  // 1 hour
+  max: 30,                    // 30 image uploads per hour per user
+  keyGenerator: (req) => (req as any).user?.uid ?? req.ip ?? 'anon',
+  message: { error: 'Hourly image upload limit reached. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
 
 const ALLOWED_FOLDERS = ['events', 'avatars', 'sightings', 'profile-backgrounds'] as const
 
@@ -15,7 +44,7 @@ const FOLDER_TRANSFORMS: Partial<Record<typeof ALLOWED_FOLDERS[number], string>>
 }
 
 /** POST /api/uploads/image — get a signed Cloudinary upload credential */
-router.post('/image', requireAuth, async (req: AuthRequest, res, next) => {
+router.post('/image', imageUploadLimiter, requireAuth, async (req: AuthRequest, res, next) => {
   const schema = z.object({
     folder: z.enum(ALLOWED_FOLDERS).default('events'),
   })
@@ -31,7 +60,7 @@ router.post('/image', requireAuth, async (req: AuthRequest, res, next) => {
 })
 
 /** POST /api/uploads/video — get a signed Cloudinary upload credential for video posts */
-router.post('/video', requireAuth, async (req: AuthRequest, res, next) => {
+router.post('/video', videoUploadLimiter, requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const credentials = await getSignedUploadUrl('partyradar/sightings')
     res.json({ data: credentials })
@@ -41,7 +70,7 @@ router.post('/video', requireAuth, async (req: AuthRequest, res, next) => {
 })
 
 /** POST /api/uploads/audio — get a signed Cloudinary upload credential for voice notes */
-router.post('/audio', requireAuth, async (req: AuthRequest, res, next) => {
+router.post('/audio', audioUploadLimiter, requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const credentials = await getSignedUploadUrl('partyradar/voice')
     res.json({ data: credentials })

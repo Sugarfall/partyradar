@@ -75,7 +75,7 @@ router.post('/:id/dj-requests', requireAuth, async (req: AuthRequest, res, next)
 
     if (mustPay) {
       const wallet = await prisma.wallet.findUnique({ where: { userId } })
-      if (!wallet || wallet.balance < DJ_REQUEST_PRICE) {
+      if (!wallet || wallet.balance.toNumber() < DJ_REQUEST_PRICE) {
         throw new AppError(
           `Insufficient wallet balance — £${DJ_REQUEST_PRICE.toFixed(2)} required. ` +
           `Top up your wallet or upgrade to Basic+ for free song requests.`,
@@ -88,7 +88,7 @@ router.post('/:id/dj-requests', requireAuth, async (req: AuthRequest, res, next)
       // and then both decrement past zero.
       const request = await prisma.$transaction(async (tx) => {
         const fresh = await tx.wallet.findUnique({ where: { id: wallet.id }, select: { balance: true } })
-        if (!fresh || fresh.balance < DJ_REQUEST_PRICE) {
+        if (!fresh || fresh.balance.toNumber() < DJ_REQUEST_PRICE) {
           throw new AppError('Insufficient wallet balance', 402)
         }
         const updated = await tx.wallet.update({
@@ -224,7 +224,7 @@ router.patch('/:id/dj-requests/:reqId', requireAuth, async (req: AuthRequest, re
               walletId:    wallet.id,
               type:        'BONUS',
               amount:      DJ_REQUEST_PRICE,
-              balanceAfter: wallet.balance + DJ_REQUEST_PRICE,
+              balanceAfter: wallet.balance.toNumber() + DJ_REQUEST_PRICE,
               description: `Refund: DJ request declined — "${request.song}"`,
               status:      'COMPLETED',
               eventId,

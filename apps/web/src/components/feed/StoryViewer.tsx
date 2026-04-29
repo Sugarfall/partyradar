@@ -102,8 +102,8 @@ export default function StoryViewer({
   // Refs so advance() always reads the *current* indices, never stale closure values
   const groupIdxRef = useRef(startGroupIndex)
   const storyIdxRef = useRef(startStoryIndex ?? 0)
-  useEffect(() => { groupIdxRef.current = groupIdx }, [groupIdx])
-  useEffect(() => { storyIdxRef.current = storyIdx }, [storyIdx])
+  useEffect(() => { groupIdxRef.current = groupIdx; videoAdvancedRef.current = false }, [groupIdx])
+  useEffect(() => { storyIdxRef.current = storyIdx; videoAdvancedRef.current = false }, [storyIdx])
   const [paused, setPaused] = useState(false)
   const [liked, setLiked] = useState(false)
   const [replyText, setReplyText] = useState('')
@@ -112,18 +112,24 @@ export default function StoryViewer({
   const [deleting, setDeleting] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const replySentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startTsRef = useRef<number>(Date.now())
   const elapsedBeforePauseRef = useRef<number>(0)
+  // Guard: prevent advance() from firing more than once per story (e.g. from onTimeUpdate)
+  const videoAdvancedRef = useRef(false)
 
   const group = groups[groupIdx]
   const story = group?.stories[storyIdx]
   const media = story ? resolveStoryMedia(story) : null
 
-  // ── Lock body scroll ─────────────────────────────────────────────────────
+  // ── Lock body scroll + clear timers on unmount ───────────────────────────
   useEffect(() => {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
+    return () => {
+      document.body.style.overflow = prev
+      if (replySentTimerRef.current) clearTimeout(replySentTimerRef.current)
+    }
   }, [])
 
   // ── Advance logic ───────────────────────────────────────────────────────
@@ -289,7 +295,7 @@ export default function StoryViewer({
       await api.post(`/posts/${story.id}/comments`, { text: replyText.trim() })
       setReplyText('')
       setReplySent(true)
-      setTimeout(() => setReplySent(false), 1500)
+      replySentTimerRef.current = setTimeout(() => setReplySent(false), 1500)
     } catch {
       // swallow
     } finally {
@@ -344,10 +350,13 @@ export default function StoryViewer({
               if (v.duration && Number.isFinite(v.duration)) {
                 const capSec = MAX_VIDEO_DURATION_MS / 1000
                 setProgress(Math.min(1, v.currentTime / Math.min(v.duration, capSec)))
-                if (v.currentTime >= capSec) advance()
+                if (v.currentTime >= capSec && !videoAdvancedRef.current) {
+                  videoAdvancedRef.current = true
+                  advance()
+                }
               }
             }}
-            onEnded={advance}
+            onEnded={() => { if (!videoAdvancedRef.current) { videoAdvancedRef.current = true; advance() } }}
           />
         ) : media?.type === 'IMAGE' ? (
           <img

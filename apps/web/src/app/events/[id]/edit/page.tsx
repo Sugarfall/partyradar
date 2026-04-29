@@ -95,6 +95,12 @@ export default function EditEventPage() {
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const coverPreviewUrlRef = useRef<string | null>(null)
+
+  // Revoke object URL on unmount to prevent memory leak
+  useEffect(() => {
+    return () => { if (coverPreviewUrlRef.current) URL.revokeObjectURL(coverPreviewUrlRef.current) }
+  }, [])
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -168,8 +174,12 @@ export default function EditEventPage() {
   function handleCover(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    // Revoke previous blob URL to prevent memory leak (skip if it's a remote URL)
+    if (coverPreviewUrlRef.current?.startsWith('blob:')) URL.revokeObjectURL(coverPreviewUrlRef.current)
+    const url = URL.createObjectURL(file)
+    coverPreviewUrlRef.current = url
     setCoverFile(file)
-    setCoverPreview(URL.createObjectURL(file))
+    setCoverPreview(url)
   }
 
   function useMyLocation() {
@@ -357,7 +367,7 @@ export default function EditEventPage() {
             <div className="relative rounded-xl overflow-hidden mb-2" style={{ height: 180 }}>
               <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
               <button
-                onClick={() => { setCoverPreview(null); setCoverFile(null); update({ coverImageUrl: undefined }) }}
+                onClick={() => { if (coverPreviewUrlRef.current?.startsWith('blob:')) { URL.revokeObjectURL(coverPreviewUrlRef.current); coverPreviewUrlRef.current = null } setCoverPreview(null); setCoverFile(null); update({ coverImageUrl: undefined }) }}
                 className="absolute top-2 right-2 px-3 py-1 rounded-lg text-xs font-bold"
                 style={{ background: 'rgba(4,4,13,0.85)', border: '1px solid rgba(255,0,110,0.35)', color: '#ff006e' }}>
                 Remove

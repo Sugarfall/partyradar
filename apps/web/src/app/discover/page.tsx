@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Map, SlidersHorizontal, Calendar, MapPin, Users, Star, Lock, Search, X, LayoutList, Layers, ExternalLink, Phone, Globe, Heart, Sparkles } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useEvents, GLASGOW_VENUES } from '@/hooks/useEvents'
 import type { DemoVenue } from '@/hooks/useEvents'
@@ -1408,6 +1409,7 @@ function SearchOverlay({ onClose, userTier }: SearchOverlayProps) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function DiscoverPage() {
   const { dbUser } = useAuth()
+  const router = useRouter()
   const userTier = dbUser?.subscriptionTier ?? 'FREE'
 
   const [tab, setTab] = useState<'events' | 'venues'>(() => {
@@ -2034,21 +2036,27 @@ export default function DiscoverPage() {
     if (index >= events.length - 1) return
     setSlideDir('next')
     setIndex((i) => i + 1)
-    setTimeout(() => setSlideDir(null), 400)
+    if (slideDirTimerRef.current) clearTimeout(slideDirTimerRef.current)
+    slideDirTimerRef.current = setTimeout(() => setSlideDir(null), 400)
   }, [index, events.length])
 
   const goPrev = useCallback(() => {
     if (index <= 0) return
     setSlideDir('prev')
     setIndex((i) => i - 1)
-    setTimeout(() => setSlideDir(null), 400)
+    if (slideDirTimerRef.current) clearTimeout(slideDirTimerRef.current)
+    slideDirTimerRef.current = setTimeout(() => setSlideDir(null), 400)
   }, [index])
+
+  // Shared timer ref for slide animation direction reset
+  const slideDirTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Keyboard navigation — use refs so we always call the latest callbacks
   const goNextRef = useRef(goNext)
   const goPrevRef = useRef(goPrev)
   useEffect(() => { goNextRef.current = goNext }, [goNext])
   useEffect(() => { goPrevRef.current = goPrev }, [goPrev])
+  useEffect(() => { return () => { if (slideDirTimerRef.current) clearTimeout(slideDirTimerRef.current) } }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2445,7 +2453,7 @@ export default function DiscoverPage() {
               </div>
             </div>
           ) : events.length === 0 ? (
-            <EmptyState loading={syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
+            <EmptyState loading={syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => router.push('/events/create')} />
           ) : (() => {
             // Apply "For You" interest filter if active
             const userInterests: string[] = (dbUser as any)?.interests ?? []
@@ -2539,7 +2547,7 @@ export default function DiscoverPage() {
         <div className="flex-shrink-0 flex gap-0.5 px-4 py-1.5" style={{ background: 'rgba(4,4,13,0.6)' }}>
           {events.map((_, i) => (
             <button key={i}
-              onClick={() => { setSlideDir(i > index ? 'next' : 'prev'); setIndex(i); setTimeout(() => setSlideDir(null), 400) }}
+              onClick={() => { setSlideDir(i > index ? 'next' : 'prev'); setIndex(i); if (slideDirTimerRef.current) clearTimeout(slideDirTimerRef.current); slideDirTimerRef.current = setTimeout(() => setSlideDir(null), 400) }}
               className="flex-1 rounded-full transition-all duration-300"
               style={{
                 height: 2,
@@ -2563,7 +2571,7 @@ export default function DiscoverPage() {
           )}
           <div className="flex-1 overflow-hidden">
             {(isLoading || locationLoading) || events.length === 0 || !event ? (
-              <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => { if (typeof window !== 'undefined') window.location.href = '/events/create' }} />
+              <EmptyState loading={isLoading || locationLoading || syncing} onRetry={forceRetry} onSearch={() => setSearchOpen(true)} onCreateEvent={() => router.push('/events/create')} />
             ) : (
               <EventStage event={event} dir={slideDir} userTier={userTier} currency={currentCurrency} />
             )}

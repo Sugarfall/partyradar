@@ -4,6 +4,7 @@ import { requireAuth, optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { REFERRAL_CONFIG } from '@partyradar/shared'
+import { getGBPRates } from '../lib/fx'
 import crypto from 'crypto'
 
 const router = Router()
@@ -24,7 +25,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
     const userId = req.user!.dbUser.id
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { referralCode: true, referralBalance: true, username: true },
+      select: { referralCode: true, referralBalance: true, username: true, currency: true },
     })
     if (!user) throw new AppError('User not found', 404)
 
@@ -42,11 +43,20 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
       take: 50,
     })
 
-    const totalEarned = referrals.reduce((sum, r) => sum + r.earnedAmount, 0)
-    const pendingPayout = user.referralBalance
+    const totalEarned = referrals.reduce((sum, r) => sum + r.earnedAmount.toNumber(), 0)
+    const pendingPayout = user.referralBalance.toNumber()
     // Active = referee has made at least one purchase (earnedAmount > 0 on referral record)
-    const activeReferrals = referrals.filter((r) => r.earnedAmount > 0)
-    const inactiveReferrals = referrals.filter((r) => r.earnedAmount === 0)
+    const activeReferrals = referrals.filter((r) => r.earnedAmount.toNumber() > 0)
+    const inactiveReferrals = referrals.filter((r) => r.earnedAmount.toNumber() === 0)
+
+    // Convert GBP amounts to the user's preferred currency for display.
+    // A single getGBPRates() call is shared across all conversions (1 HTTP round-trip max).
+    const userCurrency = (user.currency || 'GBP').toUpperCase()
+    const rates = await getGBPRates()
+    const fxRate = userCurrency !== 'GBP' ? (rates[userCurrency] ?? null) : null
+    const displayCurrency = fxRate ? userCurrency : 'GBP'
+    const toDisplay = (gbp: number) =>
+      fxRate ? Math.round(gbp * fxRate * 100) / 100 : gbp
 
     res.json({
       data: {
@@ -58,12 +68,17 @@ router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
         inactiveReferrals: inactiveReferrals.length,
         referrals: referrals.map((r) => ({
           id: r.id,
-          earned: r.earnedAmount,
+          earned: r.earnedAmount.toNumber(),
           isPaidOut: r.isPaidOut,
-          isActive: r.earnedAmount > 0,
+          isActive: r.earnedAmount.toNumber() > 0,
           createdAt: r.createdAt.toISOString(),
         })),
         config: REFERRAL_CONFIG,
+        // Currency-aware display values (converted from GBP using live FX rates)
+        userCurrency: displayCurrency,
+        balanceInUserCurrency: toDisplay(pendingPayout),
+        totalEarnedInUserCurrency: toDisplay(totalEarned),
+        minPayoutInUserCurrency: toDisplay(REFERRAL_CONFIG.MIN_PAYOUT),
       },
     })
   } catch (err) {
@@ -229,7 +244,7 @@ router.get('/leaderboard', optionalAuth, async (_req, res, next) => {
         username: u.username,
         displayName: u.displayName,
         photoUrl: u.photoUrl,
-        earned: u.referralBalance,
+        earned: u.referralBalance.toNumber(),
         referralCount: countMap.get(u.id) ?? 0,
       })),
     })
@@ -238,36 +253,87 @@ router.get('/leaderboard', optionalAuth, async (_req, res, next) => {
   }
 })
 
-/** POST /api/referrals/payout — request payout */
+/** POST /api/referrals/payout — credit referral earnings to wallet balance */
 router.post('/payout', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { referralBalance: true, stripeCustomerId: true },
+      select: { referralBalance: true, currency: true },
     })
     if (!user) throw new AppError('User not found', 404)
-    if (user.referralBalance < REFERRAL_CONFIG.MIN_PAYOUT) {
+    if (user.referralBalance.toNumber() < REFERRAL_CONFIG.MIN_PAYOUT) {
       throw new AppError(`Minimum payout is £${REFERRAL_CONFIG.MIN_PAYOUT.toFixed(2)}`, 400)
     }
 
+    // Pre-fetch FX rates (cached) so we can use them synchronously inside the transaction
+    const userCurrencyCode = (user.currency || 'GBP').toUpperCase()
+    const rates = await getGBPRates()
+    const fxRate = userCurrencyCode !== 'GBP' ? (rates[userCurrencyCode] ?? null) : null
+
     // Atomic: re-read balance inside a transaction so concurrent requests
-    // cannot both pass the pre-check above and double-pay the same balance.
+    // cannot both pass the pre-check above and double-credit the same balance.
     const { paidOut } = await prisma.$transaction(async (tx) => {
       const fresh = await tx.user.findUnique({ where: { id: userId }, select: { referralBalance: true } })
-      if (!fresh || fresh.referralBalance < REFERRAL_CONFIG.MIN_PAYOUT) {
+      if (!fresh || fresh.referralBalance.toNumber() < REFERRAL_CONFIG.MIN_PAYOUT) {
         throw new AppError(`Minimum payout is £${REFERRAL_CONFIG.MIN_PAYOUT.toFixed(2)}`, 400)
       }
+      const amount = fresh.referralBalance.toNumber()
+
+      // Build currency note for the wallet transaction description
+      const localAmount = fxRate ? Math.round(amount * fxRate * 100) / 100 : null
+      const description = localAmount
+        ? `Referral earnings transferred to wallet (≈${userCurrencyCode} ${localAmount.toFixed(2)})`
+        : 'Referral earnings transferred to wallet'
+
+      // Upsert wallet (creates it if this is the user's first action)
+      const wallet = await tx.wallet.upsert({
+        where: { userId },
+        create: { userId },
+        update: {},
+      })
+
+      // Credit wallet balance (always stored in GBP — the platform's base currency)
+      const updatedWallet = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { increment: amount } },
+      })
+
+      // Ledger entry so the user can see the credit in their transaction history
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: 'REFERRAL_CREDIT',
+          amount,
+          balanceAfter: updatedWallet.balance,
+          description,
+        },
+      })
+
+      // Mark all pending referrals as paid out and zero the referral balance
       await tx.referral.updateMany({
         where: { referrerId: userId, isPaidOut: false },
         data: { isPaidOut: true },
       })
       await tx.user.update({ where: { id: userId }, data: { referralBalance: 0 } })
-      return { paidOut: fresh.referralBalance }
+
+      return { paidOut: amount }
     })
 
-    // In production, trigger Stripe payout here — for now just mark processed
-    res.json({ data: { paidOut, message: `£${paidOut.toFixed(2)} payout requested — will be processed within 3-5 business days` } })
+    // Build a user-facing success message in their local currency
+    const localPaidOut = fxRate ? Math.round(paidOut * fxRate * 100) / 100 : null
+    const message = localPaidOut
+      ? `${userCurrencyCode} ${localPaidOut.toFixed(2)} has been credited to your wallet`
+      : `£${paidOut.toFixed(2)} has been credited to your wallet`
+
+    res.json({
+      data: {
+        paidOut,
+        paidOutInUserCurrency: localPaidOut ?? paidOut,
+        userCurrency: localPaidOut ? userCurrencyCode : 'GBP',
+        message,
+      },
+    })
   } catch (err) {
     next(err)
   }

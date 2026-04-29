@@ -74,6 +74,7 @@ router.post('/guests', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const { eventId, message } = req.body as { eventId: string; message: string }
     if (!eventId || !message?.trim()) throw new AppError('eventId and message required', 400)
+    if (message.trim().length > 2000) throw new AppError('Message too long — max 2000 characters', 400)
 
     const event = await prisma.event.findUnique({ where: { id: eventId } })
     if (!event) throw new AppError('Event not found', 404)

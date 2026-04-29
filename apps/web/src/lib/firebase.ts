@@ -153,8 +153,14 @@ export async function signInWithApple(
   authInstance: ReturnType<typeof getAuth>
 ): Promise<{ user: User }> {
   if (DEV_MODE) throw new Error('Apple sign-in not available in dev mode')
-  const { signInWithPopup: _fn } = await import('firebase/auth')
-  return _fn(authInstance, appleProvider)
+  const { signInWithPopup: _popupFn, signInWithRedirect: _redirectFn } = await import('firebase/auth')
+  // Mobile Safari blocks popups — use redirect flow to avoid a silent no-op
+  if (isMobile()) {
+    await _redirectFn(authInstance, appleProvider)
+    // signInWithRedirect never resolves — page reloads, result picked up by getRedirectResult
+    return new Promise(() => {})
+  }
+  return _popupFn(authInstance, appleProvider)
 }
 
 export async function sendEmailVerification(user: User): Promise<void> {

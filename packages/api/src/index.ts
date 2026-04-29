@@ -73,10 +73,12 @@ import medalsRouter from './routes/medals'
 import specialEventsRouter from './routes/special-events'
 import compGroupsRouter from './routes/comp-groups'
 import challengesRouter, { dispatchWeekendChallenges } from './routes/challenges'
+import partnershipsRouter from './routes/partnerships'
 import { errorHandler } from './middleware/errorHandler'
-import { sendNotification, sendNotificationToMany } from './lib/fcm'
+import { messaging, auth as firebaseAuth } from './lib/firebase-admin'
+import { Prisma } from '@partyradar/db'
+import type { NotificationType } from '@partyradar/shared'
 import { deleteCloudinaryAsset } from './lib/cloudinary'
-import { auth as firebaseAuth } from './lib/firebase-admin'
 import rateLimit from 'express-rate-limit'
 
 const app = express()
@@ -105,11 +107,12 @@ app.set('trust proxy', 1)
 // the request, and always returns 204 with the correct Access-Control headers.
 app.options('*', (req, res) => {
   const origin = req.headers.origin ?? ''
+  const isDev = process.env['NODE_ENV'] !== 'production'
+  // M9 fix: localhost origins only allowed in non-production environments.
   const allowed =
     /^https:\/\/partyradar[a-z0-9-]*\.vercel\.app$/i.test(origin) ||
     /^https:\/\/([a-z0-9-]+\.)?partyradar\.app$/i.test(origin) ||
-    origin === 'http://localhost:3000' ||
-    origin === 'http://localhost:3001' ||
+    (isDev && (origin === 'http://localhost:3000' || origin === 'http://localhost:3001')) ||
     (!!process.env['FRONTEND_URL'] && origin === process.env['FRONTEND_URL'])
   if (allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin)
@@ -134,9 +137,9 @@ export const io = new Server(httpServer, {
     // the real auth gate.
     origin: (origin, callback) => {
       if (!origin) return callback(null, true)
+      const isDev = process.env['NODE_ENV'] !== 'production'
       const explicit = [
-        'http://localhost:3000',
-        'http://localhost:3001',
+        ...(isDev ? ['http://localhost:3000', 'http://localhost:3001'] : []),
         process.env['FRONTEND_URL'] ?? '',
         ...(process.env['ADDITIONAL_ORIGINS']?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
       ].filter(Boolean)
@@ -349,11 +352,12 @@ app.use(helmet({
 }))
 
 // Build CORS allowlist once at boot so we can log it and catch misconfig early.
-// Includes: localhost (dev), FRONTEND_URL (prod), and a comma-separated
+// Includes: localhost (dev-only), FRONTEND_URL (prod), and a comma-separated
 // ADDITIONAL_ORIGINS for preview deploys you explicitly trust.
+// M9 fix: localhost ports are only added in non-production so they can't reach
+// a production API from a local dev machine accidentally.
 const CORS_ALLOWLIST = [
-  'http://localhost:3000',
-  'http://localhost:3001',
+  ...(process.env['NODE_ENV'] !== 'production' ? ['http://localhost:3000', 'http://localhost:3001'] : []),
   process.env['FRONTEND_URL'] ?? '',
   ...(process.env['ADDITIONAL_ORIGINS']?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
 ].filter(Boolean)
@@ -559,6 +563,7 @@ app.use('/api/medals', medalsRouter)
 app.use('/api/special-events', specialEventsRouter)
 app.use('/api/comp-groups', compGroupsRouter)
 app.use('/api/challenges', challengesRouter)
+app.use('/api/partnerships', partnershipsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 
@@ -723,6 +728,107 @@ app.get('/api/health/events-full', async (_req, res) => {
 
 app.use(errorHandler)
 
+// ─── Batch notification helper (cron-local, not exported) ────────────────────
+// Sends a notification to many users in O(1) DB queries instead of O(N).
+//
+// Strategy:
+//   1. Insert all Notification rows in one createMany call.
+//   2. Build the FCM multicast payload from the tokens already in memory
+//      (no extra DB read per user).
+//   3. After the FCM send, clear tokens for any registrations that FCM
+//      reported as invalid — one updateMany call instead of N individual updates.
+//
+// This replaces the sendNotificationToMany(allUserIds, ...) pattern in cron
+// jobs that fan out to all (or many) users.  The external sendNotification /
+// sendNotificationToMany functions in lib/fcm.ts are NOT changed so that other
+// call-sites continue to work as before.
+interface BatchNotificationOpts {
+  type: NotificationType
+  title: string
+  body: string
+  data?: Record<string, string>
+}
+interface UserTokenRow {
+  id: string
+  fcmToken: string | null
+}
+
+async function sendBatchNotification(users: UserTokenRow[], opts: BatchNotificationOpts): Promise<void> {
+  if (users.length === 0) return
+
+  const { type, title, body, data } = opts
+  const notifUrl = data?.eventId
+    ? `/events/${data.eventId}`
+    : data?.specialEventId
+      ? `/special-events/${data.specialEventId}`
+      : '/discover'
+
+  // 1. Persist notification rows for every recipient in a single round-trip.
+  await prisma.notification.createMany({
+    data: users.map((u) => ({
+      userId: u.id,
+      type,
+      title,
+      body,
+      data: (data ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+    })),
+    skipDuplicates: true,
+  })
+
+  // 2. Send FCM pushes only to users who have a token.
+  const withToken = users.filter((u): u is UserTokenRow & { fcmToken: string } => !!u.fcmToken)
+  if (withToken.length === 0) return
+
+  // Firebase Admin sendEachForMulticast is limited to 500 tokens per call.
+  // Chunk into batches of 500 and collect invalid token IDs for cleanup.
+  const invalidTokenUserIds: string[] = []
+
+  const CHUNK = 500
+  for (let i = 0; i < withToken.length; i += CHUNK) {
+    const chunk = withToken.slice(i, i + CHUNK)
+    const tokens = chunk.map((u) => u.fcmToken)
+
+    try {
+      const response = await messaging.sendEachForMulticast({
+        tokens,
+        notification: { title, body },
+        data: { ...(data ?? {}), url: notifUrl },
+        webpush: {
+          notification: {
+            title,
+            body,
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-72.png',
+            vibrate: [200, 100, 200],
+          },
+          fcmOptions: { link: notifUrl },
+        },
+      })
+
+      // Collect users whose token FCM rejected as invalid/unregistered.
+      response.responses.forEach((resp: { success: boolean; error?: { code?: string } }, idx: number) => {
+        if (
+          !resp.success &&
+          (resp.error?.code === 'messaging/invalid-registration-token' ||
+            resp.error?.code === 'messaging/registration-token-not-registered')
+        ) {
+          invalidTokenUserIds.push(chunk[idx]!.id)
+        }
+      })
+    } catch (err) {
+      console.error('[sendBatchNotification] FCM multicast error:', err)
+    }
+  }
+
+  // 3. Clear stale tokens in one updateMany instead of N individual updates.
+  if (invalidTokenUserIds.length > 0) {
+    await prisma.user.updateMany({
+      where: { id: { in: invalidTokenUserIds } },
+      data: { fcmToken: null },
+    })
+  }
+}
+
 // ─── Cron Jobs ────────────────────────────────────────────────────────────────
 
 // ── Neon keepalive ───────────────────────────────────────────────────────────
@@ -806,6 +912,12 @@ cron.schedule('*/5 * * * *', async () => {
 })
 
 // Every hour: send 1-hour-before event reminders
+//
+// Performance: previously called sendNotificationToMany(guestUserIds, ...) which
+// did 2 DB queries per guest (notification.create + user.findUnique for the FCM
+// token).  Now we join the FCM token into the event-guest query so no extra
+// per-user DB reads are needed, and use sendBatchNotification (createMany +
+// FCM multicast) for each event.
 cron.schedule('0 * * * *', async () => {
   try {
     const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000)
@@ -817,24 +929,29 @@ cron.schedule('0 * * * *', async () => {
         isCancelled: false,
         startsAt: { gte: fiftyMinFromNow, lte: oneHourFromNow },
       },
-      include: {
-        guests: { where: { status: 'CONFIRMED' }, select: { userId: true } },
+      select: {
+        id: true,
+        name: true,
+        // Fetch token alongside each confirmed guest in one JOIN
+        guests: {
+          where: { status: 'CONFIRMED' },
+          select: {
+            user: { select: { id: true, fcmToken: true } },
+          },
+        },
       },
     })
 
-    // M4 fix: parallelize per-event fan-out (was sequential awaits per guest)
     await Promise.allSettled(
-      upcomingEvents.map((event) =>
-        sendNotificationToMany(
-          event.guests.map((g) => g.userId),
-          {
-            type: 'EVENT_REMINDER',
-            title: `${event.name} starts in 1 hour!`,
-            body: `Get ready — it's almost time`,
-            data: { eventId: event.id },
-          },
-        )
-      )
+      upcomingEvents.map((event) => {
+        const users: UserTokenRow[] = event.guests.map((g) => g.user)
+        return sendBatchNotification(users, {
+          type: 'EVENT_REMINDER',
+          title: `${event.name} starts in 1 hour!`,
+          body: `Get ready — it's almost time`,
+          data: { eventId: event.id },
+        })
+      })
     )
 
     if (upcomingEvents.length > 0) {
@@ -846,6 +963,9 @@ cron.schedule('0 * * * *', async () => {
 })
 
 // Every 30 minutes: send dress code reminder 2h before events that have a dress code
+//
+// Performance: same N+1 fix as the hourly reminder — FCM token fetched in the
+// same query as the guest list, sendBatchNotification used for all sends.
 cron.schedule('*/30 * * * *', async () => {
   try {
     const in2h  = new Date(Date.now() + 2 * 60 * 60 * 1000)
@@ -858,24 +978,30 @@ cron.schedule('*/30 * * * *', async () => {
         dressCode: { not: null },
         startsAt: { gte: in90m, lte: in2h },
       },
-      include: {
-        guests: { where: { status: 'CONFIRMED' }, select: { userId: true } },
+      select: {
+        id: true,
+        name: true,
+        dressCode: true,
+        // Fetch token alongside each confirmed guest in one JOIN
+        guests: {
+          where: { status: 'CONFIRMED' },
+          select: {
+            user: { select: { id: true, fcmToken: true } },
+          },
+        },
       },
     })
 
-    // M4 fix: parallelize per-event fan-out (was sequential awaits per guest)
     await Promise.allSettled(
-      events.map((event) =>
-        sendNotificationToMany(
-          event.guests.map((g) => g.userId),
-          {
-            type: 'EVENT_REMINDER',
-            title: `👔 ${event.name} — dress code reminder`,
-            body: `Dress code: ${event.dressCode}. Event starts in ~2 hours.`,
-            data: { eventId: event.id },
-          },
-        )
-      )
+      events.map((event) => {
+        const users: UserTokenRow[] = event.guests.map((g) => g.user)
+        return sendBatchNotification(users, {
+          type: 'EVENT_REMINDER',
+          title: `👔 ${event.name} — dress code reminder`,
+          body: `Dress code: ${event.dressCode}. Event starts in ~2 hours.`,
+          data: { eventId: event.id },
+        })
+      })
     )
 
     if (events.length > 0) {
@@ -909,73 +1035,60 @@ cron.schedule('0 14 * * 6', async () => {
   }
 })
 
-// ── Monthly wallet loyalty bonus (1st of month, 10:00 UTC) ───────────────────
-// Awards 2.5% of balance as a loyalty bonus to all wallets with ≥ £1.
-// Capped at £50 per wallet per month to keep economics sane.
-// Uses lastBonusPaidAt to prevent double-payment even if cron fires twice.
-cron.schedule('0 10 1 * *', async () => {
-  try {
-    console.log('[Cron] Running monthly loyalty bonus…')
-    const BONUS_RATE  = 0.025  // 2.5 %
-    const BONUS_CAP   = 50     // £50 max
-    const MIN_BALANCE = 1      // £1 minimum to receive bonus
-
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-
-    // Find wallets that haven't received a bonus this month and have ≥ £1
-    const wallets = await prisma.wallet.findMany({
-      where: {
-        balance: { gte: MIN_BALANCE },
-        OR: [
-          { lastBonusPaidAt: null },
-          { lastBonusPaidAt: { lt: monthStart } },
-        ],
-      },
-      select: { id: true, userId: true, balance: true },
-    })
-
-    let paid = 0
-    for (const wallet of wallets) {
-      const bonus = Math.min(Math.round(wallet.balance * BONUS_RATE * 100) / 100, BONUS_CAP)
-      if (bonus < 0.01) continue
-      await prisma.$transaction([
-        prisma.wallet.update({
-          where: { id: wallet.id },
-          data: { balance: { increment: bonus }, lastBonusPaidAt: now },
-        }),
-        prisma.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: 'BONUS',
-            amount: bonus,
-            balanceAfter: wallet.balance + bonus,
-            description: `Monthly loyalty bonus (2.5% on £${wallet.balance.toFixed(2)})`,
-            status: 'COMPLETED',
-          },
-        }),
-      ])
-      paid++
-    }
-
-    console.log(`[Cron] Monthly bonus paid to ${paid} wallet(s)`)
-  } catch (err) {
-    console.error('[Cron] Error paying monthly bonus:', err)
-  }
-})
 
 // ── Special Event lifecycle notifications ─────────────────────────────────────
 // Every 15 minutes: check for events that are starting soon, just started,
 // or ending soon, and push the appropriate notification to all users.
 // A SpecialEventPush row is written after each send so we never double-fire.
+//
+// Performance: previously called sendNotificationToMany(allUserIds, ...) which
+// did 2 DB queries per user (notification.create + user.findUnique for the FCM
+// token). At 10 k users that was 20 k queries per push. Now we:
+//   - Fetch id+fcmToken for all non-banned users in ONE query, lazily (only
+//     when at least one unsent event is found for that phase).
+//   - Use sendBatchNotification which writes all Notification rows via
+//     createMany and sends FCM via sendEachForMulticast (chunked at 500).
+//   - Total DB cost per tick: O(phases with pending events) instead of O(users).
 cron.schedule('*/15 * * * *', async () => {
   try {
     const now = new Date()
 
-    // Helper: get all non-banned user IDs once per tick
-    const getUserIds = async () => {
-      const users = await prisma.user.findMany({ where: { isBanned: false }, select: { id: true } })
-      return users.map((u) => u.id)
+    // Lazily fetched once per tick (only if there is at least one event to push).
+    // Includes users with AND without tokens — createMany needs all recipients,
+    // but sendBatchNotification filters to token-holders for the FCM send.
+    let allUsersCache: UserTokenRow[] | null = null
+    const getAllUsers = async (): Promise<UserTokenRow[]> => {
+      if (allUsersCache !== null) return allUsersCache
+      allUsersCache = await prisma.user.findMany({
+        where: { isBanned: false },
+        select: { id: true, fcmToken: true },
+      })
+      return allUsersCache
+    }
+
+    // Helper: run one phase (startingSoon / justStarted / endingSoon)
+    const runPhase = async (
+      events: Array<{ id: string; name: string }>,
+      pushType: string,
+      buildNotif: (name: string) => { title: string; body: string },
+      specialEventIdKey: string = 'specialEventId',
+    ) => {
+      for (const event of events) {
+        const alreadySent = await prisma.specialEventPush.findFirst({
+          where: { specialEventId: event.id, type: pushType },
+        })
+        if (alreadySent) continue
+
+        const users = await getAllUsers()
+        const { title, body } = buildNotif(event.name)
+        const data: Record<string, string> = { [specialEventIdKey]: event.id }
+
+        await sendBatchNotification(users, { type: 'SPECIAL_EVENT', title, body, data })
+        await prisma.specialEventPush.create({
+          data: { specialEventId: event.id, type: pushType, title, body, recipientCount: users.length },
+        })
+        console.log(`[Cron] SpecialEvent "${pushType}" push sent for "${event.name}" (${users.length} users)`)
+      }
     }
 
     // 1. Starting in ~24 h (window: 23 h 45 m – 24 h 15 m from now)
@@ -983,50 +1096,35 @@ cron.schedule('*/15 * * * *', async () => {
     const in24h15m = new Date(now.getTime() + (24 * 60 + 15) * 60_000)
     const startingSoon = await prisma.specialEvent.findMany({
       where: { isPublished: true, startsAt: { gte: in23h45m, lte: in24h15m } },
+      select: { id: true, name: true },
     })
-    for (const event of startingSoon) {
-      const alreadySent = await prisma.specialEventPush.findFirst({ where: { specialEventId: event.id, type: 'STARTING_SOON' } })
-      if (alreadySent) continue
-      const userIds = await getUserIds()
-      const title = `⏰ ${event.name} starts tomorrow!`
-      const body = 'Get ready — the special event kicks off in 24 hours!'
-      await sendNotificationToMany(userIds, { type: 'SPECIAL_EVENT', title, body, data: { specialEventId: event.id } })
-      await prisma.specialEventPush.create({ data: { specialEventId: event.id, type: 'STARTING_SOON', title, body, recipientCount: userIds.length } })
-      console.log(`[Cron] SpecialEvent "starting soon" push sent for "${event.name}" (${userIds.length} users)`)
-    }
+    await runPhase(startingSoon, 'STARTING_SOON', (name) => ({
+      title: `⏰ ${name} starts tomorrow!`,
+      body: 'Get ready — the special event kicks off in 24 hours!',
+    }))
 
     // 2. Just started (startsAt within the last 15 min)
     const fifteenMinAgo = new Date(now.getTime() - 15 * 60_000)
     const justStarted = await prisma.specialEvent.findMany({
       where: { isPublished: true, startsAt: { gte: fifteenMinAgo, lte: now } },
+      select: { id: true, name: true },
     })
-    for (const event of justStarted) {
-      const alreadySent = await prisma.specialEventPush.findFirst({ where: { specialEventId: event.id, type: 'STARTED' } })
-      if (alreadySent) continue
-      const userIds = await getUserIds()
-      const title = `🚀 ${event.name} has started!`
-      const body = 'The special event is live now — go earn your medals before time runs out!'
-      await sendNotificationToMany(userIds, { type: 'SPECIAL_EVENT', title, body, data: { specialEventId: event.id } })
-      await prisma.specialEventPush.create({ data: { specialEventId: event.id, type: 'STARTED', title, body, recipientCount: userIds.length } })
-      console.log(`[Cron] SpecialEvent "started" push sent for "${event.name}" (${userIds.length} users)`)
-    }
+    await runPhase(justStarted, 'STARTED', (name) => ({
+      title: `🚀 ${name} has started!`,
+      body: 'The special event is live now — go earn your medals before time runs out!',
+    }))
 
     // 3. Ending in ~2 h (window: 1 h 45 m – 2 h 15 m from now)
     const in1h45m = new Date(now.getTime() + (1 * 60 + 45) * 60_000)
     const in2h15m = new Date(now.getTime() + (2 * 60 + 15) * 60_000)
     const endingSoon = await prisma.specialEvent.findMany({
       where: { isPublished: true, endsAt: { gte: in1h45m, lte: in2h15m } },
+      select: { id: true, name: true },
     })
-    for (const event of endingSoon) {
-      const alreadySent = await prisma.specialEventPush.findFirst({ where: { specialEventId: event.id, type: 'ENDING_SOON' } })
-      if (alreadySent) continue
-      const userIds = await getUserIds()
-      const title = `⚡ ${event.name} ends in 2 hours!`
-      const body = 'Hurry up — time is running out to earn your medals!'
-      await sendNotificationToMany(userIds, { type: 'SPECIAL_EVENT', title, body, data: { specialEventId: event.id } })
-      await prisma.specialEventPush.create({ data: { specialEventId: event.id, type: 'ENDING_SOON', title, body, recipientCount: userIds.length } })
-      console.log(`[Cron] SpecialEvent "ending soon" push sent for "${event.name}" (${userIds.length} users)`)
-    }
+    await runPhase(endingSoon, 'ENDING_SOON', (name) => ({
+      title: `⚡ ${name} ends in 2 hours!`,
+      body: 'Hurry up — time is running out to earn your medals!',
+    }))
   } catch (err) {
     console.error('[Cron] Error in special event lifecycle cron:', err)
   }

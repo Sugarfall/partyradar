@@ -8,6 +8,7 @@ import { Rss, Zap, Users, MapPin, Calendar, Plus, Ticket, Camera } from 'lucide-
 import { api } from '@/lib/api'
 import { DEV_MODE } from '@/lib/firebase'
 import { useAuth } from '@/hooks/useAuth'
+import { formatPrice } from '@/lib/currency'
 import ComposePostModal from '@/components/feed/ComposePostModal'
 import StoryViewer, { type StoryGroup, type StoryPost } from '@/components/feed/StoryViewer'
 import { areAllViewed, countUnviewed } from '@/lib/storyViewed'
@@ -73,7 +74,7 @@ function UpcomingEventCard({ event }: { event: UpcomingEvent }) {
             {event.ticketPrice != null && event.ticketPrice > 0 ? (
               <span className="text-xs font-black shrink-0 px-2 py-1 rounded-lg"
                 style={{ color: '#00ff88', background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)' }}>
-                £{event.ticketPrice.toFixed(2)}
+                {formatPrice(event.ticketPrice)}
               </span>
             ) : (
               <span className="text-[9px] font-black shrink-0 px-2 py-1 rounded-lg"

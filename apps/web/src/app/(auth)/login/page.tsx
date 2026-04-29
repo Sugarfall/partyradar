@@ -1,11 +1,9 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { sendEmailVerification } from '@/lib/firebase'
-import { auth } from '@/lib/firebase'
 import { Eye, EyeOff, Mail } from 'lucide-react'
 
 /** Only allow relative same-origin redirects (defence against open-redirect). */
@@ -19,7 +17,7 @@ function LoginInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const nextPath = safeNext(searchParams?.get('next') ?? null)
-  const { signIn, signInWithGoogle, signInWithApple } = useAuth()
+  const { signIn, signInWithGoogle, signInWithApple, resendVerificationEmail } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -29,18 +27,23 @@ function LoginInner() {
   const [error, setError] = useState<string | null>(null)
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
   const [resendCooldown, setResendCooldown] = useState(0)
+  const resendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => { return () => { if (resendIntervalRef.current) clearInterval(resendIntervalRef.current) } }, [])
   const [focused, setFocused] = useState<'email' | 'pass' | null>(null)
 
   async function handleResendVerification() {
-    const user = auth.currentUser
-    if (!user || resendCooldown > 0) return
+    if (resendCooldown > 0) return
     try {
-      await sendEmailVerification(user)
+      // Uses the unverifiedUserRef stored in AuthProvider — safe even though
+      // signIn() calls signOut() before throwing, which nulls auth.currentUser.
+      await resendVerificationEmail()
       setResendCooldown(60)
-      const interval = setInterval(() => {
-        setResendCooldown(v => { if (v <= 1) { clearInterval(interval); return 0 }; return v - 1 })
+      if (resendIntervalRef.current) clearInterval(resendIntervalRef.current)
+      resendIntervalRef.current = setInterval(() => {
+        setResendCooldown(v => { if (v <= 1) { clearInterval(resendIntervalRef.current!); resendIntervalRef.current = null; return 0 }; return v - 1 })
       }, 1000)
-    } catch { /* ignore */ }
+    } catch { /* ignore — non-fatal */ }
   }
 
   async function handleEmailLogin(e: React.FormEvent) {

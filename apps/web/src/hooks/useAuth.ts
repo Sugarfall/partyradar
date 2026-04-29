@@ -51,6 +51,9 @@ interface AuthContextValue {
   signInWithApple: () => Promise<void>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
+  /** Re-send the verification email after a failed sign-in. Only works if
+   *  the last signIn attempt returned an `auth/email-not-verified` error. */
+  resendVerificationEmail: () => Promise<void>
 }
 
 import { createElement } from 'react'
@@ -63,6 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   // Prevent duplicate /auth/sync calls when signIn triggers onAuthStateChanged
   const syncingRef = useRef(false)
+  // Hold the last unverified Firebase user so the login page can resend the
+  // verification email even after we've signed the user out of Firebase.
+  const unverifiedUserRef = useRef<User | null>(null)
 
   async function syncUser(user: User) {
     // In dev mode (no Firebase config), use a local mock DB user
@@ -76,7 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Unverified users get a DB record (needed by the registration wizard)
     // but the cookie stays absent so Next.js middleware blocks protected routes.
     if (typeof document !== 'undefined' && user.emailVerified) {
-      document.cookie = 'pr_auth=1; Max-Age=86400; path=/; SameSite=Lax'
+      const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+      document.cookie = `pr_auth=1; Max-Age=86400; path=/; SameSite=Lax${secure}`
     }
     // Register FCM token (non-blocking)
     getFCMToken().then((token) => {
@@ -94,7 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           syncingRef.current = false
           setLoading(false) // Bug 20 fix: clear loading after redirect-result sync
         }
-      }).catch(() => {})
+      }).catch((err: unknown) => {
+        // Surface OAuth errors (e.g. domain not authorised, operation-not-allowed)
+        // instead of swallowing them — user would otherwise see a frozen loading screen.
+        console.error('[auth] getRedirectResult failed:', err)
+        setLoading(false)
+      })
     }
 
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -143,6 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Hard-block unverified accounts — resend the link and throw so the
       // login page can surface a clear "check your inbox" message.
       if (!DEV_MODE && !cred.user.emailVerified) {
+        // Store the user ref BEFORE signing out so resendVerificationEmail()
+        // can use it — auth.currentUser is null after signOut.
+        unverifiedUserRef.current = cred.user
         sendEmailVerification(cred.user).catch(() => {})
         // Sign out of Firebase so no stale session lingers in memory
         await signOut(auth)
@@ -193,18 +208,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     await signOut(auth)
     setDbUser(null)
-    // Clear the presence cookie so middleware redirects work correctly
-    document.cookie = 'pr_auth=; Max-Age=0; path=/'
+    // Clear the presence cookie so middleware redirects work correctly.
+    // Include Secure flag when on HTTPS so the browser recognises it as
+    // the same cookie that was set with Secure.
+    const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : ''
+    document.cookie = `pr_auth=; Max-Age=0; path=/${secure}`
   }
 
   async function refreshUser() {
     if (firebaseUser) await syncUser(firebaseUser)
   }
 
+  async function resendVerificationEmail() {
+    const user = unverifiedUserRef.current
+    if (!user) return
+    await sendEmailVerification(user)
+  }
+
   return createElement(
     AuthContext.Provider,
     {
-      value: { firebaseUser, dbUser, loading, signIn, signUp, signInWithGoogle, signInWithApple, logout, refreshUser },
+      value: { firebaseUser, dbUser, loading, signIn, signUp, signInWithGoogle, signInWithApple, logout, refreshUser, resendVerificationEmail },
     },
     children
   )
@@ -220,6 +244,7 @@ const AUTH_FALLBACK: AuthContextValue = {
   signInWithApple: async () => {},
   logout: async () => {},
   refreshUser: async () => {},
+  resendVerificationEmail: async () => {},
 }
 
 export function useAuth() {

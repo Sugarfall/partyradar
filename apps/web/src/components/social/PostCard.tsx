@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Heart, MapPin, Calendar, Zap } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -38,6 +38,11 @@ export default function PostCard({ post }: PostCardProps) {
   const [liked, setLiked] = useState(false)
   const [likes, setLikes] = useState(post.likesCount ?? 0)
   const [liking, setLiking] = useState(false)
+
+  // Record view once per mount — server deduplicates to 1 per 6h per user
+  useEffect(() => {
+    api.post(`/posts/${post.id}/view`, {}).catch(() => {})
+  }, [post.id])
 
   const initials = post.user.displayName?.[0]?.toUpperCase() ?? '?'
 

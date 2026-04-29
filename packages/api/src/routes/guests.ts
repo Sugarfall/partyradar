@@ -1,10 +1,11 @@
 import { Router } from 'express'
+import { timingSafeEqual } from 'node:crypto'
 import { prisma } from '@partyradar/db'
 import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { sendNotification } from '../lib/fcm'
-import { TIERS } from '@partyradar/shared'
+import { HOST_TIERS } from '@partyradar/shared'
 import type { SubscriptionTier } from '@partyradar/shared'
 import { z } from 'zod'
 
@@ -15,12 +16,22 @@ const userSelect = {
   photoUrl: true, ageVerified: true, alcoholFriendly: true, subscriptionTier: true,
 }
 
-/** GET /api/events/:id/guests — host only, paginated */
+/** Returns true if userId is either the event host or an assigned moderator */
+async function isHostOrModerator(eventId: string, userId: string, hostId: string): Promise<boolean> {
+  if (userId === hostId) return true
+  const mod = await prisma.eventModerator.findUnique({
+    where: { eventId_userId: { eventId, userId } },
+  })
+  return !!mod
+}
+
+/** GET /api/events/:id/guests — host or moderator, paginated */
 router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const event = await prisma.event.findUnique({ where: { id: req.params['id'] } })
     if (!event) throw new AppError('Event not found', 404)
-    if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
+    const userId = req.user!.dbUser.id
+    if (!await isHostOrModerator(event.id, userId, event.hostId)) throw new AppError('Forbidden', 403)
 
     const page  = Math.max(1, Number(req.query['page']  ?? 1))
     const limit = Math.min(200, Math.max(1, Number(req.query['limit'] ?? 100)))
@@ -53,9 +64,17 @@ router.post('/rsvp', requireAuth, async (req: AuthRequest, res, next) => {
     const userId = req.user!.dbUser.id
     const token = req.body.inviteToken
 
-    // Invite-only check
-    if (event.isInviteOnly && event.inviteToken !== token) {
-      throw new AppError('This event requires an invite link', 403)
+    // Invite-only check — use timingSafeEqual to prevent token enumeration via timing
+    if (event.isInviteOnly) {
+      const provided = String(token ?? '')
+      const expected = event.inviteToken ?? ''
+      // Tokens are UUIDs (fixed 36-char length), so length comparison doesn't leak info.
+      // timingSafeEqual guards against per-character timing leaks on the content itself.
+      const tokenMatch =
+        provided.length === expected.length &&
+        provided.length > 0 &&
+        timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+      if (!tokenMatch) throw new AppError('This event requires an invite link', 403)
     }
 
     // Age restriction check
@@ -75,8 +94,14 @@ router.post('/rsvp', requireAuth, async (req: AuthRequest, res, next) => {
     // Tier guest limit check on host (only applies when not waitlisting)
     if (!isFull) {
       const host = await prisma.user.findUnique({ where: { id: event.hostId }, select: { subscriptionTier: true } })
-      const hostTier = TIERS[host!.subscriptionTier as SubscriptionTier]
-      if (hostTier.maxGuests !== -1 && confirmed >= hostTier.maxGuests) {
+      // host can be null for AI-discovered events whose hostId references a system account;
+      // fall back to FREE tier limits in that case so the RSVP still succeeds.
+      const hostTier = HOST_TIERS[(host?.subscriptionTier ?? 'FREE') as SubscriptionTier]
+      // maxGuests semantics: -1 = unlimited, 0 = no guests allowed, >0 = specific cap.
+      // The old check (maxGuests > 0) incorrectly skipped the 0 case, letting FREE
+      // hosts (maxGuests=0) accumulate unlimited RSVPs instead of being blocked.
+      const guestLimit = hostTier.maxGuests
+      if (guestLimit !== -1 && (guestLimit === 0 || confirmed >= guestLimit)) {
         throw new AppError('Event host guest limit reached', 400)
       }
     }
@@ -198,17 +223,22 @@ router.post('/invite/search', requireAuth, async (req: AuthRequest, res, next) =
   }
 })
 
-/** DELETE /api/events/:id/guests/:guestId — host removes a guest */
+/** DELETE /api/events/:id/guests/:guestId — host or moderator removes a guest */
 router.delete('/:guestId', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const event = await prisma.event.findUnique({ where: { id: req.params['id'] } })
     if (!event) throw new AppError('Event not found', 404)
-    if (event.hostId !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
+    const userId = req.user!.dbUser.id
+    if (!await isHostOrModerator(event.id, userId, event.hostId)) throw new AppError('Forbidden', 403)
 
-    await prisma.eventGuest.update({
-      where: { id: req.params['guestId'] },
+    // updateMany lets us atomically verify the guest belongs to THIS event —
+    // without eventId in the filter, a host of event A could remove guests
+    // from event B by knowing (or guessing) the guest's UUID.
+    const result = await prisma.eventGuest.updateMany({
+      where: { id: req.params['guestId'], eventId: event.id },
       data: { status: 'REMOVED' },
     })
+    if (result.count === 0) throw new AppError('Guest not found in this event', 404)
 
     res.json({ data: { success: true } })
   } catch (err) {

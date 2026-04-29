@@ -340,8 +340,8 @@ router.get('/revenue', requireAdmin, async (_req, res, next) => {
     res.json({
       data: {
         stripeBalance: balance.available,
-        ticketRevenue: tickets._sum.pricePaid ?? 0,
-        platformFees: tickets._sum.platformFee ?? 0,
+        ticketRevenue: tickets._sum.pricePaid?.toNumber() ?? 0,
+        platformFees: tickets._sum.platformFee?.toNumber() ?? 0,
         tierCounts,
         recentTickets,
       },
@@ -1152,11 +1152,11 @@ router.get('/revenue', requireAdmin, async (_req, res, next) => {
 
     res.json({
       data: {
-        allTimeRevenue: allTimeRevenue._sum.amount ?? 0,
-        monthlyRevenue: monthlyRevenue._sum.amount ?? 0,
+        allTimeRevenue: allTimeRevenue._sum.amount?.toNumber() ?? 0,
+        monthlyRevenue: monthlyRevenue._sum.amount?.toNumber() ?? 0,
         revenueBySource: revenueBySource.map((r) => ({
           source: r.source,
-          total: r._sum.amount ?? 0,
+          total: r._sum.amount?.toNumber() ?? 0,
           count: r._count,
         })),
         subscriptions: subscriptionRevenue.map((s) => ({
@@ -1165,9 +1165,9 @@ router.get('/revenue', requireAdmin, async (_req, res, next) => {
         })),
         walletStats: {
           totalWallets: walletStats._count,
-          totalBalance: walletStats._sum.balance ?? 0,
-          totalSpent: walletStats._sum.lifetimeSpent ?? 0,
-          totalTopUps: walletStats._sum.lifetimeTopUp ?? 0,
+          totalBalance: walletStats._sum.balance?.toNumber() ?? 0,
+          totalSpent: walletStats._sum.lifetimeSpent?.toNumber() ?? 0,
+          totalTopUps: walletStats._sum.lifetimeTopUp?.toNumber() ?? 0,
         },
         recentCardOrders: cardOrders,
       },

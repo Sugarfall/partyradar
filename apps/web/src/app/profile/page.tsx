@@ -301,6 +301,8 @@ export default function ProfilePage() {
   const [profileBgImage, setProfileBgImage] = useState<string | null>(null)
   const [bgImageUploading, setBgImageUploading] = useState(false)
   const bgImageInputRef = useRef<HTMLInputElement>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inviteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [themeColor, setThemeColor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -404,6 +406,14 @@ export default function ProfilePage() {
   const [spotifyArtistError, setSpotifyArtistError] = useState<string | null>(null)
   const [spotifyArtistDisconnecting, setSpotifyArtistDisconnecting] = useState(false)
   const [spotifyArtistFetched, setSpotifyArtistFetched] = useState(false)
+
+  // Clear pending timers on unmount to prevent state updates after unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      if (inviteTimerRef.current) clearTimeout(inviteTimerRef.current)
+    }
+  }, [])
 
   // Load existing Spotify artist data on mount
   useEffect(() => {
@@ -612,7 +622,7 @@ export default function ProfilePage() {
     setInviteSending(false)
     setSelectedFriends(new Set())
     // Auto-close after 2s
-    setTimeout(() => { setInviteVenue(null); setInviteSentCount(0) }, 2000)
+    inviteTimerRef.current = setTimeout(() => { setInviteVenue(null); setInviteSentCount(0) }, 2000)
   }
 
   async function handlePhotoUpload(file: File) {
@@ -688,7 +698,7 @@ export default function ProfilePage() {
 
   // Bug 5 fix: don't render an infinite spinner for logged-out users — redirect to login
   if (!dbUser) {
-    if (typeof window !== 'undefined') window.location.href = loginHref('/profile')
+    router.push(loginHref('/profile'))
     return null
   }
 
@@ -702,7 +712,7 @@ export default function ProfilePage() {
       await api.put('/auth/profile', { displayName, bio, profileBg, themeColor })
       await refreshUser()
       setSavedOk(true)
-      setTimeout(() => { setSavedOk(false); setEditing(false) }, 1200)
+      saveTimerRef.current = setTimeout(() => { setSavedOk(false); setEditing(false) }, 1200)
     } catch {
       setSaveError('Failed to save — try again')
     } finally {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { silent } from '@/lib/logError'
@@ -12,6 +12,7 @@ import {
   AlertTriangle, CheckCircle, X, Star, Eye, Bot, FileWarning,
   Activity, Database, Wifi, WifiOff, RefreshCw, Zap, MapPin, Building2
 } from 'lucide-react'
+import AdminPartnershipsTab from './AdminPartnershipsTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals' | 'special-events'
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals' | 'special-events' | 'partnerships'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
@@ -206,6 +207,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'pipeline', label: 'Pipeline', icon: <Activity size={14} /> },
   { id: 'medals', label: '🏅 Medals', icon: null },
   { id: 'special-events', label: '🎪 Events', icon: null },
+  { id: 'partnerships', label: '🍺 Partners', icon: null },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -213,6 +215,11 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 export default function AdminPage() {
   const { dbUser, firebaseUser, loading } = useAuth()
   const router = useRouter()
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear toast timer on unmount
+  useEffect(() => { return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current) } }, [])
+
   const [tab, setTab] = useState<Tab>('stats')
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -259,7 +266,8 @@ export default function AdminPage() {
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3000)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000)
   }, [])
 
   const isStaff = dbUser?.appRole === 'ADMIN' || dbUser?.appRole === 'MODERATOR' || dbUser?.isAdmin
@@ -318,6 +326,7 @@ export default function AdminPage() {
   // ─── Actions ────────────────────────────────────────────────────────────────
 
   const handleBanToggle = async (userId: string, currentlyBanned: boolean) => {
+    if (!currentlyBanned && !confirm('Ban this user? They will lose access to the platform.')) return
     setBusy(true)
     try {
       await api.put(`/admin/users/${userId}/ban`, {})
@@ -393,14 +402,16 @@ export default function AdminPage() {
   }
 
   const handleManualSync = async () => {
-    if (!syncCity.trim() || !syncLat.trim() || !syncLng.trim()) {
-      showToast('City, lat and lng required', false); return
+    const lat = parseFloat(syncLat)
+    const lng = parseFloat(syncLng)
+    if (!syncCity.trim() || !syncLat.trim() || !syncLng.trim() || isNaN(lat) || isNaN(lng)) {
+      showToast('Valid city, latitude, and longitude required', false); return
     }
     setSyncing(true)
     setSyncResult(null)
     try {
       const r = await api.post<{ data: { imported: number; skipped: number; sources: string[] } }>(
-        '/events/ai-sync', { city: syncCity.trim(), lat: parseFloat(syncLat), lng: parseFloat(syncLng), force: true }
+        '/events/ai-sync', { city: syncCity.trim(), lat, lng, force: true }
       )
       setSyncResult(r.data)
       showToast(`Sync done — ${r.data.imported} imported`)
@@ -1824,6 +1835,11 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ── Partnerships tab ── */}
+        {tab === 'partnerships' && (
+          <AdminPartnershipsTab showToast={showToast} />
         )}
 
       </div>

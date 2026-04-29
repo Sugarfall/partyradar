@@ -374,6 +374,10 @@ export default function WalletPage() {
     }
   }
 
+  // detectCurrency() reads navigator.language — memoize so it doesn't run each render.
+  // MUST be called here (before any conditional returns) to satisfy the Rules of Hooks.
+  const currency = useMemo(() => detectCurrency(), [])
+
   // ── Auth gate ──────────────────────────────────────────────────────────────
 
   if (!dbUser) {
@@ -424,8 +428,6 @@ export default function WalletPage() {
 
   // ── Main ───────────────────────────────────────────────────────────────────
 
-  // detectCurrency() reads navigator.language — memoize so it doesn't run each render
-  const currency = useMemo(() => detectCurrency(), [])
   const POINTS_PER_DRINK = 500
   const selectedDesignData = CARD_DESIGNS.find(d => d.id === selectedDesign)
 

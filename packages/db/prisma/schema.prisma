@@ -68,6 +68,7 @@ enum NotificationType {
   COMMENT_MENTION
   POST_COMMENT
   SPECIAL_EVENT
+  PAYMENT_FAILED
 }
 
 enum Gender {
@@ -145,7 +146,7 @@ model User {
   appRole           AppRole          @default(USER)
   contentStrikes    Int              @default(0)
   referralCode      String?          @unique
-  referralBalance   Float            @default(0)
+  referralBalance   Decimal          @default(0)
   referredBy        String?
   e2ePublicKey      String?          @db.Text
   // Profile prompts (Hinge-style Q&A shown on swipe card)
@@ -233,7 +234,7 @@ model User {
 model Event {
   id                    String         @id @default(cuid())
   hostId                String
-  host                  User           @relation("HostedEvents", fields: [hostId], references: [id])
+  host                  User           @relation("HostedEvents", fields: [hostId], references: [id], onDelete: Restrict)
   name                  String
   type                  EventType
   description           String
@@ -260,6 +261,7 @@ model Event {
   djRequestsEnabled     Boolean        @default(false)
   isCancelled           Boolean        @default(false)
   isFeatured            Boolean        @default(false)
+  featuredUntil         DateTime?      // set by paid boost; null = tier-granted permanent featured
   coverImageUrl         String?
   accentColor           String?
   partySigns            String[]
@@ -324,7 +326,7 @@ model EventModerator {
   addedById String
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user      User     @relation("EventModeratorUser", fields: [userId], references: [id], onDelete: Cascade)
-  addedBy   User     @relation("EventModeratorAddedBy", fields: [addedById], references: [id])
+  addedBy   User     @relation("EventModeratorAddedBy", fields: [addedById], references: [id], onDelete: Cascade)
   addedAt   DateTime @default(now())
 
   @@unique([eventId, userId])
@@ -363,12 +365,12 @@ model Ticket {
   eventId         String
   userId          String
   event           Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  user            User      @relation(fields: [userId], references: [id])
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   qrCode          String    @unique @default(cuid())
   stripePaymentId String?
   stripeSessionId String?
-  pricePaid       Float
-  platformFee     Float
+  pricePaid       Decimal
+  platformFee     Decimal
   scannedAt       DateTime?
   createdAt       DateTime  @default(now())
 
@@ -381,7 +383,7 @@ model Ticket {
 model CelebritySighting {
   id          String   @id @default(cuid())
   reporterId  String
-  reporter    User     @relation(fields: [reporterId], references: [id])
+  reporter    User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
   celebrity   String
   lat         Float
   lng         Float
@@ -415,7 +417,7 @@ model SightingVote {
 model Subscription {
   id                   String           @id @default(cuid())
   userId               String           @unique
-  user                 User             @relation(fields: [userId], references: [id])
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   tier                 SubscriptionTier
   stripeSubscriptionId String?          @unique
   currentPeriodEnd     DateTime?
@@ -462,6 +464,15 @@ model Venue {
   events        Event[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  // ── Venue Promotion (Spotlight) ──────────────────────────────────────────────
+  // Set by the webhook after a successful checkout.session.completed for
+  // type=venue_sponsorship. The venue gets a boosted position in the discovery
+  // feed, but only for users within `promotionRadius` km of the venue.
+  isSponsored       Boolean   @default(false)
+  sponsoredUntil    DateTime?                  // null = never sponsored / expired
+  promotionRadius   Float     @default(5)      // km — promotion only shown within this radius
+  stripeVenueSubId  String?                    // Stripe subscription ID for renewal / cancellation
 
   // Spotify "Now Playing" integration
   spotifyConnected    Boolean   @default(false)
@@ -533,7 +544,7 @@ model Message {
   createdAt DateTime @default(now())
 
   event  Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  sender User  @relation("SentMessages", fields: [senderId], references: [id])
+  sender User  @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([eventId, createdAt])
 }
@@ -872,7 +883,7 @@ model Referral {
   referrerId   String
   referredId   String    @unique
   code         String
-  earnedAmount Float     @default(0)
+  earnedAmount Decimal   @default(0)
   isPaidOut    Boolean   @default(false)
   createdAt    DateTime  @default(now())
 
@@ -903,7 +914,7 @@ model GroupMessage {
   imageUrl  String?   @db.Text
   createdAt DateTime  @default(now())
   group     GroupChat @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  sender    User      @relation("SentGroupMessages", fields: [senderId], references: [id])
+  sender    User      @relation("SentGroupMessages", fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([groupId, createdAt])
   @@index([senderId, createdAt])
@@ -930,6 +941,7 @@ enum WalletTxType {
   GROUP_SUB_REVENUE
   CARD_PAYMENT   // Stripe Issuing debit
   CARD_REFUND    // Stripe Issuing refund / reversed auth
+  EVENT_BOOST    // Pay-per-day featured event promotion
 }
 
 enum WalletTxStatus {
@@ -982,9 +994,9 @@ model Wallet {
   id                String    @id @default(cuid())
   userId            String    @unique
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance           Float     @default(0)
-  lifetimeSpent     Float     @default(0)
-  lifetimeTopUp     Float     @default(0)
+  balance           Decimal   @default(0)
+  lifetimeSpent     Decimal   @default(0)
+  lifetimeTopUp     Decimal   @default(0)
   rewardPoints      Int       @default(0)
   freeDrinksEarned  Int       @default(0)
   freeDrinksUsed    Int       @default(0)
@@ -1003,8 +1015,8 @@ model WalletTransaction {
   walletId         String
   wallet           Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
   type             WalletTxType
-  amount           Float
-  balanceAfter     Float
+  amount           Decimal
+  balanceAfter     Decimal
   description      String
   status           WalletTxStatus @default(COMPLETED)
   stripePaymentId  String?
@@ -1016,6 +1028,7 @@ model WalletTransaction {
 
   @@index([walletId, createdAt])
   @@index([walletId, type])
+  @@index([walletId, status, createdAt])   // M8: supports status-filtered history queries
 }
 
 model CardOrder {
@@ -1029,7 +1042,7 @@ model CardOrder {
   shippingAddress String
   shippingCity    String
   shippingPostcode String
-  price           Float
+  price           Decimal
   status          CardOrderStatus @default(PENDING)
   trackingNumber  String?
   stripePaymentId String?
@@ -1062,7 +1075,9 @@ model IssuedCard {
   wallet             Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   // Stripe refs
-  stripeCardholderId String           @unique
+  // NOTE: stripeCardholderId is NOT unique — a user has one cardholder but can
+  // have both a virtual card and a physical card sharing that same cardholder.
+  stripeCardholderId String
   stripeCardId       String           @unique
 
   type               IssuedCardType   @default(VIRTUAL)
@@ -1088,6 +1103,7 @@ model IssuedCard {
 
   @@index([userId])
   @@index([walletId])
+  @@index([stripeCardholderId])
 }
 
 // Record of every real-world card spend / refund
@@ -1101,7 +1117,7 @@ model IssuingTransaction {
   stripeTransactionId   String     @unique
   stripeAuthorizationId String?    @unique
 
-  amount                Float      // positive = refund credit, negative = spend debit (GBP)
+  amount                Decimal    // positive = refund credit, negative = spend debit (GBP)
   currency              String     @default("GBP")
   merchantName          String
   merchantCity          String?
@@ -1158,7 +1174,7 @@ model DrinkMenuItem {
 model PlatformRevenue {
   id          String   @id @default(cuid())
   source      String   // ticket_fee, subscription, group_cut, blast, wallet_topup, card_sale, venue_commission, ad_revenue
-  amount      Float
+  amount      Decimal
   currency    String   @default("gbp")
   referenceId String?  // event/group/user/order ID
   description String?
@@ -1245,7 +1261,7 @@ model ReferralCard {
   code         String   @unique
   displayName  String
   totalUses    Int      @default(0)
-  totalEarned  Float    @default(0)
+  totalEarned  Decimal  @default(0)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   conversions  ReferralConversion[]
@@ -1259,8 +1275,8 @@ model ReferralConversion {
   id               String       @id @default(cuid())
   cardId           String
   referredId       String
-  revenueAmount    Float
-  commissionAmount Float
+  revenueAmount    Decimal
+  commissionAmount Decimal
   isPaidOut        Boolean      @default(false)
   source           String?      // "ticket", "subscription", "group_sub"
   createdAt        DateTime     @default(now())

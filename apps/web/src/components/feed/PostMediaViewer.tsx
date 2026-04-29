@@ -161,9 +161,13 @@ export default function PostMediaViewer({
   const scrollerRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const lastTapRef = useRef(0)
+  const heartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fireView = useFireViewOnce(postId)
 
   useVideoAutoplay(containerRef, index, fireView)
+
+  // Clear heart flash timer on unmount
+  useEffect(() => { return () => { if (heartTimerRef.current) clearTimeout(heartTimerRef.current) } }, [])
 
   // Keep the scroll position in sync when `index` changes from dots/arrows.
   useEffect(() => {
@@ -200,7 +204,7 @@ export default function PostMediaViewer({
         onDoubleTap()
         if (showHeartFlash) {
           setHeartOn(true)
-          setTimeout(() => setHeartOn(false), 800)
+          heartTimerRef.current = setTimeout(() => setHeartOn(false), 800)
         }
       }
     }

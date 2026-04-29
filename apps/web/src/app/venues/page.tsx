@@ -295,6 +295,8 @@ export default function VenuesPage() {
   })
   // Whether we've already centred the map on the user's real location this session
   const centredRef = useRef(false)
+  // Whether the initial venue fetch already used real GPS coordinates
+  const geoFetchedRef = useRef(false)
 
   const [popupVenue, setPopupVenue] = useState<Venue | null>(null)
   const [discoveredCount, setDiscoveredCount] = useState(0)
@@ -336,6 +338,20 @@ export default function VenuesPage() {
     }
 
     setLocationReady(true)
+  }, [userLoc.ready, userLoc.lat, userLoc.lng]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If GPS resolves AFTER the 10-second fallback fired the initial fetch with (0,0),
+  // [locationReady] won't re-fire (state is already true). Re-fetch at the real location
+  // only if the initial fetch didn't already use GPS coords (geoFetchedRef === false).
+  useEffect(() => {
+    if (!userLoc.ready || geoFetchedRef.current) return
+    const { lat: geoLat, lng: geoLng } = userLoc
+    if (!geoLat || !geoLng) return
+    geoFetchedRef.current = true
+    const radius = zoomToRadius(viewState.zoom)
+    fetchVenues(geoLat, geoLng, radius)
+    discoverVenues(geoLat, geoLng, radius)
+    lastDiscoverRef.current = { lat: geoLat, lng: geoLng, zoom: viewState.zoom }
   }, [userLoc.ready, userLoc.lat, userLoc.lng]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fallback: if context never becomes ready (no geo support), unblock after 10 s
@@ -420,6 +436,7 @@ export default function VenuesPage() {
     const lat = geoRef.current?.lat ?? viewState.latitude
     const lng = geoRef.current?.lng ?? viewState.longitude
     const radius = zoomToRadius(viewState.zoom)
+    geoFetchedRef.current = !!(geoRef.current?.lat) // true if real GPS coords used
     fetchVenues(lat, lng, radius)
     discoverVenues(lat, lng, radius)
     lastDiscoverRef.current = { lat, lng, zoom: viewState.zoom }

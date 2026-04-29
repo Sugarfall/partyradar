@@ -296,6 +296,7 @@ function NavbarInner() {
               <>
                 {/* Messages shortcut — desktop only (bottom tab bar covers mobile) */}
                 <Link href="/messages"
+                  aria-label="Messages"
                   className="hidden md:flex p-2 rounded-lg transition-all duration-150 relative"
                   style={{
                     color: pathname.startsWith('/messages') ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
@@ -308,6 +309,8 @@ function NavbarInner() {
                 {/* Bell — always visible */}
                 <div ref={notifRef} className="relative">
                   <button onClick={() => { setNotifOpen((o) => !o); setMenuOpen(false) }}
+                    aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+                    aria-expanded={notifOpen}
                     className="relative p-2 rounded-lg transition-all duration-150"
                     style={{
                       color: notifOpen ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
@@ -337,6 +340,8 @@ function NavbarInner() {
                 <div ref={menuRef} className="relative">
                   <button
                     onClick={() => { setMenuOpen((o) => !o); setNotifOpen(false) }}
+                    aria-label="Open menu"
+                    aria-expanded={menuOpen}
                     className="p-2 rounded-lg transition-all duration-150"
                     style={{
                       color: menuOpen ? 'var(--accent)' : 'rgba(255,255,255,0.5)',

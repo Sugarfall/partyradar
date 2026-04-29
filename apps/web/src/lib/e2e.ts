@@ -45,7 +45,12 @@ async function dbPut(key: string, value: unknown): Promise<void> {
 // ── Base64 helpers ─────────────────────────────────────────────────────────────
 
 function bufToB64(buf: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+  // Avoid spread (...new Uint8Array(buf)) which crashes V8 via "Maximum call stack
+  // size exceeded" for buffers larger than ~65 KB — use an explicit loop instead.
+  const bytes = new Uint8Array(buf)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
+  return btoa(bin)
 }
 
 function b64ToBuf(b64: string): ArrayBuffer {
@@ -91,9 +96,16 @@ export function serializePublicKey(jwk: JsonWebKey): string {
   return JSON.stringify(jwk)
 }
 
-/** Deserialize public key string from server */
+/** Deserialize public key string from server.
+ *  Throws a descriptive error (rather than a bare SyntaxError) if the string
+ *  is empty, null, or not valid JSON — callers catch this. */
 export function deserializePublicKey(s: string): JsonWebKey {
-  return JSON.parse(s) as JsonWebKey
+  if (!s) throw new Error('Public key string is empty')
+  try {
+    return JSON.parse(s) as JsonWebKey
+  } catch {
+    throw new Error('Public key is malformed — cannot decrypt message')
+  }
 }
 
 // ── Shared key derivation ──────────────────────────────────────────────────────

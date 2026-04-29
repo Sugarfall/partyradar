@@ -10,6 +10,7 @@ import { uploadImage } from '@/lib/cloudinary'
 import { loginHref } from '@/lib/authRedirect'
 import { api } from '@/lib/api'
 import { silent } from '@/lib/logError'
+import { formatPrice } from '@/lib/currency'
 import type { CreateEventInput, EventType, AlcoholPolicy, AgeRestriction } from '@partyradar/shared'
 import { VIBE_TAGS, getTier } from '@partyradar/shared'
 
@@ -142,6 +143,7 @@ export default function CreateEventPage() {
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const coverPreviewUrlRef = useRef<string | null>(null)
   // Venue linking (for CLUB_NIGHT / CONCERT / PUB_NIGHT)
   const [venueQuery, setVenueQuery] = useState('')
   const [venueResults, setVenueResults] = useState<{ id: string; name: string; address: string; lat: number; lng: number; city: string }[]>([])
@@ -152,6 +154,14 @@ export default function CreateEventPage() {
   // Stripe Connect readiness — drives the warning banner on the tickets step
   // and keeps us from submitting paid events that will fail server-side.
   const [payoutsReady, setPayoutsReady] = useState<boolean | null>(null)
+
+  // Revoke object URLs and clear pending timers on unmount
+  useEffect(() => {
+    return () => {
+      if (coverPreviewUrlRef.current) URL.revokeObjectURL(coverPreviewUrlRef.current)
+      if (venueSearchTimer.current) clearTimeout(venueSearchTimer.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!authLoading && !dbUser) router.push(loginHref('/events/create'))
@@ -178,8 +188,12 @@ export default function CreateEventPage() {
   function handleCover(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    // Revoke previous object URL to prevent memory leak
+    if (coverPreviewUrlRef.current) URL.revokeObjectURL(coverPreviewUrlRef.current)
+    const url = URL.createObjectURL(file)
+    coverPreviewUrlRef.current = url
     setCoverFile(file)
-    setCoverPreview(URL.createObjectURL(file))
+    setCoverPreview(url)
   }
 
   function searchVenues(q: string) {
@@ -190,7 +204,11 @@ export default function CreateEventPage() {
       setVenueSearching(true)
       try {
         const { api } = await import('@/lib/api')
-        const res = await api.get<{ data: { id: string; name: string; address: string; lat: number; lng: number; city: string }[] }>(`/venues?q=${encodeURIComponent(q)}&limit=6`)
+        // Pass user's current coordinates (if set) so the API can sort by proximity
+        const params = new URLSearchParams({ q, limit: '6' })
+        if (form.lat != null) params.set('lat', String(form.lat))
+        if (form.lng != null) params.set('lng', String(form.lng))
+        const res = await api.get<{ data: { id: string; name: string; address: string; lat: number; lng: number; city: string }[] }>(`/venues?${params}`)
         setVenueResults(res?.data ?? [])
       } catch { setVenueResults([]) }
       finally { setVenueSearching(false) }
@@ -201,7 +219,9 @@ export default function CreateEventPage() {
     setLinkedVenue({ id: v.id, name: v.name })
     setVenueQuery(v.name)
     setVenueResults([])
-    update({ address: v.address, lat: v.lat, lng: v.lng, neighbourhood: v.city, venueId: v.id })
+    // Only overwrite lat/lng if the venue has valid coordinates (guards against null DB entries)
+    const geoUpdate = v.lat != null && v.lng != null ? { lat: v.lat, lng: v.lng } : {}
+    update({ address: v.address, neighbourhood: v.city, venueId: v.id, ...geoUpdate })
   }
 
   function useMyLocation() {
@@ -226,7 +246,7 @@ export default function CreateEventPage() {
       if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) return false
       return true
     }
-    if (step === 2) return !!(form.address?.trim() && form.neighbourhood?.trim() && form.lat && form.lng)
+    if (step === 2) return !!(form.address?.trim() && form.neighbourhood?.trim() && form.lat != null && form.lng != null)
     if (step === 3) {
       if ((form.price ?? 0) > 0 && !(form.ticketQuantity && form.ticketQuantity > 0)) return false
       return true
@@ -273,7 +293,17 @@ export default function CreateEventPage() {
     try {
       let coverImageUrl = form.coverImageUrl
       if (coverFile) {
-        try { coverImageUrl = await uploadImage(coverFile, 'events') } catch { /* skip upload in dev */ }
+        try {
+          coverImageUrl = await uploadImage(coverFile, 'events')
+        } catch (uploadErr) {
+          if (process.env.NODE_ENV !== 'development') {
+            // Surface upload failures in production so users know their image wasn't saved
+            throw uploadErr instanceof Error
+              ? uploadErr
+              : new Error('Cover image upload failed. Please try again or remove the image.')
+          }
+          // Dev: silently skip — Cloudinary may not be configured locally
+        }
       }
       // Bug 14 fix: hostId is set server-side from the JWT — don't send it from client
       const event = await createEvent({ ...form, coverImageUrl } as CreateEventInput)
@@ -510,7 +540,7 @@ export default function CreateEventPage() {
                   <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
                   <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(4,4,13,0.6), transparent)' }} />
                   <button
-                    onClick={() => { setCoverFile(null); setCoverPreview(null) }}
+                    onClick={() => { if (coverPreviewUrlRef.current) { URL.revokeObjectURL(coverPreviewUrlRef.current); coverPreviewUrlRef.current = null } setCoverFile(null); setCoverPreview(null) }}
                     className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-bold"
                     style={{ background: 'rgba(255,0,110,0.2)', border: '1px solid rgba(255,0,110,0.4)', color: '#ff006e' }}
                   >
@@ -1036,7 +1066,7 @@ export default function CreateEventPage() {
             {/* Summary grid */}
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'PRICE', value: form.price === 0 ? 'FREE' : `£${form.price}` },
+                { label: 'PRICE', value: (form.price ?? 0) === 0 ? 'FREE' : formatPrice(form.price ?? 0) },
                 { label: 'CAPACITY', value: `${form.capacity} guests` },
                 { label: 'LOCATION', value: form.neighbourhood || '—' },
                 { label: 'ACCESS', value: form.isInviteOnly ? 'Invite Only' : 'Public' },
@@ -1081,11 +1111,6 @@ export default function CreateEventPage() {
               </div>
             )}
 
-            {error && (
-              <p className="px-3 py-2.5 rounded-lg text-sm" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
-                {error}
-              </p>
-            )}
           </div>
         )}
       </div>
@@ -1103,7 +1128,13 @@ export default function CreateEventPage() {
           backdropFilter: 'blur(16px)',
         }}
       >
-        <div className="max-w-2xl mx-auto flex gap-3">
+        <div className="max-w-2xl mx-auto">
+          {error && (
+            <p className="mb-3 px-3 py-2.5 rounded-lg text-sm" style={{ color: '#ff006e', background: 'rgba(255,0,110,0.08)', border: '1px solid rgba(255,0,110,0.2)' }}>
+              {error}
+            </p>
+          )}
+        <div className="flex gap-3">
           {step > 0 && (
             <button
               onClick={() => setStep((s) => s - 1)}
@@ -1134,6 +1165,7 @@ export default function CreateEventPage() {
               <><Zap size={14} /> PUBLISH EVENT</>
             )}
           </button>
+        </div>
         </div>
       </div>
     </div>

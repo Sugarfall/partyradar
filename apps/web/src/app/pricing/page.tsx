@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api, NetworkError } from '@/lib/api'
+import { formatPrice } from '@/lib/currency'
+import { logError } from '@/lib/logError'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -239,7 +241,7 @@ function PlanCard({
             <span className="text-2xl font-black" style={{ color: '#e0f2fe' }}>Free</span>
           ) : (
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-black" style={{ color: col }}>£{plan.price}</span>
+              <span className="text-3xl font-black" style={{ color: col }}>{formatPrice(plan.price)}</span>
               <span className="text-xs" style={{ color: 'rgba(224,242,254,0.35)' }}>/month</span>
             </div>
           )}
@@ -323,8 +325,17 @@ export default function PricingPage() {
 
   useEffect(() => {
     api.get<{ configured: Record<string, boolean> }>('/subscriptions/plans')
-      .then((r) => { if (r?.configured) setConfigured(r.configured) })
-      .catch(() => {})
+      .then((r) => {
+        // If fetch succeeded, use the server's configuration flags so unconfigured
+        // plans show "Coming soon" instead of a checkout that would fail with 503.
+        setConfigured(r?.configured ?? {})
+      })
+      .catch((err) => {
+        // Log the error but keep configured=null so all plans appear available.
+        // The checkout itself will return a 503 if a plan isn't configured yet.
+        logError('pricing:plans', err)
+        setConfigured({})
+      })
   }, [])
 
   const currentTier = dbUser?.subscriptionTier ?? 'FREE'
@@ -413,10 +424,7 @@ export default function PricingPage() {
             <PlanCard
               key={plan.tier + plan.label}
               plan={plan}
-              isCurrentTier={plan.tier === currentTier && plan.price > 0 && (
-                // For host track, only mark PRO/PREMIUM as current if currently on those tiers
-                true
-              )}
+              isCurrentTier={plan.tier === currentTier && plan.price > 0}
               onSelect={handleSelect}
               loading={checkoutLoading === plan.tier}
               comingSoon={plan.price > 0 && configured !== null && configured[plan.tier] === false}

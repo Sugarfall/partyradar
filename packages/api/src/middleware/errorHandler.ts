@@ -59,7 +59,9 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
       res.status(402).json({ error: stripe.message, code: stripe.code })
       return
     }
-    // Everything else (invalid request, rate-limit, api error)
+    // Everything else (invalid request, rate-limit, api error) — Stripe's
+    // message here is user-actionable ("card expired", "invalid CVC", etc.)
+    // so it is safe to surface, unlike internal DB errors.
     res.status(502).json({ error: stripe.message, code: stripe.code })
     return
   }
@@ -82,10 +84,11 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
       res.status(400).json({ error: `Related record not found (${meta.target ?? 'foreign key'}).` })
       return
     }
-    // Any other Prisma error — surface the message so admins can diagnose
+    // Any other Prisma error — log details server-side, return generic message
+    // to avoid leaking schema information (table names, column names, FK refs).
     if (pe.code.startsWith('P') && typeof (pe as any).message === 'string') {
       console.error('[Prisma Error]', req.method, req.path, pe.code, pe.message)
-      res.status(500).json({ error: `Database error (${pe.code}): ${(pe as any).message}` })
+      res.status(500).json({ error: 'An internal error occurred. Please try again.' })
       return
     }
   }

@@ -94,6 +94,9 @@ export const PLATFORM_FEE_FIXED_PENCE = Number(process.env['PLATFORM_FEE_FIXED_P
  *   total = 260 pence (£2.60)
  */
 export function platformFeeCents(priceGBP: number, quantity = 1): number {
+  // Free events (price ≤ 0) carry no platform fee — guard here so callers
+  // don't accidentally pass a zero-price and collect a phantom £0.30/ticket.
+  if (priceGBP <= 0) return 0
   const pctPence   = Math.round((priceGBP * PLATFORM_FEE_PERCENT) / 100 * 100)
   const fixedPence = PLATFORM_FEE_FIXED_PENCE
   return (pctPence + fixedPence) * quantity

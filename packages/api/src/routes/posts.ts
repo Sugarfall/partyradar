@@ -260,6 +260,18 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       return post.id
     })
 
+    // Notify original post author of the repost
+    if (originalPost && originalPost.userId !== userId) {
+      const reposter = req.user!.dbUser
+      sendNotification({
+        userId: originalPost.userId,
+        type: 'INVITE_RECEIVED',
+        title: '🔁 Someone reposted your post',
+        body: `${reposter.displayName} reposted your post`,
+        data: { postId: created },
+      }).catch(() => {})
+    }
+
     const post = await prisma.post.findUnique({
       where: { id: created },
       include: postInclude,
@@ -773,6 +785,41 @@ router.post('/:id/like', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
+/** PATCH /api/posts/:id — edit the text of an existing post (owner only)
+ *
+ *  Only the `text` field may be updated — images/media are immutable once
+ *  uploaded to avoid breaking cached CDN URLs. Content moderation is re-run
+ *  against the new text before committing.
+ */
+router.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.dbUser.id
+    const { id } = req.params
+    const { text } = req.body as { text?: string }
+
+    if (!text?.trim()) throw new AppError('Updated text is required', 400)
+    if (text.trim().length > 2000) throw new AppError('Post text too long (max 2000 chars)', 400)
+
+    const post = await prisma.post.findUnique({ where: { id }, select: { userId: true } })
+    if (!post) throw new AppError('Post not found', 404)
+    if (post.userId !== userId) throw new AppError('Forbidden', 403)
+
+    // Re-run content moderation on the edited text
+    const modResult = await moderateContent({ text: text.trim() })
+    if (!modResult.passed) throw new AppError('Post blocked by content filter', 422)
+
+    const updated = await prisma.post.update({
+      where: { id },
+      data: { text: text.trim() },
+      include: { media: true, user: { select: userSelect } },
+    })
+
+    res.json({ data: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** DELETE /api/posts/:id — delete my post */
 router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -792,25 +839,42 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 
 // ── Comments ──────────────────────────────────────────────────────────────────
 
-/** GET /api/posts/:id/comments — list comments for a post */
+/** GET /api/posts/:id/comments — list comments for a post
+ *
+ *  Cursor-based pagination in ascending (oldest-first) order.
+ *  Pass `cursor` = the ISO timestamp of the last comment you received to fetch
+ *  the next page. Response includes `nextCursor` (or null when no more pages).
+ *
+ *  Fix: previous implementation used `lt` (less-than) for the cursor while
+ *  ordering ascending — this meant subsequent pages returned *older* comments
+ *  rather than newer ones, making infinite-scroll impossible.
+ */
 router.get('/:id/comments', async (req, res, next) => {
   try {
     const postId = req.params['id']!
-    const { cursor, limit = '30' } = req.query as { cursor?: string; limit?: string }
+    const limitN = Math.min(100, Math.max(1, Number(req.query['limit'] ?? 30)))
+    const cursor = req.query['cursor'] as string | undefined
 
     const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } })
     if (!post) throw new AppError('Post not found', 404)
 
+    // Fetch one extra to determine whether a next page exists
     const comments = await prisma.postComment.findMany({
-      where: { postId, ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}) },
-      orderBy: { createdAt: 'asc' },
-      take: Number(limit),
-      include: {
-        user: { select: userSelect },
+      where: {
+        postId,
+        // Ascending pagination: skip anything AT or BEFORE the cursor timestamp
+        ...(cursor ? { createdAt: { gt: new Date(cursor) } } : {}),
       },
+      orderBy: { createdAt: 'asc' },
+      take: limitN + 1,
+      include: { user: { select: userSelect } },
     })
 
-    res.json({ data: comments })
+    const hasMore = comments.length > limitN
+    const page = hasMore ? comments.slice(0, limitN) : comments
+    const nextCursor = hasMore ? page[page.length - 1]?.createdAt.toISOString() ?? null : null
+
+    res.json({ data: page, nextCursor, hasMore })
   } catch (err) {
     next(err)
   }

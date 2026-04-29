@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { sendEmailVerification } from '@/lib/firebase'
@@ -106,8 +106,10 @@ function StepDots({ phase }: { phase: Phase }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function RegisterPage() {
+function RegisterPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const nextUrl = searchParams.get('next') ?? '/discover'
   const { signUp, signInWithGoogle, signInWithApple, firebaseUser, refreshUser } = useAuth()
   const { t } = useLanguage()
 
@@ -134,6 +136,9 @@ export default function RegisterPage() {
   const [verifyError, setVerifyError]     = useState<string | null>(null)
   const [checkingVerify, setCheckingVerify] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
+  const resendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => { return () => { if (resendIntervalRef.current) clearInterval(resendIntervalRef.current) } }, [])
 
   // Age phase
   const [dob, setDob]               = useState('')
@@ -278,8 +283,9 @@ export default function RegisterPage() {
     try {
       await sendEmailVerification(firebaseUser)
       setResendCooldown(60)
-      const interval = setInterval(() => {
-        setResendCooldown(v => { if (v <= 1) { clearInterval(interval); return 0 }; return v - 1 })
+      if (resendIntervalRef.current) clearInterval(resendIntervalRef.current)
+      resendIntervalRef.current = setInterval(() => {
+        setResendCooldown(v => { if (v <= 1) { clearInterval(resendIntervalRef.current!); resendIntervalRef.current = null; return 0 }; return v - 1 })
       }, 1000)
       setVerifyError(null)
     } catch { setVerifyError('Could not resend — please try again shortly') }
@@ -358,7 +364,7 @@ export default function RegisterPage() {
         await api.put('/auth/profile', { interests: selectedInterests })
       }
     } catch { /* non-fatal */ } finally { setInterestsSaving(false) }
-    router.push('/discover')
+    router.push(nextUrl)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1074,5 +1080,13 @@ export default function RegisterPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterPageInner />
+    </Suspense>
   )
 }

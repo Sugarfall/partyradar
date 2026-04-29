@@ -77,8 +77,10 @@ export function useEvents(query: EventDiscoverQuery = {}, skip = false) {
     }
   )
 
-  // Safety net: if SWR stalls for 3s force a fetch via api helper (includes auth)
+  // Safety net: if SWR stalls for 3s force a fetch via api helper (includes auth).
+  // retried resets when swrKey changes (new query) so each distinct query gets a retry.
   const retried = useRef(false)
+  useEffect(() => { retried.current = false }, [swrKey])
   useEffect(() => {
     if (data || retried.current || !swrKey) return
     const timer = setTimeout(() => {

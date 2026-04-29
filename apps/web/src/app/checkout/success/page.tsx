@@ -13,9 +13,14 @@ function SuccessContent() {
   const { refreshUser } = useAuth()
 
   useEffect(() => {
-    setTimeout(() => setShow(true), 100)
-    // Sync subscription tier after Stripe payment redirect
-    refreshUser().catch(() => {})
+    const t = setTimeout(() => setShow(true), 100)
+    // Sync subscription tier only when Stripe actually redirected here
+    // (session_id param is present on genuine Stripe redirects).
+    // Avoids a /auth/sync call every time someone bookmarks and revisits.
+    if (params.get('session_id')) {
+      refreshUser().catch(() => {})
+    }
+    return () => clearTimeout(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

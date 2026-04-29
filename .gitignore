@@ -16,6 +16,7 @@ out/
 .env.*.local
 .env.production
 packages/api/.env
+packages/db/.env
 apps/web/.env.local
 apps/mobile/.env.local
 

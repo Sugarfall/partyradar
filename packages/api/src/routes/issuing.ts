@@ -23,6 +23,11 @@ import { ensureStripe } from '../lib/stripe'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
 
+// H5: schema for activation body — validates phone before it reaches normalisation
+const activateSchema = z.object({
+  phoneNumber: z.string().min(7, 'Phone number too short').max(20, 'Phone number too long').optional(),
+})
+
 const router = Router()
 router.use(requireAuth)
 
@@ -107,6 +112,12 @@ router.post('/activate', async (req: AuthRequest, res: Response, next: NextFunct
     const stripe = ensureStripe()
     const { dbUser } = req.user!
 
+    // Tier gate: FREE users cannot hold a Stripe Issuing card (Stripe charges
+    // the platform a per-card fee — only BASIC+ subscribers qualify).
+    if (dbUser.subscriptionTier === 'FREE') {
+      throw new AppError('Upgrade to a paid plan to get your PartyRadar card', 403, 'TIER_REQUIRED')
+    }
+
     // Check for existing virtual card first
     const existingCard = await prisma.issuedCard.findFirst({
       where: { userId: dbUser.id, type: 'VIRTUAL' },
@@ -131,7 +142,9 @@ router.post('/activate', async (req: AuthRequest, res: Response, next: NextFunct
     // Phone number is required by Stripe Issuing for 3DS authentication.
     // Accept it from the request body so the UI can collect it inline if
     // the user profile doesn't have one yet.
-    const bodyPhone = typeof req.body?.phoneNumber === 'string' ? req.body.phoneNumber.trim() : null
+    // H5 fix: validate body before reading phoneNumber to prevent oversized / malformed input
+    const activateBody = activateSchema.parse(req.body ?? {})
+    const bodyPhone = activateBody.phoneNumber?.trim() ?? null
     const resolvedPhone = user.phoneNumber ?? bodyPhone
 
     if (!resolvedPhone) {

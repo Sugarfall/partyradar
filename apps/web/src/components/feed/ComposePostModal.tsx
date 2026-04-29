@@ -168,11 +168,19 @@ export default function ComposePostModal({ onClose, onPosted, repostOf, storyMod
   const [taggedUsers, setTaggedUsers] = useState<UserSuggestion[]>([])
   const [taggedVenue, setTaggedVenue] = useState<VenueSuggestion | null>(null)
 
-  // ── Lock body scroll while modal is open ───────────────────────────────
+  // ── Lock body scroll while modal is open (restore previous value) ──────
   useEffect(() => {
+    const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
+    return () => { document.body.style.overflow = prev }
   }, [])
+
+  // ── Revoke all object URLs on unmount to avoid memory leaks ─────────────
+  const itemsRef = useRef(items)
+  useEffect(() => { itemsRef.current = items }, [items])
+  useEffect(() => {
+    return () => { itemsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl)) }
+  }, []) // empty deps: runs cleanup only on unmount, using ref for latest items
 
   // ── Mention query debounced fetch ──────────────────────────────────────
   useEffect(() => {

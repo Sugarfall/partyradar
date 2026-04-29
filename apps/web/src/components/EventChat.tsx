@@ -130,8 +130,11 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
     // ── Real socket connection ────────────────────────────────────────────────
     if (!dbUser) return
 
+    let cancelled = false
+
     async function connect() {
       const token = firebaseUser ? await firebaseUser.getIdToken() : undefined
+      if (cancelled) return
 
       const socket = io(API_ORIGIN, {
         auth: token ? { token } : {},
@@ -170,7 +173,9 @@ export default function EventChat({ eventId, eventName, hostId, hostName }: { ev
     connect()
 
     return () => {
+      cancelled = true
       if (socketRef.current) {
+        socketRef.current.off()
         socketRef.current.emit('leave-event', eventId)
         socketRef.current.disconnect()
         socketRef.current = null

@@ -80,6 +80,7 @@ export function TopUpModal({ tierId, onClose, onSuccess }: TopUpModalProps) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="w-7 h-7 rounded-full flex items-center justify-center"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(224,242,254,0.4)' }}
           >
@@ -135,7 +136,7 @@ export function TopUpModal({ tierId, onClose, onSuccess }: TopUpModalProps) {
             ) : (
               <>
                 <ExternalLink size={14} />
-                PAY £{tier.amount.toFixed(2)} SECURELY
+                PAY {formatPrice(tier.amount)} SECURELY
               </>
             )}
           </button>

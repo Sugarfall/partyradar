@@ -32,7 +32,10 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
     if (!event.stripePriceId) throw new AppError('Event does not have tickets', 400)
     if (event.ticketsRemaining < quantity) throw new AppError('Not enough tickets remaining', 400)
 
-    // Host must be connected for funds to land anywhere — refuse otherwise.
+    // Check if host has Stripe Connect fully set up.
+    // If not, we still allow the purchase but funds land on the platform account
+    // instead of being split — this keeps ticket sales working in dev/test and
+    // for hosts who haven't yet completed Connect onboarding.
     const host = await prisma.user.findUnique({
       where: { id: event.hostId },
       select: {
@@ -40,13 +43,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
         stripeConnectChargesEnabled: true,
       },
     })
-    if (!host?.stripeConnectAccountId || !host.stripeConnectChargesEnabled) {
-      throw new AppError(
-        'Host has not finished payout setup — tickets unavailable. Ask the host to finish Stripe onboarding.',
-        400,
-        'HOST_PAYOUTS_NOT_READY',
-      )
-    }
+    const hostConnectReady = !!(host?.stripeConnectAccountId && host?.stripeConnectChargesEnabled)
 
     const userId = req.user!.dbUser.id
     const stripeCustomerId = await getOrCreateStripeCustomer(userId, req.user!.dbUser.email, prisma)
@@ -59,11 +56,15 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
       success_url: `${process.env['FRONTEND_URL'] || 'https://partyradar-web.vercel.app'}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event_id=${eventId}`,
       cancel_url: `${process.env['FRONTEND_URL'] || 'https://partyradar-web.vercel.app'}/events/${eventId}`,
       metadata: { eventId, userId, quantity: String(quantity), hostId: event.hostId },
-      payment_intent_data: {
-        application_fee_amount: platformFeeCents(event.price, quantity),
-        on_behalf_of: host.stripeConnectAccountId,
-        transfer_data: { destination: host.stripeConnectAccountId },
-      },
+      // Only route via Connect when the host has completed Stripe onboarding.
+      // Without Connect the transaction settles to the platform account.
+      ...(hostConnectReady ? {
+        payment_intent_data: {
+          application_fee_amount: platformFeeCents(event.price, quantity),
+          on_behalf_of: host!.stripeConnectAccountId!,
+          transfer_data: { destination: host!.stripeConnectAccountId! },
+        },
+      } : {}),
     })
 
     res.json({ data: { url: session.url, sessionId: session.id } })

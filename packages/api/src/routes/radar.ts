@@ -4,7 +4,7 @@ import { requireAuth, optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { sendNotification, haversineDistance } from '../lib/fcm'
-import { CELEBRITY_LIST, TIERS } from '@partyradar/shared'
+import { CELEBRITY_LIST, HOST_TIERS } from '@partyradar/shared'
 import type { SubscriptionTier } from '@partyradar/shared'
 import { z } from 'zod'
 
@@ -74,7 +74,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
   try {
     const user = req.user!.dbUser
-    const tier = TIERS[user.subscriptionTier as SubscriptionTier]
+    const tier = HOST_TIERS[user.subscriptionTier as SubscriptionTier]
 
     if (!tier.radar) {
       throw new AppError('Upgrade to Pro or Premium to use Celebrity Radar', 403, 'TIER_LIMIT')
@@ -122,7 +122,7 @@ router.post('/:id/vote', requireAuth, async (req: AuthRequest, res, next) => {
   const schema = z.object({ isUpvote: z.boolean() })
   try {
     const user = req.user!.dbUser
-    const tier = TIERS[user.subscriptionTier as SubscriptionTier]
+    const tier = HOST_TIERS[user.subscriptionTier as SubscriptionTier]
     if (!tier.radar) throw new AppError('Upgrade to Pro to vote on sightings', 403, 'TIER_LIMIT')
 
     const { isUpvote } = schema.parse(req.body)

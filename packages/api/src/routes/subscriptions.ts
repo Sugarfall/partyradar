@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { ensureStripe, getOrCreateStripeCustomer } from '../lib/stripe'
-import { TIERS } from '@partyradar/shared'
+import { HOST_TIERS } from '@partyradar/shared'
 import { z } from 'zod'
 
 const router = Router()
@@ -26,7 +26,7 @@ router.get('/plans', (_req, res) => {
     PRO:     !!PRICE_IDS['PRO'],
     PREMIUM: !!PRICE_IDS['PREMIUM'],
   }
-  res.json({ data: TIERS, configured })
+  res.json({ data: HOST_TIERS, configured })
 })
 
 /** GET /api/subscriptions/status */
@@ -82,15 +82,18 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res, next) => {
 router.post('/portal', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const stripe = ensureStripe()
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.dbUser.id },
-      select: { stripeCustomerId: true },
-    })
+    const userId = req.user!.dbUser.id
 
-    if (!user?.stripeCustomerId) throw new AppError('No billing account found', 400)
+    // Use the same helper as /checkout so the customer always exists in Stripe.
+    // Previously this was a raw lookup that threw 400 when stripeCustomerId was
+    // null — blocking users who had never completed a paid checkout from managing
+    // their subscription in the billing portal.
+    const stripeCustomerId = await getOrCreateStripeCustomer(
+      userId, req.user!.dbUser.email, prisma,
+    )
 
     const session = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
+      customer: stripeCustomerId,
       return_url: `${process.env['FRONTEND_URL'] || 'https://partyradar-web.vercel.app'}/settings`,
     })
 

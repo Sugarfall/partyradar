@@ -165,7 +165,11 @@ router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
     // Special-event medals count activity within their time window, not all-time
     const windowCache = await buildWindowCache(userId, medals)
 
+    // Social score awarded per medal tier
+    const MEDAL_TIER_SCORE: Record<string, number> = { BRONZE: 10, SILVER: 25, GOLD: 50 }
+
     const newlyEarned: string[] = []
+    let socialScoreGain = 0
     for (const medal of medals) {
       if (earnedIds.has(medal.id)) continue
       const currentStats = pickStats(medal, stats, windowCache)
@@ -173,9 +177,19 @@ router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
       if (value >= medal.threshold) {
         await prisma.userMedal.upsert({ where: { userId_medalId: { userId, medalId: medal.id } }, create: { userId, medalId: medal.id }, update: {} })
         newlyEarned.push(medal.id)
+        socialScoreGain += MEDAL_TIER_SCORE[medal.tier] ?? 0
       }
     }
-    res.json({ newlyEarned, count: newlyEarned.length })
+
+    // Increment socialScore in a single write — avoids N round-trips per earned medal
+    if (socialScoreGain > 0) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { socialScore: { increment: socialScoreGain } },
+      })
+    }
+
+    res.json({ newlyEarned, count: newlyEarned.length, socialScoreGain })
   } catch (err) { next(err) }
 })
 

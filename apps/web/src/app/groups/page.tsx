@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Trophy, Users, Plus, Share2, Check, ChevronRight, Lock, Crown, ArrowLeft, X, Zap, Swords, CheckCircle, Circle, Upload, Clock, Star } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -362,6 +362,10 @@ export default function GroupsPage() {
   const [leaving, setLeaving] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', emoji: '🏆', isPrivate: false })
   const [creating, setCreating] = useState(false)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear timer on unmount
+  useEffect(() => { return () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current) } }, [])
 
   const EMOJIS = ['🏆','🎯','🔥','⚡','👑','🥇','🎉','🚀','💪','🌟','🎸','🎤','🍻','🦁','🐉']
 
@@ -420,7 +424,9 @@ export default function GroupsPage() {
   function copyInvite(code: string, e?: React.MouseEvent) {
     e?.stopPropagation()
     navigator.clipboard.writeText(`Join my PartyRadar group! Code: ${code}`)
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
+    setCopied(true)
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
   }
 
   async function respondToChallenge(id: string, accept: boolean) {

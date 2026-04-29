@@ -35,6 +35,7 @@ router.post('/', requireAuth, requireTier('BASIC', 'DJ Song Requests'), async (r
           artist: artist?.trim().slice(0, 80) ?? null,
           message: message?.trim().slice(0, 200) ?? null,
           creditCost: CREDIT_COST,
+          walletPaid: true,   // reward-point deduction above counts as wallet payment
         },
       }),
     ])

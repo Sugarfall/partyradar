@@ -36,6 +36,13 @@ router.post('/onboard', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const stripe = ensureStripe()
     const user = req.user!.dbUser
+
+    // Tier gate: only hosts who can sell tickets (BASIC+) need a Connect account.
+    // FREE tier users have no ticket sales capability, so block early.
+    if (user.subscriptionTier === 'FREE') {
+      throw new AppError('Upgrade to sell tickets and create a Connect account', 403, 'TIER_REQUIRED')
+    }
+
     const full = await prisma.user.findUnique({
       where: { id: user.id },
       select: { id: true, email: true, stripeConnectAccountId: true, currency: true },

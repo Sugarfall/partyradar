@@ -12,6 +12,22 @@ import {
   Loader2, CheckCircle2, ArrowRight,
 } from 'lucide-react'
 
+function stripeReasonLabel(code: string): string {
+  const map: Record<string, string> = {
+    'requirements.past_due':      'Action required: submit outstanding verification details.',
+    'requirements.pending_verification': 'Stripe is verifying your submitted documents — usually takes 1–2 business days.',
+    'under_review':               'Your account is under review by Stripe. No action needed yet.',
+    'listed':                     'Your account has been flagged — contact Stripe support for next steps.',
+    'rejected.fraud':             'Account rejected due to suspected fraud — contact Stripe support.',
+    'rejected.terms_of_service': 'Account rejected for Terms of Service violation — contact Stripe support.',
+    'rejected.listed':            'Account rejected — contact Stripe support.',
+    'rejected.other':             'Account rejected — contact Stripe support for details.',
+    'platform_paused':            'Payouts are temporarily paused by the platform.',
+    'action_required.requested_capabilities': 'Additional capabilities are required — continue onboarding.',
+  }
+  return map[code] ?? `Verification issue (${code}) — contact support if this persists.`
+}
+
 interface ConnectStatus {
   connected: boolean
   accountId?: string
@@ -43,6 +59,23 @@ function PayoutsInner() {
   }, [])
 
   useEffect(() => { if (dbUser) loadStatus() }, [dbUser, loadStatus])
+
+  // Auto-refresh after returning from Stripe onboarding — Stripe's webhook may
+  // take a few seconds to fire, so poll every 4 s for up to 32 s until the
+  // account flips to charges-enabled (or the max attempts are exhausted).
+  useEffect(() => {
+    if (!justOnboarded || !dbUser) return
+    let attempts = 0
+    const interval = setInterval(async () => {
+      attempts++
+      try {
+        const res = await api.get<{ data: ConnectStatus }>('/connect/status')
+        setStatus(res.data)
+        if (res.data?.chargesEnabled || attempts >= 8) clearInterval(interval)
+      } catch { /* silent — primary loadStatus handles errors */ }
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [justOnboarded, dbUser])
 
   async function startOnboarding() {
     setBusy(true)
@@ -172,7 +205,7 @@ function PayoutsInner() {
 
               {status?.requirementsDisabledReason && (
                 <p className="text-[10px]" style={{ color: 'rgba(245,158,11,0.9)' }}>
-                  Stripe reason: {status.requirementsDisabledReason}
+                  {stripeReasonLabel(status.requirementsDisabledReason)}
                 </p>
               )}
             </div>

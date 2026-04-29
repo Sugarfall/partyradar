@@ -5,7 +5,7 @@ import { ensureStripe, platformFeeCents } from '../lib/stripe'
 import type Stripe from 'stripe'
 import { v4 as uuidv4 } from 'uuid'
 import { sendNotificationToMany } from '../lib/fcm'
-import { PUSH_BLAST_TIERS, TIERS, REVENUE_MODEL, WALLET_CONFIG } from '@partyradar/shared'
+import { PUSH_BLAST_TIERS, HOST_TIERS, REVENUE_MODEL, WALLET_CONFIG } from '@partyradar/shared'
 import { haversineDistance } from '../lib/fcm'
 import { creditReferrer } from './referrals'
 
@@ -33,15 +33,45 @@ router.post('/stripe', async (req: Request, res: Response) => {
   // fall back to the Connect secret.
   const stripe = ensureStripe()
   let event: Stripe.Event | undefined
+  const sigErrors: string[] = []
   for (const secret of [webhookSecret, connectWebhookSecret]) {
     if (!secret) continue
     try {
       event = stripe.webhooks.constructEvent(req.body as Buffer, sig, secret)
       break
-    } catch { /* try next secret */ }
+    } catch (err: any) {
+      // Collect per-secret errors so we can log them all if every secret fails.
+      // This makes signature mismatches (e.g. wrong key in Railway env) visible
+      // in logs instead of silently returning 400.
+      sigErrors.push(err?.message ?? String(err))
+    }
   }
   if (!event) {
+    console.error('[webhook] Signature verification failed for all configured secrets:', sigErrors)
     res.status(400).send('Webhook signature verification failed')
+    return
+  }
+
+  // ── Fast path: real-time issuing authorization ────────────────────────────
+  // issuing_authorization.request has a hard 2-second Stripe deadline.
+  // We must NOT hit the idempotency DB write before responding — that alone
+  // can consume 100-300 ms and tip us over the limit on a cold connection.
+  //
+  // Stripe reads the `approved` field from the HTTP response body (synchronous
+  // webhook mode), so we never need to call stripe.issuing.authorizations
+  // .approve/.decline() — responding with { approved: false } IS the decline.
+  // This removes an entire Stripe API round-trip from the critical path.
+  //
+  // Any exception defaults to declined so we never return 500 to Stripe.
+  if (event.type === 'issuing_authorization.request') {
+    const authorization = event.data.object as Stripe.Issuing.Authorization
+    let approved = false
+    try {
+      approved = await decideIssuingAuthorization(authorization)
+    } catch (err) {
+      console.error('[issuing] authorization decision threw — declining for safety', err)
+    }
+    res.json({ approved })
     return
   }
 
@@ -115,14 +145,8 @@ router.post('/stripe', async (req: Request, res: Response) => {
       }
 
       // ── Stripe Issuing ─────────────────────────────────────────────────────
-      // CRITICAL: issuing_authorization.request must approve/decline within 2 s.
-      // We deduct from the wallet balance atomically inside a DB transaction,
-      // then approve via the Stripe API. If DB fails → decline for safety.
-      case 'issuing_authorization.request': {
-        const authorization = event.data.object as Stripe.Issuing.Authorization
-        await handleIssuingAuthorizationRequest(authorization, stripe)
-        break
-      }
+      // NOTE: issuing_authorization.request is handled above in the fast path
+      // (before the idempotency write) so it never reaches this switch.
 
       // issuing_transaction.created fires once the charge settles (usually
       // instantly for card-present or within seconds for online). This is where
@@ -144,6 +168,28 @@ router.post('/stripe', async (req: Request, res: Response) => {
         break
       }
 
+      case 'charge.dispute.created': {
+        const dispute = event.data.object as Stripe.Dispute
+        await handleChargeDispute(dispute, stripe)
+        break
+      }
+
+      // Dispute resolved — restore clawed-back funds if platform won
+      case 'charge.dispute.closed': {
+        const dispute = event.data.object as Stripe.Dispute
+        if (dispute.status === 'won') {
+          await handleDisputeWon(dispute, stripe)
+        }
+        break
+      }
+
+      // Subscription renewal payment failed — notify the user; downgrade after 3 failures
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object as Stripe.Invoice
+        await handleInvoicePaymentFailed(invoice)
+        break
+      }
+
       // Physical card shipping status updates
       case 'issuing_card.updated': {
         const card = event.data.object as Stripe.Issuing.Card
@@ -153,8 +199,9 @@ router.post('/stripe', async (req: Request, res: Response) => {
             data: {
               shippingStatus: card.shipping.status,
               trackingUrl: card.shipping.tracking_url ?? undefined,
-              // Mark as ACTIVE once Stripe confirms delivery
-              ...(card.shipping.status === 'delivered' ? { status: 'SHIPPING' } : {}),
+              // H1 fix: was incorrectly setting 'SHIPPING' on delivery — card
+              // would arrive but remain permanently un-usable.
+              ...(card.shipping.status === 'delivered' ? { status: 'ACTIVE' } : {}),
             },
           })
         }
@@ -202,6 +249,12 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     return
   }
 
+  // Venue sponsorship checkout — venue owner pays for local spotlight
+  if (session.mode === 'subscription' && session.metadata?.['type'] === 'venue_sponsorship') {
+    await handleVenueSponsorshipCheckout(session)
+    return
+  }
+
   // Platform subscription checkout (BASIC / PRO / PREMIUM host tiers)
   if (session.mode === 'subscription') {
     const { userId: subUserId, tier } = session.metadata ?? {}
@@ -232,7 +285,7 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     })
 
     // Record platform revenue + credit referrer (100% of sub price is platform revenue)
-    const tierConfig = TIERS[tier as 'BASIC' | 'PRO' | 'PREMIUM']
+    const tierConfig = HOST_TIERS[tier as 'BASIC' | 'PRO' | 'PREMIUM']
     const subRevenue = tierConfig?.price ?? 0
     if (subRevenue > 0) {
       await prisma.platformRevenue.create({
@@ -493,7 +546,7 @@ async function creditGroupCreator(groupId: string, creatorShare: number, descrip
   })
 
   // Enforce MAX_BALANCE for creator wallet too
-  const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - wallet.balance)
+  const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - wallet.balance.toNumber())
   const effective = Number(Math.min(creatorShare, headroom).toFixed(2))
   if (effective <= 0) return
 
@@ -511,6 +564,18 @@ async function creditGroupCreator(groupId: string, creatorShare: number, descrip
       description,
     },
   })
+
+  const dropped = Number((creatorShare - effective).toFixed(2))
+  if (dropped > 0) {
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'creator_cap_retention',
+        amount: dropped,
+        referenceId: groupId ?? '',
+        description: `Creator wallet at cap — £${dropped.toFixed(2)} retained (group sub)`,
+      },
+    }).catch(() => {}) // best-effort
+  }
 }
 
 async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session) {
@@ -570,6 +635,42 @@ async function handleGroupSubscriptionCheckout(session: Stripe.Checkout.Session)
   // C2 fix: credit the group creator with their share of the subscription payment
   const creatorShare = Number((price - platformCut).toFixed(2))
   await creditGroupCreator(groupId, creatorShare, `Group subscription · ${group?.name ?? groupId} (new member)`)
+}
+
+// ─── Venue Sponsorship ────────────────────────────────────────────────────────
+
+/**
+ * Activates venue spotlight after the initial Stripe Checkout payment.
+ * The venue is boosted in discovery feeds for users within `promotionRadius` km.
+ * Subsequent monthly renewals are handled by handleInvoicePaid.
+ */
+async function handleVenueSponsorshipCheckout(session: Stripe.Checkout.Session) {
+  const { venueId, userId, promotionRadius } = session.metadata ?? {}
+  if (!venueId || !userId) return
+
+  const stripe = ensureStripe()
+  const stripeSub = await stripe.subscriptions.retrieve(session.subscription as string)
+  const radius = promotionRadius ? Number(promotionRadius) : 5
+  const sponsoredUntil = new Date(stripeSub.current_period_end * 1000)
+
+  await prisma.venue.update({
+    where: { id: venueId },
+    data: {
+      isSponsored: true,
+      sponsoredUntil,
+      promotionRadius: radius,
+      stripeVenueSubId: stripeSub.id,
+    },
+  })
+
+  await prisma.platformRevenue.create({
+    data: {
+      source: 'sponsored_venue',
+      amount: REVENUE_MODEL.SPONSORED_VENUE_MONTHLY,
+      referenceId: venueId,
+      description: `Venue spotlight — ${radius}km radius (initial)`,
+    },
+  })
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
@@ -640,6 +741,29 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       const creatorShare = Number((amountPaid - platformCut).toFixed(2))
       await creditGroupCreator(groupSub.groupId, creatorShare, `Group subscription renewal`)
     }
+    return
+  }
+
+  // Venue sponsorship renewal — extend sponsoredUntil to the new period end
+  const venueForSub = await prisma.venue.findFirst({
+    where: { stripeVenueSubId: stripeSub.id },
+    select: { id: true, promotionRadius: true },
+  })
+  if (venueForSub) {
+    await prisma.venue.update({
+      where: { id: venueForSub.id },
+      data: { isSponsored: true, sponsoredUntil: periodEnd },
+    })
+    if (isRenewal && amountPaid > 0) {
+      await prisma.platformRevenue.create({
+        data: {
+          source: 'sponsored_venue',
+          amount: amountPaid,
+          referenceId: venueForSub.id,
+          description: `Venue spotlight renewal — ${venueForSub.promotionRadius ?? 5}km radius`,
+        },
+      })
+    }
   }
 }
 
@@ -707,6 +831,23 @@ async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription) {
       where: { id: groupSub.groupId },
       data: { memberCount: { decrement: 1 } },
     })
+    return
+  }
+
+  // Venue sponsorship deletion — revoke spotlight immediately on cancellation
+  const sponsoredVenue = await prisma.venue.findFirst({
+    where: { stripeVenueSubId: stripeSub.id },
+    select: { id: true },
+  })
+  if (sponsoredVenue) {
+    await prisma.venue.update({
+      where: { id: sponsoredVenue.id },
+      data: {
+        isSponsored: false,
+        sponsoredUntil: null,
+        stripeVenueSubId: null,
+      },
+    })
   }
 }
 
@@ -722,26 +863,51 @@ async function handleWalletTopUp(session: Stripe.Checkout.Session) {
 
   const amount = Number(topUpAmount)
   const bonus = Number(bonusPercent ?? 0)
-  const bonusAmount = Number((amount * bonus / 100).toFixed(2))
-  const totalCredit = amount + bonusAmount
 
-  // Atomic interactive transaction: increment balance and record tx in one DB round-trip.
-  // Using increment (not read-then-write) prevents a stale balance if two top-ups
-  // complete for the same wallet within the same millisecond.
+  // ── Determine net received after Stripe's processing fee ─────────────────
+  // Calculating the bonus on the gross charge means the platform subsidises
+  // both the Stripe fee AND the bonus. Instead we:
+  //   1. Always credit the user the full gross they paid (no hidden deduction).
+  //   2. Calculate the bonus only on the net actually received.
+  // Example: £25 charge → £23.99 net → bonus = £23.99 × 5% = £1.20
+  //          wallet credit = £25 + £1.20 = £26.20  (vs £26.25 on gross)
+  //          platform cost = bonus only; Stripe fee is accepted as payment COGS.
+  let netReceived = amount  // safe fallback if we cannot expand the balance transaction
+  try {
+    const stripe = ensureStripe()
+    const pi = await stripe.paymentIntents.retrieve(
+      session.payment_intent as string,
+      { expand: ['latest_charge.balance_transaction'] },
+    )
+    const bt = (pi.latest_charge as Stripe.Charge | null)
+      ?.balance_transaction as Stripe.BalanceTransaction | null
+    if (bt && typeof bt.net === 'number') netReceived = bt.net / 100
+  } catch (err) {
+    console.warn('[wallet topup] Could not fetch balance transaction; bonus will be on gross:', err)
+  }
+
+  const bonusAmount = Number((netReceived * bonus / 100).toFixed(2))
+
+  // Split deposit and bonus into two separate transaction records so each maps
+  // 1:1 to what the user sees in Stripe and can be reconciled independently:
+  //   TOP_UP row  → matches the Stripe charge amount exactly (£amount)
+  //   BONUS row   → platform-awarded bonus, clearly separate (£bonusAmount)
   await prisma.$transaction(async (tx) => {
     // M13 fix: read current balance inside the transaction so we can cap the
     // credit at MAX_BALANCE. The upfront check in wallet.ts can be bypassed by
     // a race — the webhook is the authoritative write path.
     const current = await tx.wallet.findUnique({ where: { id: walletId }, select: { balance: true } })
-    const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - (current?.balance ?? 0))
-    const effectiveCredit = Number(Math.min(totalCredit, headroom).toFixed(2))
-    if (effectiveCredit <= 0) return // balance already at cap — nothing to credit
+    const currentBalance = current?.balance?.toNumber() ?? 0
+    const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - currentBalance)
+    if (headroom <= 0) return // balance already at cap — nothing to credit
 
-    const updated = await tx.wallet.update({
+    // 1 — Deposit (matches the Stripe charge exactly)
+    const depositCredit = Number(Math.min(amount, headroom).toFixed(2))
+    const afterDeposit = await tx.wallet.update({
       where: { id: walletId },
       data: {
-        balance: { increment: effectiveCredit },
-        lifetimeTopUp: { increment: amount },
+        balance: { increment: depositCredit },
+        lifetimeTopUp: { increment: depositCredit },
       },
     })
 
@@ -749,24 +915,46 @@ async function handleWalletTopUp(session: Stripe.Checkout.Session) {
       data: {
         walletId,
         type: 'TOP_UP',
-        amount: effectiveCredit,
-        balanceAfter: updated.balance,
-        description: bonusAmount > 0
-          ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
-          : `Top-up £${amount}`,
+        amount: depositCredit,
+        balanceAfter: afterDeposit.balance,
+        description: `Wallet top-up £${amount}`,
         stripePaymentId: session.payment_intent as string,
         stripeSessionId: session.id,
       },
     })
+
+    // 2 — Bonus (separate record, clearly labelled)
+    if (bonusAmount > 0) {
+      const bonusHeadroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - afterDeposit.balance.toNumber())
+      const effectiveBonus = Number(Math.min(bonusAmount, bonusHeadroom).toFixed(2))
+      if (effectiveBonus > 0) {
+        const afterBonus = await tx.wallet.update({
+          where: { id: walletId },
+          data: { balance: { increment: effectiveBonus } },
+        })
+        await tx.walletTransaction.create({
+          data: {
+            walletId,
+            type: 'BONUS',
+            amount: effectiveBonus,
+            balanceAfter: afterBonus.balance,
+            description: `Top-up bonus ${bonus}% on £${amount}`,
+            stripePaymentId: session.payment_intent as string,
+            stripeSessionId: session.id,
+          },
+        })
+      }
+    }
   })
 
-  // Record platform revenue (we hold the float)
+  // Record platform revenue: use net received (not gross) so the dashboard
+  // reflects actual cash held, not the amount before Stripe's cut.
   await prisma.platformRevenue.create({
     data: {
       source: 'wallet_topup',
-      amount,
+      amount: netReceived,
       referenceId: userId,
-      description: `Wallet top-up £${amount}`,
+      description: `Wallet top-up £${amount} (net £${netReceived.toFixed(2)} after Stripe fees)`,
     },
   })
 }
@@ -783,22 +971,38 @@ async function handleWalletTopUpFromIntent(pi: Stripe.PaymentIntent) {
 
   const amount = Number(topUpAmount)
   const bonus = Number(bonusPercent ?? 0)
-  const bonusAmount = Number((amount * bonus / 100).toFixed(2))
-  const totalCredit = amount + bonusAmount
 
-  // Atomic interactive transaction: increment balance and record tx in one DB round-trip.
+  // ── Net received after Stripe fees (same logic as Checkout flow) ──────────
+  let netReceived = amount
+  try {
+    const stripe = ensureStripe()
+    const expanded = await stripe.paymentIntents.retrieve(pi.id, {
+      expand: ['latest_charge.balance_transaction'],
+    })
+    const bt = (expanded.latest_charge as Stripe.Charge | null)
+      ?.balance_transaction as Stripe.BalanceTransaction | null
+    if (bt && typeof bt.net === 'number') netReceived = bt.net / 100
+  } catch (err) {
+    console.warn('[wallet topup intent] Could not fetch balance transaction; bonus will be on gross:', err)
+  }
+
+  const bonusAmount = Number((netReceived * bonus / 100).toFixed(2))
+
+  // Same split-record approach as the Checkout flow above.
   await prisma.$transaction(async (tx) => {
     // M13 fix: enforce MAX_BALANCE inside the transaction (same as Checkout flow above).
     const current = await tx.wallet.findUnique({ where: { id: walletId }, select: { balance: true } })
-    const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - (current?.balance ?? 0))
-    const effectiveCredit = Number(Math.min(totalCredit, headroom).toFixed(2))
-    if (effectiveCredit <= 0) return
+    const currentBalance = current?.balance?.toNumber() ?? 0
+    const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - currentBalance)
+    if (headroom <= 0) return
 
-    const updated = await tx.wallet.update({
+    // 1 — Deposit (mirrors the Stripe charge amount)
+    const depositCredit = Number(Math.min(amount, headroom).toFixed(2))
+    const afterDeposit = await tx.wallet.update({
       where: { id: walletId },
       data: {
-        balance: { increment: effectiveCredit },
-        lifetimeTopUp: { increment: amount },
+        balance: { increment: depositCredit },
+        lifetimeTopUp: { increment: depositCredit },
       },
     })
 
@@ -806,23 +1010,43 @@ async function handleWalletTopUpFromIntent(pi: Stripe.PaymentIntent) {
       data: {
         walletId,
         type: 'TOP_UP',
-        amount: effectiveCredit,
-        balanceAfter: updated.balance,
-        description: bonusAmount > 0
-          ? `Top-up £${amount} + £${bonusAmount.toFixed(2)} bonus (${bonus}%)`
-          : `Top-up £${amount}`,
+        amount: depositCredit,
+        balanceAfter: afterDeposit.balance,
+        description: `Wallet top-up £${amount}`,
         stripePaymentId: pi.id,
       },
     })
+
+    // 2 — Bonus (separate, clearly labelled)
+    if (bonusAmount > 0) {
+      const bonusHeadroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - afterDeposit.balance.toNumber())
+      const effectiveBonus = Number(Math.min(bonusAmount, bonusHeadroom).toFixed(2))
+      if (effectiveBonus > 0) {
+        const afterBonus = await tx.wallet.update({
+          where: { id: walletId },
+          data: { balance: { increment: effectiveBonus } },
+        })
+        await tx.walletTransaction.create({
+          data: {
+            walletId,
+            type: 'BONUS',
+            amount: effectiveBonus,
+            balanceAfter: afterBonus.balance,
+            description: `Top-up bonus ${bonus}% on £${amount}`,
+            stripePaymentId: pi.id,
+          },
+        })
+      }
+    }
   })
 
-  // Record platform revenue (we hold the float)
+  // Record actual net received — not the gross charge
   await prisma.platformRevenue.create({
     data: {
       source: 'wallet_topup',
-      amount,
+      amount: netReceived,
       referenceId: userId,
-      description: `Wallet top-up £${amount}`,
+      description: `Wallet top-up £${amount} (net £${netReceived.toFixed(2)} after Stripe fees)`,
     },
   })
 }
@@ -854,11 +1078,10 @@ async function handleCardOrder(session: Stripe.Checkout.Session) {
   })
 
   // Record platform revenue
-  const CARD_COST = 3.50
   await prisma.platformRevenue.create({
     data: {
       source: 'card_sale',
-      amount: cardDesign.price - CARD_COST,
+      amount: cardDesign.price - REVENUE_MODEL.CARD_COST_OF_GOODS,
       referenceId: userId,
       description: `${cardDesign.name} card order`,
     },
@@ -930,12 +1153,23 @@ async function handleConnectAccountDeauthorized(connectedAccountId: string) {
  * approve. If it fails (insufficient funds or DB error), decline. If Stripe
  * approve call fails after a successful deduction, add funds back.
  */
-async function handleIssuingAuthorizationRequest(
+/**
+ * Real-time issuing authorization decision.
+ *
+ * Returns true (approve) or false (decline). The caller responds with
+ * { approved } directly in the HTTP body — Stripe reads that field
+ * synchronously, so no separate approve/decline API call is required.
+ *
+ * Balance reconciliation on approval failure is handled by the existing
+ * issuing_authorization.updated / issuing_transaction.created webhooks:
+ *   • Auth reversed/closed → handleIssuingAuthorizationReversed refunds ✓
+ *   • Transaction settled  → handleIssuingTransaction debits the settled amount ✓
+ */
+async function decideIssuingAuthorization(
   authorization: Stripe.Issuing.Authorization,
-  stripe: ReturnType<typeof ensureStripe>,
-) {
+): Promise<boolean> {
   const stripeCardId = authorization.card.id
-  const amountPence  = authorization.amount            // Stripe uses pence
+  const amountPence  = authorization.amount   // Stripe always sends pence
   const amountGBP    = amountPence / 100
 
   const card = await prisma.issuedCard.findUnique({
@@ -943,43 +1177,38 @@ async function handleIssuingAuthorizationRequest(
     select: { id: true, walletId: true, status: true },
   })
 
-  // Decline immediately for unknown or frozen/cancelled cards
-  if (!card || card.status !== 'ACTIVE') {
-    await stripe.issuing.authorizations.decline(authorization.id)
-    return
-  }
+  // Decline unknown or non-active cards immediately
+  if (!card || card.status !== 'ACTIVE') return false
 
-  // Atomic: check balance and deduct inside a single DB transaction
-  let deducted = false
+  // Platform transaction fee deducted from the wallet on top of the spend.
+  // The merchant still receives only amountGBP — the fee is retained by the
+  // platform as the spread between wallet deduction and Issuing balance debit.
+  // This fee is fully refunded if the auth is reversed or the merchant refunds.
+  const feeRate      = REVENUE_MODEL.CARD_TRANSACTION_FEE_PERCENT / 100
+  const platformFee  = Math.max(
+    REVENUE_MODEL.CARD_MIN_TRANSACTION_FEE,
+    Number((amountGBP * feeRate).toFixed(2)),
+  )
+  const totalDeduct  = amountGBP + platformFee   // e.g. £25 + £0.38 = £25.38
+
+  // Atomic balance check + deduction
   try {
     await prisma.$transaction(async (tx) => {
       const wallet = await tx.wallet.findUniqueOrThrow({
         where: { id: card.walletId },
         select: { id: true, balance: true },
       })
-
-      if (wallet.balance < amountGBP) throw new Error('INSUFFICIENT_FUNDS')
-
+      // Must have enough to cover spend AND platform fee
+      if (wallet.balance.toNumber() < totalDeduct) throw new Error('INSUFFICIENT_FUNDS')
       await tx.wallet.update({
         where: { id: wallet.id },
-        data: { balance: { decrement: amountGBP } },
+        data: { balance: { decrement: totalDeduct } },
       })
-      deducted = true
     })
-  } catch (err: any) {
-    await stripe.issuing.authorizations.decline(authorization.id)
-    return
-  }
-
-  // Approve — if Stripe call fails, refund the deducted amount
-  try {
-    await stripe.issuing.authorizations.approve(authorization.id)
-  } catch (approveErr) {
-    console.error('[issuing] Approve call failed — refunding deduction', approveErr)
-    await prisma.wallet.update({
-      where: { id: card.walletId },
-      data: { balance: { increment: amountGBP } },
-    })
+    return true
+  } catch {
+    // Insufficient funds, DB error, or timeout → decline
+    return false
   }
 }
 
@@ -1006,19 +1235,31 @@ async function handleIssuingTransaction(txn: Stripe.Issuing.Transaction) {
   })
   if (!card) { console.warn('[issuing] Transaction for unknown card:', stripeCardId); return }
 
-  // Idempotency
-  const exists = await prisma.issuingTransaction.findUnique({ where: { stripeTransactionId } })
-  if (exists) return
+  // Platform transaction fee — same rate used at authorization time.
+  // For spends:   wallet was debited (amountGBP + fee) at auth; fee is now realised revenue.
+  // For refunds:  merchant returns amountGBP; we also refund the fee to the user.
+  const feeRate     = REVENUE_MODEL.CARD_TRANSACTION_FEE_PERCENT / 100
+  const platformFee = Math.max(
+    REVENUE_MODEL.CARD_MIN_TRANSACTION_FEE,
+    Number((amountGBP * feeRate).toFixed(2)),
+  )
 
+  // Idempotency check is inside the transaction so it is atomic with the write:
+  // if two retries run concurrently, exactly one issuingTransaction.create will
+  // succeed; the other rolls back without double-crediting the wallet.
   await prisma.$transaction(async (tx) => {
-    // Refunds: add funds back (original deduction was at authorization)
+    const exists = await tx.issuingTransaction.findUnique({ where: { stripeTransactionId } })
+    if (exists) return   // already processed — bail before any balance change
+
     if (isRefund) {
+      // Merchant refund: return the spend amount AND the platform fee to the user.
+      // The balance was deducted (amountGBP + fee) at auth — restore the full amount.
       await tx.wallet.update({
         where: { id: card.walletId },
-        data: { balance: { increment: amountGBP } },
+        data: { balance: { increment: amountGBP + platformFee } },
       })
     } else {
-      // For non-refund captures, update lifetimeSpent
+      // Settled spend: balance already deducted at auth; update lifetime tracking.
       await tx.wallet.update({
         where: { id: card.walletId },
         data: { lifetimeSpent: { increment: amountGBP } },
@@ -1035,11 +1276,12 @@ async function handleIssuingTransaction(txn: Stripe.Issuing.Transaction) {
       data: {
         walletId: card.walletId,
         type: isRefund ? 'CARD_REFUND' : 'CARD_PAYMENT',
-        amount: isRefund ? amountGBP : -amountGBP,
+        // Spend: show full wallet deduction (spend + fee). Refund: full restoration.
+        amount: isRefund ? amountGBP + platformFee : -(amountGBP + platformFee),
         balanceAfter: walletBalance.balance,
         description: isRefund
           ? `Refund · ${merchantName}`
-          : `${merchantName}${merchantCity ? ` · ${merchantCity}` : ''}`,
+          : `${merchantName}${merchantCity ? ` · ${merchantCity}` : ''} · ${REVENUE_MODEL.CARD_TRANSACTION_FEE_PERCENT}% fee`,
         status: 'COMPLETED',
         metadata: {
           merchantName,
@@ -1047,6 +1289,7 @@ async function handleIssuingTransaction(txn: Stripe.Issuing.Transaction) {
           merchantCategory,
           cardLast4: card.last4,
           stripeTransactionId,
+          platformFee,
         },
       },
     })
@@ -1070,6 +1313,66 @@ async function handleIssuingTransaction(txn: Stripe.Issuing.Transaction) {
       },
     })
   })
+
+  // ── Record platform transaction fee as revenue (or reverse it on refund) ──
+  await prisma.platformRevenue.create({
+    data: {
+      source: 'card_transaction_fee',
+      // Positive on spend (revenue earned), negative on merchant refund (fee returned to user)
+      amount: isRefund ? -platformFee : platformFee,
+      referenceId: card.userId,
+      description: isRefund
+        ? `Card fee refunded · ${merchantName} · £${amountGBP.toFixed(2)}`
+        : `Card fee ${REVENUE_MODEL.CARD_TRANSACTION_FEE_PERCENT}% · ${merchantName} · £${amountGBP.toFixed(2)}`,
+    },
+  }).catch(err => console.warn('[issuing] Could not record card fee revenue:', err))
+
+  // ── Capture interchange & fee data from the settled BalanceTransaction ────
+  //
+  // Stripe Issuing economics per card spend:
+  //   • Stripe debits the platform Issuing balance the spend amount
+  //   • Stripe charges a small per-transaction issuing fee (~£0.10)
+  //   • The merchant's acquirer pays interchange (~0.2% UK debit) back to Stripe
+  //     which is shared with the platform — this partially or fully offsets the fee
+  //
+  // Stripe BalanceTransaction convention:
+  //   net = amount - fee   (fee is always a positive number)
+  //
+  // We record:
+  //   - 'card_interchange' (positive revenue) when interchange > issuing fee
+  //   - 'card_issuing_fee' (negative, i.e. net cost) when fee > interchange
+  //
+  // Falls back silently — this is best-effort accounting, not user-facing.
+  if (!isRefund) {
+    try {
+      const stripe = ensureStripe()
+      const settled = await stripe.issuing.transactions.retrieve(stripeTransactionId, {
+        expand: ['balance_transaction'],
+      })
+      const bt = settled.balance_transaction as Stripe.BalanceTransaction | null
+      if (bt) {
+        // net = amount - fee  →  surplus (interchange) = amount - fee - net
+        // Positive surplus = platform earned more than the gross debit (interchange credit)
+        // Negative surplus = net cost (Stripe fee exceeded any interchange)
+        const surplusPence = bt.amount - bt.fee - bt.net  // positive = earned, negative = cost
+        if (Math.abs(surplusPence) >= 1) {  // only record if ≥ 1p — avoid dust entries
+          await prisma.platformRevenue.create({
+            data: {
+              source: surplusPence > 0 ? 'card_interchange' : 'card_issuing_fee',
+              // positive for income, negative for net cost
+              amount: surplusPence / 100,
+              referenceId: card.userId,
+              description: surplusPence > 0
+                ? `Interchange · ${merchantName} · £${amountGBP.toFixed(2)} spend`
+                : `Issuing fee · ${merchantName} · £${amountGBP.toFixed(2)} spend`,
+            },
+          })
+        }
+      }
+    } catch (err) {
+      console.warn('[issuing] Could not capture interchange/fee data — accounting only:', err)
+    }
+  }
 }
 
 /**
@@ -1092,10 +1395,18 @@ async function handleIssuingAuthorizationReversed(authorization: Stripe.Issuing.
   })
   if (!card) return
 
+  // The wallet was debited (spend + fee) at auth — refund both in full.
+  const feeRate     = REVENUE_MODEL.CARD_TRANSACTION_FEE_PERCENT / 100
+  const platformFee = Math.max(
+    REVENUE_MODEL.CARD_MIN_TRANSACTION_FEE,
+    Number((amountGBP * feeRate).toFixed(2)),
+  )
+  const totalRefund = amountGBP + platformFee
+
   await prisma.$transaction(async (tx) => {
     const wallet = await tx.wallet.update({
       where: { id: card.walletId },
-      data: { balance: { increment: amountGBP } },
+      data: { balance: { increment: totalRefund } },
       select: { balance: true },
     })
 
@@ -1103,11 +1414,11 @@ async function handleIssuingAuthorizationReversed(authorization: Stripe.Issuing.
       data: {
         walletId: card.walletId,
         type: 'CARD_REFUND',
-        amount: amountGBP,
+        amount: totalRefund,
         balanceAfter: wallet.balance,
-        description: 'Authorization reversed (merchant cancelled)',
+        description: 'Authorization reversed · full refund incl. card fee',
         status: 'COMPLETED',
-        metadata: { authorizationId: authorization.id },
+        metadata: { authorizationId: authorization.id, platformFee },
       },
     })
 
@@ -1119,7 +1430,7 @@ async function handleIssuingAuthorizationReversed(authorization: Stripe.Issuing.
         walletId: card.walletId,
         stripeTransactionId: `rev_${authorization.id}`,
         stripeAuthorizationId: authorization.id,
-        amount: amountGBP,
+        amount: totalRefund,
         currency: 'GBP',
         merchantName: 'Authorization reversed',
         type: 'refund',
@@ -1128,6 +1439,312 @@ async function handleIssuingAuthorizationReversed(authorization: Stripe.Issuing.
       },
     })
   })
+
+  // Auth was never captured — fee was never earned, so record a reversal entry
+  // to keep PlatformRevenue balanced (negative = fee returned to user).
+  await prisma.platformRevenue.create({
+    data: {
+      source: 'card_transaction_fee',
+      amount: -platformFee,
+      referenceId: card.id,
+      description: `Card fee reversed · auth ${authorization.id} · £${amountGBP.toFixed(2)}`,
+    },
+  }).catch(err => console.warn('[issuing] Could not record fee reversal:', err))
+}
+
+async function handleChargeDispute(
+  dispute: Stripe.Dispute,
+  stripe: ReturnType<typeof ensureStripe>,
+) {
+  // Retrieve the charge to get the payment intent and metadata
+  const charge = await stripe.charges.retrieve(
+    typeof dispute.charge === 'string' ? dispute.charge : dispute.charge.id,
+    { expand: ['payment_intent'] }
+  )
+  const pi = charge.payment_intent as Stripe.PaymentIntent | null
+  if (!pi) {
+    console.warn('[dispute] No payment intent on charge:', charge.id)
+    return
+  }
+
+  const meta = pi.metadata ?? {}
+  const disputeAmount = dispute.amount / 100
+
+  // ── Ticket purchase dispute ───────────────────────────────────────────────
+  if (meta['eventId'] && meta['userId']) {
+    // Delete tickets from this payment so the buyer cannot use them after
+    // getting their money back. Ticket model has no status field — deletion
+    // is the correct revocation mechanism.
+    await prisma.ticket.deleteMany({
+      where: { stripePaymentId: pi.id },
+    })
+
+    // The application_fee is clawed back by Stripe automatically on Connect disputes.
+    // Record the lost revenue for accounting.
+    const applicationFee = dispute.amount / 100  // approximate — actual fee is in balance tx
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'dispute_loss',
+        amount: -applicationFee,
+        referenceId: meta['userId'],
+        description: `Chargeback on ticket purchase — charge ${charge.id}, event ${meta['eventId']}`,
+      },
+    })
+
+    console.warn(`[dispute] Tickets revoked for payment ${pi.id}, event ${meta['eventId']}, user ${meta['userId']}`)
+    return
+  }
+
+  // ── Wallet top-up dispute ─────────────────────────────────────────────────
+  if (meta['type'] === 'wallet_topup' && meta['walletId']) {
+    // Buyer got their money back from Stripe but still has wallet credit — claw it back
+    const wallet = await prisma.wallet.findUnique({
+      where: { id: meta['walletId'] },
+      select: { id: true, balance: true },
+    })
+    let deduct = 0
+    if (wallet) {
+      deduct = Math.min(wallet.balance.toNumber(), disputeAmount)
+      if (deduct > 0) {
+        await prisma.$transaction([
+          prisma.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: { decrement: deduct } },
+          }),
+          prisma.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              type: 'CARD_REFUND',
+              amount: -deduct,
+              balanceAfter: wallet.balance.toNumber() - deduct,
+              description: `Chargeback clawback — disputed top-up ${charge.id}`,
+              status: 'COMPLETED',
+            },
+          }),
+        ])
+      }
+    }
+
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'dispute_loss',
+        amount: -disputeAmount,
+        referenceId: meta['userId'] ?? '',
+        description: `Chargeback on wallet top-up — charge ${charge.id}`,
+      },
+    })
+
+    console.warn(`[dispute] Wallet clawback £${deduct} for top-up dispute ${charge.id}`)
+    return
+  }
+
+  // ── Unknown charge type — log for manual review ───────────────────────────
+  console.warn(`[dispute] Unhandled dispute on charge ${charge.id}, PI type: ${meta['type'] ?? 'unknown'}`, dispute)
+}
+
+/**
+ * Subscription renewal payment failed.
+ *
+ * Stripe fires this on every failed attempt (typically 4 over ~1 week) before
+ * eventually issuing customer.subscription.deleted. We:
+ *   • Notify the user to update their payment method on the first failure.
+ *   • Proactively downgrade / cancel on the 3rd+ attempt so the UI reflects
+ *     the degraded state before Stripe formally deletes the subscription — this
+ *     avoids a window where the user still sees paid-tier features while Stripe
+ *     is in retry limbo.
+ */
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  // Mirror the subscription ID extraction pattern used in handleInvoicePaid.
+  const subscriptionId: string | null | undefined =
+    (invoice as any).parent?.subscription_details?.subscription
+    ?? (invoice as any).subscription
+  if (!subscriptionId) return
+
+  const attemptCount = invoice.attempt_count ?? 1
+
+  // ── Platform subscription ─────────────────────────────────────────────────
+  const platformSub = await prisma.subscription.findFirst({
+    where: { stripeSubscriptionId: subscriptionId },
+    select: { id: true, userId: true },
+  })
+  if (platformSub) {
+    await sendNotificationToMany([platformSub.userId], {
+      type: 'PAYMENT_FAILED',
+      title: 'Payment failed',
+      body: attemptCount >= 3
+        ? 'Your subscription has been downgraded. Update your payment method to re-subscribe.'
+        : 'Your subscription renewal failed. Please update your payment method to keep access.',
+      data: { screen: 'pricing' },
+    })
+    // Proactive downgrade at 3rd attempt — customer.subscription.deleted will
+    // also fire eventually and is idempotent, so double-applying is fine.
+    if (attemptCount >= 3) {
+      await prisma.subscription.update({
+        where: { id: platformSub.id },
+        data: { tier: 'FREE', stripeSubscriptionId: null, currentPeriodEnd: null },
+      })
+      await prisma.user.update({
+        where: { id: platformSub.userId },
+        data: { subscriptionTier: 'FREE' },
+      })
+      // H4 mirror: clear featured flag on future events
+      await prisma.event.updateMany({
+        where: { hostId: platformSub.userId, isFeatured: true, startsAt: { gte: new Date() } },
+        data: { isFeatured: false },
+      })
+    }
+    return
+  }
+
+  // ── Group subscription ────────────────────────────────────────────────────
+  const groupSub = await prisma.groupSubscription.findFirst({
+    where: { stripeSubscriptionId: subscriptionId },
+    select: { id: true, userId: true, groupId: true },
+  })
+  if (groupSub) {
+    const group = await prisma.groupChat.findUnique({
+      where: { id: groupSub.groupId },
+      select: { name: true },
+    })
+    const groupName = group?.name ?? 'the group'
+    await sendNotificationToMany([groupSub.userId], {
+      type: 'PAYMENT_FAILED',
+      title: 'Payment failed',
+      body: attemptCount >= 3
+        ? `Your membership to ${groupName} has been cancelled due to payment failure.`
+        : `Payment for ${groupName} membership failed. Update your payment method to keep access.`,
+      data: { groupId: groupSub.groupId, screen: 'group' },
+    })
+    return
+  }
+
+  // ── Venue sponsorship ─────────────────────────────────────────────────────
+  const sponsoredVenue = await prisma.venue.findFirst({
+    where: { stripeVenueSubId: subscriptionId },
+    select: { id: true, claimedById: true, name: true },
+  })
+  if (sponsoredVenue?.claimedById) {
+    await sendNotificationToMany([sponsoredVenue.claimedById], {
+      type: 'PAYMENT_FAILED',
+      title: 'Venue spotlight payment failed',
+      body: attemptCount >= 3
+        ? `Spotlight for ${sponsoredVenue.name} has been cancelled due to payment failure.`
+        : `Payment for ${sponsoredVenue.name} spotlight failed. Update your payment method to keep your listing boosted.`,
+      data: { venueId: sponsoredVenue.id, screen: 'venue' },
+    })
+    // Revoke spotlight proactively after 3 failures
+    if (attemptCount >= 3) {
+      await prisma.venue.update({
+        where: { id: sponsoredVenue.id },
+        data: { isSponsored: false, sponsoredUntil: null, stripeVenueSubId: null },
+      })
+    }
+  }
+}
+
+/**
+ * Dispute resolved in the platform's favour.
+ *
+ * Stripe returns the disputed funds to the platform. We reverse the clawback
+ * recorded in handleChargeDispute:
+ *   • Wallet top-up: restore the deducted balance (capped at MAX_BALANCE).
+ *   • Ticket purchase: tickets were deleted and cannot be auto-restored — notify
+ *     the user to contact support for re-issue.
+ * In both cases we record a positive PlatformRevenue entry to offset the
+ * negative dispute_loss written at dispute creation.
+ */
+async function handleDisputeWon(
+  dispute: Stripe.Dispute,
+  stripe: ReturnType<typeof ensureStripe>,
+) {
+  const charge = await stripe.charges.retrieve(
+    typeof dispute.charge === 'string' ? dispute.charge : dispute.charge.id,
+    { expand: ['payment_intent'] },
+  )
+  const pi = charge.payment_intent as Stripe.PaymentIntent | null
+  if (!pi) {
+    console.warn('[dispute:won] No payment intent on charge:', charge.id)
+    return
+  }
+
+  const meta = pi.metadata ?? {}
+  const restoredAmountGBP = dispute.amount / 100
+
+  // ── Wallet top-up — restore clawed-back balance ───────────────────────────
+  if (meta['type'] === 'wallet_topup' && meta['walletId']) {
+    const wallet = await prisma.wallet.findUnique({
+      where: { id: meta['walletId'] },
+      select: { id: true, balance: true },
+    })
+    if (wallet) {
+      const headroom = Math.max(0, WALLET_CONFIG.MAX_BALANCE - wallet.balance.toNumber())
+      const toRestore = Number(Math.min(restoredAmountGBP, headroom).toFixed(2))
+
+      if (toRestore > 0) {
+        const updated = await prisma.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: { increment: toRestore } },
+        })
+        await prisma.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: 'TOP_UP',
+            amount: toRestore,
+            balanceAfter: updated.balance,
+            description: `Dispute won — balance restored (charge ${charge.id})`,
+            status: 'COMPLETED',
+          },
+        })
+      }
+
+      if (meta['userId']) {
+        await sendNotificationToMany([meta['userId']], {
+          type: 'PAYMENT_FAILED',
+          title: 'Dispute resolved in your favour',
+          body: toRestore > 0
+            ? `Your dispute was upheld and £${toRestore.toFixed(2)} has been restored to your wallet.`
+            : 'Your dispute was upheld. Your wallet was already at the maximum balance so no further credit was added.',
+          data: { screen: 'wallet' },
+        })
+      }
+    }
+
+    // Offset the negative dispute_loss recorded in handleChargeDispute
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'dispute_recovery',
+        amount: restoredAmountGBP,
+        referenceId: meta['userId'] ?? '',
+        description: `Dispute won — wallet top-up · charge ${charge.id}`,
+      },
+    })
+    return
+  }
+
+  // ── Ticket purchase — cannot auto-restore deleted tickets ─────────────────
+  if (meta['eventId'] && meta['userId']) {
+    await sendNotificationToMany([meta['userId']], {
+      type: 'PAYMENT_FAILED',
+      title: 'Dispute resolved in your favour',
+      body: 'Your chargeback dispute was upheld. Please contact support to have your tickets re-issued.',
+      data: { eventId: meta['eventId'], screen: 'support' },
+    })
+
+    await prisma.platformRevenue.create({
+      data: {
+        source: 'dispute_recovery',
+        amount: restoredAmountGBP,
+        referenceId: meta['userId'],
+        description: `Dispute won — ticket purchase · charge ${charge.id}, event ${meta['eventId']}`,
+      },
+    })
+    return
+  }
+
+  console.warn(
+    `[dispute:won] Unhandled dispute win on charge ${charge.id}, PI type: ${meta['type'] ?? 'unknown'}`,
+    dispute,
+  )
 }
 
 export default router

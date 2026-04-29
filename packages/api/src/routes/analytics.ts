@@ -93,8 +93,8 @@ router.get('/:id/analytics', requireAuth, async (req: AuthRequest, res, next) =>
     }, {})
 
     // ── Ticket revenue ────────────────────────────────────────────────────────
-    const ticketRevenue = tickets.reduce((sum, t) => sum + t.pricePaid, 0)
-    const platformFees  = tickets.reduce((sum, t) => sum + t.platformFee, 0)
+    const ticketRevenue = tickets.reduce((sum, t) => sum + t.pricePaid.toNumber(), 0)
+    const platformFees  = tickets.reduce((sum, t) => sum + t.platformFee.toNumber(), 0)
     const scanned       = tickets.filter(t => t.scannedAt).length
 
     // ── Reviews avg ───────────────────────────────────────────────────────────

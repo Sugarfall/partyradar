@@ -239,6 +239,8 @@ router.post('/go-out-requests/:requestId/respond', requireAuth, async (req: Auth
       data: { status: accept ? 'accepted' : 'declined' },
     })
 
+    let conversationId: string | null = null
+
     if (accept) {
       const me = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true, username: true } })
       await prisma.notification.create({
@@ -250,9 +252,36 @@ router.post('/go-out-requests/:requestId/respond', requireAuth, async (req: Auth
           data: { fromUserId: userId, fromUsername: me?.username },
         },
       }).catch(() => {})
+
+      // Find or create a direct conversation between the two users so they can
+      // chat immediately after accepting. go-out mutual consent = isRequest: false
+      // (no follow-check needed — they've explicitly agreed to connect).
+      const existingConvo = await prisma.conversation.findFirst({
+        where: {
+          AND: [
+            { participants: { some: { userId: request.fromId } } },
+            { participants: { some: { userId } } },
+          ],
+        },
+        select: { id: true },
+      })
+
+      if (existingConvo) {
+        conversationId = existingConvo.id
+      } else {
+        const newConvo = await prisma.conversation.create({
+          data: {
+            isRequest: false,
+            participants: {
+              create: [{ userId: request.fromId }, { userId }],
+            },
+          },
+        })
+        conversationId = newConvo.id
+      }
     }
 
-    res.json({ data: { ok: true } })
+    res.json({ data: { ok: true, conversationId } })
   } catch (err) { next(err) }
 })
 

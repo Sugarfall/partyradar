@@ -333,6 +333,7 @@ export default function PubCrawlPage() {
   const [selectedVibes, setSelectedVibes] = useState<string[]>([])
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locating, setLocating] = useState(false)
+  const [locationDenied, setLocationDenied] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState<CrawlResult | null>(null)
   const [error, setError] = useState('')
@@ -351,8 +352,9 @@ export default function PubCrawlPage() {
         setLocating(false)
       },
       () => {
-        // Glasgow fallback
+        // Glasgow city centre fallback — inform the user
         setLocation({ lat: 55.8642, lng: -4.2518 })
+        setLocationDenied(true)
         setLocating(false)
       },
       { enableHighAccuracy: false, timeout: 8000 },
@@ -523,12 +525,21 @@ export default function PubCrawlPage() {
             <span className="text-[11px]" style={{ color: 'rgba(var(--accent-rgb),0.5)' }}>Getting your location…</span>
           </div>
         )}
-        {location && !locating && !result && (
+        {location && !locating && !result && !locationDenied && (
           <div className="mt-3 flex items-center gap-2 px-4 py-2 rounded-xl"
             style={{ background: 'rgba(0,255,136,0.04)', border: '1px solid rgba(0,255,136,0.15)' }}>
             <MapPin size={11} style={{ color: '#00ff88' }} />
             <span className="text-[10px]" style={{ color: 'rgba(0,255,136,0.6)' }}>
               Location ready · {location.lat.toFixed(3)}, {location.lng.toFixed(3)}
+            </span>
+          </div>
+        )}
+        {locationDenied && !locating && !result && (
+          <div className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl"
+            style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <MapPin size={11} style={{ color: '#f59e0b' }} />
+            <span className="text-[10px]" style={{ color: 'rgba(245,158,11,0.8)' }}>
+              Location access denied — using Glasgow city centre. Enable GPS for better results.
             </span>
           </div>
         )}

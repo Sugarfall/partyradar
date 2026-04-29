@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { Zap, Loader2, Eye, EyeOff, ChevronRight, Radio } from 'lucide-react'
+import { formatPrice } from '@/lib/currency'
 
 // SSR-safe dynamic import for react-globe.gl
 const Globe = dynamic(() => import('react-globe.gl'), { ssr: false, loading: () => null })
@@ -670,7 +671,7 @@ export default function GlobeLanding() {
                     <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
                       {[
                         nearestEvent.neighbourhood ?? nearestEvent.city,
-                        nearestEvent.price === 0 ? 'Free entry' : nearestEvent.price != null ? `£${nearestEvent.price}` : null,
+                        nearestEvent.price === 0 ? 'Free entry' : nearestEvent.price != null ? formatPrice(nearestEvent.price) : null,
                       ].filter(Boolean).join(' · ')}
                     </p>
                   </div>

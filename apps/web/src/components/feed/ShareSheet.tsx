@@ -22,7 +22,7 @@
  * handle); centered dialog on desktop. Clicking the backdrop closes it.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Share2, Copy, Repeat2, X, Check } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -78,13 +78,17 @@ export default function ShareSheet({ post, onClose, onShared }: ShareSheetProps)
   const [reposting, setReposting] = useState(false)
   const [quickReposted, setQuickReposted] = useState(false)
   const [quickReposting, setQuickReposting] = useState(false)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const postUrl = useMemo(() => buildPostUrl(post.id), [post.id])
 
-  // Lock body scroll while sheet is open.
+  // Lock body scroll while sheet is open; clear timers on unmount.
   useEffect(() => {
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
+    return () => {
+      document.body.style.overflow = ''
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    }
   }, [])
 
   /** Record analytics in the background. We don't want a 500 on the share
@@ -131,7 +135,7 @@ export default function ShareSheet({ post, onClose, onShared }: ShareSheetProps)
       }
       setCopied(true)
       recordShare('copy')
-      setTimeout(() => {
+      closeTimerRef.current = setTimeout(() => {
         setCopied(false)
         onClose()
       }, 900)
@@ -148,7 +152,7 @@ export default function ShareSheet({ post, onClose, onShared }: ShareSheetProps)
       await api.post('/posts', { originalPostId: post.id })
       recordShare('repost')
       setQuickReposted(true)
-      setTimeout(() => onClose(), 900)
+      closeTimerRef.current = setTimeout(() => onClose(), 900)
     } catch {
       // silent — could be "can't repost your own" etc.
     } finally {

@@ -426,7 +426,7 @@ export default function VenueManagePage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.2em' }}>UPCOMING EVENTS</p>
-            <Link href="/events/create"
+            <Link href={`/events/create?venueId=${id}`}
               className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
               style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.08em' }}>
               <Plus size={10} /> CREATE EVENT
@@ -464,7 +464,7 @@ export default function VenueManagePage() {
             <div className="py-6 text-center rounded-xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
               <Calendar size={20} style={{ color: 'rgba(var(--accent-rgb),0.2)', margin: '0 auto 8px' }} />
               <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No upcoming events</p>
-              <Link href="/events/create" className="inline-block mt-3 text-[10px] font-bold"
+              <Link href={`/events/create?venueId=${id}`} className="inline-block mt-3 text-[10px] font-bold"
                 style={{ color: 'var(--accent)' }}>Create your first event →</Link>
             </div>
           )}

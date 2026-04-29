@@ -848,6 +848,17 @@ router.get('/:groupId/pub-crawl', optionalAuth, async (req: AuthRequest, res, ne
     const { groupId } = req.params as { groupId: string }
     const userId = req.user?.dbUser.id ?? null
 
+    // Gate paid groups: user must be an active member
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { isPaid: true } })
+    if (!group) throw new AppError('Group not found', 404)
+    if (group.isPaid) {
+      if (!userId) throw new AppError('Authentication required', 401)
+      const membership = await prisma.groupMembership.findUnique({
+        where: { groupId_userId: { groupId, userId } },
+      })
+      if (!membership) throw new AppError('Members only', 403)
+    }
+
     const crawl = await prisma.pubCrawl.findFirst({
       where: { groupId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
@@ -867,23 +878,30 @@ router.get('/:groupId/pub-crawl', optionalAuth, async (req: AuthRequest, res, ne
     if (!crawl) return res.json({ data: null })
 
     // Build leaderboard
-    const scoreMap = new Map<string, { user: { id: string; displayName: string; photoUrl: string | null; username: string | null }; score: number }>()
+    const scoreMap = new Map<string, { user: { id: string; displayName: string; photoUrl: string | null; username: string | null }; score: number; firstCheckInAt: Date }>()
     for (const stop of crawl.stops) {
       for (const ci of stop.checkIns) {
         const existing = scoreMap.get(ci.userId)
         if (existing) {
           existing.score++
+          if (ci.createdAt < existing.firstCheckInAt) existing.firstCheckInAt = ci.createdAt
         } else {
-          scoreMap.set(ci.userId, { user: ci.user, score: 1 })
+          scoreMap.set(ci.userId, { user: ci.user, score: 1, firstCheckInAt: ci.createdAt })
         }
       }
     }
-    const leaderboard = [...scoreMap.values()].sort((a, b) => b.score - a.score)
+    // Sort by score desc; ties broken by who checked in first (ascending)
+    const leaderboard = [...scoreMap.values()].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      return a.firstCheckInAt.getTime() - b.firstCheckInAt.getTime()
+    })
 
     const stopsFormatted = crawl.stops.map((s) => ({
       id: s.id,
       name: s.name,
       address: s.address,
+      lat: s.lat,
+      lng: s.lng,
       order: s.order,
       checkInCount: s.checkIns.length,
       checkedIn: userId ? s.checkIns.some((c) => c.userId === userId) : false,
@@ -990,7 +1008,7 @@ router.post('/:groupId/pub-crawl', requireAuth, async (req: AuthRequest, res, ne
     const userId = req.user!.dbUser.id
     const { name, stops } = req.body as {
       name: string
-      stops: Array<{ name: string; address?: string }>
+      stops: Array<{ name: string; address?: string; lat?: number | null; lng?: number | null }>
     }
 
     if (!name?.trim()) throw new AppError('Pub crawl name required', 400)
@@ -1009,6 +1027,8 @@ router.post('/:groupId/pub-crawl', requireAuth, async (req: AuthRequest, res, ne
           create: stops.map((s, i) => ({
             name: s.name.trim(),
             address: s.address?.trim() ?? null,
+            lat: s.lat ?? null,
+            lng: s.lng ?? null,
             order: i,
           })),
         },
@@ -1028,8 +1048,18 @@ router.post('/:groupId/pub-crawl', requireAuth, async (req: AuthRequest, res, ne
 /** POST /api/groups/:groupId/pub-crawl/stops/:stopId/checkin — check in at a stop */
 router.post('/:groupId/pub-crawl/stops/:stopId/checkin', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { stopId } = req.params as { stopId: string }
+    const { groupId, stopId } = req.params as { groupId: string; stopId: string }
     const userId = req.user!.dbUser.id
+
+    // Verify membership for paid groups
+    const group = await prisma.groupChat.findUnique({ where: { id: groupId }, select: { isPaid: true } })
+    if (!group) throw new AppError('Group not found', 404)
+    if (group.isPaid) {
+      const membership = await prisma.groupMembership.findUnique({
+        where: { groupId_userId: { groupId, userId } },
+      })
+      if (!membership) throw new AppError('Members only', 403)
+    }
 
     const stop = await prisma.pubCrawlStop.findUnique({ where: { id: stopId } })
     if (!stop) throw new AppError('Stop not found', 404)

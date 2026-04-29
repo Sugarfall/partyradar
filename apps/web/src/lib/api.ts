@@ -121,7 +121,10 @@ export async function fetcher(path: string) {
   if (!res.ok) {
     const errVal = data?.error
     const msg = typeof errVal === 'string' ? errVal : errVal?.message ?? 'Fetch failed'
-    throw new Error(msg)
+    const fetchErr = new Error(msg) as Error & { code?: string }
+    const code = data?.code ?? (typeof errVal === 'object' ? errVal?.code : undefined)
+    if (code) fetchErr.code = code
+    throw fetchErr
   }
   return data
 }

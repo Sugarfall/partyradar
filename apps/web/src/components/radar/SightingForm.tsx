@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Input, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import type { CreateSightingInput } from '@partyradar/shared'
@@ -20,6 +20,12 @@ export function SightingForm({ defaultLocation, onSubmit, onCancel }: SightingFo
   const [description, setDescription] = useState('')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const photoPreviewUrlRef = useRef<string | null>(null)
+
+  // Revoke object URL on unmount to prevent memory leak
+  useEffect(() => {
+    return () => { if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current) }
+  }, [])
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,8 +44,11 @@ export function SightingForm({ defaultLocation, onSubmit, onCancel }: SightingFo
   function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current)
+    const url = URL.createObjectURL(file)
+    photoPreviewUrlRef.current = url
     setPhotoFile(file)
-    setPhotoPreview(URL.createObjectURL(file))
+    setPhotoPreview(url)
   }
 
   async function handleSubmit(e: React.FormEvent) {

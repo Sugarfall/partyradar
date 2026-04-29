@@ -5,7 +5,7 @@ import * as Location from 'expo-location'
 import { api } from '@/lib/api'
 import { useAuth } from '../_layout'
 import type { CelebritySighting } from '@partyradar/shared'
-import { TIERS } from '@partyradar/shared'
+import { HOST_TIERS } from '@partyradar/shared'
 import type { SubscriptionTier } from '@partyradar/shared'
 
 export default function RadarScreen() {
@@ -14,7 +14,7 @@ export default function RadarScreen() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const canUseRadar = dbUser ? TIERS[dbUser.subscriptionTier as SubscriptionTier].radar : false
+  const canUseRadar = dbUser ? HOST_TIERS[dbUser.subscriptionTier as SubscriptionTier].radar : false
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync().then(({ status }) => {

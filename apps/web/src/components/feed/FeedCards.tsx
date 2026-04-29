@@ -362,6 +362,7 @@ export function PostCard({ item, currentUserId, onDelete, storyUserIds, onOpenUs
   const [showModal, setShowModal]       = useState(false)
   const [sharing, setSharing]           = useState(false)
   const [localShares, setLocalShares]   = useState(item.sharesCount ?? 0)
+  const [likePending, setLikePending]   = useState(false)
 
   const isOwner   = !!(currentUserId && item.user.id && currentUserId === item.user.id)
   const isRepost  = !!item.originalPost
@@ -369,15 +370,27 @@ export function PostCard({ item, currentUserId, onDelete, storyUserIds, onOpenUs
 
   async function handleLike(e: React.MouseEvent) {
     e.stopPropagation()
+    if (likePending) return
     if (!item.id) {
       const nowLiked = !liked; setLiked(nowLiked); setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1)); return
     }
+    // Optimistic update
+    const prevLiked = liked
+    const nowLiked = !liked
+    setLiked(nowLiked); setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1))
+    setLikePending(true)
     try {
       const res = await api.post<{ data: { liked: boolean } }>(`/posts/${item.id}/like`, {})
-      const nowLiked = res?.data?.liked ?? !liked
-      setLiked(nowLiked); setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1))
+      const serverLiked = res?.data?.liked ?? nowLiked
+      // Reconcile if server disagrees
+      if (serverLiked !== nowLiked) {
+        setLiked(serverLiked); setLikes((c) => serverLiked ? c + 1 : Math.max(0, c - 1))
+      }
     } catch {
-      const nowLiked = !liked; setLiked(nowLiked); setLikes((c) => nowLiked ? c + 1 : Math.max(0, c - 1))
+      // Roll back on error
+      setLiked(prevLiked); setLikes((c) => prevLiked ? c + 1 : Math.max(0, c - 1))
+    } finally {
+      setLikePending(false)
     }
   }
 
