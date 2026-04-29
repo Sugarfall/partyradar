@@ -246,7 +246,7 @@ export default function CreateEventPage() {
       if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) return false
       return true
     }
-    if (step === 2) return !!(form.address?.trim() && form.neighbourhood?.trim() && form.lat != null && form.lng != null)
+    if (step === 2) return !!(form.address?.trim() && form.neighbourhood?.trim() && typeof form.lat === 'number' && !isNaN(form.lat) && typeof form.lng === 'number' && !isNaN(form.lng))
     if (step === 3) {
       if ((form.price ?? 0) > 0 && !(form.ticketQuantity && form.ticketQuantity > 0)) return false
       return true

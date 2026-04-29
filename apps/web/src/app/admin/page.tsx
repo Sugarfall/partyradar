@@ -13,6 +13,7 @@ import {
   Activity, Database, Wifi, WifiOff, RefreshCw, Zap, MapPin, Building2
 } from 'lucide-react'
 import AdminPartnershipsTab from './AdminPartnershipsTab'
+import AdminVenueClaimsTab from './AdminVenueClaimsTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,7 +196,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals' | 'special-events' | 'partnerships'
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals' | 'special-events' | 'partnerships' | 'venue-claims'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
@@ -208,6 +209,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'medals', label: '🏅 Medals', icon: null },
   { id: 'special-events', label: '🎪 Events', icon: null },
   { id: 'partnerships', label: '🍺 Partners', icon: null },
+  { id: 'venue-claims', label: '🏛️ Claims', icon: <Building2 size={14} /> },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -1841,6 +1843,11 @@ export default function AdminPage() {
         {/* ── Partnerships tab ── */}
         {tab === 'partnerships' && (
           <AdminPartnershipsTab showToast={showToast} />
+        )}
+
+        {/* ── Venue Claims tab ── */}
+        {tab === 'venue-claims' && (
+          <AdminVenueClaimsTab showToast={showToast} />
         )}
 
       </div>

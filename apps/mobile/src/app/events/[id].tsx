@@ -57,7 +57,7 @@ export default function EventDetailScreen() {
           </View>
 
           <Text style={styles.name}>{event.name}</Text>
-          <Text style={styles.host}>Hosted by {event.host.displayName}</Text>
+          <Text style={styles.host}>Hosted by {event.host?.displayName ?? 'Unknown Host'}</Text>
 
           <View style={styles.metaGrid}>
             <MetaItem label="Date" value={new Date(event.startsAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} />

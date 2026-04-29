@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@partyradar/db'
-import { requireAuth, optionalAuth } from '../middleware/auth'
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth'
 import type { AuthRequest } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { z } from 'zod'
@@ -232,6 +232,29 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res, next) => {
     })
     res.json({ data: venues })
   } catch (err) { next(err) }
+})
+
+/**
+ * GET /api/venues/admin/pending-claims — admin only
+ * Returns venues where claimedById is set but isClaimed is still false (pending approval).
+ * Includes the claimant's profile so the admin can identify who submitted the request.
+ */
+router.get('/admin/pending-claims', requireAdmin, async (_req, res, next) => {
+  try {
+    const venues = await prisma.venue.findMany({
+      where: { claimedById: { not: null }, isClaimed: false },
+      select: {
+        ...venueSelect,
+        claimedBy: {
+          select: { id: true, username: true, displayName: true, email: true, photoUrl: true },
+        },
+      },
+      orderBy: { updatedAt: 'asc' }, // oldest requests first
+    })
+    res.json({ data: venues })
+  } catch (err) {
+    next(err)
+  }
 })
 
 // Unsplash photo IDs by venue type — used as fallback when Google Places photo is unavailable
@@ -528,7 +551,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   }
 })
 
-/** POST /api/venues/:id/claim — claim ownership of a venue */
+/** POST /api/venues/:id/claim — submit a claim request (pending admin approval) */
 router.post('/:id/claim', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params
@@ -540,10 +563,57 @@ router.post('/:id/claim', requireAuth, async (req: AuthRequest, res, next) => {
     if (venue.isClaimed) {
       throw new AppError('This venue has already been claimed', 409)
     }
+    // claimedById set + isClaimed still false = pending approval
+    if (venue.claimedById) {
+      throw new AppError('A claim request is already pending for this venue', 409)
+    }
 
     const updated = await prisma.venue.update({
       where: { id },
-      data: { isClaimed: true, claimedById: userId },
+      // isClaimed stays false — admin must approve before it flips to true
+      data: { claimedById: userId },
+    })
+
+    res.json({ data: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/venues/:id/claim/approve — admin approves a pending claim */
+router.post('/:id/claim/approve', requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+
+    const venue = await prisma.venue.findUnique({ where: { id }, select: { id: true, isClaimed: true, claimedById: true } })
+    if (!venue) throw new AppError('Venue not found', 404)
+    if (!venue.claimedById) throw new AppError('No pending claim for this venue', 400)
+    if (venue.isClaimed) throw new AppError('Venue is already approved', 409)
+
+    const updated = await prisma.venue.update({
+      where: { id },
+      data: { isClaimed: true },
+    })
+
+    res.json({ data: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/venues/:id/claim/reject — admin rejects a pending claim */
+router.post('/:id/claim/reject', requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params
+
+    const venue = await prisma.venue.findUnique({ where: { id }, select: { id: true, isClaimed: true, claimedById: true } })
+    if (!venue) throw new AppError('Venue not found', 404)
+    if (!venue.claimedById) throw new AppError('No pending claim for this venue', 400)
+    if (venue.isClaimed) throw new AppError('Venue is already approved — cannot reject', 409)
+
+    const updated = await prisma.venue.update({
+      where: { id },
+      data: { claimedById: null },
     })
 
     res.json({ data: updated })

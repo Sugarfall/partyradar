@@ -76,7 +76,10 @@ async function request<T>(
     // Bug 2 fix: tier-gated errors return { error: { message, code, requiredTier } }
     const errVal = data?.error
     const msg = typeof errVal === 'string' ? errVal : errVal?.message ?? 'Request failed'
-    const apiErr = new Error(msg) as Error & { code?: string }
+    // Surface Zod validation details so users see which fields failed, not just "Validation failed"
+    const details: string[] | undefined = Array.isArray(data?.details) ? data.details : undefined
+    const fullMsg = details?.length ? `${msg}: ${details.join('; ')}` : msg
+    const apiErr = new Error(fullMsg) as Error & { code?: string }
     // Preserve the server-side error code so callers can branch on it
     // (e.g. 'phone_required', 'insufficient_funds') without string-matching.
     const code = data?.code ?? (typeof errVal === 'object' ? errVal?.code : undefined)

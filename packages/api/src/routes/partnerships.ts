@@ -96,6 +96,15 @@ router.post('/venue/:venueId', requireAdmin, async (req: AuthRequest, res, next)
         contactPhone: contactPhone ?? null,
         agreementUrl: agreementUrl ?? null,
       },
+      include: {
+        venue: {
+          select: {
+            id: true, name: true, address: true, city: true,
+            photoUrl: true, type: true, claimedById: true,
+          },
+        },
+        _count: { select: { drinkMenuItems: true } },
+      },
     })
     res.status(201).json({ data: partnership })
   } catch (err) {

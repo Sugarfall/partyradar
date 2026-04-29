@@ -29,7 +29,7 @@ export function EventCard({ event, onPress }: Props) {
         </View>
 
         <Text style={styles.name} numberOfLines={2}>{event.name}</Text>
-        <Text style={styles.host}>by {event.host.displayName}</Text>
+        <Text style={styles.host}>by {event.host?.displayName ?? 'Unknown Host'}</Text>
 
         <View style={styles.row}>
           <Text style={styles.meta}>📅 {new Date(event.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
