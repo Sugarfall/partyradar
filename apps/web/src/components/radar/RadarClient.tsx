@@ -107,7 +107,7 @@ export default function RadarClient() {
       <div className="flex-1 relative">
         <Map
           mapboxAccessToken={process.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? ''}
-          initialViewState={{ longitude: -74.006, latitude: 40.7128, zoom: 11 }}
+          initialViewState={{ longitude: -4.2518, latitude: 55.8642, zoom: 11 }}
           style={{ width: '100%', height: '100%' }}
           mapStyle="mapbox://styles/mapbox/dark-v11"
           onClick={handleMapClick}

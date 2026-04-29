@@ -129,10 +129,13 @@ router.post('/check', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.dbUser.id
 
-    // Auto-seed medal definitions on first ever call so admins don't need to
-    // manually hit /medals/seed before medals start working.
-    const existingCount = await prisma.medal.count()
-    if (existingCount === 0) {
+    // Auto-seed medal definitions if any standard medals are missing.
+    // Uses upsert so existing custom/special medals are never overwritten.
+    const EXPECTED_STANDARD = MEDAL_DEFS.reduce((n, d) => n + d.tiers.length, 0)
+    const existingStandard = await prisma.medal.count({
+      where: { slug: { in: MEDAL_DEFS.map(d => d.slug) } },
+    })
+    if (existingStandard < EXPECTED_STANDARD) {
       for (const def of MEDAL_DEFS) {
         for (const t of def.tiers) {
           await prisma.medal.upsert({
