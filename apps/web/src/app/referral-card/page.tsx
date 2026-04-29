@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { Gift, Copy, Check, TrendingUp } from 'lucide-react'
+import { formatPrice } from '@/lib/currency'
 
 interface ReferralCard {
   id: string
@@ -23,6 +24,9 @@ export default function ReferralCardPage() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => { return () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current) } }, [])
 
   useEffect(() => {
     if (!dbUser) { setLoading(false); return }
@@ -44,7 +48,7 @@ export default function ReferralCardPage() {
     if (!card) return
     navigator.clipboard.writeText(card.code).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
     })
   }
 
@@ -127,7 +131,7 @@ export default function ReferralCardPage() {
             <div className="grid grid-cols-3 gap-3">
               {[
                 { label: 'TOTAL USES', value: card.totalUses },
-                { label: 'EARNED', value: `£${card.totalEarned.toFixed(2)}` },
+                { label: 'EARNED', value: formatPrice(card.totalEarned, undefined, false) },
                 { label: 'CONVERSIONS', value: card.conversions.length },
               ].map(({ label, value }) => (
                 <div key={label} className="p-3 rounded-xl text-center" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
@@ -149,7 +153,7 @@ export default function ReferralCardPage() {
                       <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{new Date(c.createdAt).toLocaleDateString()}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-black" style={{ color: '#00ff88' }}>+£{c.commissionAmount.toFixed(2)}</p>
+                      <p className="text-sm font-black" style={{ color: '#00ff88' }}>+{formatPrice(c.commissionAmount, undefined, false)}</p>
                       <p className="text-[9px]" style={{ color: c.isPaidOut ? 'rgba(0,255,136,0.5)' : 'rgba(255,214,0,0.5)' }}>
                         {c.isPaidOut ? 'PAID' : 'PENDING'}
                       </p>

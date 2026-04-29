@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Trophy, Users, Zap, TrendingUp, Crown, MapPin, Gift, Star } from 'lucide-react'
 import { api } from '@/lib/api'
+import { formatPrice } from '@/lib/currency'
 
 // ─── API response shapes ──────────────────────────────────────────────────────
 
@@ -376,7 +377,7 @@ function EarnersTab({ earners }: { earners: ApiEarner[] }) {
             </p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-xs font-black" style={{ color: '#00ff88' }}>£{earner.earned.toFixed(2)}</p>
+            <p className="text-xs font-black" style={{ color: '#00ff88' }}>{formatPrice(earner.earned, undefined, false)}</p>
             <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>earned</p>
           </div>
         </div>

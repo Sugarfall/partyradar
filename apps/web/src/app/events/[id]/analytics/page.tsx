@@ -12,6 +12,7 @@ import { useEvent } from '@/hooks/useEvents'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api'
 import { loginHref } from '@/lib/authRedirect'
+import { formatPrice } from '@/lib/currency'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -323,7 +324,7 @@ export default function EventAnalyticsPage() {
                 sub={`${confirmed} / ${event.capacity} spots filled`}
                 color={capacityPct > 80 ? '#ff006e' : capacityPct > 50 ? '#ffd600' : '#00ff88'} />
               <StatCard icon={Ticket} label="Ticket Revenue"
-                value={analytics.tickets.count > 0 ? `£${analytics.tickets.revenue.toFixed(2)}` : '—'}
+                value={analytics.tickets.count > 0 ? formatPrice(analytics.tickets.revenue, undefined, false) : '—'}
                 sub={analytics.tickets.count > 0
                   ? `${analytics.tickets.count} sold · ${analytics.tickets.scanned} scanned`
                   : 'Free event'}

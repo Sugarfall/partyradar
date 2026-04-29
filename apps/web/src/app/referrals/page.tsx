@@ -23,6 +23,11 @@ interface ReferralData {
     GROUP_PLATFORM_CUT_PERCENT: number
     MIN_PAYOUT: number
   }
+  // Currency-aware display values (converted from GBP by the API)
+  userCurrency: string
+  balanceInUserCurrency: number
+  totalEarnedInUserCurrency: number
+  minPayoutInUserCurrency: number
 }
 
 interface LeaderEntry {
@@ -118,10 +123,10 @@ function RevenueCalculator() {
           Estimated monthly earnings
         </p>
         <p className="text-2xl font-black" style={{ color: 'var(--accent)', textShadow: '0 0 30px rgba(var(--accent-rgb),0.3)' }}>
-          {formatPrice(total)}
+          {formatPrice(total, undefined, false)}
         </p>
         <p className="text-[10px] mt-1.5" style={{ color: 'rgba(224,242,254,0.35)' }}>
-          {events} events × {avgTickets} tickets × £{avgPrice} (95% payout)
+          {events} events × {avgTickets} tickets × {formatPrice(avgPrice)} (95% payout)
         </p>
       </div>
     </div>
@@ -179,6 +184,15 @@ export default function ReferralsPage() {
   const [codeSaving, setCodeSaving] = useState(false)
   const [codeSaved, setCodeSaved] = useState(false)
   const checkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const codeSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+      if (codeSavedTimerRef.current) clearTimeout(codeSavedTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (authLoading) return                        // wait for Firebase to resolve
@@ -207,7 +221,7 @@ export default function ReferralsPage() {
     if (!data?.code) return
     navigator.clipboard?.writeText(buildInviteLink(data.code)).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
     })
   }
 
@@ -227,7 +241,8 @@ export default function ReferralsPage() {
     try {
       const j = await api.post<{ data: { message?: string } }>('/referrals/payout', {})
       setPayoutMsg(j?.data?.message ?? 'Payout requested!')
-      setData((d) => d ? { ...d, balance: 0 } : d)
+      // Zero both raw GBP balance and converted display balance
+      setData((d) => d ? { ...d, balance: 0, balanceInUserCurrency: 0 } : d)
     } catch (err: unknown) {
       setPayoutMsg(err instanceof Error ? err.message : 'Network error')
     } finally { setRequestingPayout(false) }
@@ -267,7 +282,7 @@ export default function ReferralsPage() {
         setEditingCode(false)
         setCustomCode('')
         setCodeAvailable(null)
-        setTimeout(() => setCodeSaved(false), 4000)
+        codeSavedTimerRef.current = setTimeout(() => setCodeSaved(false), 4000)
       }
     } catch (err: unknown) {
       setCodeReason((err as { message?: string })?.message ?? 'Could not save code')
@@ -450,9 +465,9 @@ export default function ReferralsPage() {
       {data && (
         <>
           <div className="grid grid-cols-2 gap-3 mb-3">
-            <StatCard label="BALANCE" value={`£${data.balance.toFixed(2)}`}
+            <StatCard label="BALANCE" value={formatPrice(data.balanceInUserCurrency, data.userCurrency, false)}
               icon={<Wallet size={14} style={{ color: '#00ff88' }} />} color="#00ff88" />
-            <StatCard label="TOTAL EARNED" value={`£${data.totalEarned.toFixed(2)}`}
+            <StatCard label="TOTAL EARNED" value={formatPrice(data.totalEarnedInUserCurrency, data.userCurrency, false)}
               icon={<TrendingUp size={14} style={{ color: 'var(--accent)' }} />} color="var(--accent)" />
           </div>
           <div className="grid grid-cols-3 gap-3 mb-5">
@@ -466,12 +481,12 @@ export default function ReferralsPage() {
         </>
       )}
 
-      {/* Payout button */}
+      {/* Payout button — threshold checked in GBP, label shown in user's currency */}
       {data && data.balance >= (cfg?.MIN_PAYOUT ?? 5) && (
         <button onClick={requestPayout} disabled={requestingPayout}
           className="w-full py-3.5 rounded-xl text-xs font-black tracking-widest mb-5 disabled:opacity-50"
           style={{ background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.35)', color: '#00ff88' }}>
-          {requestingPayout ? 'REQUESTING...' : `CASH OUT £${data.balance.toFixed(2)}`}
+          {requestingPayout ? 'REQUESTING...' : `CASH OUT ${formatPrice(data.balanceInUserCurrency, data.userCurrency, false)}`}
         </button>
       )}
       {payoutMsg && (
@@ -541,7 +556,11 @@ export default function ReferralsPage() {
               Running a paid group? Keep
               <span style={{ color: '#ffd600', fontWeight: 800 }}> {100 - cfg.GROUP_PLATFORM_CUT_PERCENT}%</span> of
               subscription revenue. Minimum payout:
-              <span style={{ color: '#00ff88', fontWeight: 800 }}> £{cfg.MIN_PAYOUT.toFixed(2)}</span>.
+              <span style={{ color: '#00ff88', fontWeight: 800 }}>
+                {' '}{data?.minPayoutInUserCurrency != null
+                  ? formatPrice(data.minPayoutInUserCurrency, data.userCurrency)
+                  : formatPrice(cfg.MIN_PAYOUT)}
+              </span>.
             </p>
           </div>
 
@@ -562,7 +581,7 @@ export default function ReferralsPage() {
                     </span>
                   </div>
                   <span className="text-xs font-black" style={{ color: r.isPaidOut ? 'rgba(0,255,136,0.4)' : '#00ff88' }}>
-                    {r.isPaidOut ? '(paid) ' : ''}+£{r.earned.toFixed(2)}
+                    {r.isPaidOut ? '(paid) ' : ''}+{formatPrice(r.earned, undefined, false)}
                   </span>
                 </div>
               ))}
@@ -619,7 +638,12 @@ export default function ReferralsPage() {
                 { label: 'Share of platform revenue', value: '10%' },
                 { label: 'Duration', value: 'Lifetime' },
                 { label: 'Counts on', value: 'Tickets, subs, groups, venue' },
-                { label: 'Minimum payout', value: '£5.00' },
+                {
+                  label: 'Minimum payout',
+                  value: data?.minPayoutInUserCurrency != null
+                    ? formatPrice(data.minPayoutInUserCurrency, data.userCurrency)
+                    : '£5.00',
+                },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between rounded-lg px-3 py-2 gap-3"
                   style={{ background: 'rgba(255,214,0,0.04)', border: '1px solid rgba(255,214,0,0.1)' }}>
@@ -705,7 +729,7 @@ export default function ReferralsPage() {
                     {u.referralCount} referral{u.referralCount !== 1 ? 's' : ''}
                   </p>
                 </div>
-                <span className="text-sm font-black" style={{ color: '#00ff88' }}>£{u.earned.toFixed(2)}</span>
+                <span className="text-sm font-black" style={{ color: '#00ff88' }}>{formatPrice(u.earned, undefined, false)}</span>
               </div>
             )
           })}
