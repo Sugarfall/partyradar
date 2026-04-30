@@ -74,6 +74,7 @@ import specialEventsRouter from './routes/special-events'
 import compGroupsRouter from './routes/comp-groups'
 import challengesRouter, { dispatchWeekendChallenges } from './routes/challenges'
 import partnershipsRouter from './routes/partnerships'
+import waitlistRouter from './routes/waitlist'
 import { errorHandler } from './middleware/errorHandler'
 import { messaging, auth as firebaseAuth } from './lib/firebase-admin'
 import { Prisma } from '@partyradar/db'
@@ -112,6 +113,7 @@ app.options('*', (req, res) => {
   const allowed =
     /^https:\/\/partyradar[a-z0-9-]*\.vercel\.app$/i.test(origin) ||
     /^https:\/\/([a-z0-9-]+\.)?partyradar\.app$/i.test(origin) ||
+    /^https:\/\/([a-z0-9-]+\.)?partyradar\.org$/i.test(origin) ||
     (isDev && (origin === 'http://localhost:3000' || origin === 'http://localhost:3001')) ||
     (!!process.env['FRONTEND_URL'] && origin === process.env['FRONTEND_URL'])
   if (allowed) {
@@ -564,6 +566,7 @@ app.use('/api/special-events', specialEventsRouter)
 app.use('/api/comp-groups', compGroupsRouter)
 app.use('/api/challenges', challengesRouter)
 app.use('/api/partnerships', partnershipsRouter)
+app.use('/api/waitlist', waitlistRouter)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

@@ -1706,3 +1706,17 @@ model TaskCompletion {
   @@index([groupId])
   @@index([taskId])
 }
+
+// ─── Marketing / Waitlist ─────────────────────────────────────────────────────
+
+model WaitlistEmail {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String?  @unique   // pre-reserved username
+  name      String?
+  city      String?
+  source    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
