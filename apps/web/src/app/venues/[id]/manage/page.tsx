@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, Save, Building2, Phone, Globe, Tag, MapPin,
   Image as ImageIcon, Loader2, CheckCircle2, AlertTriangle,
-  Calendar, Ticket, Users, Edit3, X, Plus,
+  Calendar, Ticket, Users, Edit3, X, Plus, UtensilsCrossed, ToggleLeft, ToggleRight, Clock,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -150,6 +150,7 @@ export default function VenueManagePage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [forbidden, setForbidden] = useState(false)
+  const [pendingApproval, setPendingApproval] = useState(false)
 
   // Form state
   const [name, setName] = useState('')
@@ -168,6 +169,17 @@ export default function VenueManagePage() {
   // Photo upload
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
+
+  // Menu / partnership state
+  type MenuItem = { id: string; name: string; description?: string; price: number; category: string; isAvailable: boolean }
+  type Partnership = { id: string; isActive: boolean; drinkMenuItems: MenuItem[] }
+  const [partnership, setPartnership] = useState<Partnership | null | 'loading'>('loading')
+  const [menuShowForm, setMenuShowForm] = useState(false)
+  const [menuName, setMenuName] = useState('')
+  const [menuDescription, setMenuDescription] = useState('')
+  const [menuPrice, setMenuPrice] = useState('')
+  const [menuCategory, setMenuCategory] = useState('drink')
+  const [menuSaving, setMenuSaving] = useState(false)
 
   // Fetch venue
   useEffect(() => {
@@ -190,13 +202,27 @@ export default function VenueManagePage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Fetch partnership / menu
+  useEffect(() => {
+    if (!venue) return
+    api.get<{ data: Partnership }>(`/partnerships/venue/${id}`)
+      .then(r => setPartnership(r?.data ?? null))
+      .catch(() => setPartnership(null))
+  }, [id, venue])
+
   // Auth + ownership gate (after both auth and venue have loaded)
   useEffect(() => {
     if (authLoading || loading || !venue) return
     if (!dbUser) { router.push(loginHref(`/venues/${id}/manage`)); return }
-    const isOwner = dbUser.id === venue.claimedById
+    const isOwner = dbUser.id === venue.claimedById && venue.isClaimed === true
     const isAdmin = (dbUser as any).appRole === 'ADMIN' || (dbUser as any).isAdmin
-    if (!isOwner && !isAdmin) setForbidden(true)
+    if (!isOwner && !isAdmin) {
+      if (dbUser.id === venue.claimedById && !venue.isClaimed) {
+        setPendingApproval(true)
+      } else {
+        setForbidden(true)
+      }
+    }
   }, [authLoading, loading, venue, dbUser, id, router])
 
   async function handlePhotoUpload(file: File) {
@@ -261,6 +287,17 @@ export default function VenueManagePage() {
         <AlertTriangle size={32} style={{ color: 'rgba(255,0,110,0.5)' }} />
         <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(224,242,254,0.5)' }}>ACCESS DENIED</p>
         <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Only the venue owner can manage this listing.</p>
+        <Link href={`/venues/${id}`} className="text-xs font-bold" style={{ color: 'var(--accent)' }}>← Back to Venue</Link>
+      </div>
+    )
+  }
+
+  if (pendingApproval) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center" style={{ background: '#04040d' }}>
+        <Clock size={32} style={{ color: '#f59e0b' }} />
+        <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(224,242,254,0.5)' }}>CLAIM PENDING</p>
+        <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>Your claim is pending review — you&apos;ll be able to manage this venue once approved.</p>
         <Link href={`/venues/${id}`} className="text-xs font-bold" style={{ color: 'var(--accent)' }}>← Back to Venue</Link>
       </div>
     )
@@ -416,7 +453,7 @@ export default function VenueManagePage() {
               <p className="text-sm font-bold" style={{ color: '#e0f2fe' }}>{venue?.address}</p>
               <p className="text-xs mt-0.5" style={{ color: 'rgba(224,242,254,0.4)' }}>{venue?.city}</p>
               <p className="text-[10px] mt-1" style={{ color: 'rgba(var(--accent-rgb),0.3)' }}>
-                To update the address, contact <a href="mailto:hello@partyradar.app" style={{ color: 'var(--accent)' }}>hello@partyradar.app</a>
+                To update the address, contact <a href="mailto:Hello@PartyRadar.org" style={{ color: 'var(--accent)' }}>Hello@PartyRadar.org</a>
               </p>
             </div>
           </div>
@@ -470,13 +507,144 @@ export default function VenueManagePage() {
           )}
         </div>
 
+        {/* ── Menu management ── */}
+        <div className="space-y-3">
+          {partnership === 'loading' ? null : partnership === null ? (
+            <>
+              <p className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.2em' }}>MENU</p>
+              <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+                <UtensilsCrossed size={14} style={{ color: 'rgba(var(--accent-rgb),0.4)' }} className="shrink-0 mt-0.5" />
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.4)' }}>
+                  Menu management requires a PartyRadar partnership. Contact{' '}
+                  <a href="mailto:Hello@PartyRadar.org" style={{ color: 'var(--accent)' }}>Hello@PartyRadar.org</a>
+                  {' '}to enable in-app ordering for your venue.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.2em' }}>
+                  MENU{partnership.drinkMenuItems.length > 0 ? ` · ${partnership.drinkMenuItems.length} ITEMS` : ''}
+                </p>
+                <button
+                  onClick={() => setMenuShowForm(v => !v)}
+                  className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
+                  style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.08em' }}>
+                  <Plus size={10} /> ADD ITEM
+                </button>
+              </div>
+
+              {menuShowForm && (
+                <div className="p-4 rounded-xl space-y-3" style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.15)' }}>
+                  <input value={menuName} onChange={e => setMenuName(e.target.value)}
+                    placeholder="Item name" maxLength={80} style={inputStyle} />
+                  <input value={menuDescription} onChange={e => setMenuDescription(e.target.value)}
+                    placeholder="Description (optional)" maxLength={200} style={inputStyle} />
+                  <div className="flex gap-2">
+                    <input value={menuPrice} onChange={e => setMenuPrice(e.target.value)}
+                      placeholder="Price" type="number" min="0" step="0.01"
+                      style={{ ...inputStyle, flex: 1 }} />
+                    <select value={menuCategory} onChange={e => setMenuCategory(e.target.value)}
+                      style={{ ...inputStyle, flex: 1 }}>
+                      <option value="drink">Drink</option>
+                      <option value="food">Food</option>
+                      <option value="combo">Combo</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setMenuShowForm(false); setMenuName(''); setMenuDescription(''); setMenuPrice(''); setMenuCategory('drink') }}
+                      className="flex-1 py-2 rounded-xl text-xs font-bold transition-all"
+                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(224,242,254,0.4)' }}>
+                      Cancel
+                    </button>
+                    <button
+                      disabled={menuSaving || !menuName.trim() || !menuPrice}
+                      onClick={async () => {
+                        setMenuSaving(true)
+                        try {
+                          const res = await api.post<{ data: MenuItem }>(`/partnerships/venue/${id}/menu`, {
+                            name: menuName.trim(),
+                            description: menuDescription.trim() || undefined,
+                            price: parseFloat(menuPrice),
+                            category: menuCategory,
+                          })
+                          setPartnership(prev => typeof prev === 'object' && prev !== null ? { ...prev, drinkMenuItems: [...prev.drinkMenuItems, res.data] } : prev)
+                          setMenuShowForm(false)
+                          setMenuName(''); setMenuDescription(''); setMenuPrice(''); setMenuCategory('drink')
+                        } catch { /* ignore */ } finally { setMenuSaving(false) }
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-black transition-all disabled:opacity-40"
+                      style={{ background: 'rgba(var(--accent-rgb),0.12)', border: '1px solid rgba(var(--accent-rgb),0.3)', color: 'var(--accent)', letterSpacing: '0.08em' }}>
+                      {menuSaving ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} /> SAVE</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {partnership.drinkMenuItems.length > 0 ? (
+                <div className="space-y-2">
+                  {partnership.drinkMenuItems.map(item => (
+                    <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl"
+                      style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-bold truncate" style={{ color: item.isAvailable ? '#e0f2fe' : 'rgba(224,242,254,0.35)' }}>{item.name}</p>
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider"
+                            style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.15)', color: 'rgba(var(--accent-rgb),0.6)' }}>
+                            {item.category}
+                          </span>
+                        </div>
+                        {item.description && (
+                          <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(224,242,254,0.3)' }}>{item.description}</p>
+                        )}
+                        <p className="text-xs font-bold mt-0.5" style={{ color: 'rgba(var(--accent-rgb),0.7)' }}>{formatPrice(item.price)}</p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await api.put<{ data: MenuItem }>(`/partnerships/venue/${id}/menu/${item.id}`, { isAvailable: !item.isAvailable })
+                            setPartnership(prev => typeof prev === 'object' && prev !== null ? { ...prev, drinkMenuItems: prev.drinkMenuItems.map(i => i.id === item.id ? res.data : i) } : prev)
+                          } catch { /* ignore */ }
+                        }}
+                        className="shrink-0 transition-all"
+                        title={item.isAvailable ? 'Mark unavailable' : 'Mark available'}>
+                        {item.isAvailable
+                          ? <ToggleRight size={20} style={{ color: '#00ff88' }} />
+                          : <ToggleLeft size={20} style={{ color: 'rgba(255,255,255,0.2)' }} />}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.delete(`/partnerships/venue/${id}/menu/${item.id}`)
+                            setPartnership(prev => typeof prev === 'object' && prev !== null ? { ...prev, drinkMenuItems: prev.drinkMenuItems.filter(i => i.id !== item.id) } : prev)
+                          } catch { /* ignore */ }
+                        }}
+                        className="shrink-0 transition-all hover:opacity-80"
+                        title="Delete item">
+                        <X size={14} style={{ color: 'rgba(255,0,110,0.5)' }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-6 text-center rounded-xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+                  <UtensilsCrossed size={20} style={{ color: 'rgba(var(--accent-rgb),0.2)', margin: '0 auto 8px' }} />
+                  <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No menu items yet</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {/* ── Danger zone ── */}
         <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(255,0,110,0.03)', border: '1px solid rgba(255,0,110,0.1)' }}>
           <p className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(255,0,110,0.5)', letterSpacing: '0.2em' }}>VENUE LISTING</p>
           <p className="text-xs leading-relaxed" style={{ color: 'rgba(224,242,254,0.4)' }}>
             Need to transfer ownership, report an issue, or remove this venue from PartyRadar?
           </p>
-          <a href={`mailto:hello@partyradar.app?subject=Venue Management: ${encodeURIComponent(venue?.name ?? '')}`}
+          <a href={`mailto:Hello@PartyRadar.org?subject=Venue Management: ${encodeURIComponent(venue?.name ?? '')}`}
             className="inline-block text-[10px] font-bold"
             style={{ color: 'rgba(255,0,110,0.6)' }}>
             Contact support →

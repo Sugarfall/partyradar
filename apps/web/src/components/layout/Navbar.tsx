@@ -174,12 +174,21 @@ function NavbarInner() {
   const { t } = useLanguage()
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
   const { symbol: currencySymbol } = useCurrency()
+  const [myVenues, setMyVenues] = useState<{ id: string; name: string; isClaimed: boolean }[]>([])
 
   // Load wallet balance for bottom tab display
   useEffect(() => {
     if (!dbUser) return
     api.get<{ data: { balance: number } }>('/wallet')
       .then(r => setWalletBalance(r?.data?.balance ?? null))
+      .catch(() => {})
+  }, [dbUser?.id])
+
+  // Load claimed venues for host menu
+  useEffect(() => {
+    if (!dbUser) return
+    api.get<{ data: { id: string; name: string; isClaimed: boolean }[] }>('/venues/mine')
+      .then(r => setMyVenues(r?.data ?? []))
       .catch(() => {})
   }, [dbUser?.id])
 
@@ -381,6 +390,18 @@ function NavbarInner() {
                             style={{ color: '#a855f7', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <Plus size={15} /> Create Event
                           </Link>
+                          {myVenues.filter(v => v.isClaimed).slice(0, 5).length > 0 && (
+                            <>
+                              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '2px 0' }} />
+                              {myVenues.filter(v => v.isClaimed).slice(0, 5).map(venue => (
+                                <Link key={venue.id} href={`/venues/${venue.id}/manage`} onClick={() => setMenuOpen(false)}
+                                  className="flex items-center gap-3 px-4 py-3 text-sm transition-all hover:bg-white/5"
+                                  style={{ color: 'rgba(168,85,247,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                  <Building2 size={15} /> {venue.name}
+                                </Link>
+                              ))}
+                            </>
+                          )}
                         </>
                       )}
                       <Link href="/pricing" onClick={() => setMenuOpen(false)}

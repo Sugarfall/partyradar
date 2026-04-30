@@ -252,7 +252,7 @@ function ClaimModal({
         <p className="text-sm font-bold mb-2" style={{ color: '#e0f2fe' }}>{venueName}</p>
 
         {claimed ? (
-          <p className="text-xs font-bold py-3 text-center" style={{ color: '#00ff88' }}>✓ Venue claimed! Redirecting…</p>
+          <p className="text-xs font-bold py-3 text-center" style={{ color: '#00ff88' }}>✅ Claim request submitted! Pending admin approval.</p>
         ) : (
           <>
             <p className="text-xs leading-relaxed mb-5" style={{ color: 'rgba(224,242,254,0.5)' }}>
@@ -512,7 +512,7 @@ function VenueDetailInner() {
           venueName={venue.name}
           onClose={() => setClaimOpen(false)}
           onClaimed={() => {
-            setVenue((v) => v ? { ...v, isClaimed: true } : v)
+            setVenue((v) => v ? { ...v, claimedById: dbUser?.id } : v)
             setClaimOpen(false)
           }}
         />
@@ -1191,8 +1191,17 @@ function VenueDetailInner() {
           </div>
         </div>
 
-        {/* ─── Claim button ─── */}
-        {!venue.isClaimed && (
+        {/* ─── Claim button / pending badge ─── */}
+        {!venue.isClaimed && venue.claimedById && venue.claimedById === dbUser?.id && (
+          <div className="rounded-xl p-4 flex items-center gap-3"
+            style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <Clock size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
+            <p className="text-xs font-bold" style={{ color: '#f59e0b' }}>
+              Claim Pending Review — our team will verify your ownership shortly
+            </p>
+          </div>
+        )}
+        {!venue.isClaimed && !venue.claimedById && dbUser && (
           <div className="rounded-xl p-4 flex items-center justify-between gap-4"
             style={{ background: 'rgba(var(--accent-rgb),0.03)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
             <div>

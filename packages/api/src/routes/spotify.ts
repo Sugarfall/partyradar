@@ -25,6 +25,10 @@ router.get('/connect-url/:venueId', requireAuth, async (req: AuthRequest, res, n
     })
     if (!venue || venue.claimedById !== req.user!.dbUser.id) throw new AppError('Forbidden', 403)
 
+    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_REDIRECT_URI) {
+      throw new AppError('Spotify is not configured on this server — contact support', 503)
+    }
+
     const state = Buffer.from(
       JSON.stringify({ venueId: req.params['venueId'], userId: req.user!.dbUser.id }),
     ).toString('base64url')
