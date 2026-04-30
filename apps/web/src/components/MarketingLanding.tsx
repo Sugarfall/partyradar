@@ -71,7 +71,7 @@ export default function MarketingLanding() {
       const res  = await fetch(`${API}/waitlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normEmail, username: normUsername, city: city.trim() || undefined, source: 'landing' }),
+        body: JSON.stringify({ email: normEmail, username: normUsername, city: city.trim(), source: 'landing' }),
       })
       const json = await res.json()
 
@@ -106,6 +106,7 @@ export default function MarketingLanding() {
 
   const canSubmit = submitState !== 'loading'
     && email.trim().length > 0
+    && city.trim().length > 0
     && (username === '' || usernameState === 'available')
 
   // ── Success screen ─────────────────────────────────────────────────────────
@@ -307,6 +308,7 @@ export default function MarketingLanding() {
                 onChange={(e) => setCity(e.target.value)}
                 placeholder="e.g. Glasgow, London, Manchester…"
                 autoComplete="address-level2"
+                required
                 className="w-full pl-8 py-3.5 rounded-xl text-sm font-medium focus:outline-none transition-all"
                 style={{
                   background: 'rgba(var(--accent-rgb),0.05)',
@@ -316,7 +318,7 @@ export default function MarketingLanding() {
               />
             </div>
             <p className="text-[10px] px-1" style={{ color: 'rgba(224,242,254,0.22)' }}>
-              Optional — helps us launch in your city first.
+              Helps us launch in your city first.
             </p>
           </div>
 
