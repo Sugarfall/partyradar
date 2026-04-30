@@ -425,8 +425,10 @@ function VenueDetailInner() {
     try {
       const json = await api.get<{ data: { url: string } }>(`/spotify/connect-url/${id}`)
       if (json?.data?.url) window.location.href = json.data.url
-    } catch {}
-    finally { setSpotifyConnecting(false) }
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message ?? 'Spotify connection failed'
+      setSpotifyToast(`❌ ${msg}`)
+    } finally { setSpotifyConnecting(false) }
   }
 
   async function disconnectSpotify() {
