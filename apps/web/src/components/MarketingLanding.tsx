@@ -46,7 +46,10 @@ export default function MarketingLanding() {
         if (json?.data?.available) setUsernameState('available')
         else setUsernameState(json?.data?.reason === 'invalid' ? 'invalid' : 'taken')
       })
-      .catch(() => { /* aborted or network — stay checking */ })
+      .catch((err) => {
+        // Only reset if not an intentional abort (new keystroke)
+        if (err?.name !== 'AbortError') setUsernameState('idle')
+      })
 
     return () => ctrl.abort()
   }, [debouncedUsername])

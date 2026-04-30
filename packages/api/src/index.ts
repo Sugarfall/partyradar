@@ -375,8 +375,9 @@ const CORS_REGEX_ALLOWLIST: RegExp[] = [
   //   https://partyradar-web-<hash>-<team>.vercel.app
   //   https://partyradar-<whatever>.vercel.app
   /^https:\/\/partyradar[a-z0-9-]*\.vercel\.app$/i,
-  // Custom domain, if/when wired up
+  // Custom domains
   /^https:\/\/([a-z0-9-]+\.)?partyradar\.app$/i,
+  /^https:\/\/([a-z0-9-]+\.)?partyradar\.org$/i,
 ]
 
 if (!process.env['FRONTEND_URL']) {
