@@ -298,7 +298,7 @@ router.delete('/venue/:venueId/menu/:itemId', requireAuth, async (req: AuthReque
 router.post('/venue/:venueId/order', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const { venueId } = req.params
-    const { items } = req.body as { items: { itemId: string; qty: number }[] }
+    const { items, tableNumber } = req.body as { items: { itemId: string; qty: number }[]; tableNumber?: string }
 
     if (!Array.isArray(items) || items.length === 0) throw new AppError('items array is required', 400)
 
@@ -372,9 +372,11 @@ router.post('/venue/:venueId/order', requireAuth, async (req: AuthRequest, res, 
           type: 'VENUE_SPEND',
           amount: -total,
           balanceAfter: u.balance,
-          description: `Order at ${partnership.venue.name}`,
+          description: tableNumber
+            ? `Order at ${partnership.venue.name} — Table ${tableNumber}`
+            : `Order at ${partnership.venue.name}`,
           venueId,
-          metadata: { items: orderLines },
+          metadata: { items: orderLines, tableNumber: tableNumber ?? null },
         },
       })
 
@@ -405,6 +407,7 @@ router.post('/venue/:venueId/order', requireAuth, async (req: AuthRequest, res, 
         totalPoints: newPoints,
         freeDrinksEarned: drinksEarned > 0 ? drinksEarned : 0,
         orderLines,
+        tableNumber: tableNumber ?? null,
         message: drinksEarned > 0
           ? `🍹 You earned ${drinksEarned} free drink${drinksEarned > 1 ? 's' : ''}!`
           : `+${pointsEarned} points earned`,
@@ -413,6 +416,51 @@ router.post('/venue/:venueId/order', requireAuth, async (req: AuthRequest, res, 
   } catch (err) {
     next(err)
   }
+})
+
+/** GET /api/partnerships/venue/:venueId/orders — recent orders (venue owner or admin) */
+router.get('/venue/:venueId/orders', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { venueId } = req.params
+    const userId = req.user!.dbUser.id
+    const isAdmin = req.user!.dbUser.isAdmin || (req.user!.dbUser as any).appRole === 'ADMIN'
+
+    const venue = await prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { claimedById: true, isClaimed: true, name: true },
+    })
+    if (!venue) throw new AppError('Venue not found', 404)
+    if (!isAdmin && venue.claimedById !== userId) throw new AppError('Forbidden', 403)
+
+    const orders = await prisma.walletTransaction.findMany({
+      where: { venueId, type: 'VENUE_SPEND' },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        amount: true,
+        description: true,
+        metadata: true,
+        createdAt: true,
+        wallet: { select: { user: { select: { id: true, username: true, displayName: true, photoUrl: true } } } },
+      },
+    })
+
+    const data = orders.map((o) => {
+      const meta = (o.metadata ?? {}) as { items?: { name: string; price: number; qty: number; lineTotal: number }[]; tableNumber?: string | null }
+      return {
+        id: o.id,
+        total: Math.abs(Number(o.amount)),
+        description: o.description,
+        tableNumber: meta.tableNumber ?? null,
+        items: meta.items ?? [],
+        createdAt: o.createdAt,
+        user: o.wallet.user,
+      }
+    })
+
+    res.json({ data })
+  } catch (err) { next(err) }
 })
 
 export default router

@@ -7,6 +7,7 @@ import {
   ArrowLeft, Save, Building2, Phone, Globe, Tag, MapPin,
   Image as ImageIcon, Loader2, CheckCircle2, AlertTriangle,
   Calendar, Ticket, Users, Edit3, X, Plus, UtensilsCrossed, ToggleLeft, ToggleRight, Clock,
+  ShoppingBag, RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -180,6 +181,21 @@ export default function VenueManagePage() {
   const [menuPrice, setMenuPrice] = useState('')
   const [menuCategory, setMenuCategory] = useState('drink')
   const [menuSaving, setMenuSaving] = useState(false)
+
+  // Orders state
+  type OrderLine = { name: string; price: number; qty: number; lineTotal: number }
+  type VenueOrder = { id: string; total: number; description: string; tableNumber: string | null; items: OrderLine[]; createdAt: string; user: { id: string; username: string; displayName: string; photoUrl?: string | null } }
+  const [orders, setOrders] = useState<VenueOrder[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [ordersLoaded, setOrdersLoaded] = useState(false)
+
+  function loadOrders() {
+    setOrdersLoading(true)
+    api.get<{ data: VenueOrder[] }>(`/partnerships/venue/${id}/orders`)
+      .then(r => { setOrders(r?.data ?? []); setOrdersLoaded(true) })
+      .catch(() => setOrdersLoaded(true))
+      .finally(() => setOrdersLoading(false))
+  }
 
   // Fetch venue
   useEffect(() => {
@@ -635,6 +651,76 @@ export default function VenueManagePage() {
                 </div>
               )}
             </>
+          )}
+        </div>
+
+        {/* ── Orders panel ── */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black tracking-widest" style={{ color: 'rgba(var(--accent-rgb),0.5)', letterSpacing: '0.2em' }}>
+              ORDERS {ordersLoaded && orders.length > 0 ? `· ${orders.length}` : ''}
+            </p>
+            <button
+              onClick={loadOrders}
+              disabled={ordersLoading}
+              className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all disabled:opacity-40"
+              style={{ background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.2)', color: 'var(--accent)', letterSpacing: '0.08em' }}>
+              <RefreshCw size={10} className={ordersLoading ? 'animate-spin' : ''} />
+              {ordersLoaded ? 'REFRESH' : 'LOAD ORDERS'}
+            </button>
+          </div>
+
+          {ordersLoading && (
+            <div className="py-6 flex items-center justify-center">
+              <Loader2 size={18} className="animate-spin" style={{ color: 'rgba(var(--accent-rgb),0.4)' }} />
+            </div>
+          )}
+
+          {ordersLoaded && !ordersLoading && orders.length === 0 && (
+            <div className="py-6 text-center rounded-xl" style={{ background: 'rgba(7,7,26,0.6)', border: '1px solid rgba(var(--accent-rgb),0.06)' }}>
+              <ShoppingBag size={20} style={{ color: 'rgba(var(--accent-rgb),0.2)', margin: '0 auto 8px' }} />
+              <p className="text-xs" style={{ color: 'rgba(224,242,254,0.3)' }}>No orders yet</p>
+            </div>
+          )}
+
+          {ordersLoaded && orders.length > 0 && (
+            <div className="space-y-2">
+              {orders.map((order) => {
+                const t = new Date(order.createdAt)
+                const timeStr = t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                const dateStr = t.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                return (
+                  <div key={order.id} className="p-3 rounded-xl space-y-2"
+                    style={{ background: 'rgba(7,7,26,0.8)', border: '1px solid rgba(var(--accent-rgb),0.08)' }}>
+                    {/* Header row */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {order.tableNumber && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-lg"
+                            style={{ background: 'rgba(var(--accent-rgb),0.12)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.25)' }}>
+                            🪑 Table {order.tableNumber}
+                          </span>
+                        )}
+                        <span className="text-xs font-semibold" style={{ color: '#e0f2fe' }}>@{order.user.username}</span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-black" style={{ color: 'var(--accent)' }}>£{order.total.toFixed(2)}</p>
+                        <p className="text-[9px]" style={{ color: 'rgba(224,242,254,0.3)' }}>{timeStr} · {dateStr}</p>
+                      </div>
+                    </div>
+                    {/* Items */}
+                    <div className="space-y-0.5 pl-1">
+                      {order.items.map((item, i) => (
+                        <p key={i} className="text-[11px]" style={{ color: 'rgba(224,242,254,0.5)' }}>
+                          {item.qty}× {item.name}
+                          <span className="ml-1.5" style={{ color: 'rgba(224,242,254,0.3)' }}>£{item.lineTotal.toFixed(2)}</span>
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
 

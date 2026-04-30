@@ -327,8 +327,9 @@ function VenueDetailInner() {
   const [menuData, setMenuData] = useState<MenuPartnership | null | undefined>(undefined)
   const [menuLoading, setMenuLoading] = useState(false)
   const [cart, setCart] = useState<Record<string, number>>({})
+  const [tableNumber, setTableNumber] = useState('')
   const [ordering, setOrdering] = useState(false)
-  const [orderSuccess, setOrderSuccess] = useState<{ total: number; newBalance: number; pointsEarned: number; message: string } | null>(null)
+  const [orderSuccess, setOrderSuccess] = useState<{ total: number; newBalance: number; pointsEarned: number; message: string; tableNumber?: string | null } | null>(null)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
 
@@ -488,7 +489,7 @@ function VenueDetailInner() {
       type OrderResult = { total: number; newBalance: number; pointsEarned: number; message: string }
       const json = await api.post<{ data: OrderResult }>(
         `/partnerships/venue/${id}/order`,
-        { items: cartEntries.map(([itemId, qty]) => ({ itemId, qty })) },
+        { items: cartEntries.map(([itemId, qty]) => ({ itemId, qty })), tableNumber: tableNumber.trim() || undefined },
       )
       if (json?.data) {
         setOrderSuccess(json.data)
@@ -943,15 +944,23 @@ function VenueDetailInner() {
 
               {/* Order success banner */}
               {orderSuccess && (
-                <div className="rounded-xl p-4" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
-                  <p className="text-sm font-bold mb-1" style={{ color: '#00ff88' }}>✓ Order placed!</p>
+                <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">✅</span>
+                    <p className="text-sm font-bold" style={{ color: '#00ff88' }}>Order placed!</p>
+                  </div>
+                  {orderSuccess.tableNumber && (
+                    <p className="text-xs font-black px-3 py-1.5 rounded-lg inline-block" style={{ background: 'rgba(0,255,136,0.1)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.25)' }}>
+                      🪑 Table {orderSuccess.tableNumber} — staff will bring your order shortly
+                    </p>
+                  )}
                   <p className="text-xs" style={{ color: 'rgba(224,242,254,0.6)' }}>
-                    £{orderSuccess.total.toFixed(2)} paid · {orderSuccess.message}
+                    £{orderSuccess.total.toFixed(2)} paid from wallet · {orderSuccess.message}
                   </p>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(224,242,254,0.35)' }}>
+                  <p className="text-[10px]" style={{ color: 'rgba(224,242,254,0.3)' }}>
                     New balance: £{orderSuccess.newBalance.toFixed(2)}
                   </p>
-                  <button onClick={() => setOrderSuccess(null)} className="mt-2 text-[10px] font-bold" style={{ color: 'rgba(0,255,136,0.55)' }}>
+                  <button onClick={() => setOrderSuccess(null)} className="text-[10px] font-bold" style={{ color: 'rgba(0,255,136,0.55)' }}>
                     DISMISS
                   </button>
                 </div>
@@ -1034,6 +1043,21 @@ function VenueDetailInner() {
                       </span>
                     </div>
                     <span className="text-base font-black" style={{ color: 'var(--accent)' }}>£{cartTotal.toFixed(2)}</span>
+                  </div>
+
+                  {/* Table number */}
+                  <div className="flex items-center gap-2 mb-3 p-2.5 rounded-xl"
+                    style={{ background: 'rgba(var(--accent-rgb),0.04)', border: '1px solid rgba(var(--accent-rgb),0.12)' }}>
+                    <span className="text-sm shrink-0">🪑</span>
+                    <input
+                      type="text"
+                      value={tableNumber}
+                      onChange={(e) => setTableNumber(e.target.value)}
+                      placeholder="Table number (e.g. 7)"
+                      maxLength={10}
+                      className="flex-1 bg-transparent text-xs font-medium focus:outline-none"
+                      style={{ color: '#e0f2fe' }}
+                    />
                   </div>
 
                   {orderError && (
