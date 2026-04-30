@@ -196,7 +196,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals' | 'special-events' | 'partnerships' | 'venue-claims'
+type Tab = 'stats' | 'users' | 'events' | 'groups' | 'reports' | 'moderation' | 'pipeline' | 'medals' | 'special-events' | 'partnerships' | 'venue-claims' | 'waitlist'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'stats', label: 'Overview', icon: <BarChart3 size={14} /> },
@@ -210,6 +210,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'special-events', label: '🎪 Events', icon: null },
   { id: 'partnerships', label: '🍺 Partners', icon: null },
   { id: 'venue-claims', label: '🏛️ Claims', icon: <Building2 size={14} /> },
+  { id: 'waitlist', label: '📋 Waitlist', icon: null },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -265,6 +266,9 @@ export default function AdminPage() {
   const [notifyModal, setNotifyModal] = useState<{ eventId: string; eventName: string } | null>(null)
   const [notifyForm, setNotifyForm] = useState({ title: '', body: '' })
   const [notifying, setNotifying] = useState(false)
+  // Waitlist
+  const [waitlist, setWaitlist] = useState<{ total: number; byCity: { city: string | null; _count: { id: number } }[]; recent: { id: string; email: string; username: string | null; name: string | null; city: string | null; source: string | null; createdAt: string }[] } | null>(null)
+  const [waitlistLoading, setWaitlistLoading] = useState(false)
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok })
@@ -307,6 +311,12 @@ export default function AdminPage() {
       loadSpecialEvents() // needed so medal form can show special events in picker
     } else if (tab === 'special-events') {
       loadSpecialEvents()
+    } else if (tab === 'waitlist') {
+      setWaitlistLoading(true)
+      api.get<{ data: typeof waitlist }>('/admin/waitlist')
+        .then((r) => setWaitlist(r.data))
+        .catch(silent('admin:waitlist'))
+        .finally(() => setWaitlistLoading(false))
     }
   }, [tab, isStaff])
 
@@ -1836,6 +1846,89 @@ export default function AdminPage() {
                   )
                 })}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Waitlist tab ── */}
+        {tab === 'waitlist' && (
+          <div className="space-y-4">
+            {waitlistLoading && (
+              <div className="text-center py-12 text-white/30 text-sm">Loading waitlist…</div>
+            )}
+            {!waitlistLoading && waitlist && (
+              <>
+                {/* Stat row */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="rounded-2xl p-4 flex flex-col gap-1" style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.15)' }}>
+                    <span className="text-[10px] text-white/40 uppercase tracking-widest font-semibold">Total signups</span>
+                    <span className="text-3xl font-black" style={{ color: '#a855f7' }}>{waitlist.total.toLocaleString()}</span>
+                  </div>
+                  {waitlist.byCity.slice(0, 5).map((c) => (
+                    <div key={c.city ?? 'unknown'} className="rounded-2xl p-4 flex flex-col gap-1" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <span className="text-[10px] text-white/40 uppercase tracking-widest font-semibold truncate">{c.city ?? 'Unknown city'}</span>
+                      <span className="text-2xl font-black text-white">{c._count.id}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* City breakdown bar */}
+                {waitlist.byCity.length > 0 && (
+                  <div className="rounded-2xl p-4 space-y-2" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mb-3">Signups by city</p>
+                    {waitlist.byCity.map((c) => {
+                      const pct = waitlist.total > 0 ? Math.round((c._count.id / waitlist.total) * 100) : 0
+                      return (
+                        <div key={c.city ?? 'unknown'} className="flex items-center gap-2">
+                          <span className="text-xs text-white/50 w-28 truncate shrink-0">{c.city ?? 'Unknown'}</span>
+                          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#a855f7' }} />
+                          </div>
+                          <span className="text-xs font-bold w-8 text-right" style={{ color: '#a855f7' }}>{c._count.id}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Entries table */}
+                <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div className="px-4 py-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold">Recent signups ({waitlist.recent.length})</p>
+                  </div>
+                  <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                    {waitlist.recent.length === 0 && (
+                      <div className="text-center py-12 text-white/30 text-sm">No signups yet</div>
+                    )}
+                    {waitlist.recent.map((entry) => (
+                      <div key={entry.id} className="px-4 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors">
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-sm font-black" style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7' }}>
+                          {(entry.name ?? entry.email)[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-white truncate">{entry.email}</span>
+                            {entry.username && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full font-mono font-bold" style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' }}>
+                                @{entry.username}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-2 mt-0.5 text-[11px] text-white/30">
+                            {entry.city && <span>{entry.city}</span>}
+                            {entry.city && <span>·</span>}
+                            <span>{new Date(entry.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                            {entry.source && entry.source !== 'web' && <><span>·</span><span className="capitalize">{entry.source}</span></>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            {!waitlistLoading && !waitlist && (
+              <div className="text-center py-12 text-white/30 text-sm">Failed to load waitlist data</div>
             )}
           </div>
         )}

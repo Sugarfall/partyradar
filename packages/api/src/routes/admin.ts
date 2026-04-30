@@ -1673,4 +1673,25 @@ router.get('/stripe/events-status', requireAdmin, async (_req, res, next) => {
   } catch (err) { next(err) }
 })
 
+/** GET /api/admin/waitlist — waitlist signups (admin only) */
+router.get('/waitlist', requireAdmin, async (_req, res, next) => {
+  try {
+    const [total, byCity, recent] = await Promise.all([
+      prisma.waitlistEmail.count(),
+      prisma.waitlistEmail.groupBy({
+        by: ['city'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 20,
+      }),
+      prisma.waitlistEmail.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+        select: { id: true, email: true, username: true, name: true, city: true, source: true, createdAt: true },
+      }),
+    ])
+    res.json({ data: { total, byCity, recent } })
+  } catch (err) { next(err) }
+})
+
 export default router
