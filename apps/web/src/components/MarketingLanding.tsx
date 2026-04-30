@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { Zap, CheckCircle2, XCircle, Loader2, AtSign, Mail, ChevronRight } from 'lucide-react'
+import { Zap, CheckCircle2, XCircle, Loader2, AtSign, Mail, MapPin, ChevronRight } from 'lucide-react'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.partyradar.org/api'
 
@@ -21,6 +21,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export default function MarketingLanding() {
   const [username, setUsername]           = useState('')
   const [email, setEmail]                 = useState('')
+  const [city, setCity]                   = useState('')
   const [usernameState, setUsernameState] = useState<UsernameState>('idle')
   const [submitState, setSubmitState]     = useState<SubmitState>('idle')
   const [result, setResult]               = useState<{ username?: string | null; position?: number } | null>(null)
@@ -70,7 +71,7 @@ export default function MarketingLanding() {
       const res  = await fetch(`${API}/waitlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normEmail, username: normUsername, source: 'landing' }),
+        body: JSON.stringify({ email: normEmail, username: normUsername, city: city.trim() || undefined, source: 'landing' }),
       })
       const json = await res.json()
 
@@ -289,6 +290,34 @@ export default function MarketingLanding() {
                 }}
               />
             </div>
+          </div>
+
+          {/* City field */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black tracking-[0.25em]" style={{ color: 'rgba(var(--accent-rgb),0.55)' }}>
+              YOUR CITY
+            </label>
+            <div className="relative flex items-center">
+              <div className="absolute left-3 flex items-center" style={{ color: 'rgba(var(--accent-rgb),0.4)' }}>
+                <MapPin size={15} />
+              </div>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="e.g. Glasgow, London, Manchester…"
+                autoComplete="address-level2"
+                className="w-full pl-8 py-3.5 rounded-xl text-sm font-medium focus:outline-none transition-all"
+                style={{
+                  background: 'rgba(var(--accent-rgb),0.05)',
+                  border: '1px solid rgba(var(--accent-rgb),0.2)',
+                  color: '#e0f2fe',
+                }}
+              />
+            </div>
+            <p className="text-[10px] px-1" style={{ color: 'rgba(224,242,254,0.22)' }}>
+              Optional — helps us launch in your city first.
+            </p>
           </div>
 
           {/* Error */}
